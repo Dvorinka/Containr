@@ -1,0 +1,233 @@
+package api
+
+import (
+	"containr/internal/build"
+	"containr/internal/config"
+	"containr/internal/database"
+	"containr/internal/deployment"
+	"containr/internal/docker"
+	"containr/internal/metrics"
+	"containr/internal/middleware"
+	"containr/internal/proxmox"
+	"containr/internal/scaling"
+
+	"github.com/gin-gonic/gin"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+)
+
+func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg *config.Config) {
+	// Initialize Docker client
+	dockerClient, err := docker.NewClient()
+	if err != nil {
+		panic("Failed to initialize Docker client: " + err.Error())
+	}
+
+	// Initialize build manager
+	buildManager := build.NewBuildManager("/tmp/containr-builds", dockerClient)
+
+	// Initialize build handler
+	buildHandler := NewBuildHandler(buildManager, dockerClient)
+
+	// Initialize scheduler and metrics systems
+	scheduler := deployment.NewScheduler()
+	metricsStorage := metrics.NewInMemoryMetricsStorage() // Use in-memory for now
+	metricsCollector := metrics.NewMetricsCollector(scheduler, metricsStorage)
+	autoScaler := scaling.NewAutoScaler(scheduler, metricsCollector)
+
+	// Initialize scaling handler
+	scalingHandler := NewScalingHandler(autoScaler)
+
+	// Initialize GORM for agent system
+	gormDB, err := gorm.Open(postgres.Open(cfg.DatabaseURL), &gorm.Config{})
+	if err != nil {
+		panic("Failed to initialize GORM: " + err.Error())
+	}
+
+	// Initialize agent handler
+	agentHandler := NewNodeAgentHandler(gormDB)
+
+	// Initialize database handler
+	databaseHandler := NewDatabaseHandler(db.DB)
+
+	// Initialize security handler
+	securityHandler := NewSecurityHandler(db, cfg.JWTSecret)
+
+	// Initialize Proxmox service if configured
+	var proxmoxService *proxmox.Service
+	if cfg.Proxmox.BaseURL != "" {
+		proxmoxConfig := proxmox.Config{
+			BaseURL:  cfg.Proxmox.BaseURL,
+			Username: cfg.Proxmox.Username,
+			Password: cfg.Proxmox.Password,
+			TokenID:  cfg.Proxmox.TokenID,
+			Token:    cfg.Proxmox.Token,
+		}
+		proxmoxService = proxmox.NewService(proxmoxConfig)
+
+		// Register Proxmox routes
+		RegisterProxmoxRoutes(router, proxmoxService)
+	}
+
+	// Add database and JWT secret to gin context for handlers
+	router.Use(func(c *gin.Context) {
+		c.Set("db", db)
+		c.Set("redis", redis)
+		c.Set("jwt_secret", cfg.JWTSecret)
+		c.Set("docker_client", dockerClient)
+		c.Set("build_manager", buildManager)
+		c.Set("scheduler", scheduler)
+		c.Set("metrics_collector", metricsCollector)
+		c.Set("auto_scaler", autoScaler)
+		c.Set("scaling_handler", scalingHandler)
+		c.Set("gorm_db", gormDB)
+		if proxmoxService != nil {
+			c.Set("proxmox", proxmoxService)
+		}
+		c.Next()
+	})
+
+	// Health check endpoint
+	router.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"status":  "ok",
+			"service": "containr-api",
+		})
+	})
+
+	// API v1 routes
+	v1 := router.Group("/api/v1")
+	{
+		// Public routes (no authentication required)
+		public := v1.Group("/")
+		{
+			public.POST("/auth/login", handleLogin)
+			public.POST("/auth/register", handleRegister)
+		}
+
+		// Protected routes (authentication required)
+		protected := v1.Group("/")
+		protected.Use(middleware.Auth(cfg.JWTSecret))
+		{
+			// User routes
+			protected.GET("/user/profile", handleGetProfile)
+			protected.PUT("/user/profile", handleUpdateProfile)
+
+			// Project routes
+			protected.GET("/projects", handleGetProjects)
+			protected.POST("/projects", handleCreateProject)
+			protected.GET("/projects/:id", handleGetProject)
+			protected.PUT("/projects/:id", handleUpdateProject)
+			protected.DELETE("/projects/:id", handleDeleteProject)
+
+			// Service routes
+			protected.GET("/projects/:project_id/services", handleGetServices)
+			protected.POST("/projects/:project_id/services", handleCreateService)
+			protected.GET("/services/:id", handleGetService)
+			protected.PUT("/services/:id", handleUpdateService)
+			protected.DELETE("/services/:id", handleDeleteService)
+
+			// Deployment routes
+			protected.GET("/services/:service_id/deployments", handleGetDeployments)
+			protected.POST("/services/:service_id/deployments", handleCreateDeployment)
+			protected.GET("/deployments/:id", handleGetDeployment)
+			protected.POST("/deployments/:id/rollback", handleRollbackDeployment)
+
+			// Environment variables routes
+			protected.GET("/services/:service_id/variables", handleGetVariables)
+			protected.PUT("/services/:service_id/variables", handleUpdateVariables)
+
+			// Logs routes
+			protected.GET("/services/:service_id/logs", handleGetLogs)
+			protected.GET("/deployments/:id/logs", handleGetDeploymentLogs)
+
+			// Git integration routes
+			protected.GET("/git/providers", handleGetGitProviders)
+			protected.POST("/git/providers", handleCreateGitProvider)
+			protected.GET("/git/providers/:providerId/repositories", handleGetGitRepositories)
+			protected.POST("/git/repositories/connect", handleConnectGitRepository)
+			protected.GET("/git/repositories", handleGetConnectedRepositories)
+			protected.POST("/git/webhooks", handleCreateWebhook)
+
+			// Build routes
+			protected.POST("/builds", buildHandler.StartBuild)
+			protected.GET("/builds", buildHandler.ListBuilds)
+			protected.GET("/builds/:id", buildHandler.GetBuildStatus)
+			protected.POST("/builds/:id/cancel", buildHandler.CancelBuild)
+			protected.GET("/builds/:id/logs", buildHandler.GetBuildLogs)
+			protected.POST("/builds/plan", buildHandler.GetBuildPlan)
+			protected.GET("/builds/detect", buildHandler.DetectBuildType)
+
+			// Scaling routes
+			scalingHandler.RegisterRoutes(protected)
+
+			// Database routes
+			protected.GET("/databases", databaseHandler.GetDatabases)
+			protected.POST("/databases", databaseHandler.CreateDatabase)
+			protected.GET("/databases/:id", databaseHandler.GetDatabase)
+			protected.PUT("/databases/:id", databaseHandler.UpdateDatabase)
+			protected.DELETE("/databases/:id", databaseHandler.DeleteDatabase)
+			protected.POST("/databases/:id/action", databaseHandler.PerformDatabaseAction)
+			protected.POST("/databases/:id/backup", databaseHandler.CreateBackup)
+			protected.POST("/databases/:id/restore", databaseHandler.RestoreBackup)
+
+			// Node Agent routes
+			api := router.Group("/api")
+			agentHandler.SetupRoutes(api)
+
+			// Preview Environments routes
+			protected.GET("/projects/:project_id/preview-environments", handleGetPreviewEnvironments)
+			protected.POST("/projects/:project_id/preview-environments", handleCreatePreviewEnvironment)
+			protected.GET("/preview-environments/:id", handleGetPreviewEnvironment)
+			protected.PUT("/preview-environments/:id", handleUpdatePreviewEnvironment)
+			protected.DELETE("/preview-environments/:id", handleDeletePreviewEnvironment)
+			protected.POST("/preview-environments/:id/promote", handlePromotePreviewEnvironment)
+			protected.POST("/preview-environments/cleanup-expired", handleCleanupExpiredPreviewEnvironments)
+
+			// Security routes
+			protected.POST("/security/scans", securityHandler.StartSecurityScan)
+			protected.GET("/security/scans/:scanId", securityHandler.GetSecurityScan)
+			protected.GET("/projects/:projectId/security/history", securityHandler.GetProjectSecurityHistory)
+			protected.GET("/projects/:projectId/vulnerabilities", securityHandler.GetVulnerabilities)
+			protected.PUT("/vulnerabilities/:vulnId", securityHandler.UpdateVulnerability)
+			protected.POST("/security/compliance/assess", securityHandler.StartComplianceAssessment)
+			protected.GET("/security/compliance/reports/:reportId", securityHandler.GetComplianceReport)
+			protected.GET("/security/compliance/frameworks", securityHandler.GetComplianceFrameworks)
+			protected.POST("/security/compliance/gdpr/init", securityHandler.InitializeGDPRFramework)
+			protected.GET("/projects/:projectId/security/metrics", securityHandler.GetSecurityMetrics)
+			protected.GET("/projects/:projectId/security/audit-logs", securityHandler.GetAuditLogs)
+		}
+	}
+}
+
+func handleGetDeployments(c *gin.Context) {
+	c.JSON(501, gin.H{"error": "Not implemented yet"})
+}
+
+func handleCreateDeployment(c *gin.Context) {
+	c.JSON(501, gin.H{"error": "Not implemented yet"})
+}
+
+func handleGetDeployment(c *gin.Context) {
+	c.JSON(501, gin.H{"error": "Not implemented yet"})
+}
+
+func handleRollbackDeployment(c *gin.Context) {
+	c.JSON(501, gin.H{"error": "Not implemented yet"})
+}
+
+func handleGetVariables(c *gin.Context) {
+	c.JSON(501, gin.H{"error": "Not implemented yet"})
+}
+
+func handleUpdateVariables(c *gin.Context) {
+	c.JSON(501, gin.H{"error": "Not implemented yet"})
+}
+
+func handleGetLogs(c *gin.Context) {
+	c.JSON(501, gin.H{"error": "Not implemented yet"})
+}
+
+func handleGetDeploymentLogs(c *gin.Context) {
+	c.JSON(501, gin.H{"error": "Not implemented yet"})
+}

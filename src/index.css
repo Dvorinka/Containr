@@ -1,0 +1,82 @@
+@import "tailwindcss";
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+
+@layer base {
+  :root {
+    --background: 255 255 255;
+    --foreground: 19 17 28;
+    --card: 255 255 255;
+    --card-foreground: 19 17 28;
+    --popover: 255 255 255;
+    --popover-foreground: 19 17 28;
+    --primary: 82 41 122;
+    --primary-foreground: 255 255 255;
+    --secondary: 24 22 34;
+    --secondary-foreground: 255 255 255;
+    --muted: 84 80 99;
+    --muted-foreground: 135 128 147;
+    --accent: 33 31 45;
+    --accent-foreground: 255 255 255;
+    --destructive: 239 68 68;
+    --destructive-foreground: 255 255 255;
+    --border: 84 80 99;
+    --input: 84 80 99;
+    --ring: 82 41 122;
+    --radius: 0.5rem;
+    --chart-1: 82 41 122;
+    --chart-2: 24 22 34;
+    --chart-3: 33 31 45;
+    --chart-4: 84 80 99;
+    --chart-5: 135 128 147;
+  }
+
+  .dark {
+    --background: 19 17 28;
+    --foreground: 255 255 255;
+    --card: 24 22 34;
+    --card-foreground: 255 255 255;
+    --popover: 24 22 34;
+    --popover-foreground: 255 255 255;
+    --primary: 82 41 122;
+    --primary-foreground: 255 255 255;
+    --secondary: 33 31 45;
+    --secondary-foreground: 255 255 255;
+    --muted: 51 50 62;
+    --muted-foreground: 135 128 147;
+    --accent: 82 41 122;
+    --accent-foreground: 255 255 255;
+    --destructive: 239 68 68;
+    --destructive-foreground: 255 255 255;
+    --border: 84 80 99;
+    --input: 84 80 99;
+    --ring: 82 41 122;
+    --chart-1: 82 41 122;
+    --chart-2: 24 22 34;
+    --chart-3: 33 31 45;
+    --chart-4: 84 80 99;
+    --chart-5: 135 128 147;
+  }
+}
+
+@layer base {
+  * {
+    border-color: rgb(var(--border));
+  }
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background-color: rgb(var(--background));
+    color: rgb(var(--foreground));
+  }
+}
+
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}

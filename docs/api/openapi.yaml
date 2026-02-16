@@ -1,0 +1,1140 @@
+openapi: 3.0.3
+info:
+  title: Containr API
+  description: |
+    Self-hosted PaaS on Proxmox - Railway-like platform for container orchestration and deployment.
+    
+    ## Overview
+    Containr provides a comprehensive platform for deploying, managing, and scaling containerized applications on Proxmox infrastructure. This API allows you to manage projects, services, deployments, databases, and more through a RESTful interface.
+    
+    ## Authentication
+    The API uses JWT-based authentication. Include your JWT token in the Authorization header:
+    ```
+    Authorization: Bearer <your-jwt-token>
+    ```
+    
+    ## Base URL
+    ```
+    https://your-containr-domain.com/api/v1
+    ```
+  version: 1.0.0
+  contact:
+    name: Containr Documentation
+    url: https://github.com/your-org/containr
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Development server
+  - url: https://your-containr-domain.com/api/v1
+    description: Production server
+
+paths:
+  # Health Check
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Health check endpoint
+      description: Returns the current status of the API service
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  # Authentication
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: User login
+      description: Authenticate user and return JWT token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: User registration
+      description: Register a new user account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Registration successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # User Management
+  /user/profile:
+    get:
+      tags:
+        - User
+      summary: Get user profile
+      description: Retrieve current user's profile information
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      tags:
+        - User
+      summary: Update user profile
+      description: Update current user's profile information
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+      responses:
+        '200':
+          description: Profile updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # Projects
+  /projects:
+    get:
+      tags:
+        - Projects
+      summary: List projects
+      description: Retrieve all projects accessible to the current user
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          description: Page number for pagination
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          description: Number of items per page
+          schema:
+            type: integer
+            default: 20
+        - name: search
+          in: query
+          description: Search term to filter projects
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Projects retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectsResponse'
+
+    post:
+      tags:
+        - Projects
+      summary: Create project
+      description: Create a new project
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProjectRequest'
+      responses:
+        '201':
+          description: Project created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /projects/{id}:
+    get:
+      tags:
+        - Projects
+      summary: Get project
+      description: Retrieve a specific project by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Project ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Project retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '404':
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      tags:
+        - Projects
+      summary: Update project
+      description: Update a specific project
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Project ID
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProjectRequest'
+      responses:
+        '200':
+          description: Project updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '404':
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      tags:
+        - Projects
+      summary: Delete project
+      description: Delete a specific project
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Project ID
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Project deleted successfully
+        '404':
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # Services
+  /projects/{project_id}/services:
+    get:
+      tags:
+        - Services
+      summary: List project services
+      description: Retrieve all services in a project
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          description: Project ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Services retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Service'
+
+    post:
+      tags:
+        - Services
+      summary: Create service
+      description: Create a new service in a project
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          description: Project ID
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateServiceRequest'
+      responses:
+        '201':
+          description: Service created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Service'
+
+  /services/{id}:
+    get:
+      tags:
+        - Services
+      summary: Get service
+      description: Retrieve a specific service
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Service ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Service retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Service'
+
+    put:
+      tags:
+        - Services
+      summary: Update service
+      description: Update a specific service
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Service ID
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateServiceRequest'
+      responses:
+        '200':
+          description: Service updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Service'
+
+    delete:
+      tags:
+        - Services
+      summary: Delete service
+      description: Delete a specific service
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Service ID
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Service deleted successfully
+
+  # Builds
+  /builds:
+    get:
+      tags:
+        - Builds
+      summary: List builds
+      description: Retrieve all builds
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: service_id
+          in: query
+          description: Filter by service ID
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: Filter by build status
+          schema:
+            type: string
+            enum: [pending, running, success, failed, cancelled]
+      responses:
+        '200':
+          description: Builds retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Build'
+
+    post:
+      tags:
+        - Builds
+      summary: Start build
+      description: Start a new build
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartBuildRequest'
+      responses:
+        '201':
+          description: Build started successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Build'
+
+  /builds/{id}:
+    get:
+      tags:
+        - Builds
+      summary: Get build status
+      description: Retrieve build status and details
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Build ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Build status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Build'
+
+  /builds/{id}/logs:
+    get:
+      tags:
+        - Builds
+      summary: Get build logs
+      description: Retrieve build logs
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Build ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Build logs retrieved successfully
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  # Databases
+  /databases:
+    get:
+      tags:
+        - Databases
+      summary: List databases
+      description: Retrieve all databases
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Databases retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Database'
+
+    post:
+      tags:
+        - Databases
+      summary: Create database
+      description: Create a new database
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDatabaseRequest'
+      responses:
+        '201':
+          description: Database created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Database'
+
+  /databases/{id}:
+    get:
+      tags:
+        - Databases
+      summary: Get database
+      description: Retrieve a specific database
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Database ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Database retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Database'
+
+  # Git Integration
+  /git/providers:
+    get:
+      tags:
+        - Git
+      summary: List Git providers
+      description: Retrieve available Git providers
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Git providers retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GitProvider'
+
+    post:
+      tags:
+        - Git
+      summary: Add Git provider
+      description: Add a new Git provider
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGitProviderRequest'
+      responses:
+        '201':
+          description: Git provider added successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitProvider'
+
+  /git/providers/{providerId}/repositories:
+    get:
+      tags:
+        - Git
+      summary: List repositories
+      description: Retrieve repositories from a Git provider
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: providerId
+          in: path
+          required: true
+          description: Git provider ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Repositories retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GitRepository'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+        code:
+          type: string
+          description: Error code
+        details:
+          type: object
+          description: Additional error details
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+        service:
+          type: string
+          example: containr-api
+        version:
+          type: string
+          example: 1.0.0
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          description: User email address
+        password:
+          type: string
+          format: password
+          description: User password
+
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: JWT access token
+        user:
+          $ref: '#/components/schemas/User'
+
+    RegisterRequest:
+      type: object
+      required:
+        - email
+        - password
+        - name
+      properties:
+        email:
+          type: string
+          format: email
+          description: User email address
+        password:
+          type: string
+          format: password
+          description: User password
+        name:
+          type: string
+          description: User display name
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          description: User ID
+        email:
+          type: string
+          format: email
+          description: User email
+        name:
+          type: string
+          description: User display name
+        created_at:
+          type: string
+          format: date-time
+          description: Account creation timestamp
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update timestamp
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: User display name
+        email:
+          type: string
+          format: email
+          description: User email address
+
+    Project:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Project ID
+        name:
+          type: string
+          description: Project name
+        description:
+          type: string
+          description: Project description
+        owner_id:
+          type: string
+          description: Project owner ID
+        created_at:
+          type: string
+          format: date-time
+          description: Project creation timestamp
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update timestamp
+        services_count:
+          type: integer
+          description: Number of services in the project
+
+    CreateProjectRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: Project name
+        description:
+          type: string
+          description: Project description
+
+    UpdateProjectRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Project name
+        description:
+          type: string
+          description: Project description
+
+    ProjectsResponse:
+      type: object
+      properties:
+        projects:
+          type: array
+          items:
+            $ref: '#/components/schemas/Project'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+          description: Current page number
+        limit:
+          type: integer
+          description: Items per page
+        total:
+          type: integer
+          description: Total number of items
+        total_pages:
+          type: integer
+          description: Total number of pages
+
+    Service:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Service ID
+        project_id:
+          type: string
+          description: Project ID
+        name:
+          type: string
+          description: Service name
+        type:
+          type: string
+          enum: [web, worker, database, cron]
+          description: Service type
+        status:
+          type: string
+          enum: [running, stopped, building, failed]
+          description: Service status
+        source:
+          $ref: '#/components/schemas/ServiceSource'
+        build_config:
+          $ref: '#/components/schemas/BuildConfig'
+        resources:
+          $ref: '#/components/schemas/ResourceConfig'
+        created_at:
+          type: string
+          format: date-time
+          description: Service creation timestamp
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update timestamp
+
+    CreateServiceRequest:
+      type: object
+      required:
+        - name
+        - type
+      properties:
+        name:
+          type: string
+          description: Service name
+        type:
+          type: string
+          enum: [web, worker, database, cron]
+          description: Service type
+        source:
+          $ref: '#/components/schemas/ServiceSource'
+        build_config:
+          $ref: '#/components/schemas/BuildConfig'
+        resources:
+          $ref: '#/components/schemas/ResourceConfig'
+
+    UpdateServiceRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Service name
+        build_config:
+          $ref: '#/components/schemas/BuildConfig'
+        resources:
+          $ref: '#/components/schemas/ResourceConfig'
+
+    ServiceSource:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [git, dockerfile, image]
+          description: Source type
+        repository:
+          type: string
+          description: Git repository URL
+        branch:
+          type: string
+          description: Git branch
+        root_directory:
+          type: string
+          description: Root directory for build
+        dockerfile:
+          type: string
+          description: Dockerfile path
+        image:
+          type: string
+          description: Docker image name
+
+    BuildConfig:
+      type: object
+      properties:
+        builder_type:
+          type: string
+          enum: [nixpacks, dockerfile, image]
+          description: Build system type
+        build_command:
+          type: string
+          description: Custom build command
+        start_command:
+          type: string
+          description: Custom start command
+        environment_variables:
+          type: object
+          additionalProperties:
+            type: string
+          description: Build environment variables
+
+    ResourceConfig:
+      type: object
+      properties:
+        cpu:
+          type: string
+          description: CPU allocation
+        memory:
+          type: string
+          description: Memory allocation
+        storage:
+          type: string
+          description: Storage allocation
+
+    Build:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Build ID
+        service_id:
+          type: string
+          description: Service ID
+        status:
+          type: string
+          enum: [pending, running, success, failed, cancelled]
+          description: Build status
+        started_at:
+          type: string
+          format: date-time
+          description: Build start time
+        finished_at:
+          type: string
+          format: date-time
+          description: Build finish time
+        logs:
+          type: string
+          description: Build logs
+        error:
+          type: string
+          description: Build error message
+
+    StartBuildRequest:
+      type: object
+      required:
+        - service_id
+      properties:
+        service_id:
+          type: string
+          description: Service ID to build
+        commit_sha:
+          type: string
+          description: Git commit SHA
+        branch:
+          type: string
+          description: Git branch
+
+    Database:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Database ID
+        project_id:
+          type: string
+          description: Project ID
+        name:
+          type: string
+          description: Database name
+        type:
+          type: string
+          enum: [postgresql, redis, mysql]
+          description: Database type
+        status:
+          type: string
+          enum: [running, stopped, provisioning, failed]
+          description: Database status
+        connection_url:
+          type: string
+          description: Database connection URL
+        version:
+          type: string
+          description: Database version
+        size:
+          type: string
+          description: Database size
+        created_at:
+          type: string
+          format: date-time
+          description: Database creation timestamp
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update timestamp
+
+    CreateDatabaseRequest:
+      type: object
+      required:
+        - name
+        - type
+      properties:
+        name:
+          type: string
+          description: Database name
+        type:
+          type: string
+          enum: [postgresql, redis, mysql]
+          description: Database type
+        version:
+          type: string
+          description: Database version
+        size:
+          type: string
+          description: Database size
+
+    GitProvider:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Provider ID
+        type:
+          type: string
+          enum: [github, gitlab, bitbucket]
+          description: Provider type
+        name:
+          type: string
+          description: Provider display name
+        access_token:
+          type: string
+          description: Encrypted access token
+        created_at:
+          type: string
+          format: date-time
+          description: Provider creation timestamp
+
+    CreateGitProviderRequest:
+      type: object
+      required:
+        - type
+        - access_token
+      properties:
+        type:
+          type: string
+          enum: [github, gitlab, bitbucket]
+          description: Provider type
+        name:
+          type: string
+          description: Provider display name
+        access_token:
+          type: string
+          description: Access token
+
+    GitRepository:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Repository ID
+        name:
+          type: string
+          description: Repository name
+        full_name:
+          type: string
+          description: Repository full name
+        description:
+          type: string
+          description: Repository description
+        private:
+          type: boolean
+          description: Whether repository is private
+        default_branch:
+          type: string
+          description: Default branch
+        clone_url:
+          type: string
+          description: Clone URL
+        web_url:
+          type: string
+          description: Web URL
+
+tags:
+  - name: Health
+    description: Health check endpoints
+  - name: Authentication
+    description: User authentication and authorization
+  - name: User
+    description: User profile management
+  - name: Projects
+    description: Project management
+  - name: Services
+    description: Service management
+  - name: Builds
+    description: Build management
+  - name: Databases
+    description: Database management
+  - name: Git
+    description: Git integration

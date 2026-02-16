@@ -1,0 +1,86 @@
+# Git
+.git
+.gitignore
+
+# Documentation
+README.md
+README_BACKEND.md
+*.md
+
+# Dependencies
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build outputs
+dist
+build
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go specific
+*.test
+*.prof
+vendor/
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Environment
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+logs
+*.log
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage
+*.lcov
+
+# Temporary folders
+tmp/
+temp/
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+docker-compose*.yaml
+traefik*.yml
+.traefik/
+
+# Data directories
+data/
+postgres_data/
+redis_data/
+letsencrypt/
+
+# Development
+.eslintrc*
+.prettierrc*

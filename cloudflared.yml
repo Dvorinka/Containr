@@ -1,0 +1,13 @@
+# Cloudflare Tunnel Configuration
+# This file provides additional configuration for cloudflared
+# You can customize this for more advanced tunnel setups
+
+tunnel: auto
+logfile: /var/log/cloudflared.log
+loglevel: info
+
+# Optional: Ingress rules for more control
+# ingress:
+#   - hostname: your-domain.com
+#     service: http://traefik:80
+#   - service: http_status:404
