@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./canvas_inspirational.png" alt="Containr Logo" width="200">
+  <img src="./containr.svg" alt="Containr Logo" width="200">
 </p>
 
 <h1 align="center">
@@ -22,6 +22,10 @@
   <a href="#documentation">Documentation</a>
   <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
   <a href="#contributing">Contributing</a>
+</p>
+
+<p align="center">
+  <img src="./scorecard.png" alt="Code Quality Scorecard" width="100%">
 </p>
 
 > **⚠️ Development Status**: This project is currently under active development and is **not yet ready for production use**. The current codebase represents the default structure and foundation for the container management platform. Many features are still being implemented and may not work as expected.

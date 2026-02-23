@@ -1,30 +1,25 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { databasesApi } from '@/lib/api/databases';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { 
-  Plus, 
-  Search, 
-  Edit, 
-  Trash2, 
-  Eye, 
-  GitBranch,
+import {
+  Plus,
   Database,
-  Server,
   Play,
   Pause,
   CheckCircle,
   AlertCircle,
   MoreHorizontal,
-  Copy
+  Activity,
+  MemoryStick,
+  HardDrive,
+  Download
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
-import type { DatabaseService, DatabaseCreateRequest } from '@/types';
 
 interface DatabaseService {
   id: string;
@@ -99,7 +94,7 @@ const mockDatabases: DatabaseService[] = [
   }
 ];
 
-const databasePlans = {
+const _databasePlans = {
   hobby: { cpu: 1, memory: 1, storage: 10, price: 0 },
   starter: { cpu: 1, memory: 2, storage: 25, price: 15 },
   standard: { cpu: 2, memory: 4, storage: 100, price: 50 },
@@ -109,7 +104,7 @@ const databasePlans = {
 export default function DatabaseServices() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [selectedDatabase, setSelectedDatabase] = useState<DatabaseService | null>(null);
+  const [_selectedDatabase, _setSelectedDatabase] = useState<DatabaseService | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     type: 'postgresql' as 'postgresql' | 'redis' | 'mysql',
@@ -125,7 +120,7 @@ export default function DatabaseServices() {
   });
 
   const createDatabaseMutation = useMutation({
-    mutationFn: (data: typeof formData) => {
+    mutationFn: (_data: typeof formData) => {
       // Mock API call
       return new Promise(resolve => setTimeout(resolve, 1000));
     },

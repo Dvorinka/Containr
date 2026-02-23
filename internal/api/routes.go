@@ -1,6 +1,8 @@
 package api
 
 import (
+	"log"
+
 	"containr/internal/build"
 	"containr/internal/config"
 	"containr/internal/database"
@@ -17,14 +19,17 @@ import (
 )
 
 func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg *config.Config) {
-	// Initialize Docker client
-	dockerClient, err := docker.NewClient()
-	if err != nil {
-		panic("Failed to initialize Docker client: " + err.Error())
-	}
+	// Initialize Docker client (non-fatal if it fails)
+	var dockerClient *docker.Client
+	buildManager := &build.BuildManager{} // Default empty manager
 
-	// Initialize build manager
-	buildManager := build.NewBuildManager("/tmp/containr-builds", dockerClient)
+	if client, err := docker.NewClient(); err != nil {
+		log.Printf("Warning: Failed to initialize Docker client: %v", err)
+		log.Printf("Docker-related features will be disabled")
+	} else {
+		dockerClient = client
+		buildManager = build.NewBuildManager("/tmp/containr-builds", dockerClient)
+	}
 
 	// Initialize build handler
 	buildHandler := NewBuildHandler(buildManager, dockerClient)
@@ -116,29 +121,33 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			// Project routes
 			protected.GET("/projects", handleGetProjects)
 			protected.POST("/projects", handleCreateProject)
+
+			// Service routes (nested under projects)
+			protected.GET("/projects/:id/services", handleGetServices)
+			protected.POST("/projects/:id/services", handleCreateService)
+
+			// Generic project routes
 			protected.GET("/projects/:id", handleGetProject)
 			protected.PUT("/projects/:id", handleUpdateProject)
 			protected.DELETE("/projects/:id", handleDeleteProject)
 
 			// Service routes
-			protected.GET("/projects/:project_id/services", handleGetServices)
-			protected.POST("/projects/:project_id/services", handleCreateService)
 			protected.GET("/services/:id", handleGetService)
 			protected.PUT("/services/:id", handleUpdateService)
 			protected.DELETE("/services/:id", handleDeleteService)
 
 			// Deployment routes
-			protected.GET("/services/:service_id/deployments", handleGetDeployments)
-			protected.POST("/services/:service_id/deployments", handleCreateDeployment)
+			protected.GET("/services/:id/deployments", handleGetDeployments)
+			protected.POST("/services/:id/deployments", handleCreateDeployment)
 			protected.GET("/deployments/:id", handleGetDeployment)
 			protected.POST("/deployments/:id/rollback", handleRollbackDeployment)
 
 			// Environment variables routes
-			protected.GET("/services/:service_id/variables", handleGetVariables)
-			protected.PUT("/services/:service_id/variables", handleUpdateVariables)
+			protected.GET("/services/:id/variables", handleGetVariables)
+			protected.PUT("/services/:id/variables", handleUpdateVariables)
 
 			// Logs routes
-			protected.GET("/services/:service_id/logs", handleGetLogs)
+			protected.GET("/services/:id/logs", handleGetLogs)
 			protected.GET("/deployments/:id/logs", handleGetDeploymentLogs)
 
 			// Git integration routes
@@ -176,8 +185,8 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			agentHandler.SetupRoutes(api)
 
 			// Preview Environments routes
-			protected.GET("/projects/:project_id/preview-environments", handleGetPreviewEnvironments)
-			protected.POST("/projects/:project_id/preview-environments", handleCreatePreviewEnvironment)
+			protected.GET("/projects/:id/preview-environments", handleGetPreviewEnvironments)
+			protected.POST("/projects/:id/preview-environments", handleCreatePreviewEnvironment)
 			protected.GET("/preview-environments/:id", handleGetPreviewEnvironment)
 			protected.PUT("/preview-environments/:id", handleUpdatePreviewEnvironment)
 			protected.DELETE("/preview-environments/:id", handleDeletePreviewEnvironment)
@@ -186,48 +195,37 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 
 			// Security routes
 			protected.POST("/security/scans", securityHandler.StartSecurityScan)
-			protected.GET("/security/scans/:scanId", securityHandler.GetSecurityScan)
-			protected.GET("/projects/:projectId/security/history", securityHandler.GetProjectSecurityHistory)
-			protected.GET("/projects/:projectId/vulnerabilities", securityHandler.GetVulnerabilities)
-			protected.PUT("/vulnerabilities/:vulnId", securityHandler.UpdateVulnerability)
+			protected.GET("/security/scans/:id", securityHandler.GetSecurityScan)
+			protected.GET("/projects/:id/security/history", securityHandler.GetProjectSecurityHistory)
+			protected.GET("/projects/:id/vulnerabilities", securityHandler.GetVulnerabilities)
+			protected.PUT("/vulnerabilities/:id", securityHandler.UpdateVulnerability)
 			protected.POST("/security/compliance/assess", securityHandler.StartComplianceAssessment)
-			protected.GET("/security/compliance/reports/:reportId", securityHandler.GetComplianceReport)
+			protected.GET("/security/compliance/reports/:id", securityHandler.GetComplianceReport)
 			protected.GET("/security/compliance/frameworks", securityHandler.GetComplianceFrameworks)
 			protected.POST("/security/compliance/gdpr/init", securityHandler.InitializeGDPRFramework)
-			protected.GET("/projects/:projectId/security/metrics", securityHandler.GetSecurityMetrics)
-			protected.GET("/projects/:projectId/security/audit-logs", securityHandler.GetAuditLogs)
+			protected.GET("/projects/:id/security/metrics", securityHandler.GetSecurityMetrics)
+			protected.GET("/projects/:id/security/audit-logs", securityHandler.GetAuditLogs)
+
+			// WebSocket endpoint
+			protected.GET("/ws", handleWebSocket)
+
+			// Templates routes
+			protected.GET("/templates", handleGetTemplates)
+			protected.GET("/templates/:id", handleGetTemplate)
+			protected.POST("/templates/:id/deploy", handleCreateFromTemplate)
+
+			// Cron Jobs routes
+			protected.GET("/cron-jobs", handleGetCronJobs)
+			protected.POST("/cron-jobs", handleCreateCronJob)
+			protected.GET("/cron-jobs/:id", handleGetCronJob)
+			protected.PUT("/cron-jobs/:id", handleUpdateCronJob)
+			protected.DELETE("/cron-jobs/:id", handleDeleteCronJob)
+			protected.GET("/cron-jobs/:id/executions", handleGetCronExecutions)
+			protected.POST("/cron-jobs/:id/trigger", handleTriggerCronJob)
+
+			// Audit Logs routes
+			protected.GET("/audit-logs", handleGetAuditLogs)
+			protected.GET("/audit-logs/:resource/:id", handleGetResourceAuditLogs)
 		}
 	}
-}
-
-func handleGetDeployments(c *gin.Context) {
-	c.JSON(501, gin.H{"error": "Not implemented yet"})
-}
-
-func handleCreateDeployment(c *gin.Context) {
-	c.JSON(501, gin.H{"error": "Not implemented yet"})
-}
-
-func handleGetDeployment(c *gin.Context) {
-	c.JSON(501, gin.H{"error": "Not implemented yet"})
-}
-
-func handleRollbackDeployment(c *gin.Context) {
-	c.JSON(501, gin.H{"error": "Not implemented yet"})
-}
-
-func handleGetVariables(c *gin.Context) {
-	c.JSON(501, gin.H{"error": "Not implemented yet"})
-}
-
-func handleUpdateVariables(c *gin.Context) {
-	c.JSON(501, gin.H{"error": "Not implemented yet"})
-}
-
-func handleGetLogs(c *gin.Context) {
-	c.JSON(501, gin.H{"error": "Not implemented yet"})
-}
-
-func handleGetDeploymentLogs(c *gin.Context) {
-	c.JSON(501, gin.H{"error": "Not implemented yet"})
 }

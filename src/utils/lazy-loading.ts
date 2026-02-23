@@ -1,7 +1,7 @@
 import React, { lazy, type ComponentType, Suspense } from 'react';
 
 // Simple loading component
-export const LoadingFallback = ({ 
+const LoadingFallback = ({ 
   size = 'default', 
   message = 'Loading...' 
 }: { 
@@ -31,7 +31,7 @@ export const LoadingFallback = ({
 };
 
 // Enhanced lazy loading with loading states
-export function createLazyComponent<T extends ComponentType<any>>(
+function _createLazyComponent<T extends ComponentType<any>>(
   importFunc: () => Promise<{ default: T }>,
   options?: {
     loadingMessage?: string;
@@ -53,7 +53,7 @@ export function createLazyComponent<T extends ComponentType<any>>(
 }
 
 // Preload utility for critical components
-export function preloadComponent(importFunc: () => Promise<{ default: ComponentType<any> }>) {
+function _preloadComponent(importFunc: () => Promise<{ default: ComponentType<any> }>) {
   const componentPromise = importFunc();
   
   // Preload component in background

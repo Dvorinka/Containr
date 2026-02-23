@@ -4,7 +4,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2 } from 'lucide-react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
+import { Loader2, Github, Mail, Lock, User, Layers, ArrowRight, Sparkles, Zap, Database, GitBranch, Shield } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -26,165 +29,252 @@ export default function Login() {
       } else {
         await login(email, password);
       }
-    } catch (err: any) {
-      setError(err.message || 'Authentication failed');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Authentication failed');
     }
   };
 
   const handleGitHubAuth = () => {
-    // TODO: Implement GitHub OAuth
     console.log('GitHub OAuth not implemented yet');
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <div className="w-full max-w-[400px]">
-        <div className="flex flex-col gap-5 rounded-3xl bg-bg-white-0 p-6 shadow-regular-xs">
-          <div className="flex flex-col items-center gap-5">
-            <div className="w-14 h-14 flex items-center justify-center">
-              <div className="w-full h-full bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
-                <span className="text-white font-bold text-xl">C</span>
-              </div>
+    <div className="min-h-screen flex">
+      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden bg-gradient-to-br from-primary/5 via-background to-background">
+        <div className="absolute inset-0 dot-grid opacity-50 dark:opacity-30" />
+        <div className="absolute top-0 right-0 w-2/3 h-2/3 radial-glow" />
+        <div className="absolute bottom-0 left-0 w-1/2 h-1/2 radial-glow-bottom" />
+        <div className="absolute inset-0 mesh-gradient" />
+        
+        <div className="absolute top-20 right-20 w-72 h-72 bg-primary/10 rounded-full blur-[100px] animate-float" />
+        <div className="absolute bottom-20 left-20 w-56 h-56 bg-violet-500/10 rounded-full blur-[80px] animate-float" style={{ animationDelay: '-2s' }} />
+        
+        <div className="relative z-10 flex flex-col justify-between p-10 w-full">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 bg-gradient-to-br from-primary via-primary to-primary/90 rounded-xl flex items-center justify-center shadow-glow logo-glow p-1.5">
+              <img src="/containr.svg" alt="Containr" className="w-full h-full object-contain" />
             </div>
-            <div className="text-center">
-              <div className="text-title-h6 text-text-strong-950">
+            <div>
+              <h1 className="text-xl font-bold tracking-tight">Containr</h1>
+              <p className="text-xs text-muted-foreground">Self-hosted PaaS</p>
+            </div>
+          </div>
+
+          <div className="space-y-10">
+            <div>
+              <h2 className="text-4xl font-bold leading-[1.1] mb-4">
+                Deploy your apps
+                <br />
+                <span className="gradient-text-vivid">in seconds</span>
+              </h2>
+              <p className="text-lg text-muted-foreground max-w-md leading-relaxed">
+                A powerful platform for managing containers, databases, and infrastructure with zero-config deployments.
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              {[
+                { title: 'Zero-config deployments', description: 'Push to deploy with automatic builds', icon: Zap },
+                { title: 'Managed databases', description: 'PostgreSQL, Redis, and more', icon: Database },
+                { title: 'Automatic scaling', description: 'Scale up or down based on demand', icon: GitBranch },
+                { title: 'Built-in monitoring', description: 'Real-time metrics and logs', icon: Shield },
+              ].map((feature, index) => (
+                <div 
+                  key={feature.title}
+                  className={cn(
+                    "flex items-start gap-3 p-3 rounded-xl bg-card/60 backdrop-blur-sm border border-border/40",
+                    "animate-fade-in-up hover:bg-card/80 transition-colors duration-300"
+                  )}
+                  style={{ animationDelay: `${index * 100}ms` }}
+                >
+                  <div className="p-2 rounded-lg bg-primary/10">
+                    <feature.icon className="w-4 h-4 text-primary" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-sm">{feature.title}</p>
+                    <p className="text-xs text-muted-foreground">{feature.description}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4 text-sm text-muted-foreground">
+            <div className="flex -space-x-2">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="w-7 h-7 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 border-2 border-background flex items-center justify-center text-[10px] font-medium">
+                  {String.fromCharCode(65 + i)}
+                </div>
+              ))}
+            </div>
+            <span>Trusted by developers worldwide</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex-1 flex items-center justify-center p-6 sm:p-8 relative">
+        <div className="absolute inset-0 bg-gradient-to-br from-transparent via-transparent to-primary/5" />
+        
+        <div className="w-full max-w-md relative z-10 animate-fade-in">
+          <div className="lg:hidden flex flex-col items-center mb-8">
+            <div className="w-14 h-14 bg-gradient-to-br from-primary via-primary to-primary/90 rounded-xl flex items-center justify-center shadow-glow mb-4 p-2">
+              <img src="/containr.svg" alt="Containr" className="w-full h-full object-contain" />
+            </div>
+            <h1 className="text-2xl font-bold">Containr</h1>
+            <p className="text-sm text-muted-foreground">Self-hosted container platform</p>
+          </div>
+
+          <Card className="border-0 shadow-elevated glass-heavy">
+            <CardHeader className="space-y-1 pb-4 text-center">
+              <CardTitle className="text-xl font-semibold">
                 {isRegister ? 'Create an account' : 'Welcome back'}
-              </div>
-              <div className="text-paragraph-sm text-text-sub-600">
+              </CardTitle>
+              <CardDescription>
                 {isRegister 
-                  ? 'Please enter your details to create an account.'
-                  : 'Please enter your details to sign in.'
+                  ? 'Enter your details to create your account'
+                  : 'Sign in to your account to continue'
                 }
-              </div>
-            </div>
-          </div>
-          
-          <button 
-            onClick={handleGitHubAuth}
-            className="relative inline-flex h-10 items-center justify-center gap-3.5 whitespace-nowrap rounded-10 px-4 text-label-sm outline-none transition duration-200 ease-out focus:outline-none bg-bg-white-0 text-text-strong-950 shadow-regular-xs ring-1 ring-inset ring-stroke-soft-200 hover:bg-bg-weak-50 hover:shadow-none hover:ring-transparent focus-visible:shadow-button-important-focus focus-visible:ring-stroke-strong-950 w-full"
-          >
-            <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" className="relative z-10 -mx-1.5 size-5 shrink-0">
-              <path fill-rule="evenodd" clip-rule="evenodd" d="M16 4C9.375 4 4 9.375 4 16C4 21.3125 7.4375 25.75 12.1875 27.25C12.75 27.3438 12.9375 27.0938 12.9375 26.8125C12.9375 26.5625 12.9375 25.75 12.9375 24.875C9.625 25.5625 8.75 23.3125 8.75 23.3125C8.1875 21.875 7.25 21.5 7.25 21.5C6.0625 20.6875 7.34375 20.6875 7.34375 20.6875C8.4375 20.75 9.0625 21.8125 9.0625 21.8125C10.0625 23.5 11.6875 23 12.3125 22.6875C12.4375 21.9375 12.75 21.4375 13.0625 21.1875C10.5625 20.9375 7.8125 19.9375 7.8125 15.625C7.8125 14.375 8.25 13.3125 9.0625 12.5C8.9375 12.1875 8.5 10.9375 9.1875 9.1875C9.1875 9.1875 10.1875 8.875 12.9375 10.6875C13.875 10.4375 14.9375 10.3125 16 10.3125C17.0625 10.3125 18.125 10.4375 19.0625 10.6875C21.8125 8.875 22.8125 9.1875 22.8125 9.1875C23.5 10.9375 23.0625 12.1875 22.9375 12.5C23.75 13.3125 24.1875 14.375 24.1875 15.625C24.1875 19.9375 21.4375 20.9375 18.9375 21.1875C19.25 21.4375 19.5625 21.9375 19.5625 22.6875C19.5625 23.75 19.5625 24.5625 19.5625 24.8125C19.5625 25.0938 19.75 25.3438 20.3125 25.25C25.0625 23.75 28.5 19.3125 28.5 14C28.5 9.375 23.125 4 16 4Z" fill="#24292e"></path>
-            </svg>
-            Continue with GitHub
-          </button>
-          
-          <div role="separator" className="relative flex w-full items-center gap-2.5 text-subheading-2xs text-text-soft-400 before:h-px before:w-full before:flex-1 before:bg-stroke-soft-200 after:h-px after:w-full after:flex-1 after:bg-stroke-soft-200">
-            OR
-          </div>
-          
-          <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-            {error && (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-            
-            {isRegister && (
-              <div className="flex gap-4">
-                <div className="flex flex-col gap-1 flex-1">
-                  <Label htmlFor="first-name" className="group cursor-pointer text-label-sm text-text-strong-950 flex items-center gap-px aria-disabled:text-text-disabled-300">
-                    First Name
-                  </Label>
-                  <Input
-                    id="first-name"
-                    type="text"
-                    value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
-                    placeholder="James"
-                    required={isRegister}
-                    className="h-10"
-                  />
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Button 
+                variant="outline" 
+                className="w-full gap-2 h-11 font-medium hover:bg-muted/50 transition-colors"
+                onClick={handleGitHubAuth}
+              >
+                <Github className="w-5 h-5" />
+                Continue with GitHub
+              </Button>
+
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <Separator className="w-full" />
                 </div>
-                <div className="flex flex-col gap-1 flex-1">
-                  <Label htmlFor="last-name" className="group cursor-pointer text-label-sm text-text-strong-950 flex items-center gap-px aria-disabled:text-text-disabled-300">
-                    Last Name
-                  </Label>
-                  <Input
-                    id="last-name"
-                    type="text"
-                    value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
-                    placeholder="Brown"
-                    required={isRegister}
-                    className="h-10"
-                  />
+                <div className="relative flex justify-center text-[10px] uppercase">
+                  <span className="bg-card px-3 text-muted-foreground font-medium">Or continue with</span>
                 </div>
               </div>
-            )}
-            
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="email" className="group cursor-pointer text-label-sm text-text-strong-950 flex items-center gap-px aria-disabled:text-text-disabled-300">
-                Email Address
-              </Label>
-              <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="hello@alignui.com"
-                required
-                className="h-10"
-              />
-            </div>
-            
-            <div className="flex flex-col gap-1">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="password" className="group cursor-pointer text-label-sm text-text-strong-950 flex items-center gap-px aria-disabled:text-text-disabled-300">
-                  Password
-                </Label>
-                <button type="button" className="text-label-xs text-text-sub-600">
-                  Clear
+
+              <form onSubmit={handleSubmit} className="space-y-4">
+                {error && (
+                  <Alert variant="destructive" className="text-sm">
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                )}
+                
+                {isRegister && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="first-name" className="text-xs font-medium">First Name</Label>
+                      <div className="relative">
+                        <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          id="first-name"
+                          type="text"
+                          value={firstName}
+                          onChange={(e) => setFirstName(e.target.value)}
+                          placeholder="John"
+                          required={isRegister}
+                          className="pl-10 h-10"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="last-name" className="text-xs font-medium">Last Name</Label>
+                      <Input
+                        id="last-name"
+                        type="text"
+                        value={lastName}
+                        onChange={(e) => setLastName(e.target.value)}
+                        placeholder="Doe"
+                        required={isRegister}
+                        className="h-10"
+                      />
+                    </div>
+                  </div>
+                )}
+                
+                <div className="space-y-2">
+                  <Label htmlFor="email" className="text-xs font-medium">Email</Label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id="email"
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="you@example.com"
+                      required
+                      className="pl-10 h-10"
+                    />
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="password" className="text-xs font-medium">Password</Label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id="password"
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                      required
+                      className="pl-10 h-10"
+                    />
+                  </div>
+                </div>
+                
+                <Button 
+                  type="submit" 
+                  className="w-full gap-2 h-11 btn-shine bg-gradient-to-r from-primary to-primary/90 hover:from-primary/95 hover:to-primary/85 font-medium"
+                  disabled={isLoading}
+                >
+                  {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {isRegister ? 'Create Account' : 'Sign In'}
+                  <ArrowRight className="w-4 h-4" />
+                </Button>
+              </form>
+
+              <div className="text-center text-sm">
+                <span className="text-muted-foreground">
+                  {isRegister ? 'Already have an account?' : "Don't have an account?"}
+                </span>{' '}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsRegister(!isRegister);
+                    setError('');
+                  }}
+                  className="text-primary hover:underline font-medium"
+                >
+                  {isRegister ? 'Sign in' : 'Sign up'}
                 </button>
               </div>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="• • • • • • • • • • "
-                required
-                className="h-10"
-              />
-            </div>
-            
-            <Button 
-              type="submit" 
-              className="w-full h-10 gap-3 rounded-10 px-3.5 bg-primary-base text-static-white"
-              disabled={isLoading}
-            >
-              {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
-              {isRegister ? 'Continue' : 'Sign In'}
-            </Button>
-          </form>
-          
-          <div className="flex items-baseline justify-center gap-1 text-paragraph-sm text-text-sub-600">
-            {isRegister ? 'Already have an account?' : "Don't have an account?"}
-            <button
-              type="button"
-              onClick={() => {
-                setIsRegister(!isRegister);
-                setError('');
-              }}
-              className="group inline-flex items-center justify-center whitespace-nowrap outline-none transition duration-200 ease-out underline decoration-transparent underline-offset-[3px] hover:decoration-current focus:outline-none focus-visible:underline disabled:pointer-events-none disabled:text-text-disabled-300 disabled:no-underline text-text-strong-950 h-5 gap-1 text-label-sm"
-            >
-              {isRegister ? 'Sign In' : 'Sign Up'}
-            </button>
-          </div>
-          
-          <div className="text-center">
-            <button
-              type="button"
-              onClick={() => {
-                setError('');
-                localStorage.setItem('demoMode', 'true');
-                window.location.href = '/';
-              }}
-              className="text-sm text-muted-foreground hover:text-primary hover:underline"
-            >
-              Try Demo Mode
-            </button>
-          </div>
+              
+              <Separator />
+
+              <button
+                type="button"
+                onClick={() => {
+                  setError('');
+                  localStorage.setItem('demoMode', 'true');
+                  window.location.href = '/';
+                }}
+                className="w-full flex items-center justify-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors p-2.5 rounded-xl hover:bg-muted/50 group"
+              >
+                <Sparkles className="w-4 h-4 group-hover:text-primary transition-colors" />
+                <span>Try Demo Mode</span>
+              </button>
+            </CardContent>
+          </Card>
+
+          <p className="text-center text-[11px] text-muted-foreground mt-6">
+            By continuing, you agree to our{' '}
+            <a href="#" className="underline hover:text-foreground">Terms</a> and{' '}
+            <a href="#" className="underline hover:text-foreground">Privacy Policy</a>.
+          </p>
         </div>
       </div>
     </div>

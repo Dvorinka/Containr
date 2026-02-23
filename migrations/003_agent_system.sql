@@ -141,21 +141,34 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
--- Create triggers for updated_at
-CREATE TRIGGER update_node_agents_updated_at BEFORE UPDATE ON node_agents 
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_container_instances_updated_at BEFORE UPDATE ON container_instances 
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_agent_commands_updated_at BEFORE UPDATE ON agent_commands 
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_node_clusters_updated_at BEFORE UPDATE ON node_clusters 
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_scheduling_rules_updated_at BEFORE UPDATE ON scheduling_rules 
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+-- Create triggers for updated_at (only if they don't exist)
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_node_agents_updated_at') THEN
+        CREATE TRIGGER update_node_agents_updated_at BEFORE UPDATE ON node_agents 
+            FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_container_instances_updated_at') THEN
+        CREATE TRIGGER update_container_instances_updated_at BEFORE UPDATE ON container_instances 
+            FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_agent_commands_updated_at') THEN
+        CREATE TRIGGER update_agent_commands_updated_at BEFORE UPDATE ON agent_commands 
+            FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_node_clusters_updated_at') THEN
+        CREATE TRIGGER update_node_clusters_updated_at BEFORE UPDATE ON node_clusters 
+            FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_scheduling_rules_updated_at') THEN
+        CREATE TRIGGER update_scheduling_rules_updated_at BEFORE UPDATE ON scheduling_rules 
+            FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+END $$;
 
 -- Insert default cluster
 INSERT INTO node_clusters (id, name, description, status, total_resources, used_resources)

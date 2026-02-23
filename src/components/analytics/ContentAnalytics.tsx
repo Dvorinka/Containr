@@ -1,12 +1,10 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { 
+import {
   FileText,
   Eye,
   MousePointer,
-  Clock,
-  TrendingUp,
   ArrowUp,
   ArrowDown,
   BookOpen,
@@ -17,7 +15,7 @@ interface ContentAnalyticsProps {
   timeRange: string;
 }
 
-export function ContentAnalytics({ timeRange }: ContentAnalyticsProps) {
+export function ContentAnalytics({ timeRange: _timeRange }: ContentAnalyticsProps) {
   // Mock data - in real implementation, this would come from Umami API
   const contentData = {
     topPages: [

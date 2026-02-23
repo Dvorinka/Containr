@@ -1,6 +1,8 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { AuthProvider, useAuth } from './hooks/useAuth';
+import { Toaster } from './components/ui/toaster';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Projects from './pages/Projects';
@@ -13,15 +15,34 @@ import DatabaseServices from './pages/DatabaseServices';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
 
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 60 * 5,
+      gcTime: 1000 * 60 * 30,
+      retry: 1,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
+
+function LoadingScreen() {
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-background">
+      <div className="relative">
+        <div className="w-12 h-12 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        <div className="absolute inset-0 w-12 h-12 border-2 border-primary/20 rounded-full" />
+      </div>
+      <p className="mt-4 text-sm text-muted-foreground animate-pulse">Loading...</p>
+    </div>
+  );
+}
+
 function AppContent() {
   const { isAuthenticated, isLoading } = useAuth();
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-      </div>
-    );
+    return <LoadingScreen />;
   }
 
   return (
@@ -37,7 +58,6 @@ function AppContent() {
         <Route path="agents" element={<NodeAgents />} />
         <Route path="databases" element={<DatabaseServices />} />
         <Route path="settings" element={<Settings />} />
-        {/* Add more routes here as we create them */}
       </Route>
     </Routes>
   );
@@ -45,13 +65,17 @@ function AppContent() {
 
 function App() {
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <Router>
-          <AppContent />
-        </Router>
-      </AuthProvider>
-    </ThemeProvider>
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider>
+        <AuthProvider>
+          <Toaster>
+            <Router>
+              <AppContent />
+            </Router>
+          </Toaster>
+        </AuthProvider>
+      </ThemeProvider>
+    </QueryClientProvider>
   );
 }
 

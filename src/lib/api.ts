@@ -1,6 +1,101 @@
-import type { Project, Service, CreateServiceRequest, UpdateServiceRequest } from '@/types';
+import type {
+  Project,
+  Service,
+  CreateServiceRequest,
+  UpdateServiceRequest,
+  User,
+  Pagination,
+  AuthResponse,
+  PreviewEnvironment,
+  CreatePreviewEnvironmentRequest,
+  UpdatePreviewEnvironmentRequest,
+  PromotePreviewRequest,
+  GitProvider,
+  GitRepository,
+  CreateProviderRequest,
+  ConnectRepositoryRequest,
+  CreateWebhookRequest,
+  Webhook,
+  Branch,
+  Deployment,
+  CreateDeploymentRequest,
+  EnvironmentVariable,
+  CronJob,
+  CreateCronJobRequest,
+  UpdateCronJobRequest,
+  CronExecution,
+  AuditLog,
+  Template,
+  DeployFromTemplateRequest,
+  AnalyticsSettings,
+  UpdateAnalyticsSettingsRequest,
+} from '@/types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+
+export const api = {
+  get: async <T>(endpoint: string) => {
+    const token = localStorage.getItem('auth_token');
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token && { Authorization: `Bearer ${token}` }),
+      },
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(error.error || `HTTP error! status: ${response.status}`);
+    }
+    return response.json() as Promise<T>;
+  },
+  post: async <T>(endpoint: string, data?: unknown) => {
+    const token = localStorage.getItem('auth_token');
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token && { Authorization: `Bearer ${token}` }),
+      },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(error.error || `HTTP error! status: ${response.status}`);
+    }
+    return response.json() as Promise<T>;
+  },
+  put: async <T>(endpoint: string, data?: unknown) => {
+    const token = localStorage.getItem('auth_token');
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token && { Authorization: `Bearer ${token}` }),
+      },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(error.error || `HTTP error! status: ${response.status}`);
+    }
+    return response.json() as Promise<T>;
+  },
+  delete: async <T>(endpoint: string) => {
+    const token = localStorage.getItem('auth_token');
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token && { Authorization: `Bearer ${token}` }),
+      },
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(error.error || `HTTP error! status: ${response.status}`);
+    }
+    return response.json() as Promise<T>;
+  },
+};
 
 // Helper function for API calls
 async function apiCall<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
@@ -27,28 +122,26 @@ async function apiCall<T>(endpoint: string, options: RequestInit = {}): Promise<
 
 // Authentication API
 export const authApi = {
-  login: async (email: string, password: string) => {
-    const response = await apiCall<{ token: string; user: any }>('/api/v1/auth/login', {
+  login: async (email: string, password: string): Promise<AuthResponse> => {
+    return apiCall<AuthResponse>('/api/v1/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
-    return response;
   },
 
-  register: async (email: string, password: string, name: string) => {
-    const response = await apiCall<{ token: string; user: any }>('/api/v1/auth/register', {
+  register: async (email: string, password: string, name: string): Promise<AuthResponse> => {
+    return apiCall<AuthResponse>('/api/v1/auth/register', {
       method: 'POST',
       body: JSON.stringify({ email, password, name }),
     });
-    return response;
   },
 
-  getProfile: async () => {
-    return apiCall<any>('/api/v1/user/profile');
+  getProfile: async (): Promise<User> => {
+    return apiCall<User>('/api/v1/user/profile');
   },
 
-  updateProfile: async (data: any) => {
-    return apiCall<any>('/api/v1/user/profile', {
+  updateProfile: async (data: Partial<Pick<User, 'name' | 'email'>>): Promise<User> => {
+    return apiCall<User>('/api/v1/user/profile', {
       method: 'PUT',
       body: JSON.stringify(data),
     });
@@ -57,7 +150,7 @@ export const authApi = {
 
 // Projects API
 export const projectsApi = {
-  getProjects: async (params?: { page?: number; limit?: number; search?: string }) => {
+  getProjects: async (params?: { page?: number; limit?: number; search?: string }): Promise<{ projects: Project[]; pagination: Pagination }> => {
     const queryParams = new URLSearchParams();
     if (params?.page) queryParams.append('page', params.page.toString());
     if (params?.limit) queryParams.append('limit', params.limit.toString());
@@ -66,70 +159,69 @@ export const projectsApi = {
     const queryString = queryParams.toString();
     const endpoint = `/api/v1/projects${queryString ? `?${queryString}` : ''}`;
     
-    return apiCall<{ projects: Project[]; pagination: any }>(endpoint);
+    return apiCall<{ projects: Project[]; pagination: Pagination }>(endpoint);
   },
 
-  getProject: async (id: string) => {
+  getProject: async (id: string): Promise<{ project: Project }> => {
     return apiCall<{ project: Project }>(`/api/v1/projects/${id}`);
   },
 
-  createProject: async (data: { name: string; description?: string }) => {
+  createProject: async (data: { name: string; description?: string }): Promise<{ project: Project }> => {
     return apiCall<{ project: Project }>('/api/v1/projects', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   },
 
-  updateProject: async (id: string, data: { name?: string; description?: string }) => {
+  updateProject: async (id: string, data: { name?: string; description?: string }): Promise<{ project: Project }> => {
     return apiCall<{ project: Project }>(`/api/v1/projects/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
   },
 
-  deleteProject: async (id: string) => {
+  deleteProject: async (id: string): Promise<{ message: string }> => {
     return apiCall<{ message: string }>(`/api/v1/projects/${id}`, {
       method: 'DELETE',
     });
   },
 
-  // Preview Environments
-  getPreviewEnvironments: async (projectId: string) => {
-    return apiCall<{ preview_environments: any[] }>(`/api/v1/projects/${projectId}/preview-environments`);
+  getPreviewEnvironments: async (projectId: string): Promise<{ preview_environments: PreviewEnvironment[] }> => {
+    return apiCall<{ preview_environments: PreviewEnvironment[] }>(`/api/v1/projects/${projectId}/preview-environments`);
   },
 
-  getServices: async (projectId: string) => {
+  getServices: async (projectId: string): Promise<{ services: Service[] }> => {
     return apiCall<{ services: Service[] }>(`/api/v1/projects/${projectId}/services`);
   },
 
-  createPreviewEnvironment: async (projectId: string, data: any) => {
-    return apiCall<{ preview_environment: any }>(`/api/v1/projects/${projectId}/preview-environments`, {
+  createPreviewEnvironment: async (projectId: string, data: CreatePreviewEnvironmentRequest): Promise<{ preview_environment: PreviewEnvironment }> => {
+    return apiCall<{ preview_environment: PreviewEnvironment }>(`/api/v1/projects/${projectId}/preview-environments`, {
       method: 'POST',
       body: JSON.stringify(data),
     });
   },
 
-  updatePreviewEnvironment: async (id: string, data: any) => {
-    return apiCall<{ preview_environment: any }>(`/api/v1/preview-environments/${id}`, {
+  updatePreviewEnvironment: async (id: string, data: UpdatePreviewEnvironmentRequest): Promise<{ preview_environment: PreviewEnvironment }> => {
+    return apiCall<{ preview_environment: PreviewEnvironment }>(`/api/v1/preview-environments/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
   },
 
-  deletePreviewEnvironment: async (id: string) => {
+  deletePreviewEnvironment: async (id: string): Promise<{ message: string }> => {
     return apiCall<{ message: string }>(`/api/v1/preview-environments/${id}`, {
       method: 'DELETE',
     });
   },
 
-  promotePreviewEnvironment: async (id: string, data: any) => {
-    return apiCall<{ promotion: any }>(`/api/v1/preview-environments/${id}/promote`, {
+  promotePreviewEnvironment: async (id: string, data: PromotePreviewRequest): Promise<{ promotion: { status: string; target_environment: string } }> => {
+    return apiCall<{ promotion: { status: string; target_environment: string } }>(`/api/v1/preview-environments/${id}/promote`, {
       method: 'POST',
       body: JSON.stringify(data),
     });
   },
 
-  cleanupExpiredPreviewEnvironments: async () => {
+  cleanupExpiredPreviewEnvironments: async (): Promise<{ message: string; cleaned_count: number }> => {
     return apiCall<{ message: string; cleaned_count: number }>('/api/v1/preview-environments/cleanup-expired', {
       method: 'POST',
     });
@@ -169,23 +261,23 @@ export const servicesApi = {
 
 // Deployments API
 export const deploymentsApi = {
-  getDeployments: async (serviceId: string) => {
-    return apiCall<{ deployments: any[] }>(`/api/v1/services/${serviceId}/deployments`);
+  getDeployments: async (serviceId: string): Promise<{ deployments: Deployment[] }> => {
+    return apiCall<{ deployments: Deployment[] }>(`/api/v1/services/${serviceId}/deployments`);
   },
 
-  createDeployment: async (serviceId: string, data: any) => {
-    return apiCall<{ deployment: any }>(`/api/v1/services/${serviceId}/deployments`, {
+  createDeployment: async (serviceId: string, data: CreateDeploymentRequest): Promise<{ deployment: Deployment }> => {
+    return apiCall<{ deployment: Deployment }>(`/api/v1/services/${serviceId}/deployments`, {
       method: 'POST',
       body: JSON.stringify(data),
     });
   },
 
-  getDeployment: async (id: string) => {
-    return apiCall<{ deployment: any }>(`/api/v1/deployments/${id}`);
+  getDeployment: async (id: string): Promise<{ deployment: Deployment }> => {
+    return apiCall<{ deployment: Deployment }>(`/api/v1/deployments/${id}`);
   },
 
-  rollbackDeployment: async (id: string) => {
-    return apiCall<{ deployment: any }>(`/api/v1/deployments/${id}/rollback`, {
+  rollbackDeployment: async (id: string): Promise<{ deployment: Deployment }> => {
+    return apiCall<{ deployment: Deployment }>(`/api/v1/deployments/${id}/rollback`, {
       method: 'POST',
     });
   },
@@ -193,12 +285,12 @@ export const deploymentsApi = {
 
 // Environment Variables API
 export const variablesApi = {
-  getVariables: async (serviceId: string) => {
-    return apiCall<{ variables: any[] }>(`/api/v1/services/${serviceId}/variables`);
+  getVariables: async (serviceId: string): Promise<{ variables: EnvironmentVariable[] }> => {
+    return apiCall<{ variables: EnvironmentVariable[] }>(`/api/v1/services/${serviceId}/variables`);
   },
 
-  updateVariables: async (serviceId: string, variables: Record<string, string>) => {
-    return apiCall<{ variables: any[] }>(`/api/v1/services/${serviceId}/variables`, {
+  updateVariables: async (serviceId: string, variables: { key: string; value: string; is_secret?: boolean }[]): Promise<{ variables: EnvironmentVariable[] }> => {
+    return apiCall<{ variables: EnvironmentVariable[] }>(`/api/v1/services/${serviceId}/variables`, {
       method: 'PUT',
       body: JSON.stringify({ variables }),
     });
@@ -212,19 +304,19 @@ export const logsApi = {
     if (options?.lines) params.append('lines', options.lines.toString());
     if (options?.follow) params.append('follow', 'true');
     
-    return apiCall<{ logs: string[] }>(`/api/v1/services/${serviceId}/logs?${params}`);
+    return apiCall<{ logs: Array<{ timestamp: string; message: string; stream: string }> }>(`/api/v1/services/${serviceId}/logs?${params}`);
   },
 
   getDeploymentLogs: async (deploymentId: string, options?: { lines?: number }) => {
     const params = new URLSearchParams();
     if (options?.lines) params.append('lines', options.lines.toString());
     
-    return apiCall<{ logs: string[] }>(`/api/v1/deployments/${deploymentId}/logs?${params}`);
+    return apiCall<{ logs: Array<{ timestamp: string; message: string; stream: string }> }>(`/api/v1/deployments/${deploymentId}/logs?${params}`);
   },
 };
 
 // Health check
-export const healthApi = {
+const healthApi = {
   check: async () => {
     return apiCall<{ status: string; service: string }>('/health');
   },
@@ -232,50 +324,49 @@ export const healthApi = {
 
 // Git Integration API
 export const gitApi = {
-  // Git Providers
-  getProviders: async () => {
-    return apiCall<{ providers: any[] }>('/api/v1/git/providers');
+  getProviders: async (): Promise<{ providers: GitProvider[] }> => {
+    return apiCall<{ providers: GitProvider[] }>('/api/v1/git/providers');
   },
 
-  createProvider: async (data: { name: string; display_name: string; access_token: string }) => {
-    return apiCall<{ provider: any }>('/api/v1/git/providers', {
+  createProvider: async (data: CreateProviderRequest): Promise<{ provider: GitProvider }> => {
+    return apiCall<{ provider: GitProvider }>('/api/v1/git/providers', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   },
 
-  // Git Repositories
-  getProviderRepositories: async (providerId: string) => {
-    return apiCall<{ repositories: any[] }>(`/api/v1/git/providers/${providerId}/repositories`);
+  getProviderRepositories: async (providerId: string): Promise<{ repositories: GitRepository[] }> => {
+    return apiCall<{ repositories: GitRepository[] }>(`/api/v1/git/providers/${providerId}/repositories`);
   },
 
-  connectRepository: async (data: { provider_id: string; repo_full_name: string }) => {
-    return apiCall<{ repository: any }>('/api/v1/git/repositories/connect', {
+  connectRepository: async (data: ConnectRepositoryRequest): Promise<{ repository: GitRepository }> => {
+    return apiCall<{ repository: GitRepository }>('/api/v1/git/repositories/connect', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   },
 
-  getConnectedRepositories: async (params?: { page?: number; limit?: number }) => {
+  getConnectedRepositories: async (params?: { page?: number; limit?: number }): Promise<{ 
+    repositories: GitRepository[]; 
+    pagination: Pagination 
+  }> => {
     const searchParams = new URLSearchParams();
     if (params?.page) searchParams.append('page', params.page.toString());
     if (params?.limit) searchParams.append('limit', params.limit.toString());
     
     const queryString = searchParams.toString();
     return apiCall<{ 
-      repositories: any[]; 
-      pagination: { page: number; limit: number; total: number } 
+      repositories: GitRepository[]; 
+      pagination: Pagination 
     }>(`/api/v1/git/repositories${queryString ? '?' + queryString : ''}`);
   },
 
-  // Webhooks
-  createWebhook: async (data: { 
-    repo_id: string; 
-    events: string[]; 
-    branch?: string 
-  }) => {
+  createWebhook: async (data: CreateWebhookRequest): Promise<{ 
+    webhook: Webhook; 
+    remote_webhook_id: string 
+  }> => {
     return apiCall<{ 
-      webhook: any; 
+      webhook: Webhook; 
       remote_webhook_id: string 
     }>('/api/v1/git/webhooks', {
       method: 'POST',
@@ -283,9 +374,8 @@ export const gitApi = {
     });
   },
 
-  // Branches
-  getRepositoryBranches: async (repoId: string) => {
-    return apiCall<{ branches: any[] }>(`/api/v1/git/repositories/${repoId}/branches`);
+  getRepositoryBranches: async (repoId: string): Promise<{ branches: Branch[] }> => {
+    return apiCall<{ branches: Branch[] }>(`/api/v1/git/repositories/${repoId}/branches`);
   },
 };
 
@@ -442,30 +532,97 @@ export const analyticsApi = {
   },
 
   // Settings
-  getSettings: async (projectId?: string) => {
+  getSettings: async (projectId?: string): Promise<AnalyticsSettings> => {
     const params = new URLSearchParams();
     if (projectId) params.append('projectId', projectId);
     
-    return apiCall<{
-      trackingEnabled: boolean;
-      dataRetention: number;
-      anonymizeIp: boolean;
-      respectDoNotTrack: boolean;
-      customEvents: string[];
-    }>(`/api/v1/analytics/settings?${params}`);
+    return apiCall<AnalyticsSettings>(`/api/v1/analytics/settings?${params}`);
   },
 
-  updateSettings: async (data: {
-    trackingEnabled?: boolean;
-    dataRetention?: number;
-    anonymizeIp?: boolean;
-    respectDoNotTrack?: boolean;
-    customEvents?: string[];
-    projectId?: string;
-  }) => {
-    return apiCall<{ settings: any }>('/api/v1/analytics/settings', {
+  updateSettings: async (data: UpdateAnalyticsSettingsRequest): Promise<{ settings: AnalyticsSettings }> => {
+    return apiCall<{ settings: AnalyticsSettings }>('/api/v1/analytics/settings', {
       method: 'PUT',
       body: JSON.stringify(data),
     });
+  },
+};
+
+// Templates API
+const templatesApi = {
+  getTemplates: async (category?: string): Promise<{ templates: Template[] }> => {
+    const params = new URLSearchParams();
+    if (category) params.append('category', category);
+    return apiCall<{ templates: Template[] }>(`/api/v1/templates?${params}`);
+  },
+
+  getTemplate: async (id: string): Promise<{ template: Template; config: Record<string, unknown>; variables: Template['variables'] }> => {
+    return apiCall<{ template: Template; config: Record<string, unknown>; variables: Template['variables'] }>(`/api/v1/templates/${id}`);
+  },
+
+  deployFromTemplate: async (templateId: string, data: DeployFromTemplateRequest): Promise<{ service_id: string; message: string }> => {
+    return apiCall<{ service_id: string; message: string }>(`/api/v1/templates/${templateId}/deploy`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+};
+
+// Cron Jobs API
+const cronApi = {
+  getCronJobs: async (projectId?: string): Promise<{ cron_jobs: CronJob[] }> => {
+    const params = new URLSearchParams();
+    if (projectId) params.append('project_id', projectId);
+    return apiCall<{ cron_jobs: CronJob[] }>(`/api/v1/cron-jobs?${params}`);
+  },
+
+  createCronJob: async (data: CreateCronJobRequest): Promise<{ cron_job: CronJob }> => {
+    return apiCall<{ cron_job: CronJob }>('/api/v1/cron-jobs', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  getCronJob: async (id: string): Promise<{ cron_job: CronJob }> => {
+    return apiCall<{ cron_job: CronJob }>(`/api/v1/cron-jobs/${id}`);
+  },
+
+  updateCronJob: async (id: string, data: UpdateCronJobRequest): Promise<{ message: string }> => {
+    return apiCall<{ message: string }>(`/api/v1/cron-jobs/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  deleteCronJob: async (id: string): Promise<{ message: string }> => {
+    return apiCall<{ message: string }>(`/api/v1/cron-jobs/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
+  getExecutions: async (id: string): Promise<{ executions: CronExecution[] }> => {
+    return apiCall<{ executions: CronExecution[] }>(`/api/v1/cron-jobs/${id}/executions`);
+  },
+
+  triggerCronJob: async (id: string): Promise<{ message: string; execution_id: string }> => {
+    return apiCall<{ message: string; execution_id: string }>(`/api/v1/cron-jobs/${id}/trigger`, {
+      method: 'POST',
+    });
+  },
+};
+
+// Audit Logs API
+const auditApi = {
+  getAuditLogs: async (params?: { resource?: string; action?: string; page?: number; limit?: number }): Promise<{ audit_logs: AuditLog[] }> => {
+    const searchParams = new URLSearchParams();
+    if (params?.resource) searchParams.append('resource', params.resource);
+    if (params?.action) searchParams.append('action', params.action);
+    if (params?.page) searchParams.append('page', params.page.toString());
+    if (params?.limit) searchParams.append('limit', params.limit.toString());
+    
+    return apiCall<{ audit_logs: AuditLog[] }>(`/api/v1/audit-logs?${searchParams}`);
+  },
+
+  getResourceAuditLogs: async (resource: string, id: string): Promise<{ audit_logs: AuditLog[] }> => {
+    return apiCall<{ audit_logs: AuditLog[] }>(`/api/v1/audit-logs/${resource}/${id}`);
   },
 };

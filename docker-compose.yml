@@ -33,7 +33,7 @@ services:
       - "traefik.http.routers.traefik.tls.certresolver=myresolver"
       - "traefik.http.routers.traefik.service=api@internal"
       - "traefik.http.routers.traefik.middlewares=traefik-auth"
-      - "traefik.http.middlewares.traefik-auth.basicauth.users=${TRAEFIK_AUTH:-admin:$$apr1$$b8mh8c8v$$KkR8hQZQZQZQZQZQZQZQZ/}"
+      - "traefik.http.middlewares.traefik-auth.basicauth.users=${TRAEFIK_AUTH}"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "traefik", "ping"]
@@ -43,7 +43,7 @@ services:
 
   # PostgreSQL Database
   postgres:
-    image: postgres:16-alpine
+    image: postgres:15-alpine
     container_name: containr-postgres
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-containr}
@@ -83,6 +83,8 @@ services:
       context: .
       dockerfile: Dockerfile.backend
     container_name: containr-backend
+    ports:
+      - "8081:8080"  # Temporary direct access
     environment:
       - DATABASE_URL=postgres://${POSTGRES_USER:-containr_user}:${POSTGRES_PASSWORD:-dev_password_123}@postgres:5432/${POSTGRES_DB:-containr}?sslmode=disable
       - REDIS_URL=redis://:${REDIS_PASSWORD:-dev_redis_123}@redis:6379
@@ -91,7 +93,7 @@ services:
       - JWT_SECRET=${JWT_SECRET:-dev_jwt_secret_key_change_in_production}
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost,http://localhost:3000}
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro  # For Docker API access
+      # /var/run/docker.sock:/var/run/docker.sock:ro  # Commented out to prevent permission issues
       # Development volumes (only mounted in dev mode)
       - ${DEV_MODE:-./internal}:/app/internal
     networks:
@@ -120,6 +122,8 @@ services:
       context: .
       dockerfile: Dockerfile.frontend
     container_name: containr-frontend
+    ports:
+      - "3000:80"  # Temporary direct access
     environment:
       - VITE_API_URL=${VITE_API_URL:-http://api.localhost}
       - VITE_ENVIRONMENT=${ENVIRONMENT:-production}

@@ -7,14 +7,12 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
-import { 
-  Database, 
-  Play, 
-  Pause, 
-  RefreshCw, 
-  Download, 
-  Upload,
-  Settings,
+import {
+  Database,
+  Play,
+  Pause,
+  RefreshCw,
+  Download,
   Activity,
   HardDrive,
   MemoryStick,
@@ -24,7 +22,6 @@ import {
   Copy,
   Eye,
   EyeOff,
-  Trash2,
   RotateCcw,
   BarChart3,
   Users,
@@ -134,7 +131,7 @@ const mockDatabaseDetail: DatabaseDetail = {
   }
 };
 
-export default function DatabaseDetailPanel({ databaseId, onClose }: DatabaseDetailPanelProps) {
+export default function DatabaseDetailPanel({ databaseId, onClose: _onClose }: DatabaseDetailPanelProps) {
   const [showConnectionUrl, setShowConnectionUrl] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const [selectedBackup, setSelectedBackup] = useState<string | null>(null);
@@ -148,7 +145,7 @@ export default function DatabaseDetailPanel({ databaseId, onClose }: DatabaseDet
   });
 
   const toggleDatabaseMutation = useMutation({
-    mutationFn: ({ action }: { action: 'start' | 'stop' | 'restart' }) => {
+    mutationFn: ({ action: _action }: { action: 'start' | 'stop' | 'restart' }) => {
       return new Promise(resolve => setTimeout(resolve, 1000));
     },
     onSuccess: () => {
@@ -166,7 +163,7 @@ export default function DatabaseDetailPanel({ databaseId, onClose }: DatabaseDet
   });
 
   const restoreBackupMutation = useMutation({
-    mutationFn: (backupId: string) => {
+    mutationFn: (_backupId: string) => {
       return new Promise(resolve => setTimeout(resolve, 5000));
     },
     onSuccess: () => {

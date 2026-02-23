@@ -35,7 +35,7 @@ async function apiCall<T>(endpoint: string, options: RequestInit = {}): Promise<
   return response.json();
 }
 
-export const databasesApi = {
+const databasesApi = {
   // Get all databases
   getDatabases: async (): Promise<{ databases: DatabaseService[] }> => {
     return apiCall<{ databases: DatabaseService[] }>('/api/v1/databases');

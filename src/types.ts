@@ -1,4 +1,4 @@
-export type NodeType = 'github' | 'database' | 'docker' | 'function' | 'bucket' | 'empty';
+type NodeType = 'github' | 'database' | 'docker' | 'function' | 'bucket' | 'empty';
 
 export interface ServiceNode {
   id: string;
@@ -173,4 +173,194 @@ export interface EnvironmentVariable {
   value: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface Pagination {
+  page: number;
+  limit: number;
+  total: number;
+}
+
+interface PaginatedResponse<T> {
+  items: T[];
+  pagination: Pagination;
+}
+
+export interface AuthResponse {
+  token: string;
+  user: User;
+}
+
+export interface PreviewEnvironment {
+  id: string;
+  project_id: string;
+  name: string;
+  branch: string;
+  commit_hash: string;
+  status: 'building' | 'running' | 'failed' | 'stopped';
+  url: string;
+  expires_at: string;
+  created_at: string;
+}
+
+export interface CreatePreviewEnvironmentRequest {
+  branch: string;
+  commit_hash: string;
+  name?: string;
+}
+
+export interface UpdatePreviewEnvironmentRequest {
+  name?: string;
+  expires_at?: string;
+}
+
+export interface PromotePreviewRequest {
+  target_environment: 'production' | 'staging';
+}
+
+export interface GitProvider {
+  id: string;
+  name: string;
+  display_name: string;
+  created_at: string;
+}
+
+export interface GitRepository {
+  id: string;
+  provider_id: string;
+  full_name: string;
+  clone_url: string;
+  connected: boolean;
+  created_at: string;
+}
+
+export interface CreateWebhookRequest {
+  repo_id: string;
+  events: string[];
+  branch?: string;
+}
+
+export interface Webhook {
+  id: string;
+  repo_id: string;
+  remote_webhook_id: string;
+  events: string[];
+  branch?: string;
+  created_at: string;
+}
+
+export interface Branch {
+  name: string;
+  commit_hash: string;
+  is_default: boolean;
+}
+
+export interface CronJob {
+  id: string;
+  project_id: string;
+  service_id: string;
+  name: string;
+  schedule: string;
+  command: string;
+  timezone: string;
+  enabled: boolean;
+  last_run?: string;
+  next_run?: string;
+  created_at: string;
+}
+
+export interface CreateCronJobRequest {
+  project_id: string;
+  service_id: string;
+  name: string;
+  schedule: string;
+  command: string;
+  timezone?: string;
+  enabled?: boolean;
+}
+
+export interface UpdateCronJobRequest {
+  name?: string;
+  schedule?: string;
+  command?: string;
+  timezone?: string;
+  enabled?: boolean;
+}
+
+export interface CronExecution {
+  id: string;
+  cron_job_id: string;
+  status: 'running' | 'completed' | 'failed';
+  started_at: string;
+  completed_at?: string;
+  output?: string;
+}
+
+export interface AuditLog {
+  id: string;
+  resource: string;
+  resource_id: string;
+  action: string;
+  actor_id: string;
+  actor_email: string;
+  details?: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface Template {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  logo?: string;
+  config: Record<string, unknown>;
+  variables: TemplateVariable[];
+}
+
+interface TemplateVariable {
+  name: string;
+  label: string;
+  type: 'string' | 'number' | 'boolean' | 'select';
+  default?: string;
+  required: boolean;
+  options?: string[];
+}
+
+export interface DeployFromTemplateRequest {
+  project_id: string;
+  name: string;
+  variables?: Record<string, string>;
+}
+
+export interface CreateDeploymentRequest {
+  commit_hash?: string;
+  message?: string;
+}
+
+export interface CreateProviderRequest {
+  name: string;
+  display_name: string;
+  access_token: string;
+}
+
+export interface ConnectRepositoryRequest {
+  provider_id: string;
+  repo_full_name: string;
+}
+
+export interface AnalyticsSettings {
+  trackingEnabled: boolean;
+  dataRetention: number;
+  anonymizeIp: boolean;
+  respectDoNotTrack: boolean;
+  customEvents: string[];
+}
+
+export interface UpdateAnalyticsSettingsRequest {
+  trackingEnabled?: boolean;
+  dataRetention?: number;
+  anonymizeIp?: boolean;
+  respectDoNotTrack?: boolean;
+  customEvents?: string[];
+  projectId?: string;
 }

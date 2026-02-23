@@ -164,7 +164,7 @@ export const agentsApi = {
 };
 
 // React Query hooks
-export const useAgents = () => {
+const _useAgents = () => {
   return useQuery({
     queryKey: ['agents'],
     queryFn: () => agentsApi.getAgents().then(res => res.agents),
@@ -172,7 +172,7 @@ export const useAgents = () => {
   });
 };
 
-export const useAgent = (id: string) => {
+const _useAgent = (id: string) => {
   return useQuery({
     queryKey: ['agent', id],
     queryFn: () => agentsApi.getAgent(id).then(res => res.agent),
@@ -181,7 +181,7 @@ export const useAgent = (id: string) => {
   });
 };
 
-export const useAgentContainers = (agentId: string) => {
+const _useAgentContainers = (agentId: string) => {
   return useQuery({
     queryKey: ['agent-containers', agentId],
     queryFn: () => agentsApi.getAgentContainers(agentId).then(res => res.containers),
@@ -190,7 +190,7 @@ export const useAgentContainers = (agentId: string) => {
   });
 };
 
-export const useAgentMetrics = (agentId: string, timeRange?: string) => {
+const _useAgentMetrics = (agentId: string, timeRange?: string) => {
   return useQuery({
     queryKey: ['agent-metrics', agentId, timeRange],
     queryFn: () => agentsApi.getAgentMetrics(agentId, timeRange).then(res => res.metrics),
@@ -199,14 +199,14 @@ export const useAgentMetrics = (agentId: string, timeRange?: string) => {
   });
 };
 
-export const useClusters = () => {
+const _useClusters = () => {
   return useQuery({
     queryKey: ['clusters'],
     queryFn: () => agentsApi.getClusters().then(res => res.clusters),
   });
 };
 
-export const useCluster = (id: string) => {
+const _useCluster = (id: string) => {
   return useQuery({
     queryKey: ['cluster', id],
     queryFn: () => agentsApi.getCluster(id).then(res => res.cluster),
@@ -214,7 +214,7 @@ export const useCluster = (id: string) => {
   });
 };
 
-export const useRegisterAgent = () => {
+const _useRegisterAgent = () => {
   const queryClient = useQueryClient();
   
   return useMutation({
@@ -225,7 +225,7 @@ export const useRegisterAgent = () => {
   });
 };
 
-export const useCreateContainer = () => {
+const _useCreateContainer = () => {
   const queryClient = useQueryClient();
   
   return useMutation({
@@ -238,7 +238,7 @@ export const useCreateContainer = () => {
   });
 };
 
-export const useContainerAction = () => {
+const _useContainerAction = () => {
   const queryClient = useQueryClient();
   
   return useMutation({
@@ -271,7 +271,7 @@ export const useContainerAction = () => {
   });
 };
 
-export const useExecuteAgentCommand = () => {
+const _useExecuteAgentCommand = () => {
   const queryClient = useQueryClient();
   
   return useMutation({

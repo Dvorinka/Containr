@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { Command } from 'cmdk';
-import { 
-  Github, 
-  Database, 
-  Container, 
-  Code, 
-  HardDrive, 
+import {
+  Github,
+  Database,
+  Container,
+  Code,
+  HardDrive,
   Plus,
-  Search
+  Search,
+  Layers,
+  Server
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useCanvasStore } from '../store/canvasStore';
@@ -23,6 +25,7 @@ interface ServiceOption {
   description: string;
   icon: React.ComponentType<{ className?: string }>;
   type: 'github' | 'database' | 'docker' | 'function' | 'bucket';
+  gradient: string;
 }
 
 const serviceOptions: ServiceOption[] = [
@@ -32,6 +35,7 @@ const serviceOptions: ServiceOption[] = [
     description: 'Deploy from a GitHub repository',
     icon: Github,
     type: 'github',
+    gradient: 'from-violet-500/10 to-violet-500/5',
   },
   {
     id: 'postgres',
@@ -39,6 +43,7 @@ const serviceOptions: ServiceOption[] = [
     description: 'Add a PostgreSQL database',
     icon: Database,
     type: 'database',
+    gradient: 'from-blue-500/10 to-blue-500/5',
   },
   {
     id: 'redis',
@@ -46,6 +51,7 @@ const serviceOptions: ServiceOption[] = [
     description: 'Add a Redis cache',
     icon: Database,
     type: 'database',
+    gradient: 'from-red-500/10 to-red-500/5',
   },
   {
     id: 'docker',
@@ -53,6 +59,7 @@ const serviceOptions: ServiceOption[] = [
     description: 'Deploy a Docker image',
     icon: Container,
     type: 'docker',
+    gradient: 'from-cyan-500/10 to-cyan-500/5',
   },
   {
     id: 'function',
@@ -60,6 +67,7 @@ const serviceOptions: ServiceOption[] = [
     description: 'Add a serverless function',
     icon: Code,
     type: 'function',
+    gradient: 'from-amber-500/10 to-amber-500/5',
   },
   {
     id: 'bucket',
@@ -67,7 +75,13 @@ const serviceOptions: ServiceOption[] = [
     description: 'Add object storage',
     icon: HardDrive,
     type: 'bucket',
+    gradient: 'from-emerald-500/10 to-emerald-500/5',
   },
+];
+
+const quickActions = [
+  { name: 'New Project', icon: Layers, shortcut: 'P' },
+  { name: 'Add Server', icon: Server, shortcut: 'S' },
 ];
 
 export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
@@ -87,24 +101,23 @@ export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
 
     if (open) {
       document.addEventListener('keydown', down);
+      document.body.style.overflow = 'hidden';
     }
 
     return () => {
       document.removeEventListener('keydown', down);
+      document.body.style.overflow = '';
     };
   }, [open, onClose]);
 
   const handleSelect = (option: ServiceOption) => {
-    // Generate a unique ID for the new node
     const nodeId = `${option.type}-${Date.now()}`;
     
-    // Calculate a random position for the new node
     const position = {
       x: Math.random() * 400 + 100,
       y: Math.random() * 300 + 100,
     };
 
-    // Create the new node
     const newNode = {
       id: nodeId,
       type: option.type,
@@ -117,91 +130,113 @@ export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
       },
     };
 
-    // Add the node to the store
     addNode(newNode);
-    
-    console.log('Added service:', option);
     onClose();
   };
 
   if (!open) return null;
 
   return (
-    <div 
-      className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-      data-ui-element="true"
-    >
-      <div className="w-full max-w-md">
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-          <Command className="rounded-2xl">
-            <div className="flex items-center border-b border-gray-200 dark:border-gray-700 px-4 py-3">
-              <Search className="w-5 h-5 text-gray-400 mr-3" />
-              <Command.Input
-                placeholder="What would you like to create?"
-                value={search}
-                onValueChange={setSearch}
-                className="flex-1 py-2 bg-transparent outline-none text-gray-900 dark:text-gray-100 placeholder-gray-500 text-sm"
-              />
-              <kbd className="ml-3 px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 rounded">
-                ESC
-              </kbd>
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-start justify-center pt-[15vh] p-4 animate-fade-in">
+      <div className="w-full max-w-xl animate-command-in">
+        <Command className="bg-card/95 backdrop-blur-2xl rounded-2xl shadow-modal border border-border/50 overflow-hidden">
+          <div className="flex items-center border-b border-border/50 px-4 py-3">
+            <Search className="w-5 h-5 text-muted-foreground mr-3 shrink-0" />
+            <Command.Input
+              placeholder="What would you like to create?"
+              value={search}
+              onValueChange={setSearch}
+              className="flex-1 py-2 bg-transparent outline-none text-foreground placeholder-muted-foreground text-sm"
+              autoFocus
+            />
+            <kbd className="ml-3 px-2 py-1 text-[10px] bg-muted/50 text-muted-foreground rounded-md font-mono border border-border/50">
+              ESC
+            </kbd>
+          </div>
+
+          <Command.List className="max-h-[350px] overflow-y-auto p-2 scrollbar-thin">
+            <Command.Empty className="py-10 text-center text-sm text-muted-foreground">
+              <div className="flex flex-col items-center gap-2">
+                <Search className="w-8 h-8 text-muted-foreground/50" />
+                <span>No services found.</span>
+              </div>
+            </Command.Empty>
+
+            {search === '' && (
+              <div className="px-2 py-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                Quick Actions
+              </div>
+            )}
+
+            {search === '' && quickActions.map((action) => (
+              <Command.Item
+                key={action.name}
+                className={cn(
+                  'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm cursor-pointer transition-all duration-150',
+                  'hover:bg-muted/50 data-[selected=true]:bg-muted/50',
+                  'text-foreground'
+                )}
+              >
+                <div className="w-8 h-8 rounded-lg bg-muted/50 flex items-center justify-center">
+                  <action.icon className="w-4 h-4 text-muted-foreground" />
+                </div>
+                <span className="flex-1 font-medium">{action.name}</span>
+                <kbd className="px-1.5 py-0.5 text-[10px] bg-background text-muted-foreground rounded border border-border/50 font-mono">
+                  ⌘{action.shortcut}
+                </kbd>
+              </Command.Item>
+            ))}
+
+            <div className="px-2 py-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider mt-2">
+              Create New Service
             </div>
 
-            <Command.List className="max-h-[350px] overflow-y-auto p-2 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent">
-              <Command.Empty className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-                No services found.
-              </Command.Empty>
-
-              {serviceOptions.map((option) => (
-                <Command.Item
-                  key={option.id}
-                  onSelect={() => handleSelect(option)}
-                  className={cn(
-                    'flex items-center gap-3 px-3 py-3 rounded-xl text-sm cursor-pointer transition-all duration-150',
-                    'hover:bg-blue-50 dark:hover:bg-gray-700',
-                    'focus:bg-blue-50 dark:focus:bg-gray-700',
-                    'text-gray-700 dark:text-gray-300',
-                    'hover:text-blue-600 dark:hover:text-blue-400'
-                  )}
-                >
-                  <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-600 flex items-center justify-center group-hover:bg-blue-100 dark:group-hover:bg-blue-900 transition-colors flex-shrink-0">
-                    <option.icon className="w-4 h-4 text-gray-600 dark:text-gray-300 group-hover:text-blue-600 dark:group-hover:text-blue-400" />
+            {serviceOptions.map((option) => (
+              <Command.Item
+                key={option.id}
+                onSelect={() => handleSelect(option)}
+                className={cn(
+                  'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm cursor-pointer transition-all duration-150',
+                  'hover:bg-muted/50 data-[selected=true]:bg-muted/50',
+                  'text-foreground group'
+                )}
+              >
+                <div className={cn(
+                  "w-9 h-9 rounded-xl flex items-center justify-center transition-colors",
+                  "bg-gradient-to-br",
+                  option.gradient,
+                  "group-hover:from-primary/10 group-hover:to-primary/5"
+                )}>
+                  <option.icon className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium">{option.name}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">
+                    {option.description}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium">{option.name}</div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                      {option.description}
-                    </div>
-                  </div>
-                  <Plus className="w-4 h-4 text-gray-400 group-hover:text-blue-600 dark:group-hover:text-blue-400" />
-                </Command.Item>
-              ))}
-            </Command.List>
+                </div>
+                <Plus className="w-4 h-4 text-muted-foreground/50 group-hover:text-primary group-hover:text-primary transition-colors" />
+              </Command.Item>
+            ))}
+          </Command.List>
 
-            <div className="border-t border-gray-200 dark:border-gray-700 px-4 py-3 bg-gray-50 dark:bg-gray-900">
-              <div className="flex items-center justify-center text-xs text-gray-500 dark:text-gray-400 gap-6">
-                <div className="flex items-center gap-2">
-                  <kbd className="px-2 py-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded text-xs">
-                    ↑↓
-                  </kbd>
-                  <span>Navigate</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <kbd className="px-2 py-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded text-xs">
-                    ↵
-                  </kbd>
-                  <span>Select</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <kbd className="px-2 py-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded text-xs">
-                    ESC
-                  </kbd>
-                  <span>Close</span>
-                </div>
+          <div className="border-t border-border/50 px-4 py-3 bg-muted/20">
+            <div className="flex items-center justify-center text-[11px] text-muted-foreground gap-6">
+              <div className="flex items-center gap-1.5">
+                <kbd className="px-1.5 py-0.5 bg-background/80 border border-border/50 rounded text-[10px] font-mono">↑↓</kbd>
+                <span>Navigate</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <kbd className="px-1.5 py-0.5 bg-background/80 border border-border/50 rounded text-[10px] font-mono">↵</kbd>
+                <span>Select</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <kbd className="px-1.5 py-0.5 bg-background/80 border border-border/50 rounded text-[10px] font-mono">ESC</kbd>
+                <span>Close</span>
               </div>
             </div>
-          </Command>
-        </div>
+          </div>
+        </Command>
       </div>
     </div>
   );

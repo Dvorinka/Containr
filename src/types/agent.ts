@@ -16,7 +16,7 @@ export interface NodeAgent {
   metadata: Record<string, any>;
 }
 
-export interface AgentCapabilities {
+interface AgentCapabilities {
   container_runtimes: string[]; // docker, podman, etc.
   supported_architectures: string[]; // amd64, arm64
   max_containers: number;
@@ -25,7 +25,7 @@ export interface AgentCapabilities {
   features: string[]; // gpu, volumes, custom_networks
 }
 
-export interface NodeResources {
+interface NodeResources {
   cpu: {
     cores: number;
     allocation: number; // percentage allocated
@@ -52,7 +52,7 @@ export interface NodeResources {
   };
 }
 
-export interface NetworkInterface {
+interface NetworkInterface {
   name: string;
   ip_address: string;
   mac_address: string;
@@ -80,7 +80,7 @@ export interface ContainerInstance {
   updated_at: string;
 }
 
-export interface ContainerStatus {
+interface ContainerStatus {
   state: 'running' | 'stopped' | 'paused' | 'restarting' | 'removing' | 'exited' | 'dead';
   health: 'healthy' | 'unhealthy' | 'none';
   exit_code?: number;
@@ -89,7 +89,7 @@ export interface ContainerStatus {
   finished_at?: string;
 }
 
-export interface ContainerResources {
+interface ContainerResources {
   cpu_limit: number; // cores
   cpu_reservation: number; // cores
   memory_limit: number; // bytes
@@ -97,14 +97,14 @@ export interface ContainerResources {
   disk_limit?: number; // bytes
 }
 
-export interface PortMapping {
+interface PortMapping {
   container_port: number;
   host_port?: number;
   protocol: 'tcp' | 'udp';
   published: boolean;
 }
 
-export interface VolumeMount {
+interface VolumeMount {
   name: string;
   source: string; // host path or volume name
   target: string; // container path
@@ -112,12 +112,12 @@ export interface VolumeMount {
   read_only: boolean;
 }
 
-export interface RestartPolicy {
+interface RestartPolicy {
   name: 'no' | 'on-failure' | 'always' | 'unless-stopped';
   maximum_retry_count?: number;
 }
 
-export interface HealthCheck {
+interface HealthCheck {
   test: string[]; // command to run
   interval: number; // seconds
   timeout: number; // seconds
@@ -139,7 +139,7 @@ export interface AgentCommand {
   completed_at?: string;
 }
 
-export type CommandType = 
+type CommandType = 
   | 'create_container'
   | 'start_container'
   | 'stop_container'
@@ -210,7 +210,7 @@ export interface NodeCluster {
   updated_at: string;
 }
 
-export interface SchedulingRule {
+interface SchedulingRule {
   id: string;
   name: string;
   type: 'affinity' | 'anti_affinity' | 'resource_constraint';

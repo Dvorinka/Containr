@@ -7,13 +7,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { 
-  Server, 
-  Plus, 
-  Search, 
-  Edit, 
-  Trash2, 
-  Eye, 
+import {
+  Server,
+  Plus,
+  Search,
+  Trash2,
+  Eye,
   Cpu,
   HardDrive,
   MemoryStick,
@@ -21,9 +20,6 @@ import {
   Activity,
   Settings,
   RefreshCw,
-  Play,
-  Square,
-  RotateCcw,
   Container
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
@@ -31,9 +27,9 @@ import type { NodeAgent, ContainerInstance } from '@/types/agent';
 
 export default function NodeAgentsPage() {
   const [searchTerm, setSearchTerm] = useState('');
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [_isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<NodeAgent | null>(null);
-  const [selectedContainer, setSelectedContainer] = useState<ContainerInstance | null>(null);
+  const [_selectedContainer, _setSelectedContainer] = useState<ContainerInstance | null>(null);
 
   const { data: agents, isLoading, error, refetch } = useQuery({
     queryKey: ['agents'],
@@ -98,7 +94,7 @@ export default function NodeAgentsPage() {
     }
   };
 
-  const getContainerStatusBadge = (status: string) => {
+  const _getContainerStatusBadge = (status: string) => {
     switch (status) {
       case 'running': return <Badge className="bg-green-100 text-green-800">Running</Badge>;
       case 'stopped': return <Badge className="bg-gray-100 text-gray-800">Stopped</Badge>;
@@ -115,7 +111,7 @@ export default function NodeAgentsPage() {
     return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
   };
 
-  const handleContainerAction = (agentId: string, containerId: string, action: 'start' | 'stop' | 'restart' | 'remove') => {
+  const _handleContainerAction = (agentId: string, containerId: string, action: 'start' | 'stop' | 'restart' | 'remove') => {
     if (action === 'remove' && !confirm('Are you sure you want to remove this container? This action cannot be undone.')) {
       return;
     }

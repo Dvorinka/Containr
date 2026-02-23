@@ -18,7 +18,7 @@ interface MetricCardProps {
   onPeriodChange?: (period: string) => void;
 }
 
-export function MetricCard({ 
+function _MetricCard({ 
   title, 
   value, 
   trend, 

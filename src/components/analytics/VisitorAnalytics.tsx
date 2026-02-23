@@ -1,14 +1,12 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { 
-  Users, 
+import {
+  Users,
   Globe,
   Monitor,
   Smartphone,
   Tablet,
-  Clock,
-  TrendingUp,
   MapPin
 } from 'lucide-react';
 
@@ -16,7 +14,7 @@ interface VisitorAnalyticsProps {
   timeRange: string;
 }
 
-export function VisitorAnalytics({ timeRange }: VisitorAnalyticsProps) {
+export function VisitorAnalytics({ timeRange: _timeRange }: VisitorAnalyticsProps) {
   // Mock data - in real implementation, this would come from Umami API
   const visitorData = {
     newVsReturning: {

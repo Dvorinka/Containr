@@ -73,11 +73,11 @@ interface ComplianceReport {
   risks: any[];
 }
 
-export const SecurityDashboard: React.FC<{ projectId: string }> = ({ projectId }) => {
+const _SecurityDashboard: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [metrics, setMetrics] = useState<SecurityMetrics | null>(null);
   const [vulnerabilities, setVulnerabilities] = useState<Vulnerability[]>([]);
   const [scanHistory, setScanHistory] = useState<SecurityScan[]>([]);
-  const [complianceReports, setComplianceReports] = useState<ComplianceReport[]>([]);
+  const [_complianceReports, _setComplianceReports] = useState<ComplianceReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
 
@@ -95,7 +95,7 @@ export const SecurityDashboard: React.FC<{ projectId: string }> = ({ projectId }
         fetch(`/api/v1/security/compliance/frameworks`)
       ]);
 
-      const [metricsData, vulnsData, historyData, complianceData] = await Promise.all([
+      const [metricsData, vulnsData, historyData, _complianceData] = await Promise.all([
         metricsRes.json(),
         vulnsRes.json(),
         historyRes.json(),

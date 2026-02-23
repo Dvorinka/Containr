@@ -4,10 +4,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { 
+import {
   Cpu,
   HardDrive,
-  Wifi,
   Clock,
   TrendingUp,
   TrendingDown,
@@ -15,14 +14,12 @@ import {
   CheckCircle,
   Activity,
   Zap,
-  Server,
   MemoryStick,
   Network,
   Timer,
   Users
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { analyticsApi } from '@/lib/api';
 
 interface CustomMetricsDashboardProps {
   projectId?: string;

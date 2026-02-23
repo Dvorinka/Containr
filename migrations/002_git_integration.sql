@@ -92,21 +92,34 @@ CREATE INDEX IF NOT EXISTS idx_git_deployment_triggers_webhook_id ON git_deploym
 CREATE INDEX IF NOT EXISTS idx_git_deployment_triggers_service_id ON git_deployment_triggers(service_id);
 CREATE INDEX IF NOT EXISTS idx_git_deployment_triggers_branch ON git_deployment_triggers(branch);
 
--- Add update triggers to new tables
-CREATE TRIGGER update_git_providers_updated_at BEFORE UPDATE ON git_providers
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_git_repositories_updated_at BEFORE UPDATE ON git_repositories
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_git_webhooks_updated_at BEFORE UPDATE ON git_webhooks
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_git_branches_updated_at BEFORE UPDATE ON git_branches
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_git_deployment_triggers_updated_at BEFORE UPDATE ON git_deployment_triggers
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+-- Add update triggers to new tables (only if they don't exist)
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_git_providers_updated_at') THEN
+        CREATE TRIGGER update_git_providers_updated_at BEFORE UPDATE ON git_providers
+            FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_git_repositories_updated_at') THEN
+        CREATE TRIGGER update_git_repositories_updated_at BEFORE UPDATE ON git_repositories
+            FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_git_webhooks_updated_at') THEN
+        CREATE TRIGGER update_git_webhooks_updated_at BEFORE UPDATE ON git_webhooks
+            FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_git_branches_updated_at') THEN
+        CREATE TRIGGER update_git_branches_updated_at BEFORE UPDATE ON git_branches
+            FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_git_deployment_triggers_updated_at') THEN
+        CREATE TRIGGER update_git_deployment_triggers_updated_at BEFORE UPDATE ON git_deployment_triggers
+            FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+END $$;
 
 -- Add foreign key constraint for project_members table if not exists
 DO $$

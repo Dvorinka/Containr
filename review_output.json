@@ -1,0 +1,118 @@
+{
+  "assessments": {
+    "naming_quality": 82,
+    "error_consistency": 68,
+    "abstraction_fitness": 75,
+    "logic_clarity": 88,
+    "ai_generated_debt": 72,
+    "type_safety": 70,
+    "contract_coherence": 74
+  },
+  "findings": [
+    {
+      "file": "src/lib/api.ts",
+      "dimension": "type_safety",
+      "line": 95,
+      "confidence": "high",
+      "message": "Return type `any` for user object — define a proper User type matching the auth response (e.g., `{ token: string; user: { id: string; email: string; name: string } }`)."
+    },
+    {
+      "file": "src/lib/api.ts",
+      "dimension": "abstraction_fitness",
+      "line": 6,
+      "confidence": "high",
+      "message": "The `api` object (lines 5-67) duplicates token/auth header logic in all 4 methods, yet `apiCall()` (line 70) already implements this pattern — remove the `api` object or refactor it to use `apiCall` internally."
+    },
+    {
+      "file": "src/lib/api.ts",
+      "dimension": "type_safety",
+      "line": 111,
+      "confidence": "high",
+      "message": "`getProfile` returns `apiCall<any>` — should return a typed `User` from @/types."
+    },
+    {
+      "file": "src/lib/api.ts",
+      "dimension": "type_safety",
+      "line": 133,
+      "confidence": "medium",
+      "message": "`pagination: any` in getProjects response — define `PaginationMeta { page: number; limit: number; total: number; pages: number }`."
+    },
+    {
+      "file": "src/pages/Settings.tsx",
+      "dimension": "error_consistency",
+      "line": 80,
+      "confidence": "high",
+      "message": "Catch block only logs error without propagating or setting error state — either rethrow, set an error state, or show user feedback via toast."
+    },
+    {
+      "file": "src/pages/Settings.tsx",
+      "dimension": "error_consistency",
+      "line": 101,
+      "confidence": "high",
+      "message": "Catch block swallows error silently — add toast notification or error state to inform user of fetch failure."
+    },
+    {
+      "file": "src/components/security/SecurityDashboard.tsx",
+      "dimension": "error_consistency",
+      "line": 108,
+      "confidence": "high",
+      "message": "Catch block only `console.error` — the UI shows stale/empty data with no indication of failure. Set an error state or show an error toast."
+    },
+    {
+      "file": "src/components/security/SecurityDashboard.tsx",
+      "dimension": "error_consistency",
+      "line": 132,
+      "confidence": "high",
+      "message": "Catch block swallows scan start failure — user has no feedback that the scan didn't initiate. Add toast or error state."
+    },
+    {
+      "file": "src/hooks/useAuth.tsx",
+      "dimension": "type_safety",
+      "line": 6,
+      "confidence": "high",
+      "message": "`user: any | null` should be typed as `User | null` using the User type from @/types."
+    },
+    {
+      "file": "src/components/git/DeploymentTriggers.tsx",
+      "dimension": "ai_generated_debt",
+      "line": 64,
+      "confidence": "high",
+      "message": "Comment `// TODO: Replace with actual API call` indicates placeholder code — implement real API integration or extract to a proper mock service for development."
+    },
+    {
+      "file": "src/components/git/DeploymentTriggers.tsx",
+      "dimension": "ai_generated_debt",
+      "line": 106,
+      "confidence": "medium",
+      "message": "Another `// TODO: Replace with actual API call` — these TODOs should be tracked in issue tracker, not committed as code comments."
+    },
+    {
+      "file": "src/components/dashboard/ProjectCanvas.tsx",
+      "dimension": "naming_quality",
+      "line": 342,
+      "confidence": "medium",
+      "message": "Function `getActionButton` returns JSX, not just a button — rename to `renderActionButtons` or `getServiceActionButtons` for clarity."
+    },
+    {
+      "file": "src/components/database/DatabaseDetailPanel.tsx",
+      "dimension": "naming_quality",
+      "line": 148,
+      "confidence": "low",
+      "message": "Parameter `_action` is prefixed with underscore to indicate unused, but the action is still destructured — either use it or remove from the parameter entirely if the mutation doesn't need it."
+    },
+    {
+      "file": "src/pages/Scaling.tsx",
+      "dimension": "ai_generated_debt",
+      "line": 49,
+      "confidence": "medium",
+      "message": "Mock API object `scalingApi` with inline mock data (lines 49-167) should be moved to a separate mock/test utilities file for cleaner production code."
+    },
+    {
+      "file": "src/pages/Projects.tsx",
+      "dimension": "logic_clarity",
+      "line": 128,
+      "confidence": "medium",
+      "message": "Type assertion `as ProjectWithStats[]` after `useMemo` — the API returns `Project[]` but stats are expected. Either add stats to the API response type or document the transformation."
+    }
+  ]
+}

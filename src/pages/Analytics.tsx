@@ -1,24 +1,7 @@
 import { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { 
-  TrendingUp, 
-  Users, 
-  Eye, 
-  MousePointer,
-  Clock,
-  Globe,
-  Monitor,
-  Smartphone,
-  Tablet,
-  Search,
-  BarChart3,
-  Activity,
-  Download,
-  Calendar
-} from 'lucide-react';
+import { Download, Calendar } from 'lucide-react';
 import { AnalyticsOverview } from '@/components/analytics/AnalyticsOverview';
 import { VisitorAnalytics } from '@/components/analytics/VisitorAnalytics';
 import { TrafficAnalytics } from '@/components/analytics/TrafficAnalytics';
@@ -28,7 +11,7 @@ import { CustomMetricsDashboard } from '@/components/analytics/CustomMetricsDash
 
 export default function AnalyticsPage() {
   const [timeRange, setTimeRange] = useState('7d');
-  const [selectedMetric, setSelectedMetric] = useState('visitors');
+  const [_selectedMetric, _setSelectedMetric] = useState('visitors');
 
   const timeRanges = [
     { value: '24h', label: '24 Hours' },

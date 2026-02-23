@@ -2,12 +2,11 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { 
+import {
   Activity,
   Users,
   Eye,
   MousePointer,
-  Globe,
   Monitor,
   Smartphone,
   Clock,
@@ -16,12 +15,12 @@ import {
 } from 'lucide-react';
 
 export function RealTimeAnalytics() {
-  const [currentTime, setCurrentTime] = useState(new Date());
+  const [_currentTime, setCurrentTime] = useState(new Date());
   const [activeUsers, setActiveUsers] = useState(127);
   const [currentVisitors, setCurrentVisitors] = useState(34);
 
   // Mock real-time data - in real implementation, this would update from WebSocket/API
-  const [realTimeData, setRealTimeData] = useState({
+  const [realTimeData, _setRealTimeData] = useState({
     onlineUsers: 127,
     currentVisitors: 34,
     pageviews: [

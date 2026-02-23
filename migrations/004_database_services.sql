@@ -85,10 +85,15 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
-CREATE TRIGGER update_database_services_updated_at 
-    BEFORE UPDATE ON database_services 
-    FOR EACH ROW 
-    EXECUTE FUNCTION update_updated_at_column();
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_database_services_updated_at') THEN
+        CREATE TRIGGER update_database_services_updated_at 
+            BEFORE UPDATE ON database_services 
+            FOR EACH ROW 
+            EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+END $$;
 
 -- Insert default settings for existing databases (if any)
 INSERT INTO database_settings (database_id)

@@ -15,7 +15,7 @@ interface TrafficAnalyticsProps {
   timeRange: string;
 }
 
-export function TrafficAnalytics({ timeRange }: TrafficAnalyticsProps) {
+export function TrafficAnalytics({ timeRange: _timeRange }: TrafficAnalyticsProps) {
   // Mock data - in real implementation, this would come from Umami API
   const trafficData = {
     sources: [
