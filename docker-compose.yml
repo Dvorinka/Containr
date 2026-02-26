@@ -151,7 +151,7 @@ services:
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: containr-cloudflared
-    command: tunnel --no-autoupdate run --token ${CLOUDFLARED_TOKEN}
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARED_TOKEN:-}
     networks:
       - containr-network
     restart: unless-stopped

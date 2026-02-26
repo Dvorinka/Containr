@@ -163,21 +163,24 @@ export const projectsApi = {
   },
 
   getProject: async (id: string): Promise<{ project: Project }> => {
-    return apiCall<{ project: Project }>(`/api/v1/projects/${id}`);
+    const response = await apiCall<Project | { project: Project }>(`/api/v1/projects/${id}`);
+    return 'project' in response ? response : { project: response };
   },
 
   createProject: async (data: { name: string; description?: string }): Promise<{ project: Project }> => {
-    return apiCall<{ project: Project }>('/api/v1/projects', {
+    const response = await apiCall<Project | { project: Project }>('/api/v1/projects', {
       method: 'POST',
       body: JSON.stringify(data),
     });
+    return 'project' in response ? response : { project: response };
   },
 
   updateProject: async (id: string, data: { name?: string; description?: string }): Promise<{ project: Project }> => {
-    return apiCall<{ project: Project }>(`/api/v1/projects/${id}`, {
+    const response = await apiCall<Project | { project: Project }>(`/api/v1/projects/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
+    return 'project' in response ? response : { project: response };
   },
 
   deleteProject: async (id: string): Promise<{ message: string }> => {
@@ -197,7 +200,7 @@ export const projectsApi = {
   createPreviewEnvironment: async (projectId: string, data: CreatePreviewEnvironmentRequest): Promise<{ preview_environment: PreviewEnvironment }> => {
     return apiCall<{ preview_environment: PreviewEnvironment }>(`/api/v1/projects/${projectId}/preview-environments`, {
       method: 'POST',
-      body: JSON.stringify(data),
+      body: JSON.stringify({ ...data, project_id: projectId }),
     });
   },
 
@@ -266,10 +269,11 @@ export const deploymentsApi = {
   },
 
   createDeployment: async (serviceId: string, data: CreateDeploymentRequest): Promise<{ deployment: Deployment }> => {
-    return apiCall<{ deployment: Deployment }>(`/api/v1/services/${serviceId}/deployments`, {
+    const response = await apiCall<Deployment | { deployment: Deployment }>(`/api/v1/services/${serviceId}/deployments`, {
       method: 'POST',
       body: JSON.stringify(data),
     });
+    return 'deployment' in response ? response : { deployment: response };
   },
 
   getDeployment: async (id: string): Promise<{ deployment: Deployment }> => {
@@ -299,9 +303,9 @@ export const variablesApi = {
 
 // Logs API
 export const logsApi = {
-  getServiceLogs: async (serviceId: string, options?: { lines?: number; follow?: boolean }) => {
+  getServiceLogs: async (serviceId: string, options?: { tail?: number; follow?: boolean }) => {
     const params = new URLSearchParams();
-    if (options?.lines) params.append('lines', options.lines.toString());
+    if (options?.tail) params.append('tail', options.tail.toString());
     if (options?.follow) params.append('follow', 'true');
     
     return apiCall<{ logs: Array<{ timestamp: string; message: string; stream: string }> }>(`/api/v1/services/${serviceId}/logs?${params}`);
@@ -329,10 +333,11 @@ export const gitApi = {
   },
 
   createProvider: async (data: CreateProviderRequest): Promise<{ provider: GitProvider }> => {
-    return apiCall<{ provider: GitProvider }>('/api/v1/git/providers', {
+    const response = await apiCall<GitProvider | { provider: GitProvider }>('/api/v1/git/providers', {
       method: 'POST',
       body: JSON.stringify(data),
     });
+    return 'provider' in response ? response : { provider: response };
   },
 
   getProviderRepositories: async (providerId: string): Promise<{ repositories: GitRepository[] }> => {
@@ -340,10 +345,11 @@ export const gitApi = {
   },
 
   connectRepository: async (data: ConnectRepositoryRequest): Promise<{ repository: GitRepository }> => {
-    return apiCall<{ repository: GitRepository }>('/api/v1/git/repositories/connect', {
+    const response = await apiCall<GitRepository | { repository: GitRepository }>('/api/v1/git/repositories/connect', {
       method: 'POST',
       body: JSON.stringify(data),
     });
+    return 'repository' in response ? response : { repository: response };
   },
 
   getConnectedRepositories: async (params?: { page?: number; limit?: number }): Promise<{ 
@@ -355,10 +361,17 @@ export const gitApi = {
     if (params?.limit) searchParams.append('limit', params.limit.toString());
     
     const queryString = searchParams.toString();
-    return apiCall<{ 
+    const response = await apiCall<{ 
       repositories: GitRepository[]; 
       pagination: Pagination 
     }>(`/api/v1/git/repositories${queryString ? '?' + queryString : ''}`);
+    
+    if (typeof response.pagination.pages !== 'number') {
+      const { total, limit } = response.pagination;
+      response.pagination.pages = limit > 0 ? Math.ceil(total / limit) : 1;
+    }
+
+    return response;
   },
 
   createWebhook: async (data: CreateWebhookRequest): Promise<{ 

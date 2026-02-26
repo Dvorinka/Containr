@@ -4,8 +4,8 @@ import (
 	"containr/internal/database"
 	"containr/internal/deployment"
 	"context"
-	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -139,6 +139,10 @@ func handleCreateDeployment(c *gin.Context) {
 		return
 	}
 
+	if req.Trigger == "" {
+		req.Trigger = "manual"
+	}
+
 	userID, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
@@ -172,20 +176,25 @@ func handleCreateDeployment(c *gin.Context) {
 		return
 	}
 
+	if req.Branch == "" {
+		req.Branch = service.GitBranch
+	}
+
 	now := time.Now()
+	var commitHash *string
+	if trimmed := strings.TrimSpace(req.CommitHash); trimmed != "" {
+		commitHash = &trimmed
+	}
+
 	d := DeploymentModel{
 		ID:         uuid.New(),
 		ServiceID:  serviceID,
-		CommitHash: &req.CommitHash,
+		CommitHash: commitHash,
 		Status:     "pending",
 		ImageName:  "",
 		ImageTag:   "",
 		CreatedAt:  now,
 		UpdatedAt:  now,
-	}
-
-	if req.CommitHash != "" {
-		d.CommitHash = &req.CommitHash
 	}
 
 	_, err = db.(*database.DB).Exec(
@@ -200,57 +209,200 @@ func handleCreateDeployment(c *gin.Context) {
 		return
 	}
 
-	_, err = db.(*database.DB).Exec(
-		`UPDATE services SET status = 'building', updated_at = $1 WHERE id = $2`,
-		time.Now(), serviceID,
-	)
-	if err != nil {
-	}
-
 	engine, exists := c.Get("deployment_engine")
-	if exists && engine != nil {
-		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-			defer cancel()
+	if !exists || engine == nil {
+		unavailableErr := "Deployment engine unavailable. Docker may not be configured on this server."
+		completedAt := time.Now()
+		_, _ = db.(*database.DB).Exec(
+			`UPDATE deployments
+			 SET status = 'failed', error = $1, completed_at = $2, updated_at = $2
+			 WHERE id = $3`,
+			unavailableErr, completedAt, d.ID,
+		)
+		d.Status = "failed"
+		d.Error = &unavailableErr
+		d.CompletedAt = &completedAt
+	} else {
+		_, err = db.(*database.DB).Exec(
+			`UPDATE services SET status = 'building', updated_at = $1 WHERE id = $2`,
+			time.Now(), serviceID,
+		)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update service status"})
+			return
+		}
 
-			envVarsJSON, _ := json.Marshal(req.EnvVars)
-			_ = envVarsJSON
-
-			deployReq := &deployment.DeploymentRequest{
-				ProjectID:   service.ProjectID.String(),
-				ServiceID:   serviceID.String(),
-				Environment: service.Environment,
-				Config: deployment.ServiceConfig{
-					Name:        service.Name,
-					Image:       service.Image,
-					Environment: req.EnvVars,
-					Replicas:    1,
-				},
-				BuildConfig: &deployment.BuildConfig{
-					BuildType:  "nixpacks",
-					SourcePath: service.BuildPath,
-					Branch:     service.GitBranch,
-					Commit:     req.CommitHash,
-				},
-				Trigger: deployment.TriggerConfig{
-					Type:      req.Trigger,
-					Source:    "api",
-					User:      userID.(string),
-					Timestamp: now,
-				},
-			}
-
-			_, _ = engine.(*deployment.DeploymentEngine).Deploy(ctx, deployReq)
-		}()
+		engineInstance := engine.(*deployment.DeploymentEngine)
+		go runDeploymentAndSync(context.Background(), db.(*database.DB), engineInstance, &d, service, req, userID.(string))
 	}
 
 	c.JSON(http.StatusCreated, DeploymentResponse{
-		ID:         d.ID,
-		ServiceID:  d.ServiceID,
-		CommitHash: d.CommitHash,
-		Status:     d.Status,
-		CreatedAt:  d.CreatedAt,
+		ID:          d.ID,
+		ServiceID:   d.ServiceID,
+		CommitHash:  d.CommitHash,
+		Status:      d.Status,
+		Error:       d.Error,
+		CompletedAt: d.CompletedAt,
+		CreatedAt:   d.CreatedAt,
 	})
+}
+
+func runDeploymentAndSync(
+	parentCtx context.Context,
+	db *database.DB,
+	engine *deployment.DeploymentEngine,
+	dbDeployment *DeploymentModel,
+	service Service,
+	req CreateDeploymentRequest,
+	userID string,
+) {
+	ctx, cancel := context.WithTimeout(parentCtx, 30*time.Minute)
+	defer cancel()
+
+	sourcePath := strings.TrimSpace(service.BuildPath)
+	if sourcePath == "" {
+		sourcePath = "."
+	}
+
+	deployReq := &deployment.DeploymentRequest{
+		ProjectID:   service.ProjectID.String(),
+		ServiceID:   service.ID.String(),
+		Environment: service.Environment,
+		Config: deployment.ServiceConfig{
+			Name:        service.Name,
+			Image:       service.Image,
+			Environment: req.EnvVars,
+			Replicas:    1,
+		},
+		BuildConfig: &deployment.BuildConfig{
+			BuildType:  "nixpacks",
+			SourcePath: sourcePath,
+			Branch:     req.Branch,
+			Commit:     req.CommitHash,
+		},
+		Trigger: deployment.TriggerConfig{
+			Type:      req.Trigger,
+			Source:    "api",
+			User:      userID,
+			Timestamp: time.Now(),
+		},
+	}
+
+	engineDeployment, err := engine.Deploy(ctx, deployReq)
+	if err != nil {
+		failedAt := time.Now()
+		failure := "Failed to start deployment engine: " + err.Error()
+		_, _ = db.Exec(
+			`UPDATE deployments
+			 SET status = 'failed', error = $1, completed_at = $2, updated_at = $2
+			 WHERE id = $3`,
+			failure, failedAt, dbDeployment.ID,
+		)
+		_, _ = db.Exec(
+			`UPDATE services SET status = 'failed', updated_at = $1 WHERE id = $2`,
+			failedAt, service.ID,
+		)
+		return
+	}
+
+	syncTicker := time.NewTicker(1 * time.Second)
+	defer syncTicker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			failedAt := time.Now()
+			timeoutErr := "Deployment timed out before completion"
+			_, _ = db.Exec(
+				`UPDATE deployments
+				 SET status = 'failed', error = $1, completed_at = $2, updated_at = $2
+				 WHERE id = $3`,
+				timeoutErr, failedAt, dbDeployment.ID,
+			)
+			_, _ = db.Exec(
+				`UPDATE services SET status = 'failed', updated_at = $1 WHERE id = $2`,
+				failedAt, service.ID,
+			)
+			return
+		case <-syncTicker.C:
+			current, getErr := engine.GetDeployment(engineDeployment.ID)
+			if getErr != nil {
+				continue
+			}
+
+			dbStatus := mapEngineStatusToDBStatus(current.Status)
+			imageName, imageTag := splitImageReference(current.ImageName, dbDeployment.ImageTag)
+
+			var dbError interface{}
+			if current.Error != "" {
+				dbError = current.Error
+			}
+
+			_, _ = db.Exec(
+				`UPDATE deployments
+				 SET status = $1,
+				     image_name = $2,
+				     image_tag = $3,
+				     build_log = $4,
+				     runtime_log = $5,
+				     error = $6,
+				     started_at = $7,
+				     completed_at = $8,
+				     updated_at = $9
+				 WHERE id = $10`,
+				dbStatus,
+				imageName,
+				imageTag,
+				current.BuildLog,
+				current.DeployLog,
+				dbError,
+				current.StartedAt,
+				current.CompletedAt,
+				time.Now(),
+				dbDeployment.ID,
+			)
+
+			switch dbStatus {
+			case "deployed":
+				_, _ = db.Exec(
+					`UPDATE services SET status = 'running', updated_at = $1 WHERE id = $2`,
+					time.Now(), service.ID,
+				)
+				return
+			case "failed":
+				_, _ = db.Exec(
+					`UPDATE services SET status = 'failed', updated_at = $1 WHERE id = $2`,
+					time.Now(), service.ID,
+				)
+				return
+			}
+		}
+	}
+}
+
+func mapEngineStatusToDBStatus(status string) string {
+	switch status {
+	case "running":
+		return "deployed"
+	case "cancelled":
+		return "failed"
+	default:
+		return status
+	}
+}
+
+func splitImageReference(image, fallbackTag string) (string, string) {
+	if image == "" {
+		return "", fallbackTag
+	}
+
+	lastSlash := strings.LastIndex(image, "/")
+	lastColon := strings.LastIndex(image, ":")
+	if lastColon > lastSlash && !strings.Contains(image[lastColon:], "@") {
+		return image[:lastColon], image[lastColon+1:]
+	}
+
+	return image, fallbackTag
 }
 
 func handleGetDeployment(c *gin.Context) {

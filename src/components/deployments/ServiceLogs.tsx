@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Play, Pause, Download, Trash2, Loader2, Terminal } from 'lucide-react';
+import { Play, Pause, Download, Trash2, Loader2, Terminal, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { logsApi } from '@/lib/api';
@@ -16,82 +16,36 @@ interface ServiceLogsProps {
   serviceName: string;
 }
 
-function _ServiceLogs({ serviceId, serviceName }: ServiceLogsProps) {
+export default function ServiceLogs({ serviceId, serviceName }: ServiceLogsProps) {
   const [isStreaming, setIsStreaming] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [autoScroll, setAutoScroll] = useState(true);
   const logContainerRef = useRef<HTMLDivElement>(null);
-  const eventSourceRef = useRef<EventSource | null>(null);
 
-  const { data: initialLogs, isLoading } = useQuery({
-    queryKey: ['logs', serviceId],
+  const { data: fetchedLogs, isLoading, isFetching, refetch } = useQuery({
+    queryKey: ['logs', serviceId, isStreaming],
     queryFn: async () => {
-      const response = await logsApi.getServiceLogs(serviceId, { lines: 100 });
+      const response = await logsApi.getServiceLogs(serviceId, { tail: 200, follow: false });
       return response.logs.map((log) => ({
         timestamp: log.timestamp,
         message: log.message,
         stream: log.stream as 'stdout' | 'stderr' | 'system',
       }));
     },
+    refetchInterval: isStreaming ? 3000 : false,
   });
 
   useEffect(() => {
-    if (initialLogs) {
-      setLogs(initialLogs);
+    if (fetchedLogs) {
+      setLogs(fetchedLogs);
     }
-  }, [initialLogs]);
+  }, [fetchedLogs]);
 
   useEffect(() => {
     if (autoScroll && logContainerRef.current) {
       logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
     }
   }, [logs, autoScroll]);
-
-  useEffect(() => {
-    return () => {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-      }
-    };
-  }, []);
-
-  const startStreaming = () => {
-    const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
-    const _token = localStorage.getItem('auth_token');
-    
-    const url = new URL(`${API_BASE_URL}/api/v1/services/${serviceId}/logs`);
-    url.searchParams.append('follow', 'true');
-    
-    const eventSource = new EventSource(url.toString(), {
-      withCredentials: true,
-    });
-
-    eventSource.onmessage = (event) => {
-      try {
-        const log: LogEntry = JSON.parse(event.data);
-        setLogs((prev) => [...prev.slice(-500), log]);
-      } catch (e) {
-        console.error('Failed to parse log:', e);
-      }
-    };
-
-    eventSource.onerror = () => {
-      console.error('EventSource error');
-      eventSource.close();
-      setIsStreaming(false);
-    };
-
-    eventSourceRef.current = eventSource;
-    setIsStreaming(true);
-  };
-
-  const stopStreaming = () => {
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
-    }
-    setIsStreaming(false);
-  };
 
   const clearLogs = () => {
     setLogs([]);
@@ -142,16 +96,24 @@ function _ServiceLogs({ serviceId, serviceName }: ServiceLogsProps) {
           </CardTitle>
           <div className="flex items-center gap-2">
             {isStreaming ? (
-              <Button variant="outline" size="sm" onClick={stopStreaming}>
+              <Button variant="outline" size="sm" onClick={() => setIsStreaming(false)}>
                 <Pause className="w-4 h-4 mr-1" />
                 Stop
               </Button>
             ) : (
-              <Button variant="outline" size="sm" onClick={startStreaming}>
+              <Button variant="outline" size="sm" onClick={() => setIsStreaming(true)}>
                 <Play className="w-4 h-4 mr-1" />
                 Stream
               </Button>
             )}
+            <Button variant="outline" size="sm" onClick={() => void refetch()} disabled={isFetching}>
+              {isFetching ? (
+                <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4 mr-1" />
+              )}
+              Refresh
+            </Button>
             <Button variant="outline" size="sm" onClick={downloadLogs}>
               <Download className="w-4 h-4 mr-1" />
               Download
@@ -199,14 +161,14 @@ function _ServiceLogs({ serviceId, serviceName }: ServiceLogsProps) {
             {logs.length} log entries
             {autoScroll && ' • Auto-scroll enabled'}
           </span>
-          {isStreaming && (
-            <span className="flex items-center gap-1 text-green-500">
-              <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-              Streaming...
-            </span>
-          )}
-        </div>
-      </CardContent>
-    </Card>
+            {isStreaming && (
+              <span className="flex items-center gap-1 text-green-500">
+                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                Polling...
+              </span>
+            )}
+          </div>
+        </CardContent>
+      </Card>
   );
 }

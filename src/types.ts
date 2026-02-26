@@ -158,12 +158,17 @@ export interface UpdateServiceRequest {
 export interface Deployment {
   id: string;
   service_id: string;
-  commit_hash?: string;
-  status: 'building' | 'deployed' | 'failed' | 'rolling_back';
+  commit_hash?: string | null;
+  status: 'pending' | 'building' | 'deploying' | 'deployed' | 'failed' | 'rolling_back';
+  image_name: string;
+  image_tag: string;
+  build_log: string;
+  runtime_log: string;
+  error?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
   created_at: string;
   updated_at: string;
-  build_logs?: string[];
-  runtime_logs?: string[];
 }
 
 export interface EnvironmentVariable {
@@ -171,6 +176,7 @@ export interface EnvironmentVariable {
   service_id: string;
   key: string;
   value: string;
+  is_secret?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -179,6 +185,7 @@ export interface Pagination {
   page: number;
   limit: number;
   total: number;
+  pages: number;
 }
 
 interface PaginatedResponse<T> {
@@ -194,28 +201,41 @@ export interface AuthResponse {
 export interface PreviewEnvironment {
   id: string;
   project_id: string;
-  name: string;
-  branch: string;
-  commit_hash: string;
-  status: 'building' | 'running' | 'failed' | 'stopped';
+  service_id: string;
+  branch_name: string;
+  pr_number?: number | null;
+  environment: string;
+  status: 'building' | 'running' | 'failed' | 'stopped' | 'expired';
   url: string;
-  expires_at: string;
+  expires_at?: string | null;
   created_at: string;
+  updated_at: string;
+  service?: {
+    id: string;
+    name: string;
+    type: 'web' | 'worker' | 'database' | 'cron';
+  };
+  deployment_id?: string;
 }
 
 export interface CreatePreviewEnvironmentRequest {
-  branch: string;
-  commit_hash: string;
-  name?: string;
+  project_id?: string;
+  service_id: string;
+  branch_name: string;
+  pr_number?: number;
+  ttl_hours?: number;
 }
 
 export interface UpdatePreviewEnvironmentRequest {
-  name?: string;
+  status?: 'building' | 'running' | 'failed' | 'stopped' | 'expired';
+  url?: string;
   expires_at?: string;
+  ttl_hours?: number;
 }
 
 export interface PromotePreviewRequest {
-  target_environment: 'production' | 'staging';
+  target_environment: 'production' | 'development';
+  create_backup?: boolean;
 }
 
 export interface GitProvider {
@@ -228,10 +248,18 @@ export interface GitProvider {
 export interface GitRepository {
   id: string;
   provider_id: string;
+  name: string;
   full_name: string;
+  description?: string;
   clone_url: string;
-  connected: boolean;
+  default_branch: string;
+  is_private: boolean;
+  provider?: {
+    name: string;
+    display_name: string;
+  };
   created_at: string;
+  updated_at?: string;
 }
 
 export interface CreateWebhookRequest {
@@ -334,7 +362,9 @@ export interface DeployFromTemplateRequest {
 
 export interface CreateDeploymentRequest {
   commit_hash?: string;
-  message?: string;
+  branch?: string;
+  trigger?: 'manual' | 'webhook' | 'api' | string;
+  env_vars?: Record<string, string>;
 }
 
 export interface CreateProviderRequest {

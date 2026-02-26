@@ -16,21 +16,7 @@ import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { formatDistanceToNow } from 'date-fns';
 import { deploymentsApi } from '@/lib/api';
-
-interface Deployment {
-  id: string;
-  service_id: string;
-  commit_hash: string | null;
-  status: 'pending' | 'building' | 'deploying' | 'deployed' | 'failed' | 'rolling_back';
-  image_name: string;
-  image_tag: string;
-  build_log: string;
-  runtime_log: string;
-  error: string | null;
-  started_at: string | null;
-  completed_at: string | null;
-  created_at: string;
-}
+import type { Deployment } from '@/types';
 
 interface DeploymentsPanelProps {
   serviceId: string;
@@ -53,7 +39,7 @@ const statusConfig: Record<string, StatusConfig> = {
   rolling_back: { color: 'bg-orange-500', icon: RotateCcw, label: 'Rolling Back', animate: true },
 };
 
-function _DeploymentsPanel({ serviceId, serviceName: _serviceName }: DeploymentsPanelProps) {
+export default function DeploymentsPanel({ serviceId, serviceName }: DeploymentsPanelProps) {
   const [expandedDeployment, setExpandedDeployment] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
@@ -61,7 +47,7 @@ function _DeploymentsPanel({ serviceId, serviceName: _serviceName }: Deployments
     queryKey: ['deployments', serviceId],
     queryFn: async () => {
       const response = await deploymentsApi.getDeployments(serviceId);
-      return response.deployments as Deployment[];
+      return response.deployments;
     },
     refetchInterval: 5000,
   });
@@ -104,7 +90,7 @@ function _DeploymentsPanel({ serviceId, serviceName: _serviceName }: Deployments
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">Deployments</h3>
+        <h3 className="text-lg font-semibold">Deployments · {serviceName}</h3>
         <Button
           onClick={() => createDeployment.mutate({})}
           disabled={createDeployment.isPending}

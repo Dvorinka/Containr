@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -13,11 +14,11 @@ import (
 
 // DNSServer provides internal DNS resolution for services
 type DNSServer struct {
-	server         *dns.Server
+	server           *dns.Server
 	serviceDiscovery *ServiceDiscovery
-	domain         string
-	addresses      []string
-	mu             sync.RWMutex
+	domain           string
+	addresses        []string
+	mu               sync.RWMutex
 }
 
 // DNSConfig holds DNS server configuration
@@ -31,8 +32,8 @@ type DNSConfig struct {
 // NewDNSServer creates a new DNS server
 func NewDNSServer(config DNSConfig, serviceDiscovery *ServiceDiscovery) *DNSServer {
 	return &DNSServer{
-		domain:          config.Domain,
-		addresses:       config.Addresses,
+		domain:           config.Domain,
+		addresses:        config.Addresses,
 		serviceDiscovery: serviceDiscovery,
 	}
 }
@@ -309,7 +310,7 @@ func (nu *NetworkUtils) GetLocalIP() (string, error) {
 
 // IsPortOpen checks if a port is open on a host
 func (nu *NetworkUtils) IsPortOpen(host string, port int, timeout time.Duration) bool {
-	address := fmt.Sprintf("%s:%d", host, port)
+	address := net.JoinHostPort(host, strconv.Itoa(port))
 	conn, err := net.DialTimeout("tcp", address, timeout)
 	if err != nil {
 		return false

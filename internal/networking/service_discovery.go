@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strconv"
 	"sync"
 	"time"
 
@@ -354,7 +355,7 @@ func (sd *ServiceDiscovery) startHealthCheck(instance *ServiceInstance) {
 func (sd *ServiceDiscovery) checkInstanceHealth(ctx context.Context, instance *ServiceInstance) bool {
 	// Simple TCP connection check
 	if instance.Port > 0 {
-		address := fmt.Sprintf("%s:%d", instance.IPAddress, instance.Port)
+		address := net.JoinHostPort(instance.IPAddress, strconv.Itoa(instance.Port))
 		conn, err := net.DialTimeout("tcp", address, 5*time.Second)
 		if err != nil {
 			return false

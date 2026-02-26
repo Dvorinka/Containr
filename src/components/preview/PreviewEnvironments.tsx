@@ -6,6 +6,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import type {
+  CreatePreviewEnvironmentRequest,
+  PreviewEnvironment,
+  PromotePreviewRequest,
+  Service,
+} from '@/types';
 import { 
   TestTube, 
   Plus, 
@@ -29,9 +35,16 @@ interface PreviewEnvironmentsProps {
   projectId: string;
 }
 
+interface CreatePreviewEnvironmentForm {
+  service_id: string;
+  branch_name: string;
+  pr_number: string;
+  ttl_hours: number;
+}
+
 export default function PreviewEnvironments({ projectId }: PreviewEnvironmentsProps) {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<CreatePreviewEnvironmentForm>({
     service_id: '',
     branch_name: '',
     pr_number: '',
@@ -51,7 +64,7 @@ export default function PreviewEnvironments({ projectId }: PreviewEnvironmentsPr
   });
 
   const createEnvironmentMutation = useMutation({
-    mutationFn: (data: any) => projectsApi.createPreviewEnvironment(projectId, data),
+    mutationFn: (data: CreatePreviewEnvironmentRequest) => projectsApi.createPreviewEnvironment(projectId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['preview-environments', projectId] });
       setIsCreateModalOpen(false);
@@ -67,20 +80,29 @@ export default function PreviewEnvironments({ projectId }: PreviewEnvironmentsPr
   });
 
   const promoteEnvironmentMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: any }) => 
+    mutationFn: ({ id, data }: { id: string; data: PromotePreviewRequest }) => 
       projectsApi.promotePreviewEnvironment(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['preview-environments', projectId] });
     },
   });
 
-  const environments = environmentsData?.preview_environments || [];
-  const services = servicesData?.services || [];
+  const cleanupExpiredMutation = useMutation({
+    mutationFn: () => projectsApi.cleanupExpiredPreviewEnvironments(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['preview-environments', projectId] });
+    },
+  });
+
+  const environments: PreviewEnvironment[] = environmentsData?.preview_environments || [];
+  const services: Service[] = servicesData?.services || [];
 
   const handleCreateEnvironment = () => {
-    const data = {
-      ...formData,
-      pr_number: formData.pr_number ? parseInt(formData.pr_number) : undefined,
+    const data: CreatePreviewEnvironmentRequest = {
+      service_id: formData.service_id,
+      branch_name: formData.branch_name,
+      ttl_hours: formData.ttl_hours,
+      pr_number: formData.pr_number ? parseInt(formData.pr_number, 10) : undefined,
     };
     createEnvironmentMutation.mutate(data);
   };
@@ -91,7 +113,7 @@ export default function PreviewEnvironments({ projectId }: PreviewEnvironmentsPr
     }
   };
 
-  const handlePromoteEnvironment = (id: string, targetEnvironment: string) => {
+  const handlePromoteEnvironment = (id: string, targetEnvironment: PromotePreviewRequest['target_environment']) => {
     promoteEnvironmentMutation.mutate({
       id,
       data: {
@@ -135,11 +157,18 @@ export default function PreviewEnvironments({ projectId }: PreviewEnvironmentsPr
     }
   };
 
-  const isExpired = (expiresAt: string) => {
+  const isExpired = (expiresAt?: string | null) => {
+    if (!expiresAt) {
+      return false;
+    }
     return new Date(expiresAt) < new Date();
   };
 
-  const getTimeRemaining = (expiresAt: string) => {
+  const getTimeRemaining = (expiresAt?: string | null) => {
+    if (!expiresAt) {
+      return 'No expiration';
+    }
+
     const now = new Date();
     const expires = new Date(expiresAt);
     const diff = expires.getTime() - now.getTime();
@@ -185,9 +214,14 @@ export default function PreviewEnvironments({ projectId }: PreviewEnvironmentsPr
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => cleanupExpiredMutation.mutate()}
+            disabled={cleanupExpiredMutation.isPending}
+          >
             <RefreshCw className="w-4 h-4 mr-2" />
-            Cleanup Expired
+            {cleanupExpiredMutation.isPending ? 'Cleaning...' : 'Cleanup Expired'}
           </Button>
           <Button onClick={() => setIsCreateModalOpen(true)}>
             <Plus className="w-4 h-4 mr-2" />
@@ -215,7 +249,7 @@ export default function PreviewEnvironments({ projectId }: PreviewEnvironmentsPr
         </Card>
       ) : (
         <div className="space-y-4">
-          {environments.map((env: any) => (
+          {environments.map((env) => (
             <Card key={env.id} className={`border-l-4 ${
               isExpired(env.expires_at) ? 'border-l-orange-500' : 
               env.status === 'running' ? 'border-l-green-500' : 
@@ -373,7 +407,7 @@ export default function PreviewEnvironments({ projectId }: PreviewEnvironmentsPr
                   className="mt-1 w-full p-2 border rounded-md"
                 >
                   <option value="">Select service</option>
-                  {services.map((service: any) => (
+                  {services.map((service) => (
                     <option key={service.id} value={service.id}>
                       {service.name} ({service.type})
                     </option>
@@ -409,7 +443,7 @@ export default function PreviewEnvironments({ projectId }: PreviewEnvironmentsPr
                 <select
                   id="ttl"
                   value={formData.ttl_hours}
-                  onChange={(e) => setFormData({ ...formData, ttl_hours: parseInt(e.target.value) })}
+                  onChange={(e) => setFormData({ ...formData, ttl_hours: parseInt(e.target.value, 10) })}
                   className="mt-1 w-full p-2 border rounded-md"
                 >
                   <option value={6}>6 hours</option>

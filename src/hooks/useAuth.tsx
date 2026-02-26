@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { authApi } from '@/lib/api';
-import { createContext, useContext, useEffect, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, type ReactNode } from 'react';
+import type { User } from '@/types';
 
 interface AuthContextType {
-  user: any | null;
+  user: User | null;
   isLoading: boolean;
+  isAuthenticating: boolean;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name: string) => Promise<void>;
@@ -26,7 +28,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Demo mode check
   const isDemoMode = !!localStorage.getItem('demoMode');
-  const demoUser = isDemoMode ? { id: 'demo', name: 'Demo User', email: 'demo@example.com' } : null;
+  const demoUser: User | null = isDemoMode
+    ? {
+        id: 'demo',
+        name: 'Demo User',
+        email: 'demo@example.com',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
+    : null;
 
   const loginMutation = useMutation({
     mutationFn: ({ email, password }: { email: string; password: string }) =>
@@ -54,23 +64,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await registerMutation.mutateAsync({ email, password, name });
   };
 
-  const logout = () => {
+  const logout = useCallback(() => {
     localStorage.removeItem('auth_token');
     localStorage.removeItem('demoMode');
     queryClient.setQueryData(['auth', 'profile'], null);
     queryClient.clear();
-  };
+  }, [queryClient]);
 
   // Auto-logout if token is invalid
   useEffect(() => {
     if (error && !isLoading) {
       logout();
     }
-  }, [error, isLoading]);
+  }, [error, isLoading, logout]);
 
   const value: AuthContextType = {
     user: isDemoMode ? demoUser : (user || null),
     isLoading: isDemoMode ? false : isLoading,
+    isAuthenticating: loginMutation.isPending || registerMutation.isPending,
     isAuthenticated: isDemoMode || (!!user && !error),
     login,
     register,

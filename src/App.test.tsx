@@ -33,6 +33,7 @@ Object.defineProperty(global, 'localStorage', { value: localStorageMock });
 const createMockAuth = (overrides = {}) => ({
   user: null,
   isLoading: false,
+  isAuthenticating: false,
   isAuthenticated: false,
   login: vi.fn(),
   register: vi.fn(),

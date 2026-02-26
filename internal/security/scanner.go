@@ -143,9 +143,14 @@ func (s *Scanner) scanDependencies(ctx context.Context, scan *SecurityScan) []Vu
 	var vulnerabilities []Vulnerability
 
 	// Get project services
-	rows, err := s.db.Query(`
-		SELECT id, name FROM services WHERE project_id = $1
-	`, scan.ProjectID)
+	query := `SELECT id, name FROM services WHERE project_id = $1`
+	args := []interface{}{scan.ProjectID}
+	if scan.ServiceID != nil {
+		query += ` AND id = $2`
+		args = append(args, *scan.ServiceID)
+	}
+
+	rows, err := s.db.Query(query, args...)
 
 	if err != nil {
 		log.Printf("Failed to query services for scan: %v", err)
@@ -160,7 +165,7 @@ func (s *Scanner) scanDependencies(ctx context.Context, scan *SecurityScan) []Vu
 		}
 
 		// Simulate dependency scanning (in real implementation, this would check package.json, go.mod, etc.)
-		serviceVulns := s.simulateDependencyScan(serviceID, serviceName)
+		serviceVulns := s.simulateDependencyScan(serviceID, serviceName, scan.ProjectID)
 		vulnerabilities = append(vulnerabilities, serviceVulns...)
 	}
 
@@ -168,7 +173,7 @@ func (s *Scanner) scanDependencies(ctx context.Context, scan *SecurityScan) []Vu
 }
 
 // simulateDependencyScan simulates scanning for vulnerable dependencies
-func (s *Scanner) simulateDependencyScan(serviceID, serviceName string) []Vulnerability {
+func (s *Scanner) simulateDependencyScan(serviceID, serviceName, projectID string) []Vulnerability {
 	var vulns []Vulnerability
 
 	// Simulate finding some common vulnerabilities
@@ -190,7 +195,7 @@ func (s *Scanner) simulateDependencyScan(serviceID, serviceName string) []Vulner
 			Title:       vuln.title,
 			Description: vuln.description,
 			ServiceID:   serviceID,
-			ProjectID:   "", // Will be filled by caller
+			ProjectID:   projectID,
 			Status:      "open",
 			FoundAt:     time.Now(),
 			Metadata:    fmt.Sprintf(`{"service": "%s", "package": "example-package-%d"}`, serviceName, i+1),

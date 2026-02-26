@@ -169,7 +169,7 @@ ON CONFLICT (name) DO NOTHING;
 
 -- Insert default GDPR framework
 INSERT INTO compliance_frameworks (id, name, description, version, enabled) VALUES
-('gen_random_uuid()', 'GDPR', 'General Data Protection Regulation compliance framework', '1.0', true)
+(gen_random_uuid(), 'GDPR', 'General Data Protection Regulation compliance framework', '1.0', true)
 ON CONFLICT (name) DO UPDATE SET version = '1.0', enabled = true;
 
 -- Update updated_at trigger function

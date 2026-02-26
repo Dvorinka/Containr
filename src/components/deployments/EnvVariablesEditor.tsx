@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Save, Eye, EyeOff, Key, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -20,7 +20,7 @@ interface EnvVariablesEditorProps {
   serviceId: string;
 }
 
-function _EnvVariablesEditor({ serviceId }: EnvVariablesEditorProps) {
+export default function EnvVariablesEditor({ serviceId }: EnvVariablesEditorProps) {
   const [variables, setVariables] = useState<{ key: string; value: string; is_secret: boolean }[]>([]);
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
   const [hasChanges, setHasChanges] = useState(false);
@@ -34,17 +34,19 @@ function _EnvVariablesEditor({ serviceId }: EnvVariablesEditorProps) {
     },
   });
 
-  useState(() => {
-    if (existingVars) {
-      setVariables(
-        existingVars.map((v) => ({
-          key: v.key,
-          value: v.is_secret ? '' : v.value,
-          is_secret: v.is_secret,
-        }))
-      );
+  useEffect(() => {
+    if (!existingVars) {
+      return;
     }
-  });
+
+    setVariables(
+      existingVars.map((v) => ({
+        key: v.key,
+        value: v.is_secret ? '' : v.value,
+        is_secret: v.is_secret,
+      }))
+    );
+  }, [existingVars]);
 
   const updateVariables = useMutation({
     mutationFn: async (vars: { key: string; value: string; is_secret: boolean }[]) => {

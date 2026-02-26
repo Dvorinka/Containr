@@ -19,6 +19,17 @@ type BuildHandler struct {
 	dockerClient *docker.Client
 }
 
+func (h *BuildHandler) buildUnavailable(c *gin.Context) bool {
+	if h.buildManager != nil {
+		return false
+	}
+
+	c.JSON(http.StatusServiceUnavailable, gin.H{
+		"error": "Build service is unavailable: Docker client not initialized",
+	})
+	return true
+}
+
 // NewBuildHandler creates a new build handler
 func NewBuildHandler(buildManager *build.BuildManager, dockerClient *docker.Client) *BuildHandler {
 	return &BuildHandler{
@@ -96,6 +107,10 @@ type BuildListResponse struct {
 // @Failure 500 {object} map[string]string
 // @Router /api/v1/builds [post]
 func (h *BuildHandler) StartBuild(c *gin.Context) {
+	if h.buildUnavailable(c) {
+		return
+	}
+
 	var req BuildRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -286,6 +301,10 @@ func (h *BuildHandler) GetBuildLogs(c *gin.Context) {
 // @Failure 500 {object} map[string]string
 // @Router /api/v1/builds/plan [post]
 func (h *BuildHandler) GetBuildPlan(c *gin.Context) {
+	if h.buildUnavailable(c) {
+		return
+	}
+
 	var req BuildRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -327,6 +346,10 @@ func (h *BuildHandler) GetBuildPlan(c *gin.Context) {
 // @Failure 500 {object} map[string]string
 // @Router /api/v1/builds/detect [get]
 func (h *BuildHandler) DetectBuildType(c *gin.Context) {
+	if h.buildUnavailable(c) {
+		return
+	}
+
 	sourcePath := c.Query("source_path")
 	if sourcePath == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "source_path is required"})

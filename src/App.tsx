@@ -12,6 +12,8 @@ import GitIntegration from './pages/GitIntegration';
 import Infrastructure from './pages/Infrastructure';
 import NodeAgents from './pages/NodeAgents';
 import DatabaseServices from './pages/DatabaseServices';
+import Canvas from './pages/Canvas';
+import Security from './pages/Security';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
 
@@ -53,10 +55,12 @@ function AppContent() {
         <Route path="projects" element={<Projects />} />
         <Route path="projects/:projectId" element={<ProjectDetail />} />
         <Route path="analytics" element={<Analytics />} />
+        <Route path="canvas" element={<Canvas />} />
         <Route path="git" element={<GitIntegration />} />
         <Route path="infrastructure" element={<Infrastructure />} />
         <Route path="agents" element={<NodeAgents />} />
         <Route path="databases" element={<DatabaseServices />} />
+        <Route path="security" element={<Security />} />
         <Route path="settings" element={<Settings />} />
       </Route>
     </Routes>

@@ -2,6 +2,7 @@ package api
 
 import (
 	"containr/internal/database"
+	"database/sql"
 	"fmt"
 	"net/http"
 	"strings"
@@ -32,7 +33,7 @@ type PreviewEnvironment struct {
 
 // CreatePreviewEnvironmentRequest represents a request to create a preview environment
 type CreatePreviewEnvironmentRequest struct {
-	ProjectID  uuid.UUID `json:"project_id" binding:"required"`
+	ProjectID  uuid.UUID `json:"project_id"`
 	ServiceID  uuid.UUID `json:"service_id" binding:"required"`
 	BranchName string    `json:"branch_name" binding:"required"`
 	PRNumber   *int      `json:"pr_number"`
@@ -61,7 +62,7 @@ func handleGetPreviewEnvironments(c *gin.Context) {
 		return
 	}
 
-	projectIDStr := c.Param("project_id")
+	projectIDStr := firstPathParam(c, "id", "project_id", "projectId")
 	projectID, err := uuid.Parse(projectIDStr)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid project ID"})
@@ -113,20 +114,29 @@ func handleGetPreviewEnvironments(c *gin.Context) {
 	var environments []PreviewEnvironment
 	for rows.Next() {
 		var env PreviewEnvironment
-		var service Service
+		var serviceID sql.NullString
+		var serviceName sql.NullString
+		var serviceType sql.NullString
 
 		err := rows.Scan(
 			&env.ID, &env.ProjectID, &env.ServiceID, &env.BranchName, &env.PRNumber,
 			&env.Environment, &env.Status, &env.URL, &env.ExpiresAt, &env.CreatedAt, &env.UpdatedAt,
-			&service.ID, &service.Name, &service.Type,
+			&serviceID, &serviceName, &serviceType,
 		)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to scan preview environment"})
 			return
 		}
 
-		if service.ID != uuid.Nil {
-			env.Service = &service
+		if serviceID.Valid {
+			parsedServiceID, parseErr := uuid.Parse(serviceID.String)
+			if parseErr == nil {
+				env.Service = &Service{
+					ID:   parsedServiceID,
+					Name: serviceName.String,
+					Type: serviceType.String,
+				}
+			}
 		}
 
 		environments = append(environments, env)
@@ -143,9 +153,23 @@ func handleCreatePreviewEnvironment(c *gin.Context) {
 		return
 	}
 
+	projectIDStr := firstPathParam(c, "id", "project_id", "projectId")
+	projectID, err := uuid.Parse(projectIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid project ID"})
+		return
+	}
+
 	var req CreatePreviewEnvironmentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if req.ProjectID == uuid.Nil {
+		req.ProjectID = projectID
+	} else if req.ProjectID != projectID {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Project ID in URL and request body must match"})
 		return
 	}
 
@@ -158,7 +182,7 @@ func handleCreatePreviewEnvironment(c *gin.Context) {
 
 	// Check if project exists and user has access
 	var project Project
-	err := db.(*database.DB).QueryRow(
+	err = db.(*database.DB).QueryRow(
 		"SELECT id, name, owner_id FROM projects WHERE id = $1",
 		req.ProjectID,
 	).Scan(&project.ID, &project.Name, &project.OwnerID)
@@ -268,7 +292,9 @@ func handleGetPreviewEnvironment(c *gin.Context) {
 
 	// Get preview environment with project ownership check
 	var env PreviewEnvironment
-	var serviceName, serviceType string
+	var serviceID sql.NullString
+	var serviceName sql.NullString
+	var serviceType sql.NullString
 	err = db.(*database.DB).QueryRow(
 		`SELECT pe.id, pe.project_id, pe.service_id, pe.branch_name, pe.pr_number, 
 				pe.environment, pe.status, pe.url, pe.expires_at, pe.created_at, pe.updated_at,
@@ -281,7 +307,7 @@ func handleGetPreviewEnvironment(c *gin.Context) {
 	).Scan(
 		&env.ID, &env.ProjectID, &env.ServiceID, &env.BranchName, &env.PRNumber,
 		&env.Environment, &env.Status, &env.URL, &env.ExpiresAt, &env.CreatedAt, &env.UpdatedAt,
-		&env.ServiceID, &serviceName, &serviceType,
+		&serviceID, &serviceName, &serviceType,
 	)
 
 	if err != nil {
@@ -290,11 +316,14 @@ func handleGetPreviewEnvironment(c *gin.Context) {
 	}
 
 	// Populate service info if available
-	if env.ServiceID != uuid.Nil {
-		env.Service = &Service{
-			ID:   env.ServiceID,
-			Name: serviceName,
-			Type: serviceType,
+	if serviceID.Valid {
+		parsedServiceID, parseErr := uuid.Parse(serviceID.String)
+		if parseErr == nil {
+			env.Service = &Service{
+				ID:   parsedServiceID,
+				Name: serviceName.String,
+				Type: serviceType.String,
+			}
 		}
 	}
 

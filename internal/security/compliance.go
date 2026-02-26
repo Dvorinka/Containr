@@ -217,6 +217,18 @@ func (cm *ComplianceManager) performAssessment(report *ComplianceReport) {
 	var recommendations []string
 	compliantCount := 0
 
+	if len(controls) == 0 {
+		_, updateErr := cm.db.Exec(`
+			UPDATE compliance_reports 
+			SET overall_status = $1, score = $2
+			WHERE id = $3
+		`, "non_compliant", 0, report.ID)
+		if updateErr != nil {
+			log.Printf("Failed to update compliance report %s with empty control set: %v", report.ID, updateErr)
+		}
+		return
+	}
+
 	for _, control := range controls {
 		assessedControl := cm.assessControl(ctx, report.ProjectID, control)
 		assessedControls = append(assessedControls, assessedControl)

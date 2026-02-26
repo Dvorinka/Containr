@@ -63,6 +63,7 @@ const createMockStore = () => ({
 const createMockAuth = (overrides = {}) => ({
   user: { id: '1', name: 'Test User', email: 'test@example.com', created_at: '', updated_at: '' },
   isLoading: false,
+  isAuthenticating: false,
   isAuthenticated: true,
   login: vi.fn(),
   register: vi.fn(),

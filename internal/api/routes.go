@@ -21,7 +21,8 @@ import (
 func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg *config.Config) {
 	// Initialize Docker client (non-fatal if it fails)
 	var dockerClient *docker.Client
-	buildManager := &build.BuildManager{} // Default empty manager
+	var buildManager *build.BuildManager
+	var deploymentEngine *deployment.DeploymentEngine
 
 	if client, err := docker.NewClient(); err != nil {
 		log.Printf("Warning: Failed to initialize Docker client: %v", err)
@@ -29,6 +30,7 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 	} else {
 		dockerClient = client
 		buildManager = build.NewBuildManager("/tmp/containr-builds", dockerClient)
+		deploymentEngine = deployment.NewDeploymentEngine(buildManager, dockerClient)
 	}
 
 	// Initialize build handler
@@ -81,6 +83,9 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 		c.Set("jwt_secret", cfg.JWTSecret)
 		c.Set("docker_client", dockerClient)
 		c.Set("build_manager", buildManager)
+		if deploymentEngine != nil {
+			c.Set("deployment_engine", deploymentEngine)
+		}
 		c.Set("scheduler", scheduler)
 		c.Set("metrics_collector", metricsCollector)
 		c.Set("auto_scaler", autoScaler)

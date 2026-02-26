@@ -249,7 +249,7 @@ JWT_SECRET=your_very_secure_jwt_secret_key_here
 CORS_ALLOWED_ORIGINS=https://yourdomain.com,https://www.yourdomain.com
 
 # Traefik Authentication (Basic Auth for dashboard)
-TRAEFIK_AUTH=admin:$apr1$b8mh8c8v$KkR8hQZQZQZQZQZQZQZQZ/
+TRAEFIK_AUTH=admin:$$apr1$$b8mh8c8v$$KkR8hQZQZQZQZQZQZQZQZ/
 
 # Cloudflare Tunnel (alternative to domain)
 CLOUDFLARED_TOKEN=your_cloudflare_tunnel_token_here

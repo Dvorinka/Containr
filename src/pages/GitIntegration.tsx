@@ -262,7 +262,7 @@ export default function GitIntegrationPage() {
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2">
-                        {getProviderIcon(repo.provider.name)}
+                        {getProviderIcon(repo.provider?.name ?? 'github')}
                         <CardTitle className="text-lg font-semibold truncate">
                           {repo.name}
                         </CardTitle>

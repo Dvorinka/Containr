@@ -3,6 +3,7 @@ package api
 import (
 	"containr/internal/database"
 	"containr/internal/security"
+	"database/sql"
 	"net/http"
 	"strconv"
 	"time"
@@ -48,7 +49,35 @@ func (sh *SecurityHandler) StartSecurityScan(c *gin.Context) {
 		return
 	}
 
-	userID := c.MustGet("user_id").(string)
+	userID, ok := sh.requireProjectAccess(c, req.ProjectID)
+	if !ok {
+		return
+	}
+
+	if req.ServiceID != "" {
+		if _, err := uuid.Parse(req.ServiceID); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid service ID"})
+			return
+		}
+
+		var serviceExists bool
+		err := sh.db.QueryRow(
+			`SELECT EXISTS(
+				SELECT 1 FROM services WHERE id = $1 AND project_id = $2
+			)`,
+			req.ServiceID,
+			req.ProjectID,
+		).Scan(&serviceExists)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate service"})
+			return
+		}
+
+		if !serviceExists {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Service not found in project"})
+			return
+		}
+	}
 
 	// Log audit event
 	sh.auditLogger.LogSecurityEvent(userID, "security_scan_started", "project",
@@ -69,7 +98,10 @@ func (sh *SecurityHandler) StartSecurityScan(c *gin.Context) {
 
 // GetSecurityScan retrieves a security scan
 func (sh *SecurityHandler) GetSecurityScan(c *gin.Context) {
-	scanID := c.Param("scanId")
+	scanID := firstPathParam(c, "scanId", "id")
+	if !sh.requireSecurityScanAccess(c, scanID) {
+		return
+	}
 
 	scan, err := sh.scanner.GetSecurityScan(scanID)
 	if err != nil {
@@ -82,11 +114,14 @@ func (sh *SecurityHandler) GetSecurityScan(c *gin.Context) {
 
 // GetProjectSecurityHistory retrieves security scan history for a project
 func (sh *SecurityHandler) GetProjectSecurityHistory(c *gin.Context) {
-	projectID := c.Param("projectId")
+	projectID := firstPathParam(c, "projectId", "id", "project_id")
+	if _, ok := sh.requireProjectAccess(c, projectID); !ok {
+		return
+	}
 
 	limit := 10
 	if limitStr := c.Query("limit"); limitStr != "" {
-		if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
+		if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 && parsedLimit <= 1000 {
 			limit = parsedLimit
 		}
 	}
@@ -102,7 +137,10 @@ func (sh *SecurityHandler) GetProjectSecurityHistory(c *gin.Context) {
 
 // GetVulnerabilities retrieves vulnerabilities for a project
 func (sh *SecurityHandler) GetVulnerabilities(c *gin.Context) {
-	projectID := c.Param("projectId")
+	projectID := firstPathParam(c, "projectId", "id", "project_id")
+	if _, ok := sh.requireProjectAccess(c, projectID); !ok {
+		return
+	}
 
 	// Query vulnerabilities
 	rows, err := sh.db.Query(`
@@ -146,8 +184,11 @@ func (sh *SecurityHandler) GetVulnerabilities(c *gin.Context) {
 
 // UpdateVulnerability updates a vulnerability status
 func (sh *SecurityHandler) UpdateVulnerability(c *gin.Context) {
-	vulnID := c.Param("vulnId")
-	userID := c.MustGet("user_id").(string)
+	vulnID := firstPathParam(c, "vulnId", "id")
+	userID, ok := sh.requireVulnerabilityAccess(c, vulnID)
+	if !ok {
+		return
+	}
 
 	var req struct {
 		Status string `json:"status" binding:"required,oneof=open resolved ignored"`
@@ -199,7 +240,31 @@ func (sh *SecurityHandler) StartComplianceAssessment(c *gin.Context) {
 		return
 	}
 
-	userID := c.MustGet("user_id").(string)
+	userID, ok := sh.requireProjectAccess(c, req.ProjectID)
+	if !ok {
+		return
+	}
+
+	if _, err := uuid.Parse(req.FrameworkID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid framework ID"})
+		return
+	}
+
+	var frameworkExists bool
+	err := sh.db.QueryRow(
+		`SELECT EXISTS(
+			SELECT 1 FROM compliance_frameworks WHERE id = $1
+		)`,
+		req.FrameworkID,
+	).Scan(&frameworkExists)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate framework"})
+		return
+	}
+	if !frameworkExists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Compliance framework not found"})
+		return
+	}
 
 	// Log audit event
 	sh.auditLogger.LogSecurityEvent(userID, "compliance_assessment_started", "project",
@@ -219,7 +284,10 @@ func (sh *SecurityHandler) StartComplianceAssessment(c *gin.Context) {
 
 // GetComplianceReport retrieves a compliance report
 func (sh *SecurityHandler) GetComplianceReport(c *gin.Context) {
-	reportID := c.Param("reportId")
+	reportID := firstPathParam(c, "reportId", "id")
+	if !sh.requireComplianceReportAccess(c, reportID) {
+		return
+	}
 
 	report, err := sh.complianceManager.GetComplianceReport(reportID)
 	if err != nil {
@@ -280,7 +348,10 @@ func (sh *SecurityHandler) InitializeGDPRFramework(c *gin.Context) {
 
 // GetSecurityMetrics retrieves security metrics for a project
 func (sh *SecurityHandler) GetSecurityMetrics(c *gin.Context) {
-	projectID := c.Param("projectId")
+	projectID := firstPathParam(c, "projectId", "id", "project_id")
+	if _, ok := sh.requireProjectAccess(c, projectID); !ok {
+		return
+	}
 
 	// Get vulnerability counts
 	var vulnMetrics struct {
@@ -293,7 +364,7 @@ func (sh *SecurityHandler) GetSecurityMetrics(c *gin.Context) {
 		Resolved int `json:"resolved"`
 	}
 
-	sh.db.QueryRow(`
+	err := sh.db.QueryRow(`
 		SELECT 
 			COUNT(*) as total,
 			COUNT(*) FILTER (WHERE severity = 'critical') as critical,
@@ -306,6 +377,10 @@ func (sh *SecurityHandler) GetSecurityMetrics(c *gin.Context) {
 		WHERE project_id = $1
 	`, projectID).Scan(&vulnMetrics.Total, &vulnMetrics.Critical, &vulnMetrics.High,
 		&vulnMetrics.Medium, &vulnMetrics.Low, &vulnMetrics.Open, &vulnMetrics.Resolved)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get vulnerability metrics"})
+		return
+	}
 
 	// Get latest scan
 	var latestScan struct {
@@ -315,7 +390,7 @@ func (sh *SecurityHandler) GetSecurityMetrics(c *gin.Context) {
 		Status    string    `json:"status"`
 	}
 
-	err := sh.db.QueryRow(`
+	err = sh.db.QueryRow(`
 		SELECT id, score, started_at as scanned_at, status
 		FROM security_scans 
 		WHERE project_id = $1 
@@ -323,13 +398,16 @@ func (sh *SecurityHandler) GetSecurityMetrics(c *gin.Context) {
 		LIMIT 1
 	`, projectID).Scan(&latestScan.ID, &latestScan.Score, &latestScan.ScannedAt, &latestScan.Status)
 
-	if err != nil {
+	if err == sql.ErrNoRows {
 		latestScan = struct {
 			ID        string    `json:"id"`
 			Score     int       `json:"score"`
 			ScannedAt time.Time `json:"scanned_at"`
 			Status    string    `json:"status"`
 		}{ID: "", Score: 0, ScannedAt: time.Time{}, Status: "never_scanned"}
+	} else if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get latest scan"})
+		return
 	}
 
 	// Get compliance status
@@ -347,12 +425,15 @@ func (sh *SecurityHandler) GetSecurityMetrics(c *gin.Context) {
 		LIMIT 1
 	`, projectID).Scan(&complianceStatus.OverallStatus, &complianceStatus.Score, &complianceStatus.LastAssessed)
 
-	if err != nil {
+	if err == sql.ErrNoRows {
 		complianceStatus = struct {
 			OverallStatus string     `json:"overall_status"`
 			Score         int        `json:"score"`
 			LastAssessed  *time.Time `json:"last_assessed"`
 		}{OverallStatus: "not_assessed", Score: 0, LastAssessed: nil}
+	} else if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get compliance status"})
+		return
 	}
 
 	metrics := gin.H{
@@ -386,7 +467,10 @@ func (sh *SecurityHandler) calculateOverallSecurityScore(vulnMetrics struct {
 
 // GetAuditLogs retrieves audit logs for security events
 func (sh *SecurityHandler) GetAuditLogs(c *gin.Context) {
-	_ = c.Param("projectId") // projectID is available but not used in this implementation
+	projectID := firstPathParam(c, "projectId", "id", "project_id")
+	if _, ok := sh.requireProjectAccess(c, projectID); !ok {
+		return
+	}
 
 	limit := 50
 	if limitStr := c.Query("limit"); limitStr != "" {
@@ -412,6 +496,111 @@ func (sh *SecurityHandler) GetAuditLogs(c *gin.Context) {
 		"total": 1,
 		"limit": limit,
 	})
+}
+
+func (sh *SecurityHandler) requireProjectAccess(c *gin.Context, projectID string) (string, bool) {
+	userIDValue, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return "", false
+	}
+	userID, ok := userIDValue.(string)
+	if !ok || userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user context"})
+		return "", false
+	}
+
+	if _, err := uuid.Parse(projectID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid project ID"})
+		return "", false
+	}
+
+	var hasAccess bool
+	err := sh.db.QueryRow(
+		`SELECT EXISTS (
+			SELECT 1
+			FROM projects p
+			WHERE p.id = $1
+			  AND (p.owner_id = $2 OR EXISTS (
+					SELECT 1 FROM project_members pm
+					WHERE pm.project_id = p.id AND pm.user_id = $2
+			  ))
+		)`,
+		projectID, userID,
+	).Scan(&hasAccess)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify project access"})
+		return "", false
+	}
+
+	if !hasAccess {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
+		return "", false
+	}
+
+	return userID, true
+}
+
+func (sh *SecurityHandler) requireSecurityScanAccess(c *gin.Context, scanID string) bool {
+	if _, err := uuid.Parse(scanID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid scan ID"})
+		return false
+	}
+
+	var projectID string
+	err := sh.db.QueryRow("SELECT project_id FROM security_scans WHERE id = $1", scanID).Scan(&projectID)
+	if err == sql.ErrNoRows {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Security scan not found"})
+		return false
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify scan access"})
+		return false
+	}
+
+	_, ok := sh.requireProjectAccess(c, projectID)
+	return ok
+}
+
+func (sh *SecurityHandler) requireComplianceReportAccess(c *gin.Context, reportID string) bool {
+	if _, err := uuid.Parse(reportID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid report ID"})
+		return false
+	}
+
+	var projectID string
+	err := sh.db.QueryRow("SELECT project_id FROM compliance_reports WHERE id = $1", reportID).Scan(&projectID)
+	if err == sql.ErrNoRows {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Compliance report not found"})
+		return false
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify report access"})
+		return false
+	}
+
+	_, ok := sh.requireProjectAccess(c, projectID)
+	return ok
+}
+
+func (sh *SecurityHandler) requireVulnerabilityAccess(c *gin.Context, vulnID string) (string, bool) {
+	if _, err := uuid.Parse(vulnID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid vulnerability ID"})
+		return "", false
+	}
+
+	var projectID string
+	err := sh.db.QueryRow("SELECT project_id FROM vulnerabilities WHERE id = $1", vulnID).Scan(&projectID)
+	if err == sql.ErrNoRows {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Vulnerability not found"})
+		return "", false
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify vulnerability access"})
+		return "", false
+	}
+
+	return sh.requireProjectAccess(c, projectID)
 }
 
 // max helper function

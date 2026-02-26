@@ -30,7 +30,7 @@ type Service struct {
 
 // CreateServiceRequest represents a request to create a service
 type CreateServiceRequest struct {
-	ProjectID   uuid.UUID `json:"project_id" binding:"required"`
+	ProjectID   uuid.UUID `json:"project_id"`
 	Name        string    `json:"name" binding:"required,min=1,max=255"`
 	Type        string    `json:"type" binding:"required,oneof=web worker database cron"`
 	Image       string    `json:"image"`
@@ -65,7 +65,7 @@ func handleGetServices(c *gin.Context) {
 		return
 	}
 
-	projectIDStr := c.Param("project_id")
+	projectIDStr := firstPathParam(c, "id", "project_id", "projectId")
 	projectID, err := uuid.Parse(projectIDStr)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid project ID"})
@@ -139,9 +139,23 @@ func handleCreateService(c *gin.Context) {
 		return
 	}
 
+	projectIDStr := firstPathParam(c, "id", "project_id", "projectId")
+	projectID, err := uuid.Parse(projectIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid project ID"})
+		return
+	}
+
 	var req CreateServiceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if req.ProjectID == uuid.Nil {
+		req.ProjectID = projectID
+	} else if req.ProjectID != projectID {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Project ID in URL and request body must match"})
 		return
 	}
 
@@ -154,7 +168,7 @@ func handleCreateService(c *gin.Context) {
 
 	// Check if project exists and user has access
 	var project Project
-	err := db.(*database.DB).QueryRow(
+	err = db.(*database.DB).QueryRow(
 		"SELECT id, name, owner_id FROM projects WHERE id = $1",
 		req.ProjectID,
 	).Scan(&project.ID, &project.Name, &project.OwnerID)
