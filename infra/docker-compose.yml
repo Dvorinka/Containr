@@ -1,0 +1,225 @@
+services:
+  traefik:
+    image: traefik:v3.2
+    container_name: containr-traefik
+    command:
+      - "--api.dashboard=true"
+      - "--api.insecure=${TRAEFIK_API_INSECURE:-true}"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.file.filename=/etc/traefik/traefik-dynamic.yml"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.traefik.address=:8080"
+      - "--certificatesresolvers.myresolver.acme.email=${ACME_EMAIL:-admin@localhost}"
+      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.myresolver.acme.httpchallenge.entrypoint=web"
+      - "--log.level=${LOG_LEVEL:-INFO}"
+      - "--accesslog=true"
+      - "--metrics.prometheus=true"
+      - "--ping=true"
+      - "--ping.entrypoint=traefik"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ../data/letsencrypt:/letsencrypt
+      - ./traefik-dynamic.yml:/etc/traefik/traefik-dynamic.yml:ro
+    networks:
+      - containr-network
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik-dashboard.rule=Host(`traefik.${DOMAIN:-localhost}`)"
+      - "traefik.http.routers.traefik-dashboard.entrypoints=websecure"
+      - "traefik.http.routers.traefik-dashboard.tls=true"
+      - "traefik.http.routers.traefik-dashboard.tls.certresolver=myresolver"
+      - "traefik.http.routers.traefik-dashboard.service=api@internal"
+      - "traefik.http.routers.traefik-dashboard.middlewares=traefik-auth,secureHeaders@file"
+      - "traefik.http.middlewares.traefik-auth.basicauth.users=${TRAEFIK_AUTH:-admin:$$apr1$$b8mh8c8v$$KkR8hQZQZQZQZQZQZQZQZ/}"
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: containr-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-containr}
+      POSTGRES_USER: ${POSTGRES_USER:-containr_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev_password_123}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - containr-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-containr_user} -d ${POSTGRES_DB:-containr}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  redis:
+    image: redis:7-alpine
+    container_name: containr-redis
+    command: redis-server --requirepass ${REDIS_PASSWORD:-dev_redis_123}
+    volumes:
+      - redis_data:/data
+    networks:
+      - containr-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a ${REDIS_PASSWORD:-dev_redis_123} ping | grep PONG"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  backend:
+    build:
+      context: ../app/backend
+      dockerfile: Dockerfile
+    container_name: containr-backend
+    ports:
+      - "8082:8080"
+    environment:
+      - DATABASE_URL=postgres://${POSTGRES_USER:-containr_user}:${POSTGRES_PASSWORD:-dev_password_123}@postgres:5432/${POSTGRES_DB:-containr}?sslmode=disable
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-dev_redis_123}@redis:6379/0
+      - PORT=8080
+      - HOST=0.0.0.0
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - JWT_SECRET=${JWT_SECRET:-dev_jwt_secret_key_change_in_production}
+      - CONTAINR_AGENT_AUTH_TOKEN=${CONTAINR_AGENT_AUTH_TOKEN:-}
+      - CONTAINR_AGENT_AUTH_TOKENS=${CONTAINR_AGENT_AUTH_TOKENS:-}
+      - COOKIE_SECURE=${COOKIE_SECURE:-true}
+      - TRUSTED_PROXY_CIDR=${TRUSTED_PROXY_CIDR:-172.20.0.0/16}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost,http://localhost:3000}
+      - BETTER_AUTH_URL=${BETTER_AUTH_URL:-http://localhost:8082}
+      - BETTER_AUTH_PROXY_URL=${BETTER_AUTH_PROXY_URL:-http://127.0.0.1:3001}
+      - BETTER_AUTH_INTERNAL_URL=${BETTER_AUTH_INTERNAL_URL:-http://127.0.0.1:3001/internal/session}
+      - BETTER_AUTH_INTERNAL_TOKEN=${BETTER_AUTH_INTERNAL_TOKEN:-PLACEHOLDER_INTERNAL_AUTH_TOKEN}
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-PLACEHOLDER_BETTER_AUTH_SECRET_CHANGE_ME_32CHARS_MIN}
+      - BETTER_AUTH_AUTO_MIGRATE=${BETTER_AUTH_AUTO_MIGRATE:-true}
+      - BETTER_AUTH_TRUSTED_ORIGINS=${BETTER_AUTH_TRUSTED_ORIGINS:-http://localhost:3000,http://localhost:8082}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      - BACKEND_URL=${BACKEND_URL:-http://localhost:8082}
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${POSTGRES_DB:-containr}
+      - DB_USER=${POSTGRES_USER:-containr_user}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-dev_password_123}
+      - AUTH_PORT=${AUTH_PORT:-3001}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-}
+      - GITLAB_CLIENT_ID=${GITLAB_CLIENT_ID:-PLACEHOLDER_GITLAB_CLIENT_ID}
+      - GITLAB_CLIENT_SECRET=${GITLAB_CLIENT_SECRET:-PLACEHOLDER_GITLAB_CLIENT_SECRET}
+      - GITLAB_OAUTH_AUTHORIZE_URL=${GITLAB_OAUTH_AUTHORIZE_URL:-https://gitlab.com/oauth/authorize}
+      - GITLAB_OAUTH_TOKEN_URL=${GITLAB_OAUTH_TOKEN_URL:-https://gitlab.com/oauth/token}
+      - GITLAB_OAUTH_USERINFO_URL=${GITLAB_OAUTH_USERINFO_URL:-https://gitlab.com/api/v4/user}
+      - BITBUCKET_CLIENT_ID=${BITBUCKET_CLIENT_ID:-PLACEHOLDER_BITBUCKET_CLIENT_ID}
+      - BITBUCKET_CLIENT_SECRET=${BITBUCKET_CLIENT_SECRET:-PLACEHOLDER_BITBUCKET_CLIENT_SECRET}
+      - BITBUCKET_OAUTH_AUTHORIZE_URL=${BITBUCKET_OAUTH_AUTHORIZE_URL:-https://bitbucket.org/site/oauth2/authorize}
+      - BITBUCKET_OAUTH_TOKEN_URL=${BITBUCKET_OAUTH_TOKEN_URL:-https://bitbucket.org/site/oauth2/access_token}
+      - BITBUCKET_OAUTH_USERINFO_URL=${BITBUCKET_OAUTH_USERINFO_URL:-https://api.bitbucket.org/2.0/user}
+      - BITBUCKET_OAUTH_EMAILS_URL=${BITBUCKET_OAUTH_EMAILS_URL:-https://api.bitbucket.org/2.0/user/emails}
+      - GITEA_CLIENT_ID=${GITEA_CLIENT_ID:-PLACEHOLDER_GITEA_CLIENT_ID}
+      - GITEA_CLIENT_SECRET=${GITEA_CLIENT_SECRET:-PLACEHOLDER_GITEA_CLIENT_SECRET}
+      - GITEA_OAUTH_AUTHORIZE_URL=${GITEA_OAUTH_AUTHORIZE_URL:-https://gitea.example.com/login/oauth/authorize}
+      - GITEA_OAUTH_TOKEN_URL=${GITEA_OAUTH_TOKEN_URL:-https://gitea.example.com/login/oauth/access_token}
+      - GITEA_OAUTH_USERINFO_URL=${GITEA_OAUTH_USERINFO_URL:-https://gitea.example.com/api/v1/user}
+      - GITHUB_APP_ID=${GITHUB_APP_ID:-}
+      - GITHUB_APP_SLUG=${GITHUB_APP_SLUG:-}
+      - GITHUB_APP_PRIVATE_KEY=${GITHUB_APP_PRIVATE_KEY:-}
+      - GITHUB_APP_BASE_URL=${GITHUB_APP_BASE_URL:-https://api.github.com}
+      - GITLAB_API_URL=${GITLAB_API_URL:-https://gitlab.com/api/v4}
+      - GITLAB_BASE_URL=${GITLAB_BASE_URL:-https://gitlab.com}
+      - BITBUCKET_API_URL=${BITBUCKET_API_URL:-https://api.bitbucket.org/2.0}
+      - BITBUCKET_BASE_URL=${BITBUCKET_BASE_URL:-https://bitbucket.org}
+      - GITEA_BASE_URL=${GITEA_BASE_URL:-https://gitea.example.com}
+    networks:
+      - containr-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.backend.rule=Host(`api.${DOMAIN:-localhost}`)"
+      - "traefik.http.routers.backend.entrypoints=web"
+      - "traefik.http.routers.backend.middlewares=secureHeaders@file"
+      - "traefik.http.routers.backend-secure.rule=Host(`api.${DOMAIN:-localhost}`)"
+      - "traefik.http.routers.backend-secure.entrypoints=websecure"
+      - "traefik.http.routers.backend-secure.tls=true"
+      - "traefik.http.routers.backend-secure.tls.certresolver=myresolver"
+      - "traefik.http.routers.backend-secure.middlewares=secureHeaders@file"
+      - "traefik.http.services.backend.loadbalancer.server.port=8080"
+
+  frontend:
+    build:
+      context: ../app/frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8082}
+        VITE_AUTH_URL: ${VITE_AUTH_URL:-http://localhost:8082/api/auth}
+    container_name: containr-frontend
+    ports:
+      - "3000:80"
+    networks:
+      - containr-network
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:80/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=Host(`${DOMAIN:-localhost}`) || Host(`www.${DOMAIN:-localhost}`)"
+      - "traefik.http.routers.frontend.entrypoints=web"
+      - "traefik.http.routers.frontend.middlewares=secureHeaders@file"
+      - "traefik.http.routers.frontend-secure.rule=Host(`${DOMAIN:-localhost}`) || Host(`www.${DOMAIN:-localhost}`)"
+      - "traefik.http.routers.frontend-secure.entrypoints=websecure"
+      - "traefik.http.routers.frontend-secure.tls=true"
+      - "traefik.http.routers.frontend-secure.tls.certresolver=myresolver"
+      - "traefik.http.routers.frontend-secure.middlewares=secureHeaders@file"
+      - "traefik.http.services.frontend.loadbalancer.server.port=80"
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: containr-cloudflared
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARED_TOKEN:-}
+    networks:
+      - containr-network
+    restart: unless-stopped
+    depends_on:
+      - traefik
+    profiles:
+      - cloudflared
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  containr-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

@@ -12,6 +12,9 @@ dist-ssr/
 build/
 *.tsbuildinfo
 
+# Keep internal build system code
+!internal/build/
+
 # Environment variables
 .env
 .env.local
@@ -102,3 +105,8 @@ $RECYCLE.BIN/
 test-results/
 playwright-report/
 test-results.xml
+
+.opencode
+.claude
+.desloppify
+bin

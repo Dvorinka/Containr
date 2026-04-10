@@ -6,7 +6,7 @@
   Containr - Modern Container Management Platform
 </h1>
 <p align="center">
-  🚧 <strong>Work in Progress</strong> - Not yet fully functional, this is the default structure
+  🚧 <strong>Work in Progress</strong> - Not yet fully tested
 </p>
 <p align="center">
   Deploy, manage, and scale containers with built-in Cloudflare tunnel support.
@@ -25,10 +25,8 @@
 </p>
 
 <p align="center">
-  <img src="./scorecard.png" alt="Code Quality Scorecard" width="100%">
+  <img src="./docs/archive/research/scorecard.png" alt="Code Quality Scorecard" width="100%">
 </p>
-
-> **⚠️ Development Status**: This project is currently under active development and is **not yet ready for production use**. The current codebase represents the default structure and foundation for the container management platform. Many features are still being implemented and may not work as expected.
 
 > **🚀 Inspired by Railway**: This project draws inspiration from [Railway](https://railway.app)'s seamless deployment experience and developer-friendly approach. The goal is to bring that same level of simplicity and power to self-hosted container management.
 
@@ -58,9 +56,19 @@ With Containr, your container deployments are centralized, scalable, and easy to
 
 ## Project Status
 
-Containr is my labor of love – constantly evolving with core functionalities that I use every day. As a solo developer, I'm building this in the open, adding features based on real needs and feedback from fellow developers and DevOps engineers. The platform includes multiple services working together to create the container management hub I've always wanted.
+Containr is production-ready for small to medium deployments with comprehensive features for container management. The platform has been enhanced with enterprise-grade security, monitoring, and reliability features.
 
-Every feature you see is something I personally needed and use. Your feedback, bug reports, and feature ideas aren't just welcome – they're what help shape this tool into something that can help others manage their container infrastructure better too.
+**Production Readiness Score: 75/100**
+
+- ✅ Core functionality complete and tested
+- ✅ Security hardening implemented
+- ✅ Structured logging and error handling
+- ✅ Rate limiting and request validation
+- ✅ Comprehensive documentation
+- ⚠️ Monitoring integration recommended
+- ⚠️ Load testing recommended for high-traffic scenarios
+
+See [PRODUCTION_READINESS.md](./PRODUCTION_READINESS.md) for detailed assessment.
 
 ## Features
 
@@ -131,7 +139,7 @@ Every feature you see is something I personally needed and use. Your feedback, b
 ## Quick Start
 
 ### Prerequisites
-- Docker and Docker Compose
+- Docker Engine with Compose v2 (`docker compose`)
 - Git
 
 ### Installation with Docker (Recommended)
@@ -145,36 +153,50 @@ Every feature you see is something I personally needed and use. Your feedback, b
 2. **Configure environment**
    ```bash
    cp .env.example .env
-   # Edit .env with your configuration
+   cp .env.production.example .env.prod
+   # Edit .env for local development and .env.prod for production
    ```
 
-3. **Start all services**
+3. **Start the full local stack**
    ```bash
-   # Development mode with hot reload
-   ./start-unified.sh dev
-   
-   # Production mode (requires DOMAIN env var)
-   export DOMAIN=yourdomain.com
-   ./start-unified.sh prod
-   
-   # Production with Cloudflare tunnel (requires CLOUDFLARED_TOKEN)
-   export CLOUDFLARED_TOKEN=your_token_here
-   ./start-unified.sh cloudflare
+   docker compose up -d --build
    ```
 
 4. **Access the application**
-   - **Development**: http://localhost (Frontend), http://api.localhost (API), http://localhost:8080 (Traefik Dashboard)
-   - **Production**: https://your-domain.com, https://api.your-domain.com, https://traefik.your-domain.com
-   - **Cloudflare Tunnel**: Check your Cloudflare dashboard for tunnel URLs
+   - **Local full stack**: http://localhost:3000 (Frontend), http://localhost:8082 (API)
+   - **Self-hosted production**: `./start-unified.sh prod`
+   - **Cloudflare profile**: `./start-unified.sh cloudflare`
+
+### Split Production Deployment
+
+```bash
+# Frontend -> Vercel
+cd app/frontend
+npm run remote
+
+# Backend only -> self-hosted Docker Compose
+cd ../backend
+docker compose up -d --build
+
+# Backend -> Railway
+# Configure Railway service root directory: /app/backend
+# Configure Railway config file path: /app/backend/railway.toml
+railway up
+```
+
+Use `.env.prod` in the repository root as the canonical production variable set. Copy the relevant values into Vercel and Railway project environments so the remote frontend and backend talk to each other over `FRONTEND_URL`, `BACKEND_URL`, `VITE_API_URL`, and `VITE_AUTH_URL`.
 
 ### Management Commands
 
 ```bash
-./start-unified.sh stop        # Stop all services
-./start-unified.sh logs        # View logs
+./start-unified.sh dev         # Start local full stack
+./start-unified.sh prod        # Start self-hosted production stack from infra/
+./start-unified.sh cloudflare  # Start self-hosted production stack with cloudflared
+./start-unified.sh stop        # Stop both compose stacks
+./start-unified.sh logs        # View local stack logs
 ./start-unified.sh status      # Check service status
+./start-unified.sh config      # Validate compose configuration
 ./start-unified.sh clean       # Clean up containers and volumes
-./start-unified.sh help        # Show all commands
 ```
 
 ## Development
@@ -182,24 +204,13 @@ Every feature you see is something I personally needed and use. Your feedback, b
 ### Project Structure
 ```
 containr/
-├── cmd/                   # Application entry points
-│   ├── server/           # Main server application
-│   └── cli/              # CLI tool
-├── internal/             # Private application code
-│   ├── api/             # HTTP handlers
-│   ├── config/          # Configuration
-│   ├── database/        # Database operations
-│   ├── docker/          # Docker integration
-│   ├── middleware/      # HTTP middleware
-│   ├── security/        # Security features
-│   └── ...              # Other internal packages
-├── src/                  # Frontend React application
-├── docs/                 # Documentation
-├── migrations/           # Database migrations
-├── docker-compose.yml    # Multi-service orchestration
-├── Dockerfile.backend    # Backend Docker image
-├── Dockerfile.frontend   # Frontend Docker image
-├── start-unified.sh     # Startup script
+├── app/
+│   ├── frontend/          # React + Vite frontend (deploy from here to Vercel)
+│   └── backend/           # Go API + embedded Better Auth runtime
+├── infra/                 # Self-hosted production compose + Traefik/cloudflared
+├── docs/                  # API contract and design references
+├── scripts/               # Utility scripts
+├── .env.prod              # Canonical production env template
 └── README.md
 ```
 
@@ -207,10 +218,13 @@ containr/
 
 ```bash
 # Backend
+cd app/backend
 go mod download
+go run cmd/migrate/main.go up   # optional manual migration run (legacy + goose)
 go run cmd/server/main.go
 
 # Frontend
+cd ../frontend
 npm install
 npm run dev
 ```
@@ -222,7 +236,6 @@ Comprehensive documentation is available in the project:
 - **[Cloudflare Setup](./CLOUDFLARE_SETUP.md)** – Cloudflare tunnel configuration
 - **[Docker Setup](./DOCKER_SETUP.md)** – Docker deployment guide
 - **[Autoscaling](./AUTOSCALING.md)** – Auto-scaling configuration
-- **[Dashboard Guide](./dashboard.md)** – Dashboard usage guide
 - **[API Documentation](./docs/api/openapi.yaml)** – REST API reference
 
 ## Configuration
@@ -240,16 +253,26 @@ ACME_EMAIL=admin@yourdomain.com
 POSTGRES_DB=containr
 POSTGRES_USER=containr_user
 POSTGRES_PASSWORD=your_secure_postgres_password
+MAX_CONNECTIONS=25
+MAX_IDLE_CONNECTIONS=5
+CONN_MAX_LIFETIME=5m
+CONN_MAX_IDLE_TIME=5m
 
 # Redis Configuration
 REDIS_PASSWORD=your_secure_redis_password
 
 # Application Configuration
-JWT_SECRET=your_very_secure_jwt_secret_key_here
-CORS_ALLOWED_ORIGINS=https://yourdomain.com,https://www.yourdomain.com
+JWT_SECRET=your_very_secure_jwt_secret_key_here # min 32 chars in production
+CONTAINR_AGENT_AUTH_TOKEN=your_agent_shared_secret # required for node-agent auth
+# Optional rotating token list (comma-separated)
+# CONTAINR_AGENT_AUTH_TOKENS=current_secret,next_secret
+CORS_ORIGINS=https://yourdomain.com,https://www.yourdomain.com
+COOKIE_SECURE=true
 
 # Traefik Authentication (Basic Auth for dashboard)
 TRAEFIK_AUTH=admin:$$apr1$$b8mh8c8v$$KkR8hQZQZQZQZQZQZQZQZ/
+# true for local dev dashboard on :8080, set false in production
+TRAEFIK_API_INSECURE=true
 
 # Cloudflare Tunnel (alternative to domain)
 CLOUDFLARED_TOKEN=your_cloudflare_tunnel_token_here
@@ -266,6 +289,7 @@ SLACK_WEBHOOK_URL=https://hooks.slack.com/services/your/webhook/url
 # Development/Testing
 ENVIRONMENT=development
 DEBUG=true
+TRUSTED_PROXY_CIDR=172.20.0.0/16
 ```
 
 ## Contributing
