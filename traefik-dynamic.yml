@@ -1,0 +1,117 @@
+# Traefik Dynamic Configuration
+http:
+  middlewares:
+    secureHeaders:
+      headers:
+        customRequestHeaders:
+          X-Forwarded-Proto: "https"
+        customResponseHeaders:
+          X-Content-Type-Options: "nosniff"
+          X-Frame-Options: "DENY"
+          X-XSS-Protection: "1; mode=block"
+          Referrer-Policy: "strict-origin-when-cross-origin"
+          Permissions-Policy: "camera=(), microphone=(), geolocation=()"
+        contentTypeNosniff: true
+        browserXssFilter: true
+        forceSTSHeader: true
+        stsIncludeSubdomains: true
+        stsPreload: true
+        stsSeconds: 31536000
+
+    cors-headers:
+      headers:
+        accessControlAllowCredentials: true
+        accessControlAllowHeaders:
+          - "Content-Type"
+          - "Authorization"
+          - "X-Requested-With"
+        accessControlAllowMethods:
+          - "GET"
+          - "POST"
+          - "PUT"
+          - "DELETE"
+          - "OPTIONS"
+        accessControlAllowOriginList:
+          - "https://${DOMAIN}"
+          - "https://www.${DOMAIN}"
+        accessControlMaxAge: 86400
+
+    rateLimit:
+      rateLimit:
+        average: 100
+        burst: 50
+        period: "1m"
+
+    compress:
+      compress:
+        excludedContentTypes:
+          - "text/event-stream"
+        minResponseBodyBytes: 1024
+
+  routers:
+    traefik-dashboard:
+      rule: "Host(`traefik.${DOMAIN}`)"
+      service: "api@internal"
+      entryPoints:
+        - "websecure"
+      middlewares:
+        - "secureHeaders"
+        - "traefik-auth"
+      tls:
+        certResolver: "myresolver"
+
+    frontend-router:
+      rule: "Host(`${DOMAIN}`) || Host(`www.${DOMAIN}`)"
+      service: "frontend-service"
+      entryPoints:
+        - "websecure"
+      middlewares:
+        - "secureHeaders"
+        - "compress"
+      tls:
+        certResolver: "myresolver"
+
+    backend-router:
+      rule: "Host(`api.${DOMAIN}`)"
+      service: "backend-service"
+      entryPoints:
+        - "websecure"
+      middlewares:
+        - "secureHeaders"
+        - "cors-headers"
+        - "rateLimit"
+        - "compress"
+      tls:
+        certResolver: "myresolver"
+
+  services:
+    frontend-service:
+      loadBalancer:
+        servers:
+          - url: "http://frontend:80"
+        passHostHeader: true
+
+    backend-service:
+      loadBalancer:
+        servers:
+          - url: "http://backend:8080"
+        passHostHeader: true
+        healthCheck:
+          path: "/health"
+          interval: "30s"
+          timeout: "5s"
+
+tls:
+  options:
+    default:
+      minVersion: "VersionTLS12"
+      cipherSuites:
+        - "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
+        - "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305"
+        - "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"
+        - "TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA"
+        - "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA"
+      sniStrict: true
+      curvePreferences:
+        - "CurveP521"
+        - "CurveP384"
