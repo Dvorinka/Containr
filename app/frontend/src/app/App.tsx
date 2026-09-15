@@ -63,11 +63,11 @@ export default function App() {
             <Route path="/people" element={<PeoplePage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/docs" element={<DocsPage />} />
-            
-            {/* Enhanced Dashboard & Showcase */}
-            <Route path="/metrics-demo" element={<ServiceMetricsDashboard />} />
             <Route path="/showcase" element={<ComponentShowcase />} />
           </Route>
+
+          {/* Full-bleed design demo — renders its own chrome, no app shell */}
+          <Route path="/metrics-demo" element={<ServiceMetricsDashboard />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/projects" replace />} />

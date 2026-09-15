@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, ArrowRight, Github, Loader2, Mail, User2 } from 'lucide-react';
+import { AlertCircle, ArrowRight, Github, Globe, Layers, Loader2, Mail, ScrollText, User2, Zap } from 'lucide-react';
+import { LineAreaChart, DonutChart } from '@/shared/components';
 import {
   AuthError,
   getAuthBootstrap,
@@ -32,40 +33,62 @@ function buildOAuthCallbackURL(path: string): string {
 }
 
 function AuthCanvas() {
-  const bars = [32, 44, 28, 60, 52, 64, 36, 48, 54, 72, 66, 78];
+  const features = [
+    { icon: Zap, title: 'Instant deploys', body: 'Images or Git repositories to running containers.' },
+    { icon: Globe, title: 'Domains & routing', body: 'Traefik-managed endpoints per service.' },
+    { icon: ScrollText, title: 'Logs & metrics', body: 'Live container telemetry and log streams.' },
+    { icon: Layers, title: 'Project canvas', body: 'Services, groups, and dependencies on one map.' },
+  ];
+  const previewSparkline = [18, 22, 19, 31, 28, 42, 38, 51, 47, 58, 52, 64];
 
   return (
     <div className="relative hidden border-r border-[var(--border-subtle)] bg-[var(--bg-base)]/70 backdrop-blur-2xl xl:flex xl:w-[46%]">
       <div className="absolute inset-0 bg-[#e8316a]/10" />
       <div className="relative z-10 flex h-full w-full flex-col justify-between p-10">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">Containr Access</p>
-          <h1 className="mt-3 font-headline text-4xl font-semibold leading-tight text-[var(--text-primary)]">
-            Secure Sessions,
+          <div className="flex items-center gap-3">
+            <img src="/containr.svg" alt="Containr" className="h-9 w-9" />
+            <span className="text-lg font-bold tracking-tight text-[var(--text-primary)]">Containr</span>
+          </div>
+          <h1 className="mt-8 font-headline text-4xl font-semibold leading-tight text-[var(--text-primary)]">
+            Your containers,
             <br />
-            Better Auth
+            one platform.
           </h1>
           <p className="mt-4 max-w-md text-sm leading-relaxed text-[var(--text-secondary)]">
-            Email/password plus GitHub and Google sign-in run through secure cookie sessions. First account bootstraps platform ownership; every later user is created from inside Containr.
+            Self-hosted deployment platform. Projects, services, builds, and live telemetry — owned end to end.
           </p>
+
+          <div className="mt-8 grid grid-cols-2 gap-3">
+            {features.map((feature) => (
+              <div key={feature.title} className="flex items-start gap-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-card)]/60 p-3">
+                <div className="card-icon shrink-0" style={{ width: 30, height: 30 }}>
+                  <feature.icon size={14} />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-[var(--text-primary)]">{feature.title}</p>
+                  <p className="mt-0.5 text-[11px] leading-snug text-[var(--text-tertiary)]">{feature.body}</p>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="panel p-5">
           <div className="mb-4 flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">Auth Health</p>
-            <span className="flex items-center gap-2 text-xs text-[var(--success)]">
-              <span className="live-pulse h-2 w-2 rounded-full bg-[var(--success)]" />
-              Live
-            </span>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">Platform Preview</p>
+            <span className="badge-active"><span className="live-dot" />Active</span>
           </div>
-          <div className="grid grid-cols-12 items-end gap-1.5">
-            {bars.map((height, index) => (
-              <div
-                key={`bar-${index}`}
-                className="rounded-sm"
-                style={{ height: `${height}px`, background: '#e8316a' }}
-              />
-            ))}
+          <div className="flex items-end gap-5">
+            <div className="flex-1">
+              <p className="text-2xl font-black tracking-tight text-[var(--text-primary)]">api-gateway</p>
+              <p className="mb-2 text-xs text-[var(--text-tertiary)]">3 instances · deployed 4m ago</p>
+              <LineAreaChart data={previewSparkline} color="#e8316a" height={64} />
+            </div>
+            <div className="shrink-0 pb-1">
+              <DonutChart percentage={64} color="#9c7ef0" size={110} thickness={12} animated={false} />
+              <p className="-mt-1 text-center text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Memory</p>
+            </div>
           </div>
         </div>
       </div>
@@ -83,9 +106,13 @@ function AuthCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="w-full max-w-[520px] rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--surface-card)]/92 p-7 shadow-2xl shadow-black/35 backdrop-blur-xl md:p-8">
-      <div className="mb-6">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--text-muted)]">Containr</p>
+    <div className="w-full max-w-[460px] rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--surface-card)]/92 p-7 shadow-2xl shadow-black/35 backdrop-blur-xl md:p-8">
+      <div className="mb-7">
+        <div className="mb-5 flex items-center gap-2.5 xl:hidden">
+          <img src="/containr.svg" alt="Containr" className="h-8 w-8" />
+          <span className="text-base font-bold tracking-tight text-[var(--text-primary)]">Containr</span>
+        </div>
+        <p className="hidden text-xs font-semibold uppercase tracking-[0.2em] text-[var(--text-muted)] xl:block">Containr</p>
         <h2 className="mt-2 font-headline text-2xl font-semibold text-[var(--text-primary)]">{title}</h2>
         <p className="mt-2 text-sm text-[var(--text-secondary)]">{subtitle}</p>
       </div>
@@ -231,7 +258,11 @@ export function SignInPage() {
           </button>
         </form>
 
-        <div className="my-5 h-px bg-[var(--border-subtle)]" />
+        <div className="my-5 flex items-center gap-3">
+          <div className="h-px flex-1 bg-[var(--border-subtle)]" />
+          <span className="text-[11px] uppercase tracking-wider text-[var(--text-muted)]">or continue with</span>
+          <div className="h-px flex-1 bg-[var(--border-subtle)]" />
+        </div>
 
         <div className="grid gap-2 sm:grid-cols-2">
           <button
