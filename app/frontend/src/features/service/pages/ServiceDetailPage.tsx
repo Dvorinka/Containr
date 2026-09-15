@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
@@ -14,6 +14,7 @@ import {
 } from '@/lib/api-client';
 import { getDemoProjectById, getDemoServiceById } from '@/lib/demo-data';
 import { formatBytes, formatDate, formatRelative, seededMetric } from '@/lib/time';
+import { EnhancedMetricCard, LineAreaChart, DonutChart } from '@/shared/components';
 import {
   Activity,
   FileText,
@@ -42,25 +43,13 @@ const sectionItems: Array<{ key: ServiceSection; label: string; icon: typeof Act
   { key: 'settings', label: 'Settings', icon: Settings },
 ];
 
-function MetricCard({ label, value, hint, icon: Icon, trend }: { label: string; value: string; hint: string; icon: typeof Cpu; trend?: 'up' | 'down' | 'stable' }) {
-  return (
-    <div className="panel p-4">
-      <div className="flex items-center justify-between mb-3">
-        <div className="w-8 h-8 rounded-[var(--radius-sm)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
-          <Icon size={16} className="text-[var(--accent-primary)]" />
-        </div>
-        {trend && (
-          <div className={`text-xs ${trend === 'up' ? 'text-[var(--success)]' : trend === 'down' ? 'text-[var(--error)]' : 'text-[var(--text-tertiary)]'}`}>
-            {trend === 'up' ? '↑' : trend === 'down' ? '↓' : '→'}
-          </div>
-        )}
-      </div>
-      <p className="text-2xl font-semibold text-[var(--text-primary)]">{value}</p>
-      <p className="text-xs text-[var(--text-muted)] mt-1">{label}</p>
-      <p className="text-[10px] text-[var(--text-tertiary)] mt-0.5">{hint}</p>
-    </div>
-  );
+function metricStatus(percent: number): 'good' | 'average' | 'warning' {
+  if (percent < 50) return 'good';
+  if (percent < 80) return 'average';
+  return 'warning';
 }
+
+const statusLabel = { good: 'Good', average: 'Average', warning: 'High' } as const;
 
 function StatusBadge({ status }: { status: string }) {
   const config = {
@@ -176,7 +165,8 @@ export function ServiceDetailPage() {
   });
 
   // Accumulate live samples into a small history for the timeline charts.
-  const [metricHistory, setMetricHistory] = useState<{ cpu: number[]; memory: number[] }>({ cpu: [], memory: [] });
+  const [metricHistory, setMetricHistory] = useState<{ cpu: number[]; memory: number[]; net: number[] }>({ cpu: [], memory: [], net: [] });
+  const lastNetSampleRef = useRef<{ rx: number; at: number } | null>(null);
   useEffect(() => {
     const sample = metricsQuery.data;
     if (!sample || sample.status !== 'ok') {
@@ -185,10 +175,18 @@ export function ServiceDetailPage() {
     const memPercent = sample.memory_limit_bytes > 0
       ? (sample.memory_usage_bytes / sample.memory_limit_bytes) * 100
       : 0;
+    const now = Date.now();
+    const previous = lastNetSampleRef.current;
+    const elapsedSec = previous ? Math.max(1, (now - previous.at) / 1000) : 0;
+    const rxRate = previous && elapsedSec > 0
+      ? Math.max(0, (sample.network_rx_bytes - previous.rx) / elapsedSec)
+      : 0;
+    lastNetSampleRef.current = { rx: sample.network_rx_bytes, at: now };
     // eslint-disable-next-line react-hooks/set-state-in-effect -- accumulating polled samples is a legitimate sync-to-external pattern
     setMetricHistory((prev) => ({
       cpu: [...prev.cpu, Math.min(100, sample.cpu_percent)].slice(-24),
       memory: [...prev.memory, Math.min(100, memPercent)].slice(-24),
+      net: [...prev.net, rxRate].slice(-24),
     }));
   }, [metricsQuery.data]);
 
@@ -394,31 +392,70 @@ export function ServiceDetailPage() {
       {/* Metrics Overview */}
       <div className="mx-auto w-full max-w-[1400px] px-6 py-6">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <MetricCard 
-            label="CPU" 
-            value={isDemoMode ? `${metricSet?.cpu ?? 0}%` : hasLiveTelemetry ? `${liveMetrics!.cpu_percent.toFixed(1)}%` : '—'} 
-            hint={isDemoMode ? 'Current utilization' : hasLiveTelemetry ? `${runningInstances} running container${runningInstances === 1 ? '' : 's'}` : 'No running containers'} 
-            icon={Cpu}
-            trend={hasLiveTelemetry && liveMetrics!.cpu_percent > 60 ? 'up' : 'stable'}
+          <EnhancedMetricCard
+            title="CPU Usage"
+            icon={<Cpu size={18} />}
+            value={isDemoMode ? `${metricSet?.cpu ?? 0}%` : hasLiveTelemetry ? `${liveMetrics!.cpu_percent.toFixed(1)}%` : '—'}
+            status={metricStatus(isDemoMode ? metricSet?.cpu ?? 0 : liveMetrics?.cpu_percent ?? 0)}
+            statusText={isDemoMode || hasLiveTelemetry ? statusLabel[metricStatus(isDemoMode ? metricSet?.cpu ?? 0 : liveMetrics?.cpu_percent ?? 0)] : ''}
+            subtitle={isDemoMode ? 'Current utilization' : hasLiveTelemetry ? `${runningInstances} running container${runningInstances === 1 ? '' : 's'}` : 'No running containers'}
+            chart={
+              <LineAreaChart
+                data={isDemoMode
+                  ? Array.from({ length: 24 }, (_, i) => seededMetric(`${service.id}:cpu:${i}`, 8, 80))
+                  : metricHistory.cpu.length > 0 ? metricHistory.cpu : [0]}
+                color="#ff7043"
+                height={72}
+              />
+            }
           />
-          <MetricCard 
-            label="Memory" 
-            value={isDemoMode ? `${metricSet?.memory ?? 0}%` : hasLiveTelemetry ? formatBytes(liveMetrics!.memory_usage_bytes) : '—'} 
-            hint={isDemoMode ? 'Container footprint' : hasLiveTelemetry ? `${memoryPercent.toFixed(0)}% of ${formatBytes(liveMetrics!.memory_limit_bytes)}` : 'No running containers'} 
-            icon={MemoryStick}
-            trend={hasLiveTelemetry && memoryPercent > 70 ? 'up' : 'stable'}
+          <EnhancedMetricCard
+            title="Memory"
+            icon={<MemoryStick size={18} />}
+            value={isDemoMode ? `${metricSet?.memory ?? 0}%` : hasLiveTelemetry ? `${memoryPercent.toFixed(0)}%` : '—'}
+            status={metricStatus(isDemoMode ? metricSet?.memory ?? 0 : memoryPercent)}
+            statusText={isDemoMode || hasLiveTelemetry ? statusLabel[metricStatus(isDemoMode ? metricSet?.memory ?? 0 : memoryPercent)] : ''}
+            subtitle={isDemoMode ? 'Container footprint' : hasLiveTelemetry ? `${formatBytes(liveMetrics!.memory_usage_bytes)} used` : 'No running containers'}
+            chart={
+              <div className="relative mx-auto" style={{ width: 150 }}>
+                <DonutChart percentage={isDemoMode ? metricSet?.memory ?? 0 : memoryPercent} color="#9c7ef0" size={150} thickness={14} />
+                <div className="absolute inset-x-0 bottom-0 text-center">
+                  <div className="text-[10px] uppercase tracking-wide text-[#6b6e7d]">Used</div>
+                  <div className="text-sm font-bold text-[#e8e9f0]">
+                    {isDemoMode
+                      ? `${((8 * (metricSet?.memory ?? 0)) / 100).toFixed(1)} GB / 8 GB`
+                      : hasLiveTelemetry
+                        ? `${formatBytes(liveMetrics!.memory_usage_bytes)} / ${formatBytes(liveMetrics!.memory_limit_bytes)}`
+                        : '—'}
+                  </div>
+                </div>
+              </div>
+            }
           />
-          <MetricCard 
-            label="Network" 
-            value={isDemoMode ? `${metricSet?.req ?? 0}` : hasLiveTelemetry ? `${formatBytes(liveMetrics!.network_rx_bytes)}` : '—'} 
-            hint={isDemoMode ? 'Requests, last 60 minutes' : hasLiveTelemetry ? `RX total · TX ${formatBytes(liveMetrics!.network_tx_bytes)}` : 'No traffic recorded'} 
-            icon={Zap}
+          <EnhancedMetricCard
+            title="Network"
+            icon={<Zap size={18} />}
+            value={isDemoMode ? `${metricSet?.req ?? 0}` : hasLiveTelemetry ? formatBytes(liveMetrics!.network_rx_bytes) : '—'}
+            status="good"
+            statusText={isDemoMode || hasLiveTelemetry ? 'RX' : ''}
+            subtitle={isDemoMode ? 'Requests, last 60 minutes' : hasLiveTelemetry ? `TX ${formatBytes(liveMetrics!.network_tx_bytes)}` : 'No traffic recorded'}
+            chart={
+              <LineAreaChart
+                data={isDemoMode
+                  ? Array.from({ length: 24 }, (_, i) => seededMetric(`${service.id}:net:${i}`, 15, 70))
+                  : metricHistory.net.length > 0 ? metricHistory.net : [0]}
+                color="#6c8ef0"
+                height={72}
+              />
+            }
           />
-          <MetricCard 
-            label="Instances" 
-            value={isDemoMode ? `${metricSet?.latency ?? 0}ms` : hasLiveTelemetry ? `${runningInstances}` : '0'} 
-            hint={isDemoMode ? 'P95 latency estimate' : hasLiveTelemetry ? `${liveMetrics!.instances.length} container${liveMetrics!.instances.length === 1 ? '' : 's'} discovered` : 'Deploy to create containers'} 
-            icon={Timer}
+          <EnhancedMetricCard
+            title="Instances"
+            icon={<Timer size={18} />}
+            value={isDemoMode ? `${metricSet?.latency ?? 0}ms` : hasLiveTelemetry ? `${runningInstances}` : '0'}
+            statusText={hasLiveTelemetry || isDemoMode ? 'Running' : ''}
+            status="good"
+            subtitle={isDemoMode ? 'P95 latency estimate' : hasLiveTelemetry ? `${liveMetrics!.instances.length} container${liveMetrics!.instances.length === 1 ? '' : 's'} discovered` : 'Deploy to create containers'}
           />
         </div>
 

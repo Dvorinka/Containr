@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -19,6 +19,7 @@ import {
 } from '@/lib/api-client';
 import { getAuthBaseUrl, signOutAuthSession } from '@/lib/auth-client';
 import { useBuildUpdates } from '@/lib/use-build-updates';
+import { EnhancedMetricCard, LineAreaChart, DonutChart, SegmentedBar, BarChart } from '@/shared/components';
 import {
   Clock,
   Activity,
@@ -47,6 +48,8 @@ import {
   GitBranch,
   Link2,
   Unlink,
+  Cpu,
+  MemoryStick,
 } from 'lucide-react';
 
 function SecondaryPageHeader({ title, description }: { title: string; description: string }) {
@@ -207,6 +210,52 @@ export function UsagePage() {
   const uniqueServices = new Set(builds.map((build) => build.serviceId).filter(Boolean)).size;
   const host = hostQuery.data;
   const agents = agentsQuery.data ?? [];
+
+  // Accumulate host samples for the load sparkline (polled every 15s).
+  const [loadHistory, setLoadHistory] = useState<number[]>([]);
+  useEffect(() => {
+    const sample = hostQuery.data;
+    if (!sample || sample.cpu.cores <= 0) {
+      return;
+    }
+    const loadPercent = Math.min(100, (sample.load.load1m / sample.cpu.cores) * 100);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- accumulating polled samples is a legitimate sync-to-external pattern
+    setLoadHistory((prev) => [...prev, loadPercent].slice(-24));
+  }, [hostQuery.data]);
+
+  const hostLoadPercent = host && host.cpu.cores > 0
+    ? Math.min(100, (host.load.load1m / host.cpu.cores) * 100)
+    : 0;
+
+  const hostStatus = (percent: number): 'good' | 'average' | 'warning' =>
+    percent < 50 ? 'good' : percent < 80 ? 'average' : 'warning';
+
+  // Builds per day over the last 14 days, normalized to bar heights.
+  // Anchored on the newest build timestamp so the chart is render-pure.
+  const buildsPerDay = useMemo(() => {
+    const days = 14;
+    const counts = new Array<number>(days).fill(0);
+    const timestamps = (buildsQuery.data?.builds ?? [])
+      .map((build) => new Date((build.startedAt ?? build.completedAt) as string).getTime())
+      .filter((t) => Number.isFinite(t));
+    if (timestamps.length === 0) {
+      return counts;
+    }
+    const anchor = Math.max(...timestamps);
+    (buildsQuery.data?.builds ?? []).forEach((build) => {
+      const timestamp = build.startedAt ?? build.completedAt;
+      if (!timestamp) {
+        return;
+      }
+      const created = new Date(timestamp).getTime();
+      const dayIndex = days - 1 - Math.floor((anchor - created) / 86_400_000);
+      if (dayIndex >= 0 && dayIndex < days) {
+        counts[dayIndex] += 1;
+      }
+    });
+    const peak = Math.max(...counts, 1);
+    return counts.map((count) => (count / peak) * 100);
+  }, [buildsQuery.data]);
   const onlineAgents = agents.filter((agent) => agent.status === 'online' || agent.status === 'connecting').length;
   const totalAgentMemory = agents.reduce((sum, agent) => sum + agent.resources.memory.total, 0);
   const availableAgentMemory = agents.reduce((sum, agent) => sum + agent.resources.memory.available, 0);
@@ -276,26 +325,30 @@ containr-agent`;
         ) : (
           <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <StatCard
+              <EnhancedMetricCard
                 title="Runtime Hours"
                 value={totalBuildHours > 0 ? `${totalBuildHours.toFixed(1)}h` : '—'}
-                description={runtimeBody}
-                icon={Clock}
-                color={completedDurationsMs.length > 0 ? 'success' : 'default'}
+                statusText={completedDurationsMs.length > 0 ? 'Active' : ''}
+                status="good"
+                subtitle={runtimeBody}
+                icon={<Clock size={18} />}
               />
-              <StatCard
+              <EnhancedMetricCard
                 title="Build Activity"
                 value={String(builds.length)}
-                description={buildActivityBody}
-                icon={Activity}
-                color={failedBuilds > 0 ? 'warning' : 'success'}
+                status={failedBuilds > 0 ? 'average' : 'good'}
+                statusText={failedBuilds > 0 ? `${failedBuilds} failed` : 'Healthy'}
+                subtitle={buildActivityBody}
+                icon={<Activity size={18} />}
+                chart={<BarChart data={buildsPerDay} color="#e8316a" height={72} gap={3} />}
               />
-              <StatCard
+              <EnhancedMetricCard
                 title="Capacity"
                 value={String(activeBuildPressure)}
-                description={capacityBody}
-                icon={Gauge}
-                color={activeBuildPressure > 0 ? 'warning' : 'default'}
+                status={activeBuildPressure > 0 ? 'average' : 'good'}
+                statusText={activeBuildPressure > 0 ? 'Busy' : 'Idle'}
+                subtitle={capacityBody}
+                icon={<Gauge size={18} />}
               />
             </div>
 
@@ -307,7 +360,11 @@ containr-agent`;
                   </div>
                   <div>
                     <h2 className="text-lg font-semibold text-[var(--text-primary)]">Host Monitoring</h2>
-                    <p className="text-xs text-[var(--text-tertiary)]">Autoscaling base signal from this Containr host.</p>
+                    <p className="text-xs text-[var(--text-tertiary)]">
+                      {host
+                        ? `${host.hostname} · ${host.os}/${host.architecture} · uptime ${formatUptime(host.uptimeSeconds)}${host.dockerAvailable ? '' : ' · Docker unavailable'}`
+                        : 'Autoscaling base signal from this Containr host.'}
+                    </p>
                   </div>
                 </div>
                 <button
@@ -327,34 +384,57 @@ containr-agent`;
                   Host monitoring unavailable.
                 </div>
               ) : (
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-                  <StatCard
-                    title="Host"
-                    value={host?.hostname || '—'}
-                    description={host ? `${host.os}/${host.architecture} · uptime ${formatUptime(host.uptimeSeconds)}` : 'Loading host identity.'}
-                    icon={Server}
-                    color={host?.dockerAvailable ? 'success' : 'warning'}
-                  />
-                  <StatCard
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                  <EnhancedMetricCard
                     title="CPU Load"
+                    icon={<Cpu size={18} />}
                     value={host ? host.load.load1m.toFixed(2) : '—'}
-                    description={host ? `${host.cpu.cores} cores · 5m ${host.load.load5m.toFixed(2)} · 15m ${host.load.load15m.toFixed(2)}` : 'Loading CPU load.'}
-                    icon={Gauge}
-                    color={host && host.load.load1m > host.cpu.cores ? 'warning' : 'default'}
+                    status={hostStatus(hostLoadPercent)}
+                    statusText={host ? { good: 'Good', average: 'Average', warning: 'High' }[hostStatus(hostLoadPercent)] : ''}
+                    subtitle={host ? `${host.cpu.cores} cores · 5m ${host.load.load5m.toFixed(2)} · 15m ${host.load.load15m.toFixed(2)}` : 'Loading CPU telemetry.'}
+                    chart={<LineAreaChart data={loadHistory.length > 0 ? loadHistory : [0]} color="#ff7043" height={72} />}
                   />
-                  <StatCard
+                  <EnhancedMetricCard
                     title="Memory"
+                    icon={<MemoryStick size={18} />}
                     value={host ? `${host.memory.usagePercent.toFixed(0)}%` : '—'}
-                    description={host ? `${formatBytes(host.memory.used)} used · ${formatBytes(host.memory.available)} free` : 'Loading memory telemetry.'}
-                    icon={Activity}
-                    color={host && host.memory.usagePercent > 80 ? 'warning' : 'success'}
+                    status={hostStatus(host?.memory.usagePercent ?? 0)}
+                    statusText={host ? { good: 'Good', average: 'Average', warning: 'High' }[hostStatus(host.memory.usagePercent)] : ''}
+                    subtitle={host ? `${formatBytes(host.memory.available)} free` : 'Loading memory telemetry.'}
+                    chart={
+                      <div className="relative mx-auto" style={{ width: 150 }}>
+                        <DonutChart percentage={host?.memory.usagePercent ?? 0} color="#9c7ef0" size={150} thickness={14} />
+                        <div className="absolute inset-x-0 bottom-0 text-center">
+                          <div className="text-[10px] uppercase tracking-wide text-[#6b6e7d]">Used</div>
+                          <div className="text-sm font-bold text-[#e8e9f0]">
+                            {host ? `${formatBytes(host.memory.used)} / ${formatBytes(host.memory.total)}` : '—'}
+                          </div>
+                        </div>
+                      </div>
+                    }
                   />
-                  <StatCard
+                  <EnhancedMetricCard
                     title="Disk"
+                    icon={<HardDrive size={18} />}
                     value={host ? `${host.storage.usagePercent.toFixed(0)}%` : '—'}
-                    description={host ? `${formatBytes(host.storage.used)} used · ${formatBytes(host.storage.available)} free on ${host.storage.path}` : 'Loading disk telemetry.'}
-                    icon={HardDrive}
-                    color={host && host.storage.usagePercent > 80 ? 'warning' : 'success'}
+                    status={hostStatus(host?.storage.usagePercent ?? 0)}
+                    statusText={host ? { good: 'Good', average: 'Average', warning: 'High' }[hostStatus(host.storage.usagePercent)] : ''}
+                    subtitle={host ? `Mounted at ${host.storage.path}` : 'Loading disk telemetry.'}
+                    chart={
+                      <div>
+                        <SegmentedBar
+                          segments={[
+                            { width: host?.storage.usagePercent ?? 0, color: '#ff8a5c' },
+                            { width: Math.max(2, 100 - (host?.storage.usagePercent ?? 0)), color: 'rgba(255,255,255,0.07)' },
+                          ]}
+                          height={18}
+                        />
+                        <div className="mt-3 flex items-center gap-4 text-xs text-[#6b6e7d]">
+                          <span><span className="mr-1.5 inline-block h-2 w-2 rounded-full" style={{ background: '#ff8a5c' }} />{host ? `${formatBytes(host.storage.used)} used` : '—'}</span>
+                          <span><span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-white/10" />{host ? `${formatBytes(host.storage.available)} free` : '—'}</span>
+                        </div>
+                      </div>
+                    }
                   />
                 </div>
               )}
