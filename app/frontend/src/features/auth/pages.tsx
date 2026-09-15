@@ -2,8 +2,7 @@ import { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, ArrowRight, Github, Globe, Layers, Loader2, Mail, ScrollText, User2, Zap } from 'lucide-react';
-import { LineAreaChart, DonutChart } from '@/shared/components';
+import { AlertCircle, ArrowRight, Github, Loader2, Mail, User2 } from 'lucide-react';
 import {
   AuthError,
   getAuthBootstrap,
@@ -32,67 +31,14 @@ function buildOAuthCallbackURL(path: string): string {
   return `${window.location.origin}${cleanPath}`;
 }
 
-function AuthCanvas() {
-  const features = [
-    { icon: Zap, title: 'Instant deploys', body: 'Images or Git repositories to running containers.' },
-    { icon: Globe, title: 'Domains & routing', body: 'Traefik-managed endpoints per service.' },
-    { icon: ScrollText, title: 'Logs & metrics', body: 'Live container telemetry and log streams.' },
-    { icon: Layers, title: 'Project canvas', body: 'Services, groups, and dependencies on one map.' },
-  ];
-  const previewSparkline = [18, 22, 19, 31, 28, 42, 38, 51, 47, 58, 52, 64];
-
+function GoogleMark() {
   return (
-    <div className="relative hidden border-r border-[var(--border-subtle)] bg-[var(--bg-base)]/70 backdrop-blur-2xl xl:flex xl:w-[46%]">
-      <div className="absolute inset-0 bg-[#e8316a]/10" />
-      <div className="relative z-10 flex h-full w-full flex-col justify-between p-10">
-        <div>
-          <div className="flex items-center gap-3">
-            <img src="/containr.svg" alt="Containr" className="h-9 w-9" />
-            <span className="text-lg font-bold tracking-tight text-[var(--text-primary)]">Containr</span>
-          </div>
-          <h1 className="mt-8 font-headline text-4xl font-semibold leading-tight text-[var(--text-primary)]">
-            Your containers,
-            <br />
-            one platform.
-          </h1>
-          <p className="mt-4 max-w-md text-sm leading-relaxed text-[var(--text-secondary)]">
-            Self-hosted deployment platform. Projects, services, builds, and live telemetry — owned end to end.
-          </p>
-
-          <div className="mt-8 grid grid-cols-2 gap-3">
-            {features.map((feature) => (
-              <div key={feature.title} className="flex items-start gap-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-card)]/60 p-3">
-                <div className="card-icon shrink-0" style={{ width: 30, height: 30 }}>
-                  <feature.icon size={14} />
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-[var(--text-primary)]">{feature.title}</p>
-                  <p className="mt-0.5 text-[11px] leading-snug text-[var(--text-tertiary)]">{feature.body}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="panel p-5">
-          <div className="mb-4 flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">Platform Preview</p>
-            <span className="badge-active"><span className="live-dot" />Active</span>
-          </div>
-          <div className="flex items-end gap-5">
-            <div className="flex-1">
-              <p className="text-2xl font-black tracking-tight text-[var(--text-primary)]">api-gateway</p>
-              <p className="mb-2 text-xs text-[var(--text-tertiary)]">3 instances · deployed 4m ago</p>
-              <LineAreaChart data={previewSparkline} color="#e8316a" height={64} />
-            </div>
-            <div className="shrink-0 pb-1">
-              <DonutChart percentage={64} color="#9c7ef0" size={110} thickness={12} animated={false} />
-              <p className="-mt-1 text-center text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Memory</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    <svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1Z"/>
+      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23Z"/>
+      <path fill="#FBBC05" d="M5.84 14.1a6.6 6.6 0 0 1 0-4.2V7.06H2.18a11 11 0 0 0 0 9.88l3.66-2.84Z"/>
+      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.46 2.09 14.97 1 12 1A11 11 0 0 0 2.18 7.06l3.66 2.84C6.71 7.3 9.14 5.38 12 5.38Z"/>
+    </svg>
   );
 }
 
@@ -106,28 +52,35 @@ function AuthCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="w-full max-w-[460px] rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--surface-card)]/92 p-7 shadow-2xl shadow-black/35 backdrop-blur-xl md:p-8">
-      <div className="mb-7">
-        <div className="mb-5 flex items-center gap-2.5 xl:hidden">
-          <img src="/containr.svg" alt="Containr" className="h-8 w-8" />
-          <span className="text-base font-bold tracking-tight text-[var(--text-primary)]">Containr</span>
-        </div>
-        <p className="hidden text-xs font-semibold uppercase tracking-[0.2em] text-[var(--text-muted)] xl:block">Containr</p>
-        <h2 className="mt-2 font-headline text-2xl font-semibold text-[var(--text-primary)]">{title}</h2>
-        <p className="mt-2 text-sm text-[var(--text-secondary)]">{subtitle}</p>
+    <div className="w-full max-w-[400px]">
+      <div className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--surface-card)]/95 p-8 shadow-2xl shadow-black/50 backdrop-blur-xl">
+        <h2 className="font-headline text-xl font-semibold text-[var(--text-primary)]">{title}</h2>
+        <p className="mb-6 mt-1.5 text-sm text-[var(--text-secondary)]">{subtitle}</p>
+        {children}
       </div>
-      {children}
     </div>
   );
 }
 
 function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-[var(--bg-void)]">
+    <div className="relative min-h-screen overflow-hidden bg-[var(--bg-void)]">
+      <div className="subtle-grid absolute inset-0" />
       <div className="ambient-glow" />
-      <div className="relative flex min-h-screen">
-        <AuthCanvas />
-        <div className="flex w-full items-center justify-center px-5 py-8 md:px-8">{children}</div>
+      <div
+        className="absolute left-1/2 top-0 h-[420px] w-[720px] -translate-x-1/2 -translate-y-1/2 rounded-full"
+        style={{ background: 'radial-gradient(ellipse at center, rgba(232,49,106,0.16) 0%, transparent 65%)' }}
+      />
+      <div className="relative flex min-h-screen flex-col items-center justify-center px-5 py-10">
+        <div className="mb-8 flex flex-col items-center">
+          <img src="/containr.svg" alt="Containr" className="h-14 w-14" />
+          <span className="mt-4 font-headline text-2xl font-bold tracking-tight text-[var(--text-primary)]">Containr</span>
+          <span className="mt-1 text-xs text-[var(--text-muted)]">Self-hosted container platform</span>
+        </div>
+        {children}
+        <p className="mt-8 text-center text-[11px] text-[var(--text-muted)]">
+          Sessions are cookie-based · first account becomes platform owner
+        </p>
       </div>
     </div>
   );
@@ -278,7 +231,7 @@ export function SignInPage() {
             onClick={() => void signInWithGoogleProvider()}
             className="inline-flex h-10 items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--border-default)]"
           >
-            <span className="text-sm font-semibold">G</span>
+            <GoogleMark />
             Google
           </button>
         </div>
