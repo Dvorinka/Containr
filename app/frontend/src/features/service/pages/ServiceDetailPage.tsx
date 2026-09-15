@@ -302,7 +302,7 @@ export function ServiceDetailPage() {
           style={{ 
             width: '46px', 
             height: '46px', 
-            background: '#e8316a',
+            background: 'var(--accent-primary)',
             marginRight: '14px'
           }}
         >
@@ -379,7 +379,7 @@ export function ServiceDetailPage() {
 
       {/* Demo Mode Banner */}
       {isDemoMode && (
-        <div className="mx-auto w-full max-w-[1400px] px-6 py-4">
+        <div className="w-full px-8 py-4">
           <div className="px-4 py-3 rounded-[var(--radius-md)] border border-[var(--warning-soft)] bg-[var(--warning-soft)]/50">
             <div className="flex items-center gap-2 text-sm text-[var(--warning)]">
               <Sparkles size={16} />
@@ -390,7 +390,7 @@ export function ServiceDetailPage() {
       )}
 
       {/* Metrics Overview */}
-      <div className="mx-auto w-full max-w-[1400px] px-6 py-6">
+      <div className="w-full px-8 py-6">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <EnhancedMetricCard
             title="CPU Usage"
@@ -404,7 +404,7 @@ export function ServiceDetailPage() {
                 data={isDemoMode
                   ? Array.from({ length: 24 }, (_, i) => seededMetric(`${service.id}:cpu:${i}`, 8, 80))
                   : metricHistory.cpu.length > 0 ? metricHistory.cpu : [0]}
-                color="#ff7043"
+                color="#b4e34a"
                 height={72}
               />
             }
@@ -418,7 +418,7 @@ export function ServiceDetailPage() {
             subtitle={isDemoMode ? 'Container footprint' : hasLiveTelemetry ? `${formatBytes(liveMetrics!.memory_usage_bytes)} used` : 'No running containers'}
             chart={
               <div className="relative mx-auto" style={{ width: 150 }}>
-                <DonutChart percentage={isDemoMode ? metricSet?.memory ?? 0 : memoryPercent} color="#9c7ef0" size={150} thickness={14} />
+                <DonutChart percentage={isDemoMode ? metricSet?.memory ?? 0 : memoryPercent} color="#f2c94c" size={150} thickness={14} />
                 <div className="absolute inset-x-0 bottom-0 text-center">
                   <div className="text-[10px] uppercase tracking-wide text-[#6b6e7d]">Used</div>
                   <div className="text-sm font-bold text-[#e8e9f0]">
@@ -444,7 +444,7 @@ export function ServiceDetailPage() {
                 data={isDemoMode
                   ? Array.from({ length: 24 }, (_, i) => seededMetric(`${service.id}:net:${i}`, 15, 70))
                   : metricHistory.net.length > 0 ? metricHistory.net : [0]}
-                color="#6c8ef0"
+                color="#7ab8ff"
                 height={72}
               />
             }
@@ -555,7 +555,7 @@ export function ServiceDetailPage() {
                           <div
                             key={i}
                             className="flex-1 rounded-[var(--radius-xs)] transition-all hover:opacity-80 cursor-pointer"
-                            style={{ height: `${value}%`, background: '#ff7043' }}
+                            style={{ height: `${value}%`, background: '#b4e34a' }}
                             title={`${value}%`}
                           />
                         );
@@ -564,7 +564,7 @@ export function ServiceDetailPage() {
                         <div
                           key={i}
                           className="flex-1 rounded-[var(--radius-xs)] transition-all hover:opacity-80"
-                          style={{ height: `${Math.max(3, value)}%`, background: '#ff7043' }}
+                          style={{ height: `${Math.max(3, value)}%`, background: '#b4e34a' }}
                           title={`${value.toFixed(1)}%`}
                         />
                       ))}
@@ -596,7 +596,7 @@ export function ServiceDetailPage() {
                           <div
                             key={i}
                             className="flex-1 rounded-[var(--radius-xs)] transition-all hover:opacity-80 cursor-pointer"
-                            style={{ height: `${value}%`, background: '#3dd68c' }}
+                            style={{ height: `${value}%`, background: '#5ee6a0' }}
                             title={`${value}%`}
                           />
                         );
@@ -605,7 +605,7 @@ export function ServiceDetailPage() {
                         <div
                           key={i}
                           className="flex-1 rounded-[var(--radius-xs)] transition-all hover:opacity-80"
-                          style={{ height: `${Math.max(3, value)}%`, background: '#3dd68c' }}
+                          style={{ height: `${Math.max(3, value)}%`, background: '#5ee6a0' }}
                           title={`${value.toFixed(1)}%`}
                         />
                       ))}

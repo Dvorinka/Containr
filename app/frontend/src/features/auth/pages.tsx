@@ -69,7 +69,7 @@ function AuthLayout({ children }: { children: React.ReactNode }) {
       <div className="ambient-glow" />
       <div
         className="absolute left-1/2 top-0 h-[420px] w-[720px] -translate-x-1/2 -translate-y-1/2 rounded-full"
-        style={{ background: 'radial-gradient(ellipse at center, rgba(232,49,106,0.16) 0%, transparent 65%)' }}
+        style={{ background: 'radial-gradient(ellipse at center, rgba(180,227,74,0.10) 0%, transparent 65%)' }}
       />
       <div className="relative flex min-h-screen flex-col items-center justify-center px-5 py-10">
         <div className="mb-8 flex flex-col items-center">
@@ -203,8 +203,8 @@ export function SignInPage() {
           <button
             type="submit"
             disabled={isSubmitting || sessionQuery.isPending}
-            className="mt-1 inline-flex h-10 w-full items-center justify-center gap-2 rounded-[var(--radius-md)] text-sm font-semibold text-white shadow-lg transition-all disabled:cursor-not-allowed disabled:opacity-60"
-            style={{ background: '#e8316a' }}
+            className="mt-1 inline-flex h-10 w-full items-center justify-center gap-2 rounded-[var(--radius-md)] text-sm font-semibold text-[var(--accent-on)] shadow-lg transition-all disabled:cursor-not-allowed disabled:opacity-60"
+            style={{ background: 'var(--accent-primary)' }}
           >
             {isSubmitting ? <Loader2 size={15} className="animate-spin" /> : <Mail size={15} />}
             Continue
@@ -336,8 +336,8 @@ export function SignUpPage() {
           <button
             type="submit"
             disabled={isSubmitting || sessionQuery.isPending}
-            className="mt-1 inline-flex h-10 w-full items-center justify-center gap-2 rounded-[var(--radius-md)] text-sm font-semibold text-white shadow-lg transition-all disabled:cursor-not-allowed disabled:opacity-60"
-            style={{ background: '#e8316a' }}
+            className="mt-1 inline-flex h-10 w-full items-center justify-center gap-2 rounded-[var(--radius-md)] text-sm font-semibold text-[var(--accent-on)] shadow-lg transition-all disabled:cursor-not-allowed disabled:opacity-60"
+            style={{ background: 'var(--accent-primary)' }}
           >
             {isSubmitting ? <Loader2 size={15} className="animate-spin" /> : <User2 size={15} />}
             Create Account

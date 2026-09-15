@@ -107,7 +107,7 @@ function toFlowEdges(links: ReturnType<typeof inferAutoConnections>): CanvasEdge
       height: 14,
     },
     style: {
-      stroke: '#e8316a',
+      stroke: 'var(--accent-primary)',
       strokeWidth: 2,
     },
     className: 'edge-premium',
@@ -362,8 +362,8 @@ function CanvasInner({ projectId, services, variablesByService, onAddService, on
         <button
           type="button"
           onClick={onAddService}
-          className="flex items-center gap-2 h-9 px-4 rounded-lg text-white text-sm font-medium shadow-lg hover:shadow-xl transition-all duration-200"
-          style={{ background: '#e8316a' }}
+          className="flex items-center gap-2 h-9 px-4 rounded-lg text-[var(--accent-on)] text-sm font-medium shadow-lg hover:shadow-xl transition-all duration-200"
+          style={{ background: 'var(--accent-primary)' }}
         >
           <Plus size={15} />
           Add Service

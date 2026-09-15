@@ -17,7 +17,7 @@ export function DonutChart({
   percentage,
   size = 160,
   thickness = 16,
-  color = '#9c7ef0',
+  color = '#b4e34a',
   trackColor = 'rgba(255, 255, 255, 0.07)',
   segments = 28,
   gap = 0.048,

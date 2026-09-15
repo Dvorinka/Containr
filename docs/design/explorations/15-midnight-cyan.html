@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>15 — Midnight Cyan</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&display=swap');
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Inter',system-ui,sans-serif; background:#0b0c11; color:#eceef4; display:flex; min-height:100vh; }
+  .mono { font-family:'JetBrains Mono',monospace; }
+  body::before { content:''; position:fixed; inset:0; background:radial-gradient(900px 500px at 70% -10%, rgba(45,212,191,.07), transparent 60%); pointer-events:none; }
+  .rail { width:62px; border-right:1px solid rgba(255,255,255,.05); background:#0e0f14; display:flex; flex-direction:column; align-items:center; padding:16px 0; gap:8px; }
+  .rail .mark { width:38px; height:38px; border-radius:12px; background:linear-gradient(135deg,#2dd4bf,#0d9488); display:flex; align-items:center; justify-content:center; margin-bottom:14px; }
+  .rail .ic { width:40px; height:40px; border-radius:11px; display:flex; align-items:center; justify-content:center; color:#565a68; font-size:16px; }
+  .rail .ic.on { background:rgba(45,212,191,.14); color:#5eead4; }
+  main { flex:1; min-width:0; }
+  .topbar { display:flex; align-items:center; gap:16px; padding:11px 26px; border-bottom:1px solid rgba(255,255,255,.05); }
+  .brand { font-weight:800; font-size:15px; letter-spacing:-.3px; }
+  .brand em { font-style:normal; color:#5eead4; }
+  .search { background:#14151b; border:1px solid rgba(255,255,255,.06); border-radius:10px; padding:7px 14px; color:#6b6e7d; font-size:12px; width:300px; font-family:'JetBrains Mono',monospace; }
+  .search::before { content:'$ '; color:#5eead4; }
+  .topright { margin-left:auto; display:flex; align-items:center; gap:10px; }
+  .pill { font-size:11px; color:#9a9dab; background:#14151b; border:1px solid rgba(255,255,255,.06); border-radius:999px; padding:6px 14px; font-family:'JetBrains Mono',monospace; }
+  .avatar-t { width:32px; height:32px; border-radius:50%; background:linear-gradient(135deg,#2dd4bf,#5c6ef0); display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; }
+  .content { padding:26px; max-width:1240px; }
+  .pagehead { display:flex; align-items:flex-end; justify-content:space-between; margin-bottom:20px; }
+  .pagehead h1 { font-size:22px; font-weight:800; letter-spacing:-.5px; }
+  .pagehead p { font-size:12px; color:#6b6e7d; margin-top:4px; font-family:'JetBrains Mono',monospace; }
+  .btn-primary { background:#2dd4bf; color:#fff; border:none; border-radius:10px; padding:9px 18px; font-size:13px; font-weight:700; box-shadow:0 4px 16px rgba(45,212,191,.35); }
+  .statrow { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:22px; }
+  .stat { background:#12131a; border:1px solid rgba(255,255,255,.06); border-radius:14px; padding:15px 18px; }
+  .stat .k { font-size:10px; color:#6b6e7d; letter-spacing:.14em; font-weight:700; font-family:'JetBrains Mono',monospace; }
+  .stat .v { font-size:26px; font-weight:800; letter-spacing:-.8px; margin-top:6px; }
+  .stat .d { font-size:11px; color:#565a68; margin-top:4px; font-family:'JetBrains Mono',monospace; }
+  .stat .d b { font-weight:600; }
+  .ok{color:#3dd68c}.warn{color:#f0a040}.pink{color:#5eead4}
+  .secttl { font-size:11px; font-weight:700; letter-spacing:.16em; color:#565a68; margin:0 0 12px; font-family:'JetBrains Mono',monospace; }
+  .secttl::before { content:'// '; color:#5eead4; }
+  .projgrid { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:22px; }
+  .proj { background:#12131a; border:1px solid rgba(255,255,255,.06); border-radius:16px; padding:18px; transition:.15s; }
+  .proj:hover { border-color:rgba(45,212,191,.45); transform:translateY(-1px); }
+  .proj .top { display:flex; align-items:center; gap:11px; margin-bottom:14px; }
+  .proj .ic { width:36px; height:36px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:13px; color:#fff; font-family:'JetBrains Mono',monospace; }
+  .proj h3 { font-size:14.5px; font-weight:700; }
+  .proj .env { font-size:10.5px; color:#6b6e7d; margin-top:2px; font-family:'JetBrains Mono',monospace; }
+  .badge { margin-left:auto; font-size:9.5px; font-weight:700; letter-spacing:.08em; padding:3px 9px; border-radius:4px; font-family:'JetBrains Mono',monospace; }
+  .b-run { background:rgba(61,214,140,.1); color:#3dd68c; } .b-warn { background:rgba(240,160,64,.1); color:#f0a040; }
+  .svcs { display:flex; gap:6px; margin-bottom:14px; }
+  .svcs span { height:26px; padding:0 8px; border-radius:7px; background:#191b23; border:1px solid rgba(255,255,255,.07); display:flex; align-items:center; font-size:10px; color:#8a8d9c; font-weight:600; font-family:'JetBrains Mono',monospace; }
+  .proj .ft { display:flex; justify-content:space-between; align-items:center; font-size:11px; color:#565a68; border-top:1px solid rgba(255,255,255,.05); padding-top:12px; font-family:'JetBrains Mono',monospace; }
+  .proj .ft .arrow { color:#5eead4; }
+  table { width:100%; border-collapse:collapse; background:#12131a; border:1px solid rgba(255,255,255,.06); border-radius:14px; overflow:hidden; font-size:12.5px; }
+  th { text-align:left; font-size:9.5px; letter-spacing:.16em; color:#565a68; font-weight:700; padding:10px 18px; border-bottom:1px solid rgba(255,255,255,.06); font-family:'JetBrains Mono',monospace; }
+  td { padding:11px 18px; border-bottom:1px solid rgba(255,255,255,.04); color:#b6b9c6; font-family:'JetBrains Mono',monospace; font-size:12px; }
+  td:first-child { color:#eceef4; font-weight:600; font-family:'Inter',sans-serif; }
+  .st { font-size:10px; font-weight:700; padding:2px 8px; border-radius:4px; letter-spacing:.06em; }
+  .st-ok { background:rgba(61,214,140,.1); color:#3dd68c; } .st-run { background:rgba(108,142,240,.12); color:#6c8ef0; } .st-fail { background:rgba(255,112,67,.12); color:#ff7043; }
+
+  .stat .k { display:flex; justify-content:space-between; align-items:center; }
+  .live { width:6px; height:6px; border-radius:50%; background:#3dd68c; box-shadow:0 0 6px rgba(61,214,140,.7); animation:pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+  .spark { display:flex; gap:2.5px; align-items:flex-end; height:26px; margin:10px 0 4px; }
+  .spark i { flex:1; background:linear-gradient(180deg, #2dd4bf, transparent); opacity:.7; border-radius:1px; }
+  .bar { height:5px; background:rgba(255,255,255,.06); border-radius:3px; margin:12px 0 6px; overflow:hidden; }
+  .bar i { display:block; height:100%; background:#2dd4bf; border-radius:3px; }
+  .dot { display:inline-block; width:5px; height:5px; border-radius:50%; margin-right:6px; }
+  .dot-ok { background:#3dd68c; } .dot-err { background:#ff7043; }
+  tr:hover td { background:rgba(255,255,255,.02); }
+</style></head><body>
+<nav class="rail">
+  <div class="mark"><svg width="20" height="20" viewBox="0 0 64 64"><g fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round"><rect x="12" y="16" width="40" height="30" rx="5"/><path d="M23 16v30M32 16v30M41 16v30M18 54h28"/></g></svg></div>
+  <div class="ic on">▦</div><div class="ic">▤</div><div class="ic">◉</div><div class="ic">⚇</div><div class="ic">⚙</div>
+</nav>
+<main>
+  <div class="topbar">
+    <div class="brand">contain<em>r</em></div>
+    <div class="search">search projects, builds, logs…</div>
+    <div class="topright"><span class="pill">env:production</span><div class="avatar-t">TD</div></div>
+  </div>
+  <div class="content">
+    <div class="pagehead">
+      <div><h1>Projects</h1><p>3 projects · 9 services · 1 host</p></div>
+      <button class="btn-primary">+ New Project</button>
+    </div>
+    <div class="statrow">
+      <div class="stat"><div class="k"><span>HOST.CPU</span><span class="live"></span></div><div class="v">14%</div><div class="spark"><i style="height:30%"></i><i style="height:45%"></i><i style="height:38%"></i><i style="height:55%"></i><i style="height:42%"></i><i style="height:60%"></i><i style="height:48%"></i><i style="height:35%"></i><i style="height:52%"></i><i style="height:40%"></i><i style="height:30%"></i><i style="height:22%"></i></div><div class="d"><b class="ok">healthy</b> · 16 cores · load 2.41</div></div>
+      <div class="stat"><div class="k"><span>HOST.MEM</span><span class="live"></span></div><div class="v">72%</div><div class="bar"><i style="width:72%"></i></div><div class="d">9.8G / 13G used</div></div>
+      <div class="stat"><div class="k"><span>HOST.DISK</span><span class="live"></span></div><div class="v">73%</div><div class="bar"><i style="width:73%;background:#f0a040"></i></div><div class="d">338G of 465G</div></div>
+      <div class="stat"><div class="k"><span>DEPLOYS.7D</span></div><div class="v">18</div><div class="bar"><i style="width:94%"></i></div><div class="d"><b class="ok">17 ok</b> · <b class="warn">1 failed</b></div></div>
+    </div>
+    <p class="secttl">PROJECTS</p>
+    <div class="projgrid">
+      <div class="proj"><div class="top"><div class="ic" style="background:#2dd4bf">CS</div><div><h3>core-services</h3><div class="env">prod · containr.dev</div></div><span class="badge b-run">RUNNING</span></div>
+        <div class="svcs"><span><b class="dot dot-ok"></b>api</span><span><b class="dot dot-ok"></b>web</span><span><b class="dot dot-ok"></b>db</span><span><b class="dot dot-ok"></b>worker</span><span>+1</span></div>
+        <div class="ft"><span>5 svc · deployed 4m ago</span><span class="arrow">→</span></div></div>
+      <div class="proj"><div class="top"><div class="ic" style="background:#6c5ce7">GS</div><div><h3>growth-site</h3><div class="env">prod · growth.app</div></div><span class="badge b-run">RUNNING</span></div>
+        <div class="svcs"><span><b class="dot dot-ok"></b>site</span><span><b class="dot dot-ok"></b>api</span><span><b class="dot dot-ok"></b>redis</span></div>
+        <div class="ft"><span>3 svc · deployed 2h ago</span><span class="arrow">→</span></div></div>
+      <div class="proj"><div class="top"><div class="ic" style="background:#ff8a5c">ML</div><div><h3>ml-pipeline</h3><div class="env">staging · internal</div></div><span class="badge b-warn">DEGRADED</span></div>
+        <div class="svcs"><span><b class="dot dot-ok"></b>api</span><span><b class="dot dot-err"></b>worker</span></div>
+        <div class="ft"><span>2 svc · 1 failed build</span><span class="arrow">→</span></div></div>
+    </div>
+    <p class="secttl">RECENT DEPLOYMENTS</p>
+    <table>
+      <tr><th>SERVICE</th><th>PROJECT</th><th>STATUS</th><th>DUR</th><th>WHEN</th></tr>
+      <tr><td>api-gateway</td><td>core-services</td><td><span class="st st-ok">DEPLOYED</span></td><td>48s</td><td>4m ago</td></tr>
+      <tr><td>web-frontend</td><td>core-services</td><td><span class="st st-run">BUILDING</span></td><td>—</td><td>6m ago</td></tr>
+      <tr><td>worker</td><td>ml-pipeline</td><td><span class="st st-fail">FAILED</span></td><td>1m32s</td><td>1h ago</td></tr>
+      <tr><td>site</td><td>growth-site</td><td><span class="st st-ok">DEPLOYED</span></td><td>39s</td><td>2h ago</td></tr>
+    </table>
+  </div>
+</main></body></html>

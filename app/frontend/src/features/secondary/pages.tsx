@@ -54,10 +54,10 @@ import {
 
 function SecondaryPageHeader({ title, description }: { title: string; description: string }) {
   return (
-    <div className="border-b border-[var(--border-subtle)] bg-[var(--bg-base)]/50 backdrop-blur-sm">
-      <div className="mx-auto w-full max-w-[1400px] px-6 py-4">
-        <h1 className="text-xl font-semibold text-[var(--text-primary)]">{title}</h1>
-        <p className="text-sm text-[var(--text-secondary)] mt-1">{description}</p>
+    <div className="border-b border-[var(--border-subtle)]">
+      <div className="w-full px-8 py-5">
+        <h1 className="v-title">{title}<span className="v-cursor">_</span></h1>
+        <p className="v-mono mt-1.5 text-[11px] text-[var(--text-tertiary)]">{description}</p>
       </div>
     </div>
   );
@@ -302,7 +302,7 @@ containr-agent`;
         title="Usage"
         description="Platform usage metrics and operational summaries"
       />
-      <div className="mx-auto w-full max-w-[1400px] px-6 py-6">
+      <div className="w-full px-8 py-6">
         <div className="flex items-center gap-2 mb-6">
           <div className={`w-2 h-2 rounded-full ${liveStatus === 'live' ? 'bg-[var(--success)] animate-pulse' : 'bg-[var(--text-muted)]'}`} />
           <span className={`text-sm ${liveStatus === 'live' ? 'text-[var(--success)]' : 'text-[var(--text-muted)]'}`}>
@@ -340,7 +340,7 @@ containr-agent`;
                 statusText={failedBuilds > 0 ? `${failedBuilds} failed` : 'Healthy'}
                 subtitle={buildActivityBody}
                 icon={<Activity size={18} />}
-                chart={<BarChart data={buildsPerDay} color="#e8316a" height={72} gap={3} />}
+                chart={<BarChart data={buildsPerDay} color="var(--accent-primary)" height={72} gap={3} />}
               />
               <EnhancedMetricCard
                 title="Capacity"
@@ -392,7 +392,7 @@ containr-agent`;
                     status={hostStatus(hostLoadPercent)}
                     statusText={host ? { good: 'Good', average: 'Average', warning: 'High' }[hostStatus(hostLoadPercent)] : ''}
                     subtitle={host ? `${host.cpu.cores} cores · 5m ${host.load.load5m.toFixed(2)} · 15m ${host.load.load15m.toFixed(2)}` : 'Loading CPU telemetry.'}
-                    chart={<LineAreaChart data={loadHistory.length > 0 ? loadHistory : [0]} color="#ff7043" height={72} />}
+                    chart={<LineAreaChart data={loadHistory.length > 0 ? loadHistory : [0]} color="#b4e34a" height={72} />}
                   />
                   <EnhancedMetricCard
                     title="Memory"
@@ -403,7 +403,7 @@ containr-agent`;
                     subtitle={host ? `${formatBytes(host.memory.available)} free` : 'Loading memory telemetry.'}
                     chart={
                       <div className="relative mx-auto" style={{ width: 150 }}>
-                        <DonutChart percentage={host?.memory.usagePercent ?? 0} color="#9c7ef0" size={150} thickness={14} />
+                        <DonutChart percentage={host?.memory.usagePercent ?? 0} color="#f2c94c" size={150} thickness={14} />
                         <div className="absolute inset-x-0 bottom-0 text-center">
                           <div className="text-[10px] uppercase tracking-wide text-[#6b6e7d]">Used</div>
                           <div className="text-sm font-bold text-[#e8e9f0]">
@@ -600,7 +600,7 @@ export function PeoplePage() {
         title="People"
         description="Team management and access control"
       />
-      <div className="mx-auto w-full max-w-[1400px] px-6 py-6">
+      <div className="w-full px-8 py-6">
         {profileQuery.isLoading ? (
           <div className="py-16 text-center">
             <Loader2 size={24} className="animate-spin mx-auto text-[var(--text-tertiary)]" />
@@ -677,8 +677,8 @@ export function PeoplePage() {
                 <button
                   type="submit"
                   disabled={createUserMutation.isPending}
-                  className="inline-flex h-10 items-center justify-center gap-2 rounded-[var(--radius-md)] px-4 text-sm font-semibold text-white disabled:opacity-60"
-                  style={{ background: '#e8316a' }}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-[var(--radius-md)] px-4 text-sm font-semibold text-[var(--accent-on)] disabled:opacity-60"
+                  style={{ background: 'var(--accent-primary)' }}
                 >
                   {createUserMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />}
                   Create
@@ -764,8 +764,8 @@ function GitProvidersSection() {
         </div>
         <button
           onClick={() => setFormOpen((open) => !open)}
-          className="flex items-center gap-2 h-9 px-4 rounded-[var(--radius-md)] text-white text-sm font-medium shadow-lg transition-all"
-          style={{ background: '#e8316a' }}
+          className="flex items-center gap-2 h-9 px-4 rounded-[var(--radius-md)] text-[var(--accent-on)] text-sm font-medium shadow-lg transition-all"
+          style={{ background: 'var(--accent-primary)' }}
         >
           <Link2 size={14} />
           {formOpen ? 'Close' : 'Connect'}
@@ -880,8 +880,8 @@ function GitProvidersSection() {
             <button
               onClick={() => createMutation.mutate()}
               disabled={!form.accessToken.trim() || createMutation.isPending}
-              className="flex items-center gap-2 h-9 px-4 rounded-[var(--radius-md)] text-white text-sm font-medium shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-              style={{ background: '#e8316a' }}
+              className="flex items-center gap-2 h-9 px-4 rounded-[var(--radius-md)] text-[var(--accent-on)] text-sm font-medium shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              style={{ background: 'var(--accent-primary)' }}
             >
               {createMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
               Connect Provider
@@ -964,7 +964,7 @@ export function SettingsPage() {
         title="Settings"
         description="Manage account profile and local configuration"
       />
-      <div className="mx-auto w-full max-w-[1400px] px-6 py-6">
+      <div className="w-full px-8 py-6">
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           {/* Profile Section */}
           <section className="panel p-6">
@@ -1015,8 +1015,8 @@ export function SettingsPage() {
                   <button
                     onClick={() => updateProfileMutation.mutate()}
                     disabled={!hasProfileChanges || updateProfileMutation.isPending}
-                    className="flex items-center gap-2 h-9 px-4 rounded-[var(--radius-md)] text-white text-sm font-medium shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                    style={{ background: '#e8316a' }}
+                    className="flex items-center gap-2 h-9 px-4 rounded-[var(--radius-md)] text-[var(--accent-on)] text-sm font-medium shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                    style={{ background: 'var(--accent-primary)' }}
                   >
                     {updateProfileMutation.isPending ? (
                       <>
@@ -1185,7 +1185,7 @@ export function DocsPage() {
         title="Docs"
         description="Operational references and API documentation"
       />
-      <div className="mx-auto w-full max-w-[1400px] px-6 py-6">
+      <div className="w-full px-8 py-6">
         {/* API Status Grid */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <div className="panel p-4">

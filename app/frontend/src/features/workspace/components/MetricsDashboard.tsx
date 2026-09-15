@@ -131,13 +131,13 @@ export function MetricsDashboard({
           </div>
           <div style={{ fontSize: '38px', fontWeight: 900, letterSpacing: '-1.5px', lineHeight: 1, color: '#e8e9f0' }}>{currentCpu}%</div>
           <div style={{ fontSize: '12px', color: '#6b6e7d', marginTop: '4px' }}>
-            <span style={{ color: currentCpu < 50 ? '#3dd68c' : currentCpu < 75 ? '#f0a040' : '#ff7043', fontWeight: 700 }}>
+            <span style={{ color: currentCpu < 50 ? '#5ee6a0' : currentCpu < 75 ? '#f2c94c' : '#b4e34a', fontWeight: 700 }}>
               {currentCpu < 50 ? 'Good' : currentCpu < 75 ? 'Average' : 'High'}
             </span>{' '}
             Daily usage
           </div>
           <div style={{ height: 76, margin: '12px 0 6px' }}>
-            <LineMetricChart data={data.cpu} color="#ff7043" height={76} />
+            <LineMetricChart data={data.cpu} color="#b4e34a" height={76} />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '4px' }}>
             <span style={{ fontSize: '13px', color: '#6b6e7d', fontWeight: 500, cursor: 'pointer' }}>Details</span>
@@ -155,13 +155,13 @@ export function MetricsDashboard({
           </div>
           <div style={{ fontSize: '38px', fontWeight: 900, letterSpacing: '-1.5px', lineHeight: 1, color: '#e8e9f0' }}>{data.ram}%</div>
           <div style={{ fontSize: '12px', color: '#6b6e7d', marginTop: '4px' }}>
-            <span style={{ color: data.ram < 60 ? '#3dd68c' : '#f0a040', fontWeight: 700 }}>
+            <span style={{ color: data.ram < 60 ? '#5ee6a0' : '#f2c94c', fontWeight: 700 }}>
               {data.ram < 60 ? 'Good' : 'Average'}
             </span>{' '}
             Daily usage
           </div>
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', margin: '10px 0 4px', position: 'relative' }}>
-            <DonutChart percent={data.ram} color="#9c7ef0" size={160} thickness={16} />
+            <DonutChart percent={data.ram} color="#f2c94c" size={160} thickness={16} />
             <div style={{ position: 'absolute', bottom: 14, textAlign: 'center' }}>
               <div style={{ fontSize: '10.5px', color: '#6b6e7d', marginBottom: 1 }}>Used</div>
               <div style={{ fontSize: '12.5px', fontWeight: 700, color: '#e8e9f0' }}>{data.ramUsed} / 8GB</div>
@@ -183,7 +183,7 @@ export function MetricsDashboard({
           </div>
           <div style={{ fontSize: '38px', fontWeight: 900, letterSpacing: '-1.5px', lineHeight: 1, color: '#e8e9f0' }}>{data.cache} MB</div>
           <div style={{ fontSize: '12px', color: '#6b6e7d', marginTop: '4px' }}>
-            <span style={{ color: '#f0a040', fontWeight: 700 }}>220MB Average</span>{' '}
+            <span style={{ color: '#f2c94c', fontWeight: 700 }}>220MB Average</span>{' '}
             cached images and files
           </div>
 
@@ -257,7 +257,7 @@ export function MetricsDashboard({
             </div>
           </div>
           <div style={{ width: '50%', padding: '16px 14px 46px 0', display: 'flex', alignItems: 'flex-end' }}>
-            <LineMetricChart data={data.users} color="#e8316a" fillOpacity={0.15} showArea height={130} />
+            <LineMetricChart data={data.users} color="var(--accent-primary)" fillOpacity={0.15} showArea height={130} />
           </div>
         </div>
 
@@ -271,7 +271,7 @@ export function MetricsDashboard({
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: '36px', fontWeight: 900, letterSpacing: '-1.5px', lineHeight: 1, color: '#e8e9f0' }}>{currentPerf}%</div>
               <div style={{ fontSize: '12px', color: '#6b6e7d', marginTop: '4px' }}>
-                <span style={{ color: currentPerf > 85 ? '#3dd68c' : '#f0a040', fontWeight: 700 }}>
+                <span style={{ color: currentPerf > 85 ? '#5ee6a0' : '#f2c94c', fontWeight: 700 }}>
                   {currentPerf > 85 ? 'Good' : 'Average'}
                 </span>{' '}
                 Last scan
@@ -282,11 +282,11 @@ export function MetricsDashboard({
                 <DualLineChart data1={data.performance} data2={data.performanceAlt} height={58} />
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-end' }}>
-                <div className="speed-row" style={{ color: '#6c8ef0' }}>
+                <div className="speed-row" style={{ color: '#7ab8ff' }}>
                   <svg viewBox="0 0 24 24"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 19 19 12"/></svg>
                   <span>{data.upSpeed}</span> Mbps
                 </div>
-                <div className="speed-row" style={{ color: '#e8316a' }}>
+                <div className="speed-row" style={{ color: 'var(--accent-primary)' }}>
                   <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 5 5 12"/></svg>
                   <span>{data.downSpeed}</span> Mbps
                 </div>

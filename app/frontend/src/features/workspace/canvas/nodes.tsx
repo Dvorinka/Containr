@@ -33,11 +33,11 @@ function serviceTypeIcon(type: string): typeof Box {
 function serviceTypeColor(type: string): string {
   switch (type) {
     case 'web':
-      return '#6c8ef0'; // Blue
+      return '#7ab8ff'; // Blue
     case 'database':
-      return '#9c7ef0'; // Purple
+      return '#b4e34a'; // Purple
     case 'worker':
-      return '#e8316a'; // Pink
+      return 'var(--accent-primary)'; // Pink
     default:
       return '#9295a4'; // Gray
   }
@@ -124,7 +124,7 @@ export function ServiceNode({ data }: NodeProps<ServiceNodeType>) {
             onClick={() => onOpen(service.id)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all duration-200 ${
               selected
-                ? 'bg-[var(--accent-primary)] text-white shadow-lg shadow-[var(--accent-primary-glow)]'
+                ? 'bg-[var(--accent-primary)] text-[var(--accent-on)] shadow-lg shadow-[var(--accent-primary-glow)]'
                 : 'border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:border-[var(--accent-primary)] hover:text-[var(--accent-primary)]'
             }`}
           >

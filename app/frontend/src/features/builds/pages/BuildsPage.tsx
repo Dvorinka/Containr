@@ -164,10 +164,10 @@ export function BuildsPage() {
     <div className="min-h-screen">
       {/* Header */}
       <div className="border-b border-[var(--border-subtle)] bg-[var(--bg-base)]/50 backdrop-blur-sm">
-        <div className="mx-auto w-full max-w-[1400px] px-6 py-4">
+        <div className="w-full px-8 py-4">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <h1 className="text-xl font-semibold text-[var(--text-primary)]">Build Pipeline</h1>
+              <h1 className="v-title">Build Pipeline<span className="v-cursor">_</span></h1>
               <p className="text-sm text-[var(--text-secondary)]">Monitor build progress and manage jobs</p>
             </div>
 
@@ -192,7 +192,7 @@ export function BuildsPage() {
 
       {/* Demo Mode Banner */}
       {isDemoMode && (
-        <div className="mx-auto w-full max-w-[1400px] px-6 py-4">
+        <div className="w-full px-8 py-4">
           <div className="px-4 py-3 rounded-[var(--radius-md)] border border-[var(--warning-soft)] bg-[var(--warning-soft)]/50">
             <div className="flex items-center gap-2 text-sm text-[var(--warning)]">
               <Sparkles size={16} />
@@ -203,7 +203,7 @@ export function BuildsPage() {
       )}
 
       {/* Stats Overview */}
-      <div className="mx-auto w-full max-w-[1400px] px-6 py-6">
+      <div className="w-full px-8 py-6">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="panel p-4">
             <div className="flex items-center justify-between mb-3">
@@ -245,7 +245,7 @@ export function BuildsPage() {
       </div>
 
       {/* Filters */}
-      <div className="mx-auto w-full max-w-[1400px] px-6">
+      <div className="w-full px-8">
         <div className="panel p-4">
           <div className="flex items-center gap-2 mb-4">
             <Filter size={16} className="text-[var(--text-tertiary)]" />
@@ -307,7 +307,7 @@ export function BuildsPage() {
       </div>
 
       {/* Build Table */}
-      <div className="mx-auto w-full max-w-[1400px] px-6 py-6">
+      <div className="w-full px-8 py-6">
         <div className="panel overflow-hidden">
           {!isDemoMode && buildsQuery.isLoading ? (
             <div className="p-12 text-center">
@@ -397,7 +397,7 @@ export function BuildsPage() {
                         <div className="h-2 rounded-full bg-[var(--surface-muted)] overflow-hidden">
                           <div
                             className="h-full rounded-full transition-all duration-300"
-                            style={{ width: `${Math.max(0, Math.min(100, build.progress))}%`, background: '#e8316a' }}
+                            style={{ width: `${Math.max(0, Math.min(100, build.progress))}%`, background: 'var(--accent-primary)' }}
                           />
                         </div>
                       </div>

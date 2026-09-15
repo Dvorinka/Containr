@@ -130,26 +130,18 @@ export function PlatformShell() {
 
       <div className="relative flex min-h-screen">
         <aside
-          className="hidden h-screen shrink-0 flex-col border-r md:flex"
+          className="hidden h-screen shrink-0 flex-col items-center border-r py-4 md:flex"
           style={{
-            width: '232px',
+            width: '62px',
             background: 'var(--bg-base)',
             borderRightColor: 'var(--border-subtle)',
           }}
         >
-          <NavLink
-            to={href('/projects')}
-            className="flex h-[58px] shrink-0 items-center gap-3 border-b px-4"
-            style={{ borderBottomColor: 'var(--border-subtle)' }}
-          >
-            <img src="/containr.svg" alt="Containr" className="h-9 w-9 rounded-[var(--radius-md)]" />
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-[var(--text-primary)]">Containr</p>
-              <p className="text-[11px] text-[var(--text-tertiary)]">Deploy platform</p>
-            </div>
+          <NavLink to={href('/projects')} className="mb-3" title="Containr">
+            <img src="/containr.svg" alt="Containr" className="h-[38px] w-[38px] rounded-xl" />
           </NavLink>
 
-          <nav className="flex min-h-0 flex-1 flex-col gap-1 px-3 py-4">
+          <nav className="flex flex-col items-center gap-1.5">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = isActiveRoute(item.href);
@@ -157,75 +149,72 @@ export function PlatformShell() {
                 <NavLink
                   key={item.href}
                   to={href(item.href)}
-                  className={`flex h-10 items-center gap-3 rounded-[var(--radius-md)] px-3 text-sm font-medium transition-colors ${
+                  title={item.label}
+                  className={`relative flex h-10 w-10 items-center justify-center rounded-[11px] transition-colors ${
                     isActive
                       ? 'bg-[var(--accent-primary-soft)] text-[var(--accent-primary)]'
-                      : 'text-[var(--text-secondary)] hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)]'
+                      : 'text-[var(--text-tertiary)] hover:bg-[var(--surface-muted)] hover:text-[var(--text-secondary)]'
                   }`}
                 >
+                  {isActive ? (
+                    <span
+                      className="absolute -left-[11px] h-4 w-[2.5px] rounded-full"
+                      style={{ background: 'var(--accent-primary)' }}
+                    />
+                  ) : null}
                   <Icon size={17} />
-                  {item.label}
                 </NavLink>
               );
             })}
           </nav>
 
-          <div className="shrink-0 border-t p-3" style={{ borderTopColor: 'var(--border-subtle)' }}>
-            <NavLink
-              to={href('/settings')}
-              className="mb-2 flex items-center gap-3 rounded-[var(--radius-md)] p-2 hover:bg-[var(--surface-muted)]"
+          <div className="flex-1" />
+
+          <div className="flex flex-col items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void signOut()}
+              title={`Sign out (${userName})`}
+              className="flex h-10 w-10 items-center justify-center rounded-[11px] text-[var(--text-tertiary)] transition-colors hover:bg-[var(--error-soft)] hover:text-[var(--error)]"
             >
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--surface-card-hover)] text-xs font-semibold text-[var(--text-primary)]">
-                {initials}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-[var(--text-primary)]">{userName}</p>
-                <p className="truncate text-xs text-[var(--text-tertiary)]">{userEmail}</p>
-              </div>
-            </NavLink>
-            <div className="grid grid-cols-2 gap-2">
-              <NavLink
-                to={href('/settings')}
-                className="inline-flex h-9 items-center justify-center gap-2 rounded-[var(--radius-md)] border text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                style={{ borderColor: 'var(--border-subtle)' }}
-              >
-                <Settings size={14} />
-                Settings
-              </NavLink>
-              <button
-                type="button"
-                onClick={() => void signOut()}
-                className="inline-flex h-9 items-center justify-center gap-2 rounded-[var(--radius-md)] border text-xs font-medium text-[var(--error)] hover:bg-[var(--error-soft)]"
-                style={{ borderColor: 'var(--error-soft)' }}
-              >
-                <LogOut size={14} />
-                Sign out
-              </button>
+              <LogOut size={16} />
+            </button>
+            <div
+              title={userEmail}
+              className="flex h-[30px] w-[30px] items-center justify-center rounded-full text-[11px] font-bold"
+              style={{ background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))', color: 'var(--accent-on)' }}
+            >
+              {initials}
             </div>
           </div>
         </aside>
 
         <div className="relative z-10 flex min-h-screen min-w-0 flex-1 flex-col overflow-hidden">
           <header
-            className="hidden h-[58px] shrink-0 items-center border-b px-5 md:flex"
+            className="hidden h-[46px] shrink-0 items-center border-b px-5 md:flex"
             style={{
               background: 'var(--bg-base)',
               borderBottomColor: 'var(--border-subtle)',
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: '11px',
             }}
           >
-            <NavLink to={href('/projects')} className="mr-4 flex items-center gap-2 text-[var(--text-primary)]">
-              <div className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-md)] border border-[var(--border-subtle)]">
-                <Container size={15} />
-              </div>
-              <span className="text-sm font-semibold">Containr</span>
+            <NavLink to={href('/projects')} className="mr-5 text-sm font-extrabold tracking-tight text-[var(--text-primary)]" style={{ fontFamily: 'Inter, sans-serif' }}>
+              contain<span style={{ color: 'var(--accent-primary)' }}>r</span>
             </NavLink>
 
-            <div className="search-box max-w-[420px]">
-              <Search size={14} />
-              <input type="text" placeholder="Search projects, builds, logs..." />
+            <div className="flex items-center gap-5">
+              <span className="v-tick"><i className="sig" /><b>{isDemoMode ? 'demo' : 'nominal'}</b></span>
+              <span className="v-tick"><i className="sig" style={{ background: 'var(--text-tertiary)' }} />node <b>local</b></span>
             </div>
 
-            <div className="ml-auto flex items-center gap-2">
+            <div className="search-box ml-6 max-w-[300px]" style={{ height: 30 }}>
+              <Search size={13} />
+              <input type="text" placeholder="search…" className="v-mono" style={{ fontSize: 11.5 }} />
+            </div>
+
+            <div className="ml-auto flex items-center gap-4">
+              <span className="v-env">env:production</span>
               <button
                 type="button"
                 onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
@@ -240,8 +229,8 @@ export function PlatformShell() {
                 type="button"
                 onClick={() => pullMutation.mutate()}
                 disabled={isDemoMode || pullMutation.isPending || !upgradeQuery.data?.imageRef}
-                className="inline-flex h-8 items-center gap-2 rounded-[var(--radius-md)] px-3 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
-                style={{ background: '#e8316a' }}
+                className="inline-flex h-8 items-center gap-2 rounded-[var(--radius-md)] px-3 text-xs font-semibold text-[var(--accent-on)] disabled:cursor-not-allowed disabled:opacity-50"
+                style={{ background: 'var(--accent-primary)' }}
                 title={upgradeQuery.data?.message || 'Pull latest configured image'}
               >
                 {pullMutation.isPending ? <RefreshCw size={14} className="animate-spin" /> : <UploadCloud size={14} />}
@@ -305,7 +294,7 @@ export function PlatformShell() {
           <header className="md:hidden sticky top-0 z-50 border-b border-[var(--border-subtle)] bg-[var(--bg-base)]/85 backdrop-blur-2xl">
             <div className="flex items-center justify-between p-4">
               <NavLink to={href('/projects')} className="flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-white">
+                <div className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-on)]">
                   <Container size={16} />
                 </div>
                 <span className="font-headline font-semibold text-[var(--text-primary)]">Containr</span>

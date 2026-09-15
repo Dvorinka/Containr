@@ -13,7 +13,7 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 };
 
 const variantStyles: Record<ButtonVariant, string> = {
-  primary: 'text-white shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98]',
+  primary: 'text-[var(--accent-on)] shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98]',
   secondary: 'border border-[var(--border-subtle)] bg-[var(--surface-card)] text-[var(--text-primary)] hover:border-[var(--border-default)] hover:bg-[var(--surface-card-hover)] active:scale-[0.98]',
   ghost: 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-muted)] active:scale-[0.98]',
   danger: 'border border-[var(--error-soft)] text-[var(--error)] hover:bg-[var(--error-soft)] hover:shadow-lg hover:shadow-[var(--error-glow)] active:scale-[0.98]',
@@ -56,7 +56,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           ${sizeStyles[size]}
           ${className}
         `}
-        style={variant === 'primary' ? { background: '#e8316a' } : undefined}
+        style={variant === 'primary' ? { background: 'var(--accent-primary)' } : undefined}
         {...props}
       >
         {loading ? (
