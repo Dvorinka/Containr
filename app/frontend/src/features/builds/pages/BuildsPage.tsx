@@ -126,8 +126,11 @@ export function BuildsPage() {
     [isDemoMode, buildsQuery.data?.builds],
   );
 
-  const subscribedBuildIds = useMemo(() => builds.map((build) => build.id), [builds]);
-  const liveConnected = useBuildUpdates(subscribedBuildIds, ({ channel }) => {
+  const subscribedBuildIds = useMemo(
+    () => (isDemoMode ? [] : builds.map((build) => build.id)),
+    [isDemoMode, builds],
+  );
+  const liveStatus = useBuildUpdates(subscribedBuildIds, ({ channel }) => {
     queryClient.invalidateQueries({ queryKey: ['builds-page'] });
     queryClient.invalidateQueries({ queryKey: ['usage-builds'] });
     if (selectedBuild && channel === `build:${selectedBuild.id}`) {
@@ -148,9 +151,6 @@ export function BuildsPage() {
     enabled: Boolean(selectedBuild) && !isDemoMode,
     queryFn: () => getBuildLogs(selectedBuild!.id),
   });
-
-  const isCancellingBuild = (buildId: string): boolean =>
-    cancelMutation.isPending && cancelMutation.variables === buildId;
 
   // Stats
   const stats = useMemo(() => {
@@ -173,9 +173,9 @@ export function BuildsPage() {
 
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2 text-sm">
-                <div className={`w-2 h-2 rounded-full ${liveConnected ? 'bg-[var(--success)] animate-pulse' : 'bg-[var(--text-muted)]'}`} />
-                <span className={liveConnected ? 'text-[var(--success)]' : 'text-[var(--text-muted)]'}>
-                  {liveConnected ? 'Live' : 'Offline'}
+                <div className={`w-2 h-2 rounded-full ${liveStatus === 'live' ? 'bg-[var(--success)] animate-pulse' : 'bg-[var(--text-muted)]'}`} />
+                <span className={liveStatus === 'live' ? 'text-[var(--success)]' : 'text-[var(--text-muted)]'}>
+                  {liveStatus === 'live' ? 'Live' : liveStatus === 'offline' ? 'Reconnecting...' : 'Polling'}
                 </span>
               </div>
               <button

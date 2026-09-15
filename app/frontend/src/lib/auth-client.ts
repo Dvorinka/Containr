@@ -16,6 +16,12 @@ export type AuthSessionPayload = {
   session: AuthSession;
 };
 
+export type AuthBootstrap = {
+  hasUsers: boolean;
+  userCount: number;
+  mode: 'register' | 'login';
+};
+
 export class AuthError extends Error {
   readonly status: number;
 
@@ -31,6 +37,30 @@ const AUTH_BASE = rawAuthBase.replace(/\/$/, '');
 
 export function getAuthBaseUrl(): string {
   return AUTH_BASE;
+}
+
+export async function getAuthBootstrap(): Promise<AuthBootstrap> {
+  const apiBase = ((import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:8082').replace(/\/$/, '');
+  const normalizedApiBase = /\/api\/v1$/.test(apiBase) ? apiBase : `${apiBase}/api/v1`;
+  const response = await fetch(`${normalizedApiBase}/auth/bootstrap`, {
+    method: 'GET',
+    credentials: 'include',
+  });
+  const payload = (await response.json().catch(() => null)) as Record<string, unknown> | null;
+
+  if (!response.ok) {
+    const message =
+      (payload?.message as string | undefined) ??
+      (payload?.error as string | undefined) ??
+      `Auth bootstrap request failed with status ${response.status}`;
+    throw new AuthError(message, response.status);
+  }
+
+  return {
+    hasUsers: Boolean(payload?.has_users),
+    userCount: typeof payload?.user_count === 'number' ? payload.user_count : 0,
+    mode: payload?.mode === 'register' ? 'register' : 'login',
+  };
 }
 
 function normalizeSessionPayload(payload: unknown): AuthSessionPayload | null {
@@ -160,19 +190,6 @@ export async function signUpWithEmail(name: string, email: string, password: str
   return normalizeSessionPayload(payload);
 }
 
-export async function requestMagicLinkInvite(email: string, callbackURL: string): Promise<void> {
-  await authRequest('/sign-in/magic-link', {
-    method: 'POST',
-    body: JSON.stringify({
-      email,
-      callbackURL,
-      metadata: {
-        invite: true,
-      },
-    }),
-  });
-}
-
 export async function startGitHubSignIn(callbackURL: string): Promise<void> {
   const payload = await authRequest('/sign-in/social', {
     method: 'POST',
@@ -189,11 +206,11 @@ export async function startGitHubSignIn(callbackURL: string): Promise<void> {
   }
 }
 
-async function startOAuth2ProviderSignIn(providerId: string, callbackURL: string): Promise<void> {
-  const payload = await authRequest('/sign-in/oauth2', {
+export async function startGoogleSignIn(callbackURL: string): Promise<void> {
+  const payload = await authRequest('/sign-in/social', {
     method: 'POST',
     body: JSON.stringify({
-      providerId,
+      provider: 'google',
       callbackURL,
       disableRedirect: true,
     }),
@@ -203,18 +220,6 @@ async function startOAuth2ProviderSignIn(providerId: string, callbackURL: string
   if (oauth.redirect) {
     window.location.assign(oauth.url);
   }
-}
-
-export async function startGitLabSignIn(callbackURL: string): Promise<void> {
-  await startOAuth2ProviderSignIn('gitlab', callbackURL);
-}
-
-export async function startBitbucketSignIn(callbackURL: string): Promise<void> {
-  await startOAuth2ProviderSignIn('bitbucket', callbackURL);
-}
-
-export async function startGiteaSignIn(callbackURL: string): Promise<void> {
-  await startOAuth2ProviderSignIn('gitea', callbackURL);
 }
 
 export async function signOutAuthSession(): Promise<void> {

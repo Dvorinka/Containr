@@ -184,7 +184,6 @@ export function CacheMetricCard({
 }: CacheMetricCardProps) {
   const cachePercent = Math.round((cacheMB / totalMB) * 100);
   const nonCachePercent = Math.round((nonCacheMB / totalMB) * 100);
-  const freePercent = 100 - cachePercent - nonCachePercent;
 
   return (
     <div
@@ -316,7 +315,6 @@ export function PerformanceMetricCard({
   percentage,
   upSpeed,
   downSpeed,
-  datasets,
   onClick,
   animationDelay = 0,
 }: PerformanceMetricCardProps) {

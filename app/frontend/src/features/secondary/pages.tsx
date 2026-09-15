@@ -3,9 +3,16 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
   getApiBaseUrl,
+  getAgentPublicBaseUrl,
+  getHostMonitoring,
+  createUser,
+  createGitProvider,
+  deleteGitProvider,
   getCurrentUserProfile,
   listAuditLogs,
+  listAgents,
   listBuilds,
+  listGitProviders,
   listProjects,
   listTemplates,
   updateCurrentUserProfile,
@@ -21,6 +28,7 @@ import {
   FileText,
   Settings,
   User,
+  UserPlus,
   Key,
   Database,
   RefreshCw,
@@ -34,6 +42,11 @@ import {
   Box,
   Terminal,
   Radio,
+  Server,
+  HardDrive,
+  GitBranch,
+  Link2,
+  Unlink,
 } from 'lucide-react';
 
 function SecondaryPageHeader({ title, description }: { title: string; description: string }) {
@@ -120,15 +133,51 @@ function endpointStateBadge(isLoading: boolean, isError: boolean): {
   return { label: 'Available', toneClass: 'text-[var(--ok)]' };
 }
 
+function formatBytes(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) {
+    return '0 B';
+  }
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let size = value;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  return `${size.toFixed(size >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
+function formatUptime(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return '—';
+  }
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  if (days > 0) {
+    return `${days}d ${hours}h`;
+  }
+  return `${hours}h ${Math.floor((seconds % 3600) / 60)}m`;
+}
+
 export function UsagePage() {
   const queryClient = useQueryClient();
   const buildsQuery = useQuery({
     queryKey: ['usage-builds'],
     queryFn: () => listBuilds({ page: 1, limit: 100 }),
   });
+  const hostQuery = useQuery({
+    queryKey: ['usage-host-monitoring'],
+    queryFn: getHostMonitoring,
+    refetchInterval: 15_000,
+  });
+  const agentsQuery = useQuery({
+    queryKey: ['usage-agents'],
+    queryFn: listAgents,
+    refetchInterval: 15_000,
+  });
 
   const builds = buildsQuery.data?.builds ?? [];
-  const liveConnected = useBuildUpdates(
+  const liveStatus = useBuildUpdates(
     builds.map((build) => build.id),
     () => {
       queryClient.invalidateQueries({ queryKey: ['usage-builds'] });
@@ -156,6 +205,15 @@ export function UsagePage() {
   const avgBuildMinutes = averageBuildDurationMs / 60_000;
   const activeBuildPressure = runningBuilds + pendingBuilds;
   const uniqueServices = new Set(builds.map((build) => build.serviceId).filter(Boolean)).size;
+  const host = hostQuery.data;
+  const agents = agentsQuery.data ?? [];
+  const onlineAgents = agents.filter((agent) => agent.status === 'online' || agent.status === 'connecting').length;
+  const totalAgentMemory = agents.reduce((sum, agent) => sum + agent.resources.memory.total, 0);
+  const availableAgentMemory = agents.reduce((sum, agent) => sum + agent.resources.memory.available, 0);
+  const agentEndpoint = getAgentPublicBaseUrl();
+  const connectCommand = `CONTAINR_API_URL=${getApiBaseUrl().replace(/\/api\/v1$/, '')} \\
+CONTAINR_AGENT_AUTH_TOKEN=<token> \\
+containr-agent`;
 
   let buildActivityBody = 'Track deployment frequency and failed rollouts over time.';
   let runtimeBody = 'Build duration telemetry will appear after completed builds are available.';
@@ -197,9 +255,9 @@ export function UsagePage() {
       />
       <div className="mx-auto w-full max-w-[1400px] px-6 py-6">
         <div className="flex items-center gap-2 mb-6">
-          <div className={`w-2 h-2 rounded-full ${liveConnected ? 'bg-[var(--success)] animate-pulse' : 'bg-[var(--text-muted)]'}`} />
-          <span className={`text-sm ${liveConnected ? 'text-[var(--success)]' : 'text-[var(--text-muted)]'}`}>
-            {liveConnected ? 'Live sync active' : 'Offline'}
+          <div className={`w-2 h-2 rounded-full ${liveStatus === 'live' ? 'bg-[var(--success)] animate-pulse' : 'bg-[var(--text-muted)]'}`} />
+          <span className={`text-sm ${liveStatus === 'live' ? 'text-[var(--success)]' : 'text-[var(--text-muted)]'}`}>
+            {liveStatus === 'live' ? 'Live sync active' : liveStatus === 'offline' ? 'Reconnecting...' : 'Polling for updates'}
           </span>
         </div>
 
@@ -216,28 +274,165 @@ export function UsagePage() {
             <p className="text-sm text-[var(--error)]">Failed to load usage data</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <StatCard
-              title="Runtime Hours"
-              value={totalBuildHours > 0 ? `${totalBuildHours.toFixed(1)}h` : '—'}
-              description={runtimeBody}
-              icon={Clock}
-              color={completedDurationsMs.length > 0 ? 'success' : 'default'}
-            />
-            <StatCard
-              title="Build Activity"
-              value={String(builds.length)}
-              description={buildActivityBody}
-              icon={Activity}
-              color={failedBuilds > 0 ? 'warning' : 'success'}
-            />
-            <StatCard
-              title="Capacity"
-              value={String(activeBuildPressure)}
-              description={capacityBody}
-              icon={Gauge}
-              color={activeBuildPressure > 0 ? 'warning' : 'default'}
-            />
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <StatCard
+                title="Runtime Hours"
+                value={totalBuildHours > 0 ? `${totalBuildHours.toFixed(1)}h` : '—'}
+                description={runtimeBody}
+                icon={Clock}
+                color={completedDurationsMs.length > 0 ? 'success' : 'default'}
+              />
+              <StatCard
+                title="Build Activity"
+                value={String(builds.length)}
+                description={buildActivityBody}
+                icon={Activity}
+                color={failedBuilds > 0 ? 'warning' : 'success'}
+              />
+              <StatCard
+                title="Capacity"
+                value={String(activeBuildPressure)}
+                description={capacityBody}
+                icon={Gauge}
+                color={activeBuildPressure > 0 ? 'warning' : 'default'}
+              />
+            </div>
+
+            <section className="panel p-6">
+              <div className="mb-5 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)]">
+                    <Server size={18} className="text-[var(--accent-primary)]" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-semibold text-[var(--text-primary)]">Host Monitoring</h2>
+                    <p className="text-xs text-[var(--text-tertiary)]">Autoscaling base signal from this Containr host.</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    void hostQuery.refetch();
+                    void agentsQuery.refetch();
+                  }}
+                  className="inline-flex h-9 items-center gap-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] px-3 text-sm"
+                >
+                  <RefreshCw size={14} />
+                  Refresh
+                </button>
+              </div>
+
+              {hostQuery.isError ? (
+                <div className="rounded-[var(--radius-md)] bg-[var(--error-soft)] px-4 py-3 text-sm text-[var(--error)]">
+                  Host monitoring unavailable.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+                  <StatCard
+                    title="Host"
+                    value={host?.hostname || '—'}
+                    description={host ? `${host.os}/${host.architecture} · uptime ${formatUptime(host.uptimeSeconds)}` : 'Loading host identity.'}
+                    icon={Server}
+                    color={host?.dockerAvailable ? 'success' : 'warning'}
+                  />
+                  <StatCard
+                    title="CPU Load"
+                    value={host ? host.load.load1m.toFixed(2) : '—'}
+                    description={host ? `${host.cpu.cores} cores · 5m ${host.load.load5m.toFixed(2)} · 15m ${host.load.load15m.toFixed(2)}` : 'Loading CPU load.'}
+                    icon={Gauge}
+                    color={host && host.load.load1m > host.cpu.cores ? 'warning' : 'default'}
+                  />
+                  <StatCard
+                    title="Memory"
+                    value={host ? `${host.memory.usagePercent.toFixed(0)}%` : '—'}
+                    description={host ? `${formatBytes(host.memory.used)} used · ${formatBytes(host.memory.available)} free` : 'Loading memory telemetry.'}
+                    icon={Activity}
+                    color={host && host.memory.usagePercent > 80 ? 'warning' : 'success'}
+                  />
+                  <StatCard
+                    title="Disk"
+                    value={host ? `${host.storage.usagePercent.toFixed(0)}%` : '—'}
+                    description={host ? `${formatBytes(host.storage.used)} used · ${formatBytes(host.storage.available)} free on ${host.storage.path}` : 'Loading disk telemetry.'}
+                    icon={HardDrive}
+                    color={host && host.storage.usagePercent > 80 ? 'warning' : 'success'}
+                  />
+                </div>
+              )}
+            </section>
+
+            <section className="panel p-6">
+              <div className="mb-5 flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-[var(--radius-md)] bg-[var(--surface-muted)]">
+                  <Radio size={18} className="text-[var(--text-tertiary)]" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-[var(--text-primary)]">Node Agents</h2>
+                  <p className="text-xs text-[var(--text-tertiary)]">Remote VPS, VM, and LXC capacity for placement and autoscaling.</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1fr]">
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <StatCard
+                      title="Registered"
+                      value={String(agents.length)}
+                      description={agentsQuery.isError ? 'Agent API unavailable.' : 'Nodes connected through token heartbeats.'}
+                      icon={Radio}
+                      color={agents.length > 0 ? 'success' : 'default'}
+                    />
+                    <StatCard
+                      title="Online"
+                      value={String(onlineAgents)}
+                      description="Online and connecting agents can receive queued commands."
+                      icon={Activity}
+                      color={onlineAgents > 0 ? 'success' : 'default'}
+                    />
+                    <StatCard
+                      title="Remote Memory"
+                      value={formatBytes(totalAgentMemory)}
+                      description={`${formatBytes(availableAgentMemory)} currently free across agents.`}
+                      icon={Database}
+                      color={totalAgentMemory > 0 ? 'success' : 'default'}
+                    />
+                  </div>
+
+                  <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-subtle)]">
+                    {agents.length > 0 ? (
+                      agents.slice(0, 5).map((agent) => (
+                        <div key={agent.id} className="flex items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-4 py-3 last:border-b-0">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-[var(--text-primary)]">{agent.name}</p>
+                            <p className="truncate text-xs text-[var(--text-tertiary)]">{agent.hostname} · {agent.ipAddress}:{agent.port}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs font-semibold text-[var(--text-primary)]">{agent.status}</p>
+                            <p className="text-xs text-[var(--text-tertiary)]">{formatBytes(agent.resources.memory.available)} free</p>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="px-4 py-6 text-sm text-[var(--text-tertiary)]">
+                        No remote agents registered yet.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-void)] p-4">
+                  <div className="mb-3 flex items-center gap-2">
+                    <Terminal size={14} className="text-[var(--text-tertiary)]" />
+                    <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Connect Node</span>
+                  </div>
+                  <pre className="mono text-xs text-[var(--text-secondary)] whitespace-pre-wrap">{connectCommand}</pre>
+                  <div className="mt-4 space-y-2 text-xs text-[var(--text-tertiary)]">
+                    <p>Agent endpoint: <span className="mono text-[var(--text-primary)]">{agentEndpoint}</span></p>
+                    <p>Set <span className="mono text-[var(--text-primary)]">CONTAINR_AGENT_AUTH_TOKEN</span> to a value accepted by the backend.</p>
+                    <p>Agent sends host resources, polls pending Docker commands, and reports command results.</p>
+                  </div>
+                </div>
+              </div>
+            </section>
           </div>
         )}
       </div>
@@ -246,9 +441,29 @@ export function UsagePage() {
 }
 
 export function PeoplePage() {
+  const queryClient = useQueryClient();
   const profileQuery = useQuery({
     queryKey: ['user-profile'],
     queryFn: getCurrentUserProfile,
+  });
+  const [newUserName, setNewUserName] = useState('');
+  const [newUserEmail, setNewUserEmail] = useState('');
+  const [newUserPassword, setNewUserPassword] = useState('');
+
+  const createUserMutation = useMutation({
+    mutationFn: () =>
+      createUser({
+        name: newUserName.trim(),
+        email: newUserEmail.trim(),
+        password: newUserPassword,
+      }),
+    onSuccess: () => {
+      setNewUserName('');
+      setNewUserEmail('');
+      setNewUserPassword('');
+      queryClient.invalidateQueries({ queryKey: ['user-profile'] });
+      queryClient.invalidateQueries({ queryKey: ['people-audit-logs'] });
+    },
   });
 
   const projectsQuery = useQuery({
@@ -312,32 +527,289 @@ export function PeoplePage() {
             <p className="mt-3 text-sm text-[var(--text-muted)]">Loading team data...</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <StatCard
-              title="Members"
-              value={profileQuery.data ? '1' : '—'}
-              description={membersBody}
-              icon={Users}
-              color={profileQuery.data ? 'success' : 'default'}
-            />
-            <StatCard
-              title="Roles"
-              value={projectsQuery.data?.length ? String(projectsQuery.data.length) : '—'}
-              description={rolesBody}
-              icon={Shield}
-              color="default"
-            />
-            <StatCard
-              title="Audit Trail"
-              value={auditLogsQuery.data ? String(auditLogsQuery.data.length) : '—'}
-              description={auditBody}
-              icon={FileText}
-              color={auditLogsQuery.data?.length ? 'success' : 'default'}
-            />
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <StatCard
+                title="Members"
+                value={profileQuery.data ? '1+' : '—'}
+                description={membersBody}
+                icon={Users}
+                color={profileQuery.data ? 'success' : 'default'}
+              />
+              <StatCard
+                title="Roles"
+                value={projectsQuery.data?.length ? String(projectsQuery.data.length) : '—'}
+                description={rolesBody}
+                icon={Shield}
+                color="default"
+              />
+              <StatCard
+                title="Audit Trail"
+                value={auditLogsQuery.data ? String(auditLogsQuery.data.length) : '—'}
+                description={auditBody}
+                icon={FileText}
+                color={auditLogsQuery.data?.length ? 'success' : 'default'}
+              />
+            </div>
+
+            <section className="panel p-6">
+              <div className="mb-5 flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)]">
+                  <UserPlus size={18} className="text-[var(--accent-primary)]" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-[var(--text-primary)]">Manual User Creation</h2>
+                  <p className="text-xs text-[var(--text-tertiary)]">Public registration is closed after bootstrap.</p>
+                </div>
+              </div>
+
+              <form
+                className="grid gap-3 lg:grid-cols-[1fr_1fr_1fr_auto]"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  createUserMutation.mutate();
+                }}
+              >
+                <input
+                  value={newUserName}
+                  onChange={(event) => setNewUserName(event.target.value)}
+                  required
+                  className="h-10 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 text-sm"
+                  placeholder="Name"
+                />
+                <input
+                  value={newUserEmail}
+                  onChange={(event) => setNewUserEmail(event.target.value)}
+                  type="email"
+                  required
+                  className="h-10 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 text-sm"
+                  placeholder="email@example.com"
+                />
+                <input
+                  value={newUserPassword}
+                  onChange={(event) => setNewUserPassword(event.target.value)}
+                  type="password"
+                  minLength={8}
+                  required
+                  className="h-10 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 text-sm"
+                  placeholder="Temporary password"
+                />
+                <button
+                  type="submit"
+                  disabled={createUserMutation.isPending}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-[var(--radius-md)] px-4 text-sm font-semibold text-white disabled:opacity-60"
+                  style={{ background: '#e8316a' }}
+                >
+                  {createUserMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />}
+                  Create
+                </button>
+              </form>
+
+              {createUserMutation.isError ? (
+                <div className="mt-4 rounded-[var(--radius-md)] bg-[var(--error-soft)] px-4 py-3 text-sm text-[var(--error)]">
+                  {createUserMutation.error instanceof Error ? createUserMutation.error.message : 'Failed to create user'}
+                </div>
+              ) : null}
+              {createUserMutation.isSuccess ? (
+                <div className="mt-4 rounded-[var(--radius-md)] bg-[var(--success-soft)] px-4 py-3 text-sm text-[var(--success)]">
+                  User created. Share credentials through secure channel.
+                </div>
+              ) : null}
+            </section>
           </div>
         )}
       </div>
     </div>
+  );
+}
+
+const gitProviderTypes = [
+  { value: 'github', label: 'GitHub', tokenHint: 'Personal access token with repo scope' },
+  { value: 'gitlab', label: 'GitLab', tokenHint: 'Personal access token with read_api scope' },
+  { value: 'gitea', label: 'Gitea', tokenHint: 'Access token from your Gitea instance' },
+  { value: 'bitbucket', label: 'Bitbucket', tokenHint: 'App password with repository read' },
+] as const;
+
+function GitProvidersSection() {
+  const queryClient = useQueryClient();
+  const providersQuery = useQuery({
+    queryKey: ['git-providers'],
+    queryFn: listGitProviders,
+  });
+
+  const [form, setForm] = useState({
+    name: 'github' as (typeof gitProviderTypes)[number]['value'],
+    displayName: '',
+    accessToken: '',
+    apiUrl: '',
+  });
+  const [formOpen, setFormOpen] = useState(false);
+
+  const createMutation = useMutation({
+    mutationFn: () =>
+      createGitProvider({
+        name: form.name,
+        display_name: form.displayName.trim() || gitProviderTypes.find((t) => t.value === form.name)!.label,
+        access_token: form.accessToken.trim(),
+        api_url: form.apiUrl.trim() || undefined,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['git-providers'] });
+      setForm({ name: 'github', displayName: '', accessToken: '', apiUrl: '' });
+      setFormOpen(false);
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (providerId: string) => deleteGitProvider(providerId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['git-providers'] });
+    },
+  });
+
+  const providers = providersQuery.data ?? [];
+  const selectedType = gitProviderTypes.find((t) => t.value === form.name)!;
+
+  return (
+    <section className="panel p-6">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
+            <GitBranch size={18} className="text-[var(--accent-primary)]" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-[var(--text-primary)]">Git Providers</h2>
+            <p className="text-xs text-[var(--text-tertiary)]">Connect accounts to deploy services from repositories</p>
+          </div>
+        </div>
+        <button
+          onClick={() => setFormOpen((open) => !open)}
+          className="flex items-center gap-2 h-9 px-4 rounded-[var(--radius-md)] text-white text-sm font-medium shadow-lg transition-all"
+          style={{ background: '#e8316a' }}
+        >
+          <Link2 size={14} />
+          {formOpen ? 'Close' : 'Connect'}
+        </button>
+      </div>
+
+      {providersQuery.isLoading ? (
+        <div className="py-6 text-center">
+          <Loader2 size={20} className="animate-spin mx-auto text-[var(--text-tertiary)]" />
+        </div>
+      ) : providersQuery.isError ? (
+        <div className="px-4 py-3 rounded-[var(--radius-md)] bg-[var(--error-soft)] text-sm text-[var(--error)]">
+          Failed to load providers
+        </div>
+      ) : providers.length === 0 ? (
+        <div className="py-6 text-center">
+          <p className="text-sm text-[var(--text-secondary)]">No Git providers connected</p>
+          <p className="text-xs text-[var(--text-muted)] mt-1">
+            Connect GitHub, GitLab, Gitea, or Bitbucket to deploy services from source
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {providers.map((provider) => (
+            <div
+              key={provider.id}
+              className="flex items-center justify-between p-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)]"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-[var(--radius-sm)] bg-[var(--surface-card)] flex items-center justify-center">
+                  <GitBranch size={14} className="text-[var(--text-tertiary)]" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-[var(--text-primary)]">{provider.display_name}</p>
+                  <p className="text-xs text-[var(--text-muted)] capitalize">{provider.name.replace('_', ' ')}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => deleteMutation.mutate(provider.id)}
+                disabled={deleteMutation.isPending}
+                className="flex items-center gap-2 h-8 px-3 rounded-[var(--radius-sm)] border border-[var(--error-soft)] text-[var(--error)] text-xs font-medium hover:bg-[var(--error-soft)] disabled:opacity-50 transition-colors"
+              >
+                <Unlink size={12} />
+                Disconnect
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {formOpen && (
+        <div className="mt-4 pt-4 border-t border-[var(--border-subtle)] space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)] mb-2">
+                Provider
+              </label>
+              <select
+                value={form.name}
+                onChange={(e) => setForm((p) => ({ ...p, name: e.target.value as typeof form.name }))}
+                className="w-full h-10 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm focus:border-[var(--accent-primary)] transition-colors"
+              >
+                {gitProviderTypes.map((type) => (
+                  <option key={type.value} value={type.value}>{type.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)] mb-2">
+                Display Name
+              </label>
+              <input
+                value={form.displayName}
+                onChange={(e) => setForm((p) => ({ ...p, displayName: e.target.value }))}
+                className="w-full h-10 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm focus:border-[var(--accent-primary)] transition-colors"
+                placeholder={selectedType.label}
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)] mb-2">
+              Access Token
+            </label>
+            <input
+              type="password"
+              value={form.accessToken}
+              onChange={(e) => setForm((p) => ({ ...p, accessToken: e.target.value }))}
+              className="w-full h-10 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm mono focus:border-[var(--accent-primary)] transition-colors"
+              placeholder="••••••••••••••••"
+            />
+            <p className="text-xs text-[var(--text-muted)] mt-1.5">{selectedType.tokenHint}</p>
+          </div>
+          {form.name === 'gitea' && (
+            <div>
+              <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)] mb-2">
+                Instance URL
+              </label>
+              <input
+                value={form.apiUrl}
+                onChange={(e) => setForm((p) => ({ ...p, apiUrl: e.target.value }))}
+                className="w-full h-10 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm mono focus:border-[var(--accent-primary)] transition-colors"
+                placeholder="https://gitea.example.com"
+              />
+            </div>
+          )}
+          {createMutation.isError && (
+            <div className="px-4 py-3 rounded-[var(--radius-md)] bg-[var(--error-soft)] text-sm text-[var(--error)]">
+              {createMutation.error instanceof Error ? createMutation.error.message : 'Failed to connect provider'}
+            </div>
+          )}
+          <div className="flex justify-end pt-1">
+            <button
+              onClick={() => createMutation.mutate()}
+              disabled={!form.accessToken.trim() || createMutation.isPending}
+              className="flex items-center gap-2 h-9 px-4 rounded-[var(--radius-md)] text-white text-sm font-medium shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              style={{ background: '#e8316a' }}
+            >
+              {createMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+              Connect Provider
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -501,6 +973,9 @@ export function SettingsPage() {
               </div>
             )}
           </section>
+
+          {/* Git Providers Section */}
+          <GitProvidersSection />
 
           {/* Runtime & Local State Section */}
           <section className="panel p-6">
@@ -701,7 +1176,7 @@ export function DocsPage() {
                   <FileText size={14} className="text-[var(--text-tertiary)]" />
                   <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Generated Types</span>
                 </div>
-                <p className="mono text-xs text-[var(--text-primary)]">frontend/src/generated/api-types.ts</p>
+                <p className="mono text-xs text-[var(--text-primary)]">app/frontend/src/generated/api-types.ts</p>
               </div>
               <div className="p-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)]">
                 <div className="flex items-center gap-2 mb-1">
@@ -715,7 +1190,7 @@ export function DocsPage() {
                   <FileText size={14} className="text-[var(--text-tertiary)]" />
                   <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">UI References</span>
                 </div>
-                <p className="mono text-xs text-[var(--text-primary)]">docs/references/self.html</p>
+                <p className="mono text-xs text-[var(--text-primary)]">docs/references/dashboard.png • projects.png</p>
               </div>
             </div>
           </section>
@@ -735,13 +1210,16 @@ export function DocsPage() {
             <div className="p-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-void)]">
               <pre className="mono text-xs text-[var(--text-secondary)] whitespace-pre-wrap">
 {`# Regenerate frontend API types
-npm --prefix frontend run generate:api
+npm --prefix app/frontend run generate:api
 
 # Frontend type-check + build
-npm --prefix frontend run build:check
+npm --prefix app/frontend run build:check
 
 # Backend API tests
-cd backend && go test ./internal/api/...`}
+cd app/backend && go test ./internal/api/...
+
+# Build remote node agent
+cd app/backend && go build -o bin/containr-agent ./cmd/agent`}
               </pre>
             </div>
 

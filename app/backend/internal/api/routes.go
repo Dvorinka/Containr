@@ -23,7 +23,7 @@ import (
 
 func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg *config.Config) {
 	// Expose Better Auth through backend so frontend can use a single backend origin.
-	setupAuthProxyRoutes(router, cfg)
+	setupAuthProxyRoutes(router, cfg, db)
 
 	// Initialize Docker client (non-fatal if it fails)
 	var dockerClient *docker.Client
@@ -158,11 +158,15 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 	router.HEAD("/ready", healthHandler)
 
 	// API v1 routes
+	publicAgents := router.Group("/api")
+	agentHandler.SetupPublicRoutes(publicAgents)
+
 	v1 := router.Group("/api/v1")
 	{
 		// Public routes (no authentication required)
 		public := v1.Group("/")
 		{
+			public.GET("/auth/bootstrap", handleAuthBootstrap)
 			public.POST("/auth/login", handleLogin)
 			public.POST("/auth/register", handleRegister)
 		}
@@ -174,6 +178,7 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			// User routes
 			protected.GET("/user/profile", handleGetProfile)
 			protected.PUT("/user/profile", handleUpdateProfile)
+			protected.POST("/users", handleCreateUser)
 
 			// Project routes
 			protected.GET("/projects", handleGetProjects)
@@ -192,6 +197,7 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			protected.GET("/services/:id", handleGetService)
 			protected.PUT("/services/:id", handleUpdateService)
 			protected.DELETE("/services/:id", handleDeleteService)
+			protected.GET("/services/:id/metrics", handleGetServiceMetrics)
 
 			// Deployment routes
 			protected.GET("/services/:id/deployments", handleGetDeployments)
@@ -212,7 +218,9 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			protected.POST("/git/github-app/connect", handleConnectGitHubApp)
 			protected.GET("/git/providers", handleGetGitProviders)
 			protected.POST("/git/providers", handleCreateGitProvider)
+			protected.DELETE("/git/providers/:providerId", handleDeleteGitProvider)
 			protected.GET("/git/providers/:providerId/repositories", handleGetGitRepositories)
+			protected.GET("/git/providers/:providerId/repositories/:owner/:repo/branches", handleGetGitRepositoryBranches)
 			protected.POST("/git/repositories/connect", handleConnectGitRepository)
 			protected.GET("/git/repositories", handleGetConnectedRepositories)
 			protected.POST("/git/webhooks", handleCreateWebhook)
@@ -225,6 +233,11 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			protected.GET("/builds/:id/logs", buildHandler.GetBuildLogs)
 			protected.POST("/builds/plan", buildHandler.GetBuildPlan)
 			protected.GET("/builds/detect", buildHandler.DetectBuildType)
+
+			// System routes
+			protected.GET("/system/upgrade/status", handleGetUpgradeStatus)
+			protected.POST("/system/upgrade/pull", handlePullUpgradeImage)
+			protected.GET("/system/host", handleGetHostMonitoring)
 
 			// Scaling routes
 			scalingHandler.RegisterRoutes(protected)
@@ -241,9 +254,7 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			protected.POST("/databases/:id/restore", databaseHandler.RestoreBackup)
 
 			// Node Agent routes
-			api := router.Group("/api")
-			api.Use(middleware.Auth(cfg.JWTSecret))
-			agentHandler.SetupRoutes(api)
+			agentHandler.SetupRoutes(protected)
 
 			// Preview Environments routes
 			protected.GET("/projects/:id/preview-environments", handleGetPreviewEnvironments)

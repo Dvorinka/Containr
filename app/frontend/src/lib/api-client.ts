@@ -148,6 +148,105 @@ export type UpdateUserProfileInput = {
   avatarUrl?: string;
 };
 
+export type CreateUserInput = {
+  name: string;
+  email: string;
+  password: string;
+};
+
+export type UpgradeStatus = {
+  imageRef: string;
+  registry: string;
+  dockerAvailable: boolean;
+  installed: boolean;
+  digest?: string;
+  size?: number;
+  authConfigured: boolean;
+  message: string;
+};
+
+export type SystemLoad = {
+  load1m: number;
+  load5m: number;
+  load15m: number;
+};
+
+export type HostMonitoring = {
+  hostname: string;
+  os: string;
+  architecture: string;
+  cpu: {
+    cores: number;
+  };
+  memory: {
+    total: number;
+    used: number;
+    available: number;
+    usagePercent: number;
+  };
+  storage: {
+    path: string;
+    total: number;
+    used: number;
+    available: number;
+    usagePercent: number;
+  };
+  load: SystemLoad;
+  uptimeSeconds: number;
+  dockerAvailable: boolean;
+  docker?: {
+    containers?: number;
+    images?: number;
+    driver?: string;
+    server?: string;
+  };
+  collectedAt: string;
+};
+
+export type AgentCapabilities = {
+  containerRuntimes: string[];
+  supportedArchitectures: string[];
+  maxContainers: number;
+  storageDriver: string;
+  networkPlugins: string[];
+  features: string[];
+};
+
+export type NodeResources = {
+  cpu: {
+    cores: number;
+    allocation: number;
+    usage: number;
+  };
+  memory: {
+    total: number;
+    allocated: number;
+    used: number;
+    available: number;
+  };
+  storage: {
+    total: number;
+    allocated: number;
+    used: number;
+    available: number;
+  };
+};
+
+export type NodeAgentEntity = {
+  id: string;
+  name: string;
+  hostname: string;
+  ipAddress: string;
+  port: number;
+  status: string;
+  version: string;
+  capabilities: AgentCapabilities;
+  resources: NodeResources;
+  lastHeartbeat?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 export type AuditLogEntity = {
   id: string;
   userId: string;
@@ -256,6 +355,91 @@ type RawServiceLog = components['schemas']['ServiceLogEntry'];
 type RawServiceLogsResponse = components['schemas']['ServiceLogsResponse'];
 type RawDeploymentLogsResponse = components['schemas']['DeploymentLogsResponse'];
 type RawRollbackDeploymentResponse = components['schemas']['RollbackDeploymentResponse'];
+type RawUpgradeStatus = {
+  image_ref?: string;
+  registry?: string;
+  docker_available?: boolean;
+  installed?: boolean;
+  digest?: string;
+  size?: number;
+  auth_configured?: boolean;
+  message?: string;
+};
+type RawSystemLoad = {
+  load_1m?: number;
+  load_5m?: number;
+  load_15m?: number;
+};
+type RawHostMonitoring = {
+  hostname?: string;
+  os?: string;
+  architecture?: string;
+  cpu?: {
+    cores?: number;
+  };
+  memory?: {
+    total?: number;
+    used?: number;
+    available?: number;
+    usage_percent?: number;
+  };
+  storage?: {
+    path?: string;
+    total?: number;
+    used?: number;
+    available?: number;
+    usage_percent?: number;
+  };
+  load?: RawSystemLoad;
+  uptime_seconds?: number;
+  docker_available?: boolean;
+  docker?: {
+    containers?: number;
+    images?: number;
+    driver?: string;
+    server?: string;
+  };
+  collected_at?: string;
+};
+type RawNodeAgent = {
+  id?: string;
+  name?: string;
+  hostname?: string;
+  ip_address?: string;
+  port?: number;
+  status?: string;
+  version?: string;
+  capabilities?: {
+    container_runtimes?: string[];
+    supported_architectures?: string[];
+    max_containers?: number;
+    storage_driver?: string;
+    network_plugins?: string[];
+    features?: string[];
+  };
+  resources?: {
+    cpu?: {
+      cores?: number;
+      allocation?: number;
+      usage?: number;
+    };
+    memory?: {
+      total?: number;
+      allocated?: number;
+      used?: number;
+      available?: number;
+    };
+    storage?: {
+      total?: number;
+      allocated?: number;
+      used?: number;
+      available?: number;
+    };
+  };
+  last_heartbeat?: string;
+  created_at?: string;
+  updated_at?: string;
+};
 
 export type CreateProjectInput = components['schemas']['CreateProjectRequest'];
 export type CreateServiceInput = components['schemas']['CreateServiceRequest'] & {
@@ -286,10 +470,15 @@ type JsonLike = Record<string, unknown>;
 
 const rawBase = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:8082';
 const normalizedBase = rawBase.replace(/\/$/, '');
+const API_ROOT = normalizedBase.replace(/\/api\/v1$/, '').replace(/\/api$/, '');
 const API_BASE = /\/api\/v1$/.test(normalizedBase) ? normalizedBase : `${normalizedBase}/api/v1`;
 
 export function getApiBaseUrl(): string {
   return API_BASE;
+}
+
+export function getAgentPublicBaseUrl(): string {
+  return `${API_ROOT}/api/agents`;
 }
 
 function authHeaders(): HeadersInit {
@@ -669,6 +858,151 @@ export async function updateCurrentUserProfile(input: UpdateUserProfileInput): P
   return profile;
 }
 
+export async function createUser(input: CreateUserInput): Promise<UserProfile> {
+  const payload = await requestJson<RawUserProfile | { user?: RawUserProfile }>(`/users`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+
+  const rawProfile = (payload as { user?: RawUserProfile }).user ?? (payload as RawUserProfile);
+  const profile = normalizeUserProfile(rawProfile);
+
+  if (!profile) {
+    throw new ApiError('Create user response is invalid', 500);
+  }
+
+  return profile;
+}
+
+function normalizeUpgradeStatus(payload: RawUpgradeStatus): UpgradeStatus {
+  return {
+    imageRef: payload.image_ref ?? '',
+    registry: payload.registry ?? '',
+    dockerAvailable: Boolean(payload.docker_available),
+    installed: Boolean(payload.installed),
+    digest: payload.digest,
+    size: payload.size,
+    authConfigured: Boolean(payload.auth_configured),
+    message: payload.message ?? '',
+  };
+}
+
+function normalizeSystemLoad(payload?: RawSystemLoad): SystemLoad {
+  return {
+    load1m: payload?.load_1m ?? 0,
+    load5m: payload?.load_5m ?? 0,
+    load15m: payload?.load_15m ?? 0,
+  };
+}
+
+function normalizeHostMonitoring(payload: RawHostMonitoring): HostMonitoring {
+  return {
+    hostname: payload.hostname ?? '',
+    os: payload.os ?? '',
+    architecture: payload.architecture ?? '',
+    cpu: {
+      cores: payload.cpu?.cores ?? 0,
+    },
+    memory: {
+      total: payload.memory?.total ?? 0,
+      used: payload.memory?.used ?? 0,
+      available: payload.memory?.available ?? 0,
+      usagePercent: payload.memory?.usage_percent ?? 0,
+    },
+    storage: {
+      path: payload.storage?.path ?? '/',
+      total: payload.storage?.total ?? 0,
+      used: payload.storage?.used ?? 0,
+      available: payload.storage?.available ?? 0,
+      usagePercent: payload.storage?.usage_percent ?? 0,
+    },
+    load: normalizeSystemLoad(payload.load),
+    uptimeSeconds: payload.uptime_seconds ?? 0,
+    dockerAvailable: Boolean(payload.docker_available),
+    docker: payload.docker,
+    collectedAt: payload.collected_at ?? '',
+  };
+}
+
+function normalizeAgent(agent: RawNodeAgent): NodeAgentEntity | null {
+  if (!agent.id || !agent.name) {
+    return null;
+  }
+
+  return {
+    id: agent.id,
+    name: agent.name,
+    hostname: agent.hostname ?? '',
+    ipAddress: agent.ip_address ?? '',
+    port: agent.port ?? 0,
+    status: agent.status ?? 'unknown',
+    version: agent.version ?? '',
+    capabilities: {
+      containerRuntimes: agent.capabilities?.container_runtimes ?? [],
+      supportedArchitectures: agent.capabilities?.supported_architectures ?? [],
+      maxContainers: agent.capabilities?.max_containers ?? 0,
+      storageDriver: agent.capabilities?.storage_driver ?? '',
+      networkPlugins: agent.capabilities?.network_plugins ?? [],
+      features: agent.capabilities?.features ?? [],
+    },
+    resources: {
+      cpu: {
+        cores: agent.resources?.cpu?.cores ?? 0,
+        allocation: agent.resources?.cpu?.allocation ?? 0,
+        usage: agent.resources?.cpu?.usage ?? 0,
+      },
+      memory: {
+        total: agent.resources?.memory?.total ?? 0,
+        allocated: agent.resources?.memory?.allocated ?? 0,
+        used: agent.resources?.memory?.used ?? 0,
+        available: agent.resources?.memory?.available ?? 0,
+      },
+      storage: {
+        total: agent.resources?.storage?.total ?? 0,
+        allocated: agent.resources?.storage?.allocated ?? 0,
+        used: agent.resources?.storage?.used ?? 0,
+        available: agent.resources?.storage?.available ?? 0,
+      },
+    },
+    lastHeartbeat: agent.last_heartbeat,
+    createdAt: agent.created_at,
+    updatedAt: agent.updated_at,
+  };
+}
+
+function normalizeAgentArray(raw: unknown): NodeAgentEntity[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  return raw
+    .map((entry) => normalizeAgent(entry as RawNodeAgent))
+    .filter((entry): entry is NodeAgentEntity => entry !== null);
+}
+
+export async function getUpgradeStatus(): Promise<UpgradeStatus> {
+  const payload = await requestJson<RawUpgradeStatus>(`/system/upgrade/status`);
+  return normalizeUpgradeStatus(payload);
+}
+
+export async function pullUpgradeImage(): Promise<UpgradeStatus> {
+  const payload = await requestJson<RawUpgradeStatus>(`/system/upgrade/pull`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+  return normalizeUpgradeStatus(payload);
+}
+
+export async function getHostMonitoring(): Promise<HostMonitoring> {
+  const payload = await requestJson<RawHostMonitoring>(`/system/host`);
+  return normalizeHostMonitoring(payload);
+}
+
+export async function listAgents(): Promise<NodeAgentEntity[]> {
+  const payload = await requestJson<{ agents?: RawNodeAgent[] }>(`/agents`);
+  return normalizeAgentArray(payload.agents);
+}
+
 export async function createProject(input: CreateProjectInput): Promise<ProjectEntity> {
   const payload = await requestJson<RawProject | { project?: RawProject }>(`/projects`, {
     method: 'POST',
@@ -957,4 +1291,110 @@ export function serviceStatusClass(status: ServiceStatus): string {
     default:
       return 'status-stopped';
   }
+}
+
+export type ServiceInstanceMetrics = {
+  container_id: string;
+  name: string;
+  state: string;
+  cpu_percent: number;
+  memory_usage_bytes: number;
+  memory_limit_bytes: number;
+  network_rx_bytes: number;
+  network_tx_bytes: number;
+  started_at?: string;
+};
+
+export type ServiceMetrics = {
+  service_id: string;
+  status: 'ok' | 'no_containers' | 'docker_unavailable';
+  instances: ServiceInstanceMetrics[];
+  cpu_percent: number;
+  memory_usage_bytes: number;
+  memory_limit_bytes: number;
+  network_rx_bytes: number;
+  network_tx_bytes: number;
+  collected_at: string;
+};
+
+export async function getServiceMetrics(serviceId: string): Promise<ServiceMetrics> {
+  const payload = await requestJson<{ metrics?: ServiceMetrics }>(`/services/${serviceId}/metrics`);
+  if (!payload.metrics) {
+    throw new ApiError('Service metrics payload is invalid', 500);
+  }
+  return payload.metrics;
+}
+
+export type GitProviderEntity = {
+  id: string;
+  name: string;
+  display_name: string;
+  api_url: string;
+  created_at?: string;
+};
+
+export type GitRepositoryEntity = {
+  id: string;
+  provider_id: string;
+  name: string;
+  full_name: string;
+  description: string;
+  clone_url: string;
+  default_branch: string;
+  is_private: boolean;
+};
+
+export type GitBranchEntity = {
+  name: string;
+  protected: boolean;
+};
+
+export async function listGitProviders(): Promise<GitProviderEntity[]> {
+  const payload = await requestJson<{ providers?: GitProviderEntity[] }>('/git/providers');
+  return payload.providers ?? [];
+}
+
+export async function createGitProvider(input: {
+  name: 'github' | 'gitlab' | 'bitbucket' | 'gitea';
+  display_name: string;
+  access_token: string;
+  api_url?: string;
+}): Promise<GitProviderEntity> {
+  const payload = await requestJson<GitProviderEntity>('/git/providers', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  if (!payload.id) {
+    throw new ApiError('Provider response is invalid', 500);
+  }
+  return payload;
+}
+
+export async function deleteGitProvider(providerId: string): Promise<void> {
+  await requestJson(`/git/providers/${providerId}`, { method: 'DELETE' });
+}
+
+export async function listGitRepositories(
+  providerId: string,
+  search?: string,
+): Promise<GitRepositoryEntity[]> {
+  const params = new URLSearchParams({ limit: '100' });
+  if (search?.trim()) {
+    params.set('search', search.trim());
+  }
+  const payload = await requestJson<{ repositories?: GitRepositoryEntity[] }>(
+    `/git/providers/${providerId}/repositories?${params.toString()}`,
+  );
+  return payload.repositories ?? [];
+}
+
+export async function listGitBranches(
+  providerId: string,
+  owner: string,
+  repo: string,
+): Promise<GitBranchEntity[]> {
+  const payload = await requestJson<{ branches?: GitBranchEntity[] }>(
+    `/git/providers/${providerId}/repositories/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/branches`,
+  );
+  return payload.branches ?? [];
 }

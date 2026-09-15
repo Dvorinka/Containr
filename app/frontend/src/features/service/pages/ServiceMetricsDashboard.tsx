@@ -1,25 +1,21 @@
 import { useMemo, useState, useEffect } from 'react';
-import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
-import { 
-  Cpu, 
-  MemoryStick, 
-  Zap, 
-  Users, 
+import { useParams, useNavigate } from 'react-router-dom';
+import {
+  Cpu,
+  MemoryStick,
+  Zap,
+  Users,
   Globe,
-  ArrowLeft,
   Search,
   Bell,
   ChevronUp,
   Activity,
-  FileText,
   Sliders,
-  Settings as SettingsIcon
 } from 'lucide-react';
-import { 
-  LineChart, 
-  LineAreaChart, 
-  DonutChart, 
-  MultiLineChart,
+import {
+  LineChart,
+  LineAreaChart,
+  DonutChart,
   EnhancedMetricCard,
   CacheMetricCard,
   PerformanceMetricCard
@@ -49,7 +45,6 @@ const timePeriods = ['Day', 'Month', 'Year'];
 
 export function ServiceMetricsDashboard() {
   const { serviceId = 'demo-service' } = useParams();
-  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   
   const [activeTab, setActiveTab] = useState<TabKey>('metrics');
@@ -86,10 +81,10 @@ export function ServiceMetricsDashboard() {
         { data: perfData1, color: '#6c8ef0', fillOpacity: 0.15 },
         { data: perfData2, color: '#9c7ef0', fillOpacity: 0.15 }
       ],
-      upSpeed: (Math.random() * 5 + 8).toFixed(1),
-      downSpeed: (Math.random() * 3 + 4).toFixed(1),
+      upSpeed: seededRandom(`${serviceId}:upspeed`, 8, 13).toFixed(1),
+      downSpeed: seededRandom(`${serviceId}:downspeed`, 4, 7).toFixed(1),
     };
-  }, [serviceId, timePeriod]);
+  }, [serviceId]);
 
   // Auto-update metrics every 2 seconds
   useEffect(() => {

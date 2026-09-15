@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
+import { ToastProvider } from '@/shared/components';
 import App from './App';
 
 function renderApp(initialPath: string) {
@@ -16,9 +17,11 @@ function renderApp(initialPath: string) {
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[initialPath]}>
-        <App />
-      </MemoryRouter>
+      <ToastProvider>
+        <MemoryRouter initialEntries={[initialPath]}>
+          <App />
+        </MemoryRouter>
+      </ToastProvider>
     </QueryClientProvider>,
   );
 }
@@ -29,14 +32,14 @@ describe('App smoke routes', () => {
 
     expect(await screen.findByRole('heading', { name: /^projects$/i })).toBeInTheDocument();
     expect(screen.getByText(/demo mode active/i)).toBeInTheDocument();
-    expect(screen.getByText(/visual topology mapping and real-time observability/i)).toBeInTheDocument();
+    expect(screen.getByText(/deploy, manage, and monitor containerized services/i)).toBeInTheDocument();
   });
 
   it('renders builds page in demo mode', async () => {
     renderApp('/builds?demo=1');
 
     expect(await screen.findByRole('heading', { name: /build pipeline/i })).toBeInTheDocument();
-    expect(screen.getByText(/offline/i)).toBeInTheDocument();
+    expect(screen.getByText(/polling/i)).toBeInTheDocument();
   });
 
   it('renders templates page in demo mode', async () => {

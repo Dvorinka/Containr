@@ -4,6 +4,9 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   createService,
   getProjectById,
+  listGitBranches,
+  listGitProviders,
+  listGitRepositories,
   listServiceLogs,
   listServiceVariables,
   listServicesByProject,
@@ -31,6 +34,8 @@ import {
   Sparkles,
   Box,
   Search,
+  GitBranch,
+  Container,
 } from 'lucide-react';
 
 type WorkspaceView = 'canvas' | 'observability' | 'logs' | 'settings';
@@ -59,6 +64,44 @@ function ServiceCreateDialog(props: {
     image: '',
     command: '',
   });
+  const [source, setSource] = useState<'image' | 'git'>('image');
+  const [providerId, setProviderId] = useState('');
+  const [repoFullName, setRepoFullName] = useState('');
+  const [repoSearch, setRepoSearch] = useState('');
+
+  const providersQuery = useQuery({
+    queryKey: ['git-providers'],
+    queryFn: listGitProviders,
+    enabled: props.open && source === 'git',
+  });
+
+  const repositoriesQuery = useQuery({
+    queryKey: ['git-repositories', providerId, repoSearch],
+    queryFn: () => listGitRepositories(providerId, repoSearch),
+    enabled: props.open && source === 'git' && Boolean(providerId),
+  });
+
+  const selectedRepo = useMemo(
+    () => (repositoriesQuery.data ?? []).find((repo) => repo.full_name === repoFullName) ?? null,
+    [repositoriesQuery.data, repoFullName],
+  );
+
+  const branchesQuery = useQuery({
+    queryKey: ['git-branches', providerId, repoFullName],
+    queryFn: () => {
+      const [owner, repo] = repoFullName.split('/');
+      return listGitBranches(providerId, owner, repo);
+    },
+    enabled: props.open && source === 'git' && Boolean(providerId) && Boolean(repoFullName),
+  });
+
+  const providers = providersQuery.data ?? [];
+  const repositories = repositoriesQuery.data ?? [];
+  const branches = branchesQuery.data ?? [];
+
+  const canSubmit =
+    Boolean(form.name.trim()) &&
+    (source === 'image' || Boolean(repoFullName));
 
   if (!props.open) return null;
 
@@ -122,15 +165,168 @@ function ServiceCreateDialog(props: {
 
           <div>
             <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-tertiary)] mb-2">
-              Image <span className="normal-case text-[var(--text-muted)]">(optional)</span>
+              Source
             </label>
-            <input
-              value={form.image ?? ''}
-              onChange={(e) => setForm((p) => ({ ...p, image: e.target.value }))}
-              className="w-full h-11 px-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all mono text-sm"
-              placeholder="ghcr.io/org/app:latest"
-            />
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setSource('image')}
+                className={`flex items-center justify-center gap-2 h-10 rounded-[var(--radius-md)] border text-sm font-medium transition-colors ${
+                  source === 'image'
+                    ? 'border-[var(--accent-primary)] bg-[var(--accent-primary-soft)] text-[var(--text-primary)]'
+                    : 'border-[var(--border-subtle)] bg-[var(--surface-muted)] text-[var(--text-tertiary)] hover:border-[var(--border-default)]'
+                }`}
+              >
+                <Container size={14} />
+                Image
+              </button>
+              <button
+                type="button"
+                onClick={() => setSource('git')}
+                className={`flex items-center justify-center gap-2 h-10 rounded-[var(--radius-md)] border text-sm font-medium transition-colors ${
+                  source === 'git'
+                    ? 'border-[var(--accent-primary)] bg-[var(--accent-primary-soft)] text-[var(--text-primary)]'
+                    : 'border-[var(--border-subtle)] bg-[var(--surface-muted)] text-[var(--text-tertiary)] hover:border-[var(--border-default)]'
+                }`}
+              >
+                <GitBranch size={14} />
+                Git Repository
+              </button>
+            </div>
           </div>
+
+          {source === 'image' ? (
+            <div>
+              <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-tertiary)] mb-2">
+                Image <span className="normal-case text-[var(--text-muted)]">(optional)</span>
+              </label>
+              <input
+                value={form.image ?? ''}
+                onChange={(e) => setForm((p) => ({ ...p, image: e.target.value }))}
+                className="w-full h-11 px-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all mono text-sm"
+                placeholder="ghcr.io/org/app:latest"
+              />
+            </div>
+          ) : (
+            <div className="space-y-3 p-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)]/50">
+              <div>
+                <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-tertiary)] mb-2">
+                  Provider
+                </label>
+                <select
+                  value={providerId}
+                  onChange={(e) => {
+                    setProviderId(e.target.value);
+                    setRepoFullName('');
+                    setForm((p) => ({ ...p, git_repo: '', git_branch: '' }));
+                  }}
+                  className="w-full h-11 px-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-[var(--text-primary)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all"
+                >
+                  <option value="">Select provider</option>
+                  {providers.map((provider) => (
+                    <option key={provider.id} value={provider.id}>{provider.display_name}</option>
+                  ))}
+                </select>
+                {!providersQuery.isLoading && providers.length === 0 && (
+                  <p className="text-xs text-[var(--warn)] mt-1.5">
+                    No providers connected — add one in Settings → Git Providers
+                  </p>
+                )}
+              </div>
+
+              {providerId && (
+                <div>
+                  <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-tertiary)] mb-2">
+                    Repository
+                  </label>
+                  <input
+                    value={repoSearch}
+                    onChange={(e) => setRepoSearch(e.target.value)}
+                    className="w-full h-9 px-3 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm mono mb-2"
+                    placeholder="Search repositories..."
+                  />
+                  {repositoriesQuery.isLoading ? (
+                    <div className="py-3 text-center">
+                      <Loader2 size={14} className="animate-spin mx-auto text-[var(--text-tertiary)]" />
+                    </div>
+                  ) : repositoriesQuery.isError ? (
+                    <p className="text-xs text-[var(--error)] py-2">Failed to load repositories — check the provider token</p>
+                  ) : repositories.length === 0 ? (
+                    <p className="text-xs text-[var(--text-muted)] py-2">No repositories found</p>
+                  ) : (
+                    <div className="max-h-40 overflow-y-auto space-y-0.5 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] p-1">
+                      {repositories.slice(0, 50).map((repo) => (
+                        <button
+                          key={repo.id}
+                          type="button"
+                          onClick={() => {
+                            setRepoFullName(repo.full_name);
+                            setForm((p) => ({
+                              ...p,
+                              git_repo: repo.clone_url ?? repo.full_name,
+                              git_branch: p.git_branch || repo.default_branch || '',
+                            }));
+                          }}
+                          className={`w-full flex items-center justify-between px-3 py-2 rounded-[var(--radius-sm)] text-left text-sm transition-colors ${
+                            repoFullName === repo.full_name
+                              ? 'bg-[var(--accent-primary-soft)] text-[var(--text-primary)]'
+                              : 'text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]'
+                          }`}
+                        >
+                          <span className="mono text-xs truncate">{repo.full_name}</span>
+                          <span className="text-[10px] text-[var(--text-muted)] ml-2 shrink-0">{repo.default_branch}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {repoFullName && (
+                <>
+                  <div>
+                    <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-tertiary)] mb-2">
+                      Branch
+                    </label>
+                    {branchesQuery.isLoading ? (
+                      <div className="py-2 text-center">
+                        <Loader2 size={14} className="animate-spin mx-auto text-[var(--text-tertiary)]" />
+                      </div>
+                    ) : branches.length > 0 ? (
+                      <select
+                        value={form.git_branch ?? ''}
+                        onChange={(e) => setForm((p) => ({ ...p, git_branch: e.target.value }))}
+                        className="w-full h-10 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm mono"
+                      >
+                        <option value="">Select branch</option>
+                        {branches.map((branch) => (
+                          <option key={branch.name} value={branch.name}>{branch.name}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        value={form.git_branch ?? ''}
+                        onChange={(e) => setForm((p) => ({ ...p, git_branch: e.target.value }))}
+                        className="w-full h-10 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm mono"
+                        placeholder={selectedRepo?.default_branch ?? 'main'}
+                      />
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-tertiary)] mb-2">
+                      Build Path <span className="normal-case text-[var(--text-muted)]">(optional)</span>
+                    </label>
+                    <input
+                      value={form.build_path ?? ''}
+                      onChange={(e) => setForm((p) => ({ ...p, build_path: e.target.value }))}
+                      className="w-full h-10 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm mono"
+                      placeholder="/ (repo root)"
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          )}
 
           <div>
             <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-tertiary)] mb-2">
@@ -159,8 +355,18 @@ function ServiceCreateDialog(props: {
             Cancel
           </button>
           <button
-            disabled={!form.name.trim() || props.loading}
-            onClick={() => props.onSubmit({ ...form, name: form.name.trim(), image: form.image?.trim(), command: form.command?.trim() })}
+            disabled={!canSubmit || props.loading}
+            onClick={() =>
+              props.onSubmit({
+                ...form,
+                name: form.name.trim(),
+                image: source === 'image' ? form.image?.trim() : '',
+                command: form.command?.trim(),
+                git_repo: source === 'git' ? form.git_repo?.trim() : '',
+                git_branch: source === 'git' ? form.git_branch?.trim() : '',
+                build_path: source === 'git' ? form.build_path?.trim() : '',
+              })
+            }
             className="px-5 py-2 rounded-[var(--radius-md)] text-white text-sm font-medium shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             style={{ background: '#e8316a' }}
           >

@@ -226,41 +226,36 @@ export function ProjectsPage() {
 
   return (
     <div className="min-h-screen relative">
-      {/* Hero Section - Premium ambient design */}
-      <div className="relative overflow-hidden border-b border-[var(--border-subtle)]">
-        {/* Solid ambient background */}
-        <div className="absolute inset-0 bg-[#e8316a]/5" />
-        <div className="absolute top-0 left-1/4 w-96 h-96 bg-[var(--accent-primary)]/5 rounded-full blur-3xl" />
-        <div className="absolute bottom-0 right-1/4 w-80 h-80 bg-[var(--accent-secondary)]/5 rounded-full blur-3xl" />
-        
-        <div className="relative mx-auto w-full max-w-[1400px] px-6 py-12 md:py-16 lg:py-20">
-          <div className="max-w-2xl">
-            <div className="flex items-center gap-3 mb-4">
-              <div 
-                className="flex items-center justify-center rounded-xl shadow-lg ring-1 ring-white/10"
-                style={{ width: '44px', height: '44px', background: '#e8316a' }}
-              >
-                <FolderOpen size={20} className="text-white" />
-              </div>
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[var(--surface-muted)] border border-[var(--border-subtle)]">
-                <div className="w-1.5 h-1.5 rounded-full bg-[var(--success)] live-pulse" />
-                <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-tertiary)]">
-                  Workspace
-                </span>
-              </div>
+      {/* Header */}
+      <div className="border-b border-[var(--border-subtle)]">
+        <div className="mx-auto w-full max-w-[1400px] px-6 py-5 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div
+              className="flex items-center justify-center rounded-[var(--radius-md)]"
+              style={{ width: '36px', height: '36px', background: '#e8316a' }}
+            >
+              <FolderOpen size={17} className="text-white" />
             </div>
-            <h1 className="font-headline text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-[var(--text-primary)]">
-              Projects
-            </h1>
-            <p className="mt-4 text-lg text-[var(--text-secondary)] max-w-xl leading-relaxed">
-              Deploy, manage, and monitor your containerized services with visual topology mapping and real-time observability.
-            </p>
+            <div>
+              <h1 className="font-headline text-xl font-semibold tracking-tight text-[var(--text-primary)]">
+                Projects
+              </h1>
+              <p className="text-xs text-[var(--text-tertiary)]">
+                Deploy, manage, and monitor containerized services
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[var(--surface-muted)] border border-[var(--border-subtle)]">
+            <div className="w-1.5 h-1.5 rounded-full bg-[var(--success)] live-pulse" />
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-tertiary)]">
+              Workspace
+            </span>
           </div>
         </div>
       </div>
 
       {/* Main Content */}
-      <div className="mx-auto w-full max-w-[1400px] px-6 py-8">
+      <div className="mx-auto w-full max-w-[1400px] px-6 py-6">
         {/* Toolbar */}
         <div className="flex flex-col sm:flex-row gap-4 mb-8">
           <div className="relative flex-1">

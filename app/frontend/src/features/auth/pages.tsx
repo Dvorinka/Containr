@@ -1,16 +1,14 @@
 import { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, ArrowRight, Github, Gitlab, KeyRound, Loader2, Mail, Shield, User2, Workflow } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { AlertCircle, ArrowRight, Github, Loader2, Mail, User2 } from 'lucide-react';
 import {
   AuthError,
-  startBitbucketSignIn,
-  startGitLabSignIn,
-  requestMagicLinkInvite,
+  getAuthBootstrap,
+  startGoogleSignIn,
   signInWithEmail,
   signUpWithEmail,
-  startGiteaSignIn,
   startGitHubSignIn,
 } from '@/lib/auth-client';
 import { useAuthSession } from '@/lib/use-auth-session';
@@ -48,7 +46,7 @@ function AuthCanvas() {
             Better Auth
           </h1>
           <p className="mt-4 max-w-md text-sm leading-relaxed text-[var(--text-secondary)]">
-            Email/password, invite magic links, and OAuth providers (GitHub, GitLab, Bitbucket, Gitea) are handled by a dedicated Better Auth service with cookie sessions.
+            Email/password plus GitHub and Google sign-in run through secure cookie sessions. First account bootstraps platform ownership; every later user is created from inside Containr.
           </p>
         </div>
 
@@ -132,16 +130,22 @@ export function SignInPage() {
   const redirectPath = useMemo(() => sanitizeRedirect(searchParams.get('redirect')), [searchParams]);
 
   const sessionQuery = useAuthSession();
+  const bootstrapQuery = useQuery({
+    queryKey: ['auth-bootstrap'],
+    queryFn: getAuthBootstrap,
+  });
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [magicEmail, setMagicEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isMagicLoading, setIsMagicLoading] = useState(false);
 
   if (sessionQuery.data) {
     return <Navigate to={redirectPath} replace />;
+  }
+
+  if (bootstrapQuery.data?.mode === 'register') {
+    return <Navigate to={`/auth/sign-up?redirect=${encodeURIComponent(redirectPath)}`} replace />;
   }
 
   const submitEmailPassword = async (event: FormEvent) => {
@@ -162,48 +166,32 @@ export function SignInPage() {
     }
   };
 
-  const submitMagicLink = async (event: FormEvent) => {
-    event.preventDefault();
+  const signInWithGitHubProvider = async () => {
     setError(null);
-    setInfo(null);
-    setIsMagicLoading(true);
-
     try {
-      await requestMagicLinkInvite(magicEmail.trim(), buildOAuthCallbackURL(redirectPath));
-      setInfo('Magic invite link sent. Check your email inbox.');
+      await startGitHubSignIn(buildOAuthCallbackURL(redirectPath));
     } catch (exception) {
-      const message = exception instanceof AuthError ? exception.message : 'Failed to send magic link';
+      const message = exception instanceof AuthError ? exception.message : 'GitHub sign-in failed';
       setError(message);
-    } finally {
-      setIsMagicLoading(false);
     }
   };
 
-  const signInWithGitHubProvider = async () => {
+  const signInWithGoogleProvider = async () => {
     setError(null);
-    await startGitHubSignIn(buildOAuthCallbackURL(redirectPath));
-  };
-
-  const signInWithGiteaProvider = async () => {
-    setError(null);
-    await startGiteaSignIn(buildOAuthCallbackURL(redirectPath));
-  };
-
-  const signInWithGitLabProvider = async () => {
-    setError(null);
-    await startGitLabSignIn(buildOAuthCallbackURL(redirectPath));
-  };
-
-  const signInWithBitbucketProvider = async () => {
-    setError(null);
-    await startBitbucketSignIn(buildOAuthCallbackURL(redirectPath));
+    try {
+      await startGoogleSignIn(buildOAuthCallbackURL(redirectPath));
+    } catch (exception) {
+      const message = exception instanceof AuthError ? exception.message : 'Google sign-in failed';
+      setError(message);
+    }
   };
 
   return (
     <AuthLayout>
-      <AuthCard title="Sign In" subtitle="Use your Containr account, invite magic link, or provider OAuth.">
+      <AuthCard title="Sign In" subtitle="Use email/password, GitHub, or Google.">
         {error ? <AuthErrorNotice message={error} /> : null}
         {info ? <AuthInfoNotice message={info} /> : null}
+        {bootstrapQuery.isLoading ? <AuthInfoNotice message="Checking platform access mode..." /> : null}
 
         <form className="space-y-3" onSubmit={submitEmailPassword}>
           <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
@@ -256,58 +244,17 @@ export function SignInPage() {
           </button>
           <button
             type="button"
-            onClick={() => void signInWithGitLabProvider()}
+            onClick={() => void signInWithGoogleProvider()}
             className="inline-flex h-10 items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--border-default)]"
           >
-            <Gitlab size={15} />
-            GitLab
-          </button>
-          <button
-            type="button"
-            onClick={() => void signInWithBitbucketProvider()}
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--border-default)]"
-          >
-            <Workflow size={15} />
-            Bitbucket
-          </button>
-          <button
-            type="button"
-            onClick={() => void signInWithGiteaProvider()}
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--border-default)]"
-          >
-            <Shield size={15} />
-            Gitea
+            <span className="text-sm font-semibold">G</span>
+            Google
           </button>
         </div>
 
-        <form className="mt-4 space-y-2" onSubmit={submitMagicLink}>
-          <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
-            Magic Link Invite
-            <input
-              type="email"
-              autoComplete="email"
-              value={magicEmail}
-              onChange={(event) => setMagicEmail(event.target.value)}
-              required
-              className="mt-2 w-full rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 py-2.5 text-sm text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--accent-primary)]"
-              placeholder="invite@example.com"
-            />
-          </label>
-          <button
-            type="submit"
-            disabled={isMagicLoading}
-            className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-sm font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--border-default)] disabled:opacity-60"
-          >
-            {isMagicLoading ? <Loader2 size={15} className="animate-spin" /> : <KeyRound size={15} />}
-            Send Invite Link
-          </button>
-        </form>
-
         <div className="mt-5 flex items-center justify-between text-xs text-[var(--text-secondary)]">
-          <span>No account yet?</span>
-          <Link to={`/auth/sign-up?redirect=${encodeURIComponent(redirectPath)}`} className="inline-flex items-center gap-1 text-[var(--accent-primary)] hover:underline">
-            Create one <ArrowRight size={12} />
-          </Link>
+          <span>Need access?</span>
+          <span>Ask platform owner to create account.</span>
         </div>
       </AuthCard>
     </AuthLayout>
@@ -321,6 +268,10 @@ export function SignUpPage() {
   const redirectPath = useMemo(() => sanitizeRedirect(searchParams.get('redirect')), [searchParams]);
 
   const sessionQuery = useAuthSession();
+  const bootstrapQuery = useQuery({
+    queryKey: ['auth-bootstrap'],
+    queryFn: getAuthBootstrap,
+  });
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -329,6 +280,10 @@ export function SignUpPage() {
 
   if (sessionQuery.data) {
     return <Navigate to={redirectPath} replace />;
+  }
+
+  if (bootstrapQuery.data?.mode === 'login') {
+    return <Navigate to={`/auth/sign-in?redirect=${encodeURIComponent(redirectPath)}`} replace />;
   }
 
   const submitSignUp = async (event: FormEvent) => {
@@ -350,8 +305,9 @@ export function SignUpPage() {
 
   return (
     <AuthLayout>
-      <AuthCard title="Create Account" subtitle="Provision your operator account with email/password auth.">
+      <AuthCard title="Create Account" subtitle="Create first platform owner account. Registration closes after bootstrap.">
         {error ? <AuthErrorNotice message={error} /> : null}
+        {bootstrapQuery.isLoading ? <AuthInfoNotice message="Checking platform bootstrap state..." /> : null}
 
         <form className="space-y-3" onSubmit={submitSignUp}>
           <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">

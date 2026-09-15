@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
@@ -7,21 +7,18 @@ import {
   getProjectById,
   getDeploymentLogs,
   getServiceById,
+  getServiceMetrics,
   listDeployments,
   listServiceLogs,
   rollbackDeployment,
 } from '@/lib/api-client';
 import { getDemoProjectById, getDemoServiceById } from '@/lib/demo-data';
-import { formatDate, formatRelative, seededMetric } from '@/lib/time';
+import { formatBytes, formatDate, formatRelative, seededMetric } from '@/lib/time';
 import {
-  ArrowLeft,
   Activity,
   FileText,
   Settings,
   Sliders,
-  Play,
-  RotateCw,
-  Trash2,
   Check,
   X,
   Loader2,
@@ -171,23 +168,50 @@ export function ServiceDetailPage() {
   const project = isDemoMode ? getDemoProjectById(projectId) : projectQuery.data;
   const service = isDemoMode ? getDemoServiceById(serviceId) : serviceQuery.data;
 
+  const metricsQuery = useQuery({
+    queryKey: ['service-metrics', serviceId],
+    queryFn: () => getServiceMetrics(serviceId),
+    enabled: !isDemoMode && Boolean(serviceId),
+    refetchInterval: 5000,
+  });
+
+  // Accumulate live samples into a small history for the timeline charts.
+  const [metricHistory, setMetricHistory] = useState<{ cpu: number[]; memory: number[] }>({ cpu: [], memory: [] });
+  useEffect(() => {
+    const sample = metricsQuery.data;
+    if (!sample || sample.status !== 'ok') {
+      return;
+    }
+    const memPercent = sample.memory_limit_bytes > 0
+      ? (sample.memory_usage_bytes / sample.memory_limit_bytes) * 100
+      : 0;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- accumulating polled samples is a legitimate sync-to-external pattern
+    setMetricHistory((prev) => ({
+      cpu: [...prev.cpu, Math.min(100, sample.cpu_percent)].slice(-24),
+      memory: [...prev.memory, Math.min(100, memPercent)].slice(-24),
+    }));
+  }, [metricsQuery.data]);
+
+  const liveMetrics = isDemoMode ? null : metricsQuery.data ?? null;
+  const hasLiveTelemetry = Boolean(liveMetrics && liveMetrics.status === 'ok' && liveMetrics.instances.length > 0);
+  const runningInstances = liveMetrics?.instances.filter((instance) => instance.state === 'running').length ?? 0;
+  const memoryPercent = liveMetrics && liveMetrics.memory_limit_bytes > 0
+    ? (liveMetrics.memory_usage_bytes / liveMetrics.memory_limit_bytes) * 100
+    : 0;
+
+  // Demo mode renders seeded values so the layout can be previewed without a backend.
   const metricSet = useMemo(() => {
-    if (!service) {
+    if (!service || !isDemoMode) {
       return null;
     }
 
-    const cpu = seededMetric(`${service.id}:cpu`, 12, 78);
-    const memory = seededMetric(`${service.id}:mem`, 24, 91);
-    const req = seededMetric(`${service.id}:req`, 120, 5100);
-    const latency = seededMetric(`${service.id}:lat`, 17, 210);
-
     return {
-      cpu,
-      memory,
-      req,
-      latency,
+      cpu: seededMetric(`${service.id}:cpu`, 12, 78),
+      memory: seededMetric(`${service.id}:mem`, 24, 91),
+      req: seededMetric(`${service.id}:req`, 120, 5100),
+      latency: seededMetric(`${service.id}:lat`, 17, 210),
     };
-  }, [service]);
+  }, [service, isDemoMode]);
 
   const deploymentSummary = useMemo(() => {
     const deployments = isDemoMode ? [] : deploymentsQuery.data ?? [];
@@ -372,30 +396,29 @@ export function ServiceDetailPage() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <MetricCard 
             label="CPU" 
-            value={`${metricSet?.cpu ?? 0}%`} 
-            hint="Current utilization" 
+            value={isDemoMode ? `${metricSet?.cpu ?? 0}%` : hasLiveTelemetry ? `${liveMetrics!.cpu_percent.toFixed(1)}%` : '—'} 
+            hint={isDemoMode ? 'Current utilization' : hasLiveTelemetry ? `${runningInstances} running container${runningInstances === 1 ? '' : 's'}` : 'No running containers'} 
             icon={Cpu}
-            trend={metricSet && metricSet.cpu > 60 ? 'up' : metricSet && metricSet.cpu < 30 ? 'down' : 'stable'}
+            trend={hasLiveTelemetry && liveMetrics!.cpu_percent > 60 ? 'up' : 'stable'}
           />
           <MetricCard 
             label="Memory" 
-            value={`${metricSet?.memory ?? 0}%`} 
-            hint="Container footprint" 
+            value={isDemoMode ? `${metricSet?.memory ?? 0}%` : hasLiveTelemetry ? formatBytes(liveMetrics!.memory_usage_bytes) : '—'} 
+            hint={isDemoMode ? 'Container footprint' : hasLiveTelemetry ? `${memoryPercent.toFixed(0)}% of ${formatBytes(liveMetrics!.memory_limit_bytes)}` : 'No running containers'} 
             icon={MemoryStick}
-            trend={metricSet && metricSet.memory > 70 ? 'up' : 'stable'}
+            trend={hasLiveTelemetry && memoryPercent > 70 ? 'up' : 'stable'}
           />
           <MetricCard 
-            label="Requests" 
-            value={`${metricSet?.req ?? 0}`} 
-            hint="Last 60 minutes" 
+            label="Network" 
+            value={isDemoMode ? `${metricSet?.req ?? 0}` : hasLiveTelemetry ? `${formatBytes(liveMetrics!.network_rx_bytes)}` : '—'} 
+            hint={isDemoMode ? 'Requests, last 60 minutes' : hasLiveTelemetry ? `RX total · TX ${formatBytes(liveMetrics!.network_tx_bytes)}` : 'No traffic recorded'} 
             icon={Zap}
           />
           <MetricCard 
-            label="Latency" 
-            value={`${metricSet?.latency ?? 0}ms`} 
-            hint="P95 estimate" 
+            label="Instances" 
+            value={isDemoMode ? `${metricSet?.latency ?? 0}ms` : hasLiveTelemetry ? `${runningInstances}` : '0'} 
+            hint={isDemoMode ? 'P95 latency estimate' : hasLiveTelemetry ? `${liveMetrics!.instances.length} container${liveMetrics!.instances.length === 1 ? '' : 's'} discovered` : 'Deploy to create containers'} 
             icon={Timer}
-            trend={metricSet && metricSet.latency > 150 ? 'up' : 'stable'}
           />
         </div>
 
@@ -458,6 +481,20 @@ export function ServiceDetailPage() {
         {activeSection === 'metrics' && (
           <div className="space-y-6">
             {/* Metrics Grid with enhanced cards */}
+            {!isDemoMode && !hasLiveTelemetry && (
+              <div className="panel p-8 text-center">
+                <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-[var(--surface-muted)] flex items-center justify-center">
+                  <Activity size={22} className="text-[var(--text-tertiary)]" />
+                </div>
+                <p className="text-base font-medium text-[var(--text-primary)]">No telemetry yet</p>
+                <p className="mt-2 text-sm text-[var(--text-secondary)]">
+                  {liveMetrics?.status === 'docker_unavailable'
+                    ? 'Docker is not reachable on this host, so container metrics cannot be collected.'
+                    : 'Metrics appear once this service has running containers. Deploy it to start collecting.'}
+                </p>
+              </div>
+            )}
+            {(isDemoMode || hasLiveTelemetry) && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="panel p-5 group hover:border-[var(--accent-primary)]/30 transition-all duration-300">
                 <div className="flex items-center justify-between mb-4">
@@ -467,28 +504,36 @@ export function ServiceDetailPage() {
                     </div>
                     <div>
                       <p className="text-sm font-medium text-[var(--text-primary)]">CPU Timeline</p>
-                      <p className="text-xs text-[var(--text-tertiary)]">Last 24 intervals</p>
+                      <p className="text-xs text-[var(--text-tertiary)]">
+                        {isDemoMode ? 'Last 24 intervals' : 'Live samples · every 5s'}
+                      </p>
                     </div>
-                  </div>
-                  <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                    <span className="text-xs text-[var(--text-tertiary)]">Click to expand</span>
                   </div>
                 </div>
                 <div className="flex h-32 items-end gap-1">
-                  {Array.from({ length: 24 }).map((_, i) => {
-                    const value = seededMetric(`${service.id}:cpu:${i}`, 8, 80);
-                    return (
-                      <div
-                        key={i}
-                        className="flex-1 rounded-[var(--radius-xs)] transition-all hover:opacity-80 cursor-pointer group/bar"
-                        style={{
-                          height: `${value}%`,
-                          background: '#ff7043',
-                        }}
-                        title={`${value}%`}
-                      />
-                    );
-                  })}
+                  {isDemoMode
+                    ? Array.from({ length: 24 }).map((_, i) => {
+                        const value = seededMetric(`${service.id}:cpu:${i}`, 8, 80);
+                        return (
+                          <div
+                            key={i}
+                            className="flex-1 rounded-[var(--radius-xs)] transition-all hover:opacity-80 cursor-pointer"
+                            style={{ height: `${value}%`, background: '#ff7043' }}
+                            title={`${value}%`}
+                          />
+                        );
+                      })
+                    : metricHistory.cpu.map((value, i) => (
+                        <div
+                          key={i}
+                          className="flex-1 rounded-[var(--radius-xs)] transition-all hover:opacity-80"
+                          style={{ height: `${Math.max(3, value)}%`, background: '#ff7043' }}
+                          title={`${value.toFixed(1)}%`}
+                        />
+                      ))}
+                  {!isDemoMode && metricHistory.cpu.length === 0 && (
+                    <p className="self-center text-xs text-[var(--text-muted)]">Collecting first sample...</p>
+                  )}
                 </div>
               </div>
 
@@ -496,32 +541,77 @@ export function ServiceDetailPage() {
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
                     <div className="card-icon">
-                      <Zap size={18} />
+                      <MemoryStick size={18} />
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-[var(--text-primary)]">Request Timeline</p>
-                      <p className="text-xs text-[var(--text-tertiary)]">Last 24 intervals</p>
+                      <p className="text-sm font-medium text-[var(--text-primary)]">Memory Timeline</p>
+                      <p className="text-xs text-[var(--text-tertiary)]">
+                        {isDemoMode ? 'Last 24 intervals' : 'Live samples · every 5s'}
+                      </p>
                     </div>
                   </div>
                 </div>
                 <div className="flex h-32 items-end gap-1">
-                  {Array.from({ length: 24 }).map((_, i) => {
-                    const value = seededMetric(`${service.id}:req:${i}`, 18, 96);
-                    return (
-                      <div
-                        key={i}
-                        className="flex-1 rounded-[var(--radius-xs)] transition-all hover:opacity-80 cursor-pointer"
-                        style={{
-                          height: `${value}%`,
-                          background: '#3dd68c',
-                        }}
-                        title={`${value}%`}
-                      />
-                    );
-                  })}
+                  {isDemoMode
+                    ? Array.from({ length: 24 }).map((_, i) => {
+                        const value = seededMetric(`${service.id}:req:${i}`, 18, 96);
+                        return (
+                          <div
+                            key={i}
+                            className="flex-1 rounded-[var(--radius-xs)] transition-all hover:opacity-80 cursor-pointer"
+                            style={{ height: `${value}%`, background: '#3dd68c' }}
+                            title={`${value}%`}
+                          />
+                        );
+                      })
+                    : metricHistory.memory.map((value, i) => (
+                        <div
+                          key={i}
+                          className="flex-1 rounded-[var(--radius-xs)] transition-all hover:opacity-80"
+                          style={{ height: `${Math.max(3, value)}%`, background: '#3dd68c' }}
+                          title={`${value.toFixed(1)}%`}
+                        />
+                      ))}
+                  {!isDemoMode && metricHistory.memory.length === 0 && (
+                    <p className="self-center text-xs text-[var(--text-muted)]">Collecting first sample...</p>
+                  )}
                 </div>
               </div>
             </div>
+            )}
+
+            {/* Instance list — real container states */}
+            {!isDemoMode && hasLiveTelemetry && (
+              <div className="panel p-5">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="card-icon">
+                    <Layers size={18} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-[var(--text-primary)]">Instances</p>
+                    <p className="text-xs text-[var(--text-tertiary)]">Containers backing this service</p>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  {liveMetrics!.instances.map((instance) => (
+                    <div
+                      key={instance.container_id}
+                      className="flex items-center justify-between p-3 rounded-lg bg-[var(--surface-muted)] border border-[var(--border-subtle)]"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${instance.state === 'running' ? 'bg-[var(--success)]' : 'bg-[var(--text-muted)]'}`} />
+                        <span className="mono text-xs text-[var(--text-primary)] truncate">{instance.name}</span>
+                      </div>
+                      <div className="flex items-center gap-4 text-xs text-[var(--text-tertiary)] flex-shrink-0">
+                        <span className="mono">{instance.cpu_percent.toFixed(1)}% CPU</span>
+                        <span className="mono">{formatBytes(instance.memory_usage_bytes)}</span>
+                        <span>{instance.started_at ? `up ${formatRelative(instance.started_at).replace(' ago', '')}` : instance.state}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Domain & Networking Panel */}
             {service.status === 'running' && (

@@ -171,6 +171,7 @@ type AgentCommand struct {
 // AgentHeartbeat represents a heartbeat message from an agent
 type AgentHeartbeat struct {
 	NodeAgentID    string        `json:"node_agent_id"`
+	AuthToken      string        `json:"auth_token,omitempty"`
 	Timestamp      time.Time     `json:"timestamp"`
 	Status         string        `json:"status"`
 	Resources      NodeResources `json:"resources"`
@@ -191,6 +192,10 @@ type AgentHeartbeatRecord struct {
 	Uptime         int64         `json:"uptime"`
 	Version        string        `json:"version"`
 	CreatedAt      time.Time     `json:"created_at"`
+}
+
+func (AgentHeartbeatRecord) TableName() string {
+	return "agent_heartbeats"
 }
 
 type SystemLoad struct {
@@ -216,7 +221,7 @@ func (h *NodeAgentHandler) RegisterAgent(c *gin.Context) {
 		IPAddress    string            `json:"ip_address" binding:"required"`
 		Port         int               `json:"port" binding:"required"`
 		Capabilities AgentCapabilities `json:"capabilities" binding:"required"`
-		AuthToken    string            `json:"auth_token" binding:"required"`
+		AuthToken    string            `json:"auth_token"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -224,7 +229,8 @@ func (h *NodeAgentHandler) RegisterAgent(c *gin.Context) {
 		return
 	}
 
-	if !isValidAgentAuthToken(req.AuthToken) {
+	authToken := firstNonEmpty(req.AuthToken, agentAuthTokenFromRequest(c))
+	if !isValidAgentAuthToken(authToken) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid auth token"})
 		return
 	}
@@ -246,7 +252,7 @@ func (h *NodeAgentHandler) RegisterAgent(c *gin.Context) {
 
 		c.JSON(http.StatusOK, gin.H{
 			"agent_id":   existingAgent.ID,
-			"auth_token": req.AuthToken,
+			"auth_token": authToken,
 			"status":     "updated",
 		})
 		return
@@ -308,7 +314,7 @@ func (h *NodeAgentHandler) RegisterAgent(c *gin.Context) {
 
 	c.JSON(http.StatusCreated, gin.H{
 		"agent_id":   agent.ID,
-		"auth_token": req.AuthToken,
+		"auth_token": authToken,
 		"status":     "registered",
 	})
 }
@@ -388,6 +394,11 @@ func (h *NodeAgentHandler) SendHeartbeat(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	authToken := firstNonEmpty(heartbeat.AuthToken, agentAuthTokenFromRequest(c))
+	if !isValidAgentAuthToken(authToken) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid auth token"})
+		return
+	}
 	if heartbeat.Timestamp.IsZero() {
 		heartbeat.Timestamp = time.Now()
 	}
@@ -434,6 +445,118 @@ func (h *NodeAgentHandler) SendHeartbeat(c *gin.Context) {
 	}
 
 	c.Status(http.StatusOK)
+}
+
+// GetPendingCommandsForAgent exposes queued commands to token-authenticated node agents.
+func (h *NodeAgentHandler) GetPendingCommandsForAgent(c *gin.Context) {
+	if !isValidAgentAuthToken(agentAuthTokenFromRequest(c)) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid auth token"})
+		return
+	}
+
+	agentID := c.Param("id")
+	var commands []AgentCommand
+	if err := h.db.
+		Where("node_agent_id = ? AND status = ?", agentID, "pending").
+		Order("created_at ASC").
+		Limit(25).
+		Find(&commands).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch commands"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"commands": commands})
+}
+
+// CompleteCommand lets a node agent report command completion or failure.
+func (h *NodeAgentHandler) CompleteCommand(c *gin.Context) {
+	if !isValidAgentAuthToken(agentAuthTokenFromRequest(c)) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid auth token"})
+		return
+	}
+
+	agentID := c.Param("id")
+	commandID := c.Param("commandId")
+	var req struct {
+		Status string `json:"status" binding:"required"`
+		Result string `json:"result"`
+		Error  string `json:"error"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.Status != "completed" && req.Status != "failed" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "status must be completed or failed"})
+		return
+	}
+
+	var command AgentCommand
+	if err := h.db.First(&command, "id = ? AND node_agent_id = ?", commandID, agentID).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Command not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch command"})
+		return
+	}
+
+	now := time.Now()
+	command.Status = req.Status
+	command.UpdatedAt = now
+	command.CompletedAt = &now
+	if req.Result != "" {
+		command.Result = &req.Result
+	}
+	if req.Error != "" {
+		command.Error = &req.Error
+	}
+
+	if err := h.db.Save(&command).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update command"})
+		return
+	}
+
+	if command.ContainerID != nil {
+		h.updateContainerStatusAfterCommand(command)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"command": command})
+}
+
+func (h *NodeAgentHandler) updateContainerStatusAfterCommand(command AgentCommand) {
+	var container ContainerInstance
+	if err := h.db.First(&container, "id = ?", *command.ContainerID).Error; err != nil {
+		return
+	}
+
+	if command.Status == "failed" {
+		errorMessage := ""
+		if command.Error != nil {
+			errorMessage = *command.Error
+		}
+		container.Status.State = "error"
+		container.Status.Error = &errorMessage
+		_ = h.db.Save(&container).Error
+		return
+	}
+
+	now := time.Now()
+	switch command.Type {
+	case "create_container", "start_container", "restart_container":
+		container.Status.State = "running"
+		container.Status.Health = "unknown"
+		container.Status.StartedAt = &now
+		container.Status.Error = nil
+	case "stop_container":
+		container.Status.State = "stopped"
+		container.Status.FinishedAt = &now
+	case "remove_container":
+		container.Status.State = "removed"
+		container.Status.FinishedAt = &now
+	}
+	container.UpdatedAt = now
+	_ = h.db.Save(&container).Error
 }
 
 // GetAgentContainers returns containers running on a specific agent
@@ -634,7 +757,9 @@ func (h *NodeAgentHandler) ContainerAction(c *gin.Context) {
 		NodeAgentID: agentID,
 		ContainerID: &container.ID,
 		Payload: map[string]interface{}{
-			"container_id": containerID,
+			"container_id":   containerID,
+			"container_name": container.Name,
+			"docker_name":    container.Name,
 		},
 		Status:    "pending",
 		CreatedAt: time.Now(),
@@ -757,6 +882,19 @@ func isValidAgentAuthToken(token string) bool {
 	return false
 }
 
+func agentAuthTokenFromRequest(c *gin.Context) string {
+	if token := strings.TrimSpace(c.GetHeader("X-Containr-Agent-Token")); token != "" {
+		return token
+	}
+	if authHeader := strings.TrimSpace(c.GetHeader("Authorization")); authHeader != "" {
+		const bearerPrefix = "Bearer "
+		if strings.HasPrefix(authHeader, bearerPrefix) {
+			return strings.TrimSpace(strings.TrimPrefix(authHeader, bearerPrefix))
+		}
+	}
+	return strings.TrimSpace(c.Query("auth_token"))
+}
+
 func configuredAgentAuthTokens() []string {
 	candidateCSV := strings.TrimSpace(os.Getenv("CONTAINR_AGENT_AUTH_TOKENS"))
 	if candidateCSV != "" {
@@ -806,16 +944,25 @@ func maxInt(a, b int) int {
 	return b
 }
 
-// SetupRoutes registers the agent routes
-func (h *NodeAgentHandler) SetupRoutes(router *gin.RouterGroup) {
+// SetupPublicRoutes registers token-authenticated agent ingestion routes.
+func (h *NodeAgentHandler) SetupPublicRoutes(router *gin.RouterGroup) {
 	agents := router.Group("/agents")
 	{
 		agents.POST("/register", h.RegisterAgent)
+		agents.POST("/heartbeat", h.SendHeartbeat)
+		agents.GET("/:id/commands", h.GetPendingCommandsForAgent)
+		agents.POST("/:id/commands/:commandId/result", h.CompleteCommand)
+	}
+}
+
+// SetupRoutes registers authenticated dashboard/control agent routes.
+func (h *NodeAgentHandler) SetupRoutes(router *gin.RouterGroup) {
+	agents := router.Group("/agents")
+	{
 		agents.GET("", h.GetAgents)
 		agents.GET("/:id", h.GetAgent)
 		agents.PUT("/:id", h.UpdateAgent)
 		agents.DELETE("/:id", h.DeleteAgent)
-		agents.POST("/heartbeat", h.SendHeartbeat)
 
 		agents.GET("/:id/containers", h.GetAgentContainers)
 		agents.POST("/:id/containers", h.CreateContainer)

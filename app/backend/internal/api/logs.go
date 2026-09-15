@@ -64,11 +64,15 @@ func handleGetLogs(c *gin.Context) {
 
 	dockerClient, exists := c.Get("docker_client")
 	if !exists || dockerClient == nil {
-		respondDependencyUnavailable(c, "docker", "Container log streaming is unavailable because Docker is not configured.")
+		respondEmptyServiceLogs(c, "Container log streaming is unavailable because Docker is not configured.")
 		return
 	}
 
-	client := dockerClient.(*docker.Client)
+	client, ok := dockerClient.(*docker.Client)
+	if !ok || client == nil {
+		respondEmptyServiceLogs(c, "Container log streaming is unavailable because Docker is not configured.")
+		return
+	}
 	containerName := fmt.Sprintf("containr-%s", serviceID)
 
 	logOpts := docker.LogOptions{
@@ -82,6 +86,10 @@ func handleGetLogs(c *gin.Context) {
 	ctx := context.Background()
 	logsReader, err := client.GetContainerLogs(ctx, containerName, logOpts)
 	if err != nil {
+		if isDockerNotFoundError(err) {
+			respondEmptyServiceLogs(c, "No container logs are available for this service yet.")
+			return
+		}
 		respondDependencyUnavailable(c, "docker", "Failed to fetch container logs. The container may be unavailable.")
 		return
 	}
@@ -154,6 +162,13 @@ func handleGetLogs(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"logs": logEntries})
+}
+
+func respondEmptyServiceLogs(c *gin.Context, message string) {
+	c.JSON(http.StatusOK, gin.H{
+		"logs":    []LogEntry{},
+		"message": message,
+	})
 }
 
 func handleGetDeploymentLogs(c *gin.Context) {

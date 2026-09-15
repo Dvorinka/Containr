@@ -17,10 +17,12 @@ function toWebSocketUrl(apiBase: string): string {
   return `${wsBase}/ws`;
 }
 
+export type LiveSyncStatus = 'idle' | 'offline' | 'live';
+
 export function useBuildUpdates(
   buildIds: string[],
   onBuildUpdate: (payload: BuildUpdatePayload) => void,
-): boolean {
+): LiveSyncStatus {
   const [connected, setConnected] = useState(false);
   const callbackRef = useRef(onBuildUpdate);
   useEffect(() => {
@@ -127,5 +129,8 @@ export function useBuildUpdates(
     };
   }, [buildIdsKey, subscriptionIds]);
 
-  return subscriptionIds.length > 0 && connected;
+  if (subscriptionIds.length === 0) {
+    return 'idle';
+  }
+  return connected ? 'live' : 'offline';
 }

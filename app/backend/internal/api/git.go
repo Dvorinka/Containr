@@ -1306,3 +1306,208 @@ func generateWebhookSecret() (string, error) {
 	}
 	return hex.EncodeToString(buf), nil
 }
+
+// handleDeleteGitProvider removes a provider connection. Repositories and
+// webhooks are removed by ON DELETE CASCADE.
+func handleDeleteGitProvider(c *gin.Context) {
+	ctx, ok := requireGitRequestContext(c)
+	if !ok {
+		return
+	}
+
+	providerID := strings.TrimSpace(c.Param("providerId"))
+	if _, err := uuid.Parse(providerID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid provider ID"})
+		return
+	}
+
+	result, err := ctx.db.Exec(
+		"DELETE FROM git_providers WHERE id = $1 AND user_id = $2",
+		providerID, ctx.userID,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete provider"})
+		return
+	}
+
+	affected, _ := result.RowsAffected()
+	if affected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Provider not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Provider disconnected"})
+}
+
+// handleGetGitRepositoryBranches lists branches for a repository through the
+// provider's stored credentials.
+func handleGetGitRepositoryBranches(c *gin.Context) {
+	ctx, ok := requireGitRequestContext(c)
+	if !ok {
+		return
+	}
+
+	providerID := strings.TrimSpace(c.Param("providerId"))
+	if _, err := uuid.Parse(providerID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid provider ID"})
+		return
+	}
+
+	owner := strings.TrimSpace(c.Param("owner"))
+	repo := strings.TrimSpace(c.Param("repo"))
+	if owner == "" || repo == "" || strings.ContainsAny(owner+repo, " \t\r\n") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid repository reference"})
+		return
+	}
+
+	var providerName, providerAPIURL, providerAccessToken string
+	err := ctx.db.QueryRow(`
+		SELECT name, api_url, access_token
+		FROM git_providers
+		WHERE id = $1 AND user_id = $2
+	`, providerID, ctx.userID).Scan(&providerName, &providerAPIURL, &providerAccessToken)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Provider not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		return
+	}
+
+	branches, err := fetchRepositoryBranches(providerName, providerAPIURL, providerAccessToken, owner, repo)
+	if err != nil {
+		log.Printf("branch fetch failed for %s/%s via %s: %v", owner, repo, providerName, err)
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to fetch branches from provider"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"branches": branches})
+}
+
+type remoteBranch struct {
+	Name      string `json:"name"`
+	Protected bool   `json:"protected"`
+}
+
+func fetchRepositoryBranches(providerName, providerAPIURL, accessToken, owner, repo string) ([]remoteBranch, error) {
+	switch strings.ToLower(strings.TrimSpace(providerName)) {
+	case "github", "github_app":
+		return fetchGitHubBranches(providerName, providerAPIURL, accessToken, owner, repo)
+	case "gitea":
+		return fetchGiteaBranches(providerAPIURL, accessToken, owner, repo)
+	default:
+		return nil, fmt.Errorf("branch listing is not supported for provider %s", providerName)
+	}
+}
+
+func fetchGitHubBranches(providerName, providerAPIURL, accessToken, owner, repo string) ([]remoteBranch, error) {
+	baseURL := strings.TrimSuffix(strings.TrimSpace(providerAPIURL), "/")
+	if baseURL == "" {
+		baseURL = "https://api.github.com"
+	}
+
+	token := strings.TrimSpace(accessToken)
+	if strings.EqualFold(providerName, "github_app") {
+		installationID, err := strconv.ParseInt(token, 10, 64)
+		if err != nil || installationID <= 0 {
+			return nil, fmt.Errorf("github_app installation id is invalid")
+		}
+		token, err = getGitHubAppInstallationToken(baseURL, installationID)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if token == "" {
+		return nil, fmt.Errorf("github access token is missing")
+	}
+
+	branches := make([]remoteBranch, 0)
+	for page := 1; page <= 5; page++ {
+		request, err := http.NewRequest(http.MethodGet,
+			fmt.Sprintf("%s/repos/%s/%s/branches?per_page=100&page=%d", baseURL, owner, repo, page), nil)
+		if err != nil {
+			return nil, err
+		}
+		request.Header.Set("Accept", "application/vnd.github+json")
+		request.Header.Set("Authorization", "Bearer "+token)
+
+		client := &http.Client{Timeout: 10 * time.Second}
+		response, err := client.Do(request)
+		if err != nil {
+			return nil, err
+		}
+
+		if response.StatusCode != http.StatusOK {
+			payload, _ := io.ReadAll(io.LimitReader(response.Body, 2048))
+			response.Body.Close()
+			return nil, fmt.Errorf("github branches request failed with status %d: %s", response.StatusCode, strings.TrimSpace(string(payload)))
+		}
+
+		var rows []map[string]interface{}
+		decodeErr := json.NewDecoder(response.Body).Decode(&rows)
+		response.Body.Close()
+		if decodeErr != nil {
+			return nil, decodeErr
+		}
+
+		for _, row := range rows {
+			name := asGitString(row["name"])
+			if name == "" {
+				continue
+			}
+			branches = append(branches, remoteBranch{Name: name, Protected: asBoolValue(row["protected"])})
+		}
+
+		if len(rows) < 100 {
+			break
+		}
+	}
+
+	return branches, nil
+}
+
+func fetchGiteaBranches(providerAPIURL, accessToken, owner, repo string) ([]remoteBranch, error) {
+	baseURL := strings.TrimSuffix(strings.TrimSpace(providerAPIURL), "/")
+	if baseURL == "" {
+		baseURL = strings.TrimSuffix(strings.TrimSpace(getenvOrDefault("GITEA_BASE_URL", "")), "/")
+	}
+	if baseURL == "" {
+		return nil, fmt.Errorf("gitea api_url is required")
+	}
+
+	request, err := http.NewRequest(http.MethodGet,
+		fmt.Sprintf("%s/api/v1/repos/%s/%s/branches?limit=100", baseURL, owner, repo), nil)
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("Accept", "application/json")
+	if token := strings.TrimSpace(accessToken); token != "" {
+		request.Header.Set("Authorization", "token "+token)
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	response, err := client.Do(request)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		payload, _ := io.ReadAll(io.LimitReader(response.Body, 2048))
+		return nil, fmt.Errorf("gitea branches request failed with status %d: %s", response.StatusCode, strings.TrimSpace(string(payload)))
+	}
+
+	var rows []map[string]interface{}
+	if err := json.NewDecoder(response.Body).Decode(&rows); err != nil {
+		return nil, err
+	}
+
+	branches := make([]remoteBranch, 0, len(rows))
+	for _, row := range rows {
+		if name := asGitString(row["name"]); name != "" {
+			branches = append(branches, remoteBranch{Name: name, Protected: asBoolValue(row["protected"])})
+		}
+	}
+	return branches, nil
+}

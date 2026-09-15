@@ -14,11 +14,12 @@ import '@xyflow/react/dist/style.css';
 import type { ServiceEntity } from '@/lib/api-client';
 import { inferAutoConnections, type ServiceVariable } from '../auto-connections';
 import {
+  DEFAULT_VIEWPORT,
   type CanvasGroup,
   type CanvasNodeLayout,
   type ProjectCanvasMetadata,
 } from '../model';
-import { loadCanvasMetadata, saveCanvasMetadata } from '../storage';
+import { canvasStorageKey, loadCanvasMetadata, saveCanvasMetadata } from '../storage';
 import { GroupNode, ServiceNode, type GroupNodeData, type ServiceNodeData } from './nodes';
 import { Plus, Layers, Maximize2, RotateCcw, Box, Link2 } from 'lucide-react';
 
@@ -152,6 +153,7 @@ function CanvasInner({ projectId, services, variablesByService, onAddService, on
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const persistTimeout = useRef<number | null>(null);
   const hydratedRef = useRef(false);
+  const viewportRestoredRef = useRef(false);
   const [nodes, setNodes, onNodesChange] = useNodesState<CanvasNode>([]);
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
   const [viewportTick, setViewportTick] = useState(0);
@@ -169,20 +171,34 @@ function CanvasInner({ projectId, services, variablesByService, onAddService, on
   const edges = useMemo(() => toFlowEdges(inferredLinks), [inferredLinks]);
 
   useEffect(() => {
+    const hasStoredViewport = localStorage.getItem(canvasStorageKey(projectId)) !== null;
     const metadata = loadCanvasMetadata(projectId, services);
     const nextNodes = toFlowNodes(metadata, services, onOpenService);
 
+    viewportRestoredRef.current = false;
     setNodes(nextNodes);
 
     window.requestAnimationFrame(() => {
-      setViewport(metadata.viewport, { duration: 120 });
+      window.requestAnimationFrame(() => {
+        const isDefaultViewport =
+          metadata.viewport.x === DEFAULT_VIEWPORT.x &&
+          metadata.viewport.y === DEFAULT_VIEWPORT.y &&
+          metadata.viewport.zoom === DEFAULT_VIEWPORT.zoom;
+
+        if (!hasStoredViewport || isDefaultViewport) {
+          void fitView({ padding: 0.15, duration: 120 });
+        } else {
+          void setViewport(metadata.viewport, { duration: 120 });
+        }
+        viewportRestoredRef.current = true;
+      });
     });
 
     hydratedRef.current = true;
-  }, [projectId, serviceFingerprint, onOpenService, setNodes, setViewport, services]);
+  }, [projectId, serviceFingerprint, onOpenService, setNodes, setViewport, fitView, services]);
 
   useEffect(() => {
-    if (!hydratedRef.current) {
+    if (!hydratedRef.current || !viewportRestoredRef.current) {
       return;
     }
 
@@ -414,7 +430,6 @@ function CanvasInner({ projectId, services, variablesByService, onAddService, on
           }}
           onNodeDragStop={onNodeDragStop}
           onMoveEnd={() => setViewportTick((value) => value + 1)}
-          fitView
           panOnDrag
           zoomOnScroll
           minZoom={0.25}

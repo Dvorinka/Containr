@@ -36,6 +36,16 @@ export function formatDate(iso?: string): string {
   return dt.toLocaleString();
 }
 
+export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return '0 B';
+  }
+  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
+  const index = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+  const value = bytes / Math.pow(1024, index);
+  return `${value >= 100 ? Math.round(value) : value.toFixed(1)} ${units[index]}`;
+}
+
 export function seededMetric(seed: string, min: number, max: number): number {
   let hash = 0;
   for (let idx = 0; idx < seed.length; idx += 1) {
