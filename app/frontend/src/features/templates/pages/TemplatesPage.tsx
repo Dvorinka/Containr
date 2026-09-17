@@ -377,7 +377,7 @@ export function TemplatesPage() {
   const [categoryFilter, setCategoryFilter] = useState('');
   const [searchFilter, setSearchFilter] = useState('');
   const [selectedTemplateIdState, setSelectedTemplateId] = useState<string | null>(null);
-  const [deployProjectIdState, setDeployProjectId] = useState('');
+  const [deployProjectIdState, setDeployProjectId] = useState(searchParams.get('project') ?? '');
   const [deployNameByTemplate, setDeployNameByTemplate] = useState<Record<string, string>>({});
   const [variableValuesByTemplate, setVariableValuesByTemplate] = useState<
     Record<string, Record<string, string>>

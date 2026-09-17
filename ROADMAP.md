@@ -214,9 +214,11 @@ pieces exist; this phase closes the gaps that block real usage.
       - Variables discovered from `${VAR}`/`${VAR:-default}` placeholders.
       - Catalog UI: screenshots, badges, import dialogs (GitHub + paste),
         install wizard → creates one service per Compose service.
-- [ ] **Service creation flows on canvas**: Add Service menu with Git repo /
-      Docker image / database / worker / cron / template entry points —
-      currently only some paths are reachable.
+- [x] **Service creation flows on canvas**: Add Service covers Image, Git
+      repo (provider → repo → branch → connect+webhook), Database (engine +
+      plan → real `POST /databases` provisioning, not a hollow service row),
+      worker/cron types, and a Template entry that jumps to the catalog with
+      the project preselected (`/templates?project=`).
 - [ ] **Variables UX**: secret masking, per-environment values, bulk paste
       (`KEY=VAL` lines), validation errors inline.
 - [ ] **Deploy lifecycle polish**: build → deploy status propagation to canvas

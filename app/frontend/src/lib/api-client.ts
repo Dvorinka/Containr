@@ -1231,6 +1231,22 @@ export async function listGitBranches(
   return payload.branches ?? [];
 }
 
+export type CreateDatabaseInput = components['schemas']['CreateDatabaseRequest'];
+export type DatabaseEntity = components['schemas']['Database'];
+
+export async function createManagedDatabase(
+  input: CreateDatabaseInput,
+): Promise<{ id: string; status: string }> {
+  const payload = await requestJson<{ id?: string; status?: string }>('/databases', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  if (!payload.id) {
+    throw new ApiError('Database response is invalid', 500);
+  }
+  return { id: payload.id, status: payload.status ?? 'building' };
+}
+
 export type ConnectGitRepositoryInput = components['schemas']['ConnectGitRepoRequest'];
 export type CreateGitWebhookInput = components['schemas']['CreateWebhookRequest'];
 export type GitWebhookEntity = components['schemas']['GitWebhook'];

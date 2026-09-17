@@ -5,6 +5,7 @@ import {
   ApiError,
   connectGitRepository,
   createGitWebhook,
+  createManagedDatabase,
   createService,
   getProjectById,
   listConnectedGitRepositories,
@@ -14,6 +15,7 @@ import {
   listServiceLogs,
   listServiceVariables,
   listServicesByProject,
+  type CreateDatabaseInput,
   type CreateServiceInput,
 } from '@/lib/api-client';
 import { getDemoProjectById, getDemoServicesByProject, getDemoVariablesByProject } from '@/lib/demo-data';
@@ -57,12 +59,26 @@ const serviceEnvironments = ['production', 'preview', 'development'] as const;
 type CreateServiceSubmit = CreateServiceInput & {
   gitProviderId?: string;
   gitRepoFullName?: string;
+  database?: { engine: CreateDatabaseInput['type']; plan: CreateDatabaseInput['plan'] };
 };
+
+const databaseEngines = [
+  { value: 'postgresql', label: 'PostgreSQL' },
+  { value: 'mysql', label: 'MySQL' },
+  { value: 'mariadb', label: 'MariaDB' },
+  { value: 'redis', label: 'Redis' },
+  { value: 'dragonfly', label: 'Dragonfly' },
+  { value: 'mongodb', label: 'MongoDB' },
+  { value: 'clickhouse', label: 'ClickHouse' },
+] as const;
+
+const databasePlans = ['hobby', 'starter', 'standard', 'business'] as const;
 
 function ServiceCreateDialog(props: {
   open: boolean;
   onClose: () => void;
   onSubmit: (payload: CreateServiceSubmit) => void;
+  onBrowseTemplates: () => void;
   loading: boolean;
   errorMessage?: string;
 }) {
@@ -77,6 +93,10 @@ function ServiceCreateDialog(props: {
   const [providerId, setProviderId] = useState('');
   const [repoFullName, setRepoFullName] = useState('');
   const [repoSearch, setRepoSearch] = useState('');
+  const [dbEngine, setDbEngine] = useState<(typeof databaseEngines)[number]['value']>('postgresql');
+  const [dbPlan, setDbPlan] = useState<(typeof databasePlans)[number]>('hobby');
+
+  const isDatabase = form.type === 'database';
 
   const providersQuery = useQuery({
     queryKey: ['git-providers'],
@@ -110,7 +130,7 @@ function ServiceCreateDialog(props: {
 
   const canSubmit =
     Boolean(form.name.trim()) &&
-    (source === 'image' || Boolean(repoFullName));
+    (isDatabase ? Boolean(dbEngine) : source === 'image' || Boolean(repoFullName));
 
   if (!props.open) return null;
 
@@ -172,11 +192,48 @@ function ServiceCreateDialog(props: {
             </div>
           </div>
 
+          {isDatabase ? (
+            <div className="space-y-3 p-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)]/50">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-tertiary)] mb-2">
+                    Engine
+                  </label>
+                  <select
+                    value={dbEngine}
+                    onChange={(e) => setDbEngine(e.target.value as typeof dbEngine)}
+                    className="w-full h-11 px-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-[var(--text-primary)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all"
+                  >
+                    {databaseEngines.map((engine) => (
+                      <option key={engine.value} value={engine.value}>{engine.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-tertiary)] mb-2">
+                    Plan
+                  </label>
+                  <select
+                    value={dbPlan}
+                    onChange={(e) => setDbPlan(e.target.value as typeof dbPlan)}
+                    className="w-full h-11 px-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-[var(--text-primary)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all"
+                  >
+                    {databasePlans.map((plan) => (
+                      <option key={plan} value={plan}>{plan.charAt(0).toUpperCase() + plan.slice(1)}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <p className="text-xs text-[var(--text-muted)]">
+                Provisions a managed database container. Connection details appear under Databases once running.
+              </p>
+            </div>
+          ) : (
           <div>
             <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-tertiary)] mb-2">
               Source
             </label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
                 onClick={() => setSource('image')}
@@ -201,10 +258,19 @@ function ServiceCreateDialog(props: {
                 <GitBranch size={14} />
                 Git Repository
               </button>
+              <button
+                type="button"
+                onClick={props.onBrowseTemplates}
+                className="flex items-center justify-center gap-2 h-10 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm font-medium text-[var(--text-tertiary)] hover:border-[var(--border-default)] transition-colors"
+              >
+                <Sparkles size={14} />
+                Template
+              </button>
             </div>
           </div>
+          )}
 
-          {source === 'image' ? (
+          {isDatabase ? null : source === 'image' ? (
             <div>
               <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-tertiary)] mb-2">
                 Image <span className="normal-case text-[var(--text-muted)]">(optional)</span>
@@ -369,19 +435,20 @@ function ServiceCreateDialog(props: {
               props.onSubmit({
                 ...form,
                 name: form.name.trim(),
-                image: source === 'image' ? form.image?.trim() : '',
+                image: !isDatabase && source === 'image' ? form.image?.trim() : '',
                 command: form.command?.trim(),
-                git_repo: source === 'git' ? form.git_repo?.trim() : '',
-                git_branch: source === 'git' ? form.git_branch?.trim() : '',
-                build_path: source === 'git' ? form.build_path?.trim() : '',
-                gitProviderId: source === 'git' && repoFullName ? providerId : undefined,
-                gitRepoFullName: source === 'git' ? repoFullName || undefined : undefined,
+                git_repo: !isDatabase && source === 'git' ? form.git_repo?.trim() : '',
+                git_branch: !isDatabase && source === 'git' ? form.git_branch?.trim() : '',
+                build_path: !isDatabase && source === 'git' ? form.build_path?.trim() : '',
+                gitProviderId: !isDatabase && source === 'git' && repoFullName ? providerId : undefined,
+                gitRepoFullName: !isDatabase && source === 'git' ? repoFullName || undefined : undefined,
+                database: isDatabase ? { engine: dbEngine, plan: dbPlan } : undefined,
               })
             }
             className="px-5 py-2 rounded-[var(--radius-md)] text-[var(--accent-on)] text-sm font-medium shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             style={{ background: 'var(--accent-primary)' }}
           >
-            {props.loading ? 'Creating...' : 'Create Service'}
+            {props.loading ? 'Creating...' : isDatabase ? 'Create Database' : 'Create Service'}
           </button>
         </div>
       </div>
@@ -428,7 +495,16 @@ export function ProjectWorkspacePage() {
 
   const createServiceMutation = useMutation({
     mutationFn: async (payload: CreateServiceSubmit) => {
-      const { gitProviderId, gitRepoFullName, ...serviceInput } = payload;
+      const { gitProviderId, gitRepoFullName, database, ...serviceInput } = payload;
+      if (database) {
+        await createManagedDatabase({
+          name: serviceInput.name,
+          type: database.engine,
+          plan: database.plan,
+          region: 'local',
+        });
+        return null;
+      }
       const service = await createService(projectId, serviceInput);
       if (gitProviderId && gitRepoFullName) {
         let repoId: string | undefined;
@@ -881,6 +957,10 @@ export function ProjectWorkspacePage() {
           loading={createServiceMutation.isPending}
           errorMessage={createServiceMutation.error ? (createServiceMutation.error as Error).message : undefined}
           onSubmit={(payload) => createServiceMutation.mutate(payload)}
+          onBrowseTemplates={() => {
+            setCreateOpen(false);
+            navigate(`/templates?project=${projectId}`);
+          }}
         />
       )}
 
