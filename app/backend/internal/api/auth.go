@@ -264,8 +264,7 @@ func handleRegister(c *gin.Context) {
 	db := c.MustGet("db").(*database.DB)
 	jwtSecret := c.MustGet("jwt_secret").(string)
 
-	var count int
-	err := db.QueryRow("SELECT COUNT(*) FROM users").Scan(&count)
+	count, err := countLocalUsers(db)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
@@ -431,6 +430,25 @@ func countLocalUsers(db *database.DB) (int, error) {
 	var count int
 	if err := db.QueryRow("SELECT COUNT(*) FROM users").Scan(&count); err != nil {
 		return 0, err
+	}
+	// Better Auth writes to auth_users; a row there only mirrors into users on
+	// the first authenticated call. Count it too or a second public sign-up
+	// slips through the bootstrap window. UNION by email avoids double-counting
+	// mirrored users.
+	var authTable *string
+	if err := db.QueryRow("SELECT to_regclass('auth_users')").Scan(&authTable); err != nil {
+		return 0, err
+	}
+	if authTable != nil && *authTable != "" {
+		if err := db.QueryRow(`
+			SELECT COUNT(*) FROM (
+				SELECT email FROM users
+				UNION
+				SELECT email FROM auth_users
+			) u
+		`).Scan(&count); err != nil {
+			return 0, err
+		}
 	}
 	return count, nil
 }

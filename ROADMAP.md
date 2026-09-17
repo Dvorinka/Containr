@@ -237,9 +237,18 @@ pieces exist; this phase closes the gaps that block real usage.
       ever conflicts, Docker's bind error lands in `deployments.error` and shows
       in the failed-deploy log tail — not silent. Revisit if a service-level
       host-port config is ever added.
-- [ ] Auth hardening: e2e verify bootstrap gate (first user registers, second
-      is refused, manual creation works), OAuth happy paths for GitHub +
-      Google, session expiry redirect.
+- [x] Auth hardening: e2e-verified against a live stack (scratch Postgres +
+      Redis + real Better Auth sidecar). Fixed a real gate hole: sign-ups write
+      `auth_users` but the gate counted `users`, which only mirrors on the
+      first authenticated call — a second registration slipped through the
+      pre-mirror window. `countLocalUsers` now unions both tables (verified:
+      `users=0, auth_users=1` already returns `mode: login` and 403s on both
+      public register paths; internal-token manual creation works, wrong token
+      refused). Session expiry redirect confirmed in `App.tsx`
+      (401 → null → `/auth/sign-in?redirect=…`). OAuth happy paths remain
+      unverifiable without real GitHub/Google credentials — providers are
+      env-gated and `disableImplicitSignUp` means OAuth cannot bypass the
+      gate by creating accounts.
 
 **Gate**: a fresh instance can register → create project → connect GitHub repo
 → push → see build → see deploy → view logs → roll back, with zero manual API
