@@ -1482,3 +1482,56 @@ export async function promotePreviewEnvironment(
     body: JSON.stringify(input),
   });
 }
+
+export type ScalingPolicy = components['schemas']['ScalingPolicy'];
+
+export type ServiceScalingState = {
+  ServiceID?: string;
+  CurrentReplicas?: number;
+  DesiredReplicas?: number;
+  LastScaleAction?: string;
+  LastScaleDirection?: string;
+};
+
+export async function getScalingPolicy(serviceId: string): Promise<ScalingPolicy | null> {
+  try {
+    const payload = await requestJson<{ policy?: ScalingPolicy }>(
+      `/scaling/policies/${encodeURIComponent(serviceId)}`,
+    );
+    return payload.policy ?? null;
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export async function setScalingPolicy(policy: ScalingPolicy): Promise<void> {
+  await requestJson('/scaling/policies', { method: 'POST', body: JSON.stringify(policy) });
+}
+
+export async function deleteScalingPolicy(serviceId: string): Promise<void> {
+  await requestJson(`/scaling/policies/${encodeURIComponent(serviceId)}`, { method: 'DELETE' });
+}
+
+export async function getServiceScalingState(serviceId: string): Promise<ServiceScalingState | null> {
+  try {
+    const payload = await requestJson<{ state?: ServiceScalingState }>(
+      `/scaling/services/${encodeURIComponent(serviceId)}`,
+    );
+    return payload.state ?? null;
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export async function manualScaleService(serviceId: string, replicas: number, reason = ''): Promise<void> {
+  await requestJson(`/scaling/services/${encodeURIComponent(serviceId)}/scale`, {
+    method: 'POST',
+    body: JSON.stringify({ replicas, reason }),
+  });
+}

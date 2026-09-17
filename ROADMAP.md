@@ -51,7 +51,7 @@ The backend exposes **~95 route registrations**; the frontend consumes
 | Preview environments (CRUD, promote, cleanup) | done (bookkeeping only — no real container deploy; URL is a placeholder) | done — Previews section on service detail | not documented |
 | Security scans, vulnerabilities, compliance/GDPR reports | done | **missing** | README lists it |
 | Audit logs | done | done — `/settings/audit-logs` filterable page | done |
-| Autoscaling policies + manual scale | done | **missing** | `docs/guides/AUTOSCALING.md` describes UI that does not exist |
+| Autoscaling policies + manual scale | done | done (beta) | per-service Scaling section on service detail; policies in-memory, lost on restart |
 | HA / failover policies | done | **missing** | not documented |
 | Node agents (register additional VPS/LXC/VM hosts, heartbeats) | done | done — token issue/revoke + install command on Usage page | done |
 | API gateway (merged APwhy): upstream services, API keys, rate limits, ops/traffic analytics | management API done — native handlers under `/api/v1/gateway/*`, schema-corrected; **traffic proxy path still not mounted** (Phase 2) | **missing** | not documented |
@@ -359,9 +359,13 @@ reaches the upstream container and appears in the analytics tables.
 
 ### Phase 3 — Advanced operations
 
-- [ ] **Autoscaling UI** (`/scaling/*`): per-service policy editor
-      (min/max/target CPU/mem), scaling history timeline, manual scale
-      control on service detail. Mark beta until soak-tested.
+- [x] **Autoscaling UI** (`/scaling/*`): per-service policy editor
+      (min/max/target CPU/mem + enable toggle) and manual scale control
+      on service detail Scaling section. Verified live: policy CRUD,
+      state auto-registration, bounds rejection, scheduler dispatch
+      (fails "no ready nodes" without agents — error surfaces in UI).
+      Scaling history timeline not surfaced. Beta: policies are
+      in-memory — they do not survive a backend restart.
 - [ ] **HA / failover UI** (`/ha/*`): enable/disable per project, failover
       policies, manual failover with confirmation, status banner. Beta.
 - [ ] **Security center** (`/security/*`): scan trigger per project, finding
@@ -422,6 +426,10 @@ security scans produce real reports, not empty tables.
       call sites across ~14 handler files remain (agents + tokens are sqlc).
       Mechanical port to `sqlc/queries/`; the consolidated baseline schema is
       now the codegen source of truth.
+- [ ] **Autoscaling persistence**: policies, service states, and scale
+      events live in process memory — a backend restart wipes them and
+      reverts replicas to policy minimums on next registration. Persist
+      to Postgres before leaving beta.
 - [ ] **Demo-data parity for new pages**: `demo-data.ts` covers Projects/
       Templates but the new Databases page and service Cron tab have no demo
       fixtures — add them so `?demo=1` doesn't show empty sections.

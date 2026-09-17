@@ -21,6 +21,11 @@ import {
   createPreviewEnvironment,
   deletePreviewEnvironment,
   promotePreviewEnvironment,
+  getScalingPolicy,
+  setScalingPolicy,
+  deleteScalingPolicy,
+  getServiceScalingState,
+  manualScaleService,
   rollbackDeployment,
   updateServiceVariables,
   type CronJobEntity,
@@ -57,7 +62,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 
-type ServiceSection = 'metrics' | 'logs' | 'config' | 'variables' | 'cron' | 'previews' | 'settings';
+type ServiceSection = 'metrics' | 'logs' | 'config' | 'variables' | 'cron' | 'previews' | 'scaling' | 'settings';
 
 const sectionItems: Array<{ key: ServiceSection; label: string; icon: typeof Activity }> = [
   { key: 'metrics', label: 'Metrics', icon: Activity },
@@ -66,6 +71,7 @@ const sectionItems: Array<{ key: ServiceSection; label: string; icon: typeof Act
   { key: 'variables', label: 'Variables', icon: KeyRound },
   { key: 'cron', label: 'Cron', icon: Clock },
   { key: 'previews', label: 'Previews', icon: GitPullRequest },
+  { key: 'scaling', label: 'Scaling', icon: Layers },
   { key: 'settings', label: 'Settings', icon: Settings },
 ];
 
@@ -234,6 +240,49 @@ export function ServiceDetailPage() {
     onSuccess: invalidatePreviews,
   });
   const previews = (previewsQuery.data ?? []).filter((p) => p.service_id === serviceId);
+
+  // --- Scaling ---
+  const [scalingForm, setScalingForm] = useState<{
+    min: string; max: string; targetCpu: string; targetMemory: string; enabled: boolean;
+  } | null>(null);
+  const [scaleReplicas, setScaleReplicas] = useState('');
+  const scalingPolicyQuery = useQuery({
+    queryKey: ['scaling-policy', serviceId],
+    queryFn: () => getScalingPolicy(serviceId),
+    enabled: Boolean(serviceId) && !isDemoMode && activeSection === 'scaling',
+  });
+  const scalingStateQuery = useQuery({
+    queryKey: ['scaling-state', serviceId],
+    queryFn: () => getServiceScalingState(serviceId),
+    enabled: Boolean(serviceId) && !isDemoMode && activeSection === 'scaling',
+    refetchInterval: 15_000,
+  });
+  const invalidateScaling = () => {
+    queryClient.invalidateQueries({ queryKey: ['scaling-policy', serviceId] });
+    queryClient.invalidateQueries({ queryKey: ['scaling-state', serviceId] });
+  };
+  const saveScalingMutation = useMutation({
+    mutationFn: async () => {
+      if (!scalingForm) return;
+      await setScalingPolicy({
+        service_id: serviceId,
+        min_replicas: Number(scalingForm.min) || 1,
+        max_replicas: Number(scalingForm.max) || 1,
+        target_cpu: Number(scalingForm.targetCpu) || 70,
+        target_memory: Number(scalingForm.targetMemory) || 80,
+        enabled: scalingForm.enabled,
+      });
+    },
+    onSuccess: () => { setScalingForm(null); invalidateScaling(); },
+  });
+  const deleteScalingMutation = useMutation({
+    mutationFn: () => deleteScalingPolicy(serviceId),
+    onSuccess: invalidateScaling,
+  });
+  const manualScaleMutation = useMutation({
+    mutationFn: (replicas: number) => manualScaleService(serviceId, replicas),
+    onSuccess: invalidateScaling,
+  });
   const triggerCronMutation = useMutation({
     mutationFn: (id: string) => triggerCronJob(id),
     onSuccess: () => {
@@ -1449,6 +1498,164 @@ export function ServiceDetailPage() {
               <p className="mt-3 text-xs text-[var(--error)]">
                 {((deletePreviewMutation.error ?? promotePreviewMutation.error) as Error)?.message ?? 'Operation failed'}
               </p>
+            )}
+          </div>
+        )}
+
+        {activeSection === 'scaling' && (
+          <div className="panel p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
+                  <Layers size={20} className="text-[var(--accent-primary)]" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-[var(--text-primary)]">Scaling</h2>
+                  <p className="text-sm text-[var(--text-secondary)]">Replica policy and manual scaling</p>
+                </div>
+              </div>
+            </div>
+
+            {scalingPolicyQuery.isLoading ? (
+              <p className="text-sm text-[var(--text-secondary)]">Loading…</p>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+                  <div className="rounded-[var(--radius-md)] border border-[var(--border-primary)] p-3">
+                    <p className="text-xs text-[var(--text-tertiary)] uppercase tracking-wide">Replicas</p>
+                    <p className="text-xl font-semibold text-[var(--text-primary)]">
+                      {scalingStateQuery.data?.CurrentReplicas ?? '—'}
+                      <span className="text-sm font-normal text-[var(--text-secondary)]">
+                        {' '}/ {scalingStateQuery.data?.DesiredReplicas ?? '—'} desired
+                      </span>
+                    </p>
+                  </div>
+                  <div className="rounded-[var(--radius-md)] border border-[var(--border-primary)] p-3">
+                    <p className="text-xs text-[var(--text-tertiary)] uppercase tracking-wide">Policy</p>
+                    <p className="text-xl font-semibold text-[var(--text-primary)]">
+                      {scalingPolicyQuery.data ? `${scalingPolicyQuery.data.min_replicas}–${scalingPolicyQuery.data.max_replicas}` : 'None'}
+                    </p>
+                  </div>
+                  <div className="rounded-[var(--radius-md)] border border-[var(--border-primary)] p-3">
+                    <p className="text-xs text-[var(--text-tertiary)] uppercase tracking-wide">Autoscaling</p>
+                    <p className="text-xl font-semibold text-[var(--text-primary)]">
+                      {scalingPolicyQuery.data?.enabled ? 'On' : 'Off'}
+                    </p>
+                  </div>
+                  <div className="rounded-[var(--radius-md)] border border-[var(--border-primary)] p-3">
+                    <p className="text-xs text-[var(--text-tertiary)] uppercase tracking-wide">Last action</p>
+                    <p className="text-sm font-medium text-[var(--text-primary)] truncate">
+                      {scalingStateQuery.data?.LastScaleDirection ?? '—'}
+                    </p>
+                  </div>
+                </div>
+
+                {scalingForm === null ? (
+                  <div className="flex flex-wrap items-end gap-3">
+                    <div>
+                      <label className="block text-xs text-[var(--text-tertiary)] mb-1">Manual replicas</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={20}
+                        value={scaleReplicas}
+                        onChange={(e) => setScaleReplicas(e.target.value)}
+                        className="w-28 px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)]"
+                        placeholder="e.g. 3"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      disabled={manualScaleMutation.isPending || !scaleReplicas || !scalingStateQuery.data}
+                      onClick={() => manualScaleMutation.mutate(Number(scaleReplicas))}
+                      className="px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-contrast)] text-sm font-medium disabled:opacity-50"
+                    >
+                      {manualScaleMutation.isPending ? 'Scaling…' : 'Scale'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setScalingForm({
+                        min: String(scalingPolicyQuery.data?.min_replicas ?? 1),
+                        max: String(scalingPolicyQuery.data?.max_replicas ?? 3),
+                        targetCpu: String(scalingPolicyQuery.data?.target_cpu ?? 70),
+                        targetMemory: String(scalingPolicyQuery.data?.target_memory ?? 80),
+                        enabled: scalingPolicyQuery.data?.enabled ?? true,
+                      })}
+                      className="px-4 py-2 rounded-[var(--radius-md)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)]"
+                    >
+                      {scalingPolicyQuery.data ? 'Edit policy' : 'Create policy'}
+                    </button>
+                    {scalingPolicyQuery.data?.enabled && (
+                      <button
+                        type="button"
+                        disabled={deleteScalingMutation.isPending}
+                        onClick={() => { if (window.confirm('Disable autoscaling for this service?')) deleteScalingMutation.mutate(); }}
+                        className="px-4 py-2 rounded-[var(--radius-md)] border border-[var(--error)] text-sm text-[var(--error)] disabled:opacity-50"
+                      >
+                        Disable policy
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="rounded-[var(--radius-md)] border border-[var(--border-primary)] p-4 space-y-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      {([
+                        ['Min replicas', 'min'],
+                        ['Max replicas', 'max'],
+                        ['Target CPU %', 'targetCpu'],
+                        ['Target memory %', 'targetMemory'],
+                      ] as const).map(([label, field]) => (
+                        <div key={field}>
+                          <label className="block text-xs text-[var(--text-tertiary)] mb-1">{label}</label>
+                          <input
+                            type="number"
+                            min={field === 'min' || field === 'max' ? 1 : 0}
+                            value={scalingForm[field]}
+                            onChange={(e) => setScalingForm({ ...scalingForm, [field]: e.target.value })}
+                            className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)]"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <label className="flex items-center gap-2 text-sm text-[var(--text-primary)]">
+                      <input
+                        type="checkbox"
+                        checked={scalingForm.enabled}
+                        onChange={(e) => setScalingForm({ ...scalingForm, enabled: e.target.checked })}
+                      />
+                      Enable autoscaling
+                    </label>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        disabled={saveScalingMutation.isPending}
+                        onClick={() => saveScalingMutation.mutate()}
+                        className="px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-contrast)] text-sm font-medium disabled:opacity-50"
+                      >
+                        {saveScalingMutation.isPending ? 'Saving…' : 'Save policy'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setScalingForm(null)}
+                        className="px-4 py-2 rounded-[var(--radius-md)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)]"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {(saveScalingMutation.isError || deleteScalingMutation.isError || manualScaleMutation.isError || scalingPolicyQuery.isError || scalingStateQuery.isError) && (
+                  <p className="mt-3 text-xs text-[var(--error)]">
+                    {((saveScalingMutation.error ?? deleteScalingMutation.error ?? manualScaleMutation.error ?? scalingPolicyQuery.error ?? scalingStateQuery.error) as Error)?.message ?? 'Operation failed'}
+                  </p>
+                )}
+                {!scalingStateQuery.data && !scalingStateQuery.isLoading && (
+                  <p className="mt-3 text-xs text-[var(--text-tertiary)]">
+                    No scaling state yet — create a policy or scale manually to register this service with the autoscaler.
+                  </p>
+                )}
+              </>
             )}
           </div>
         )}
