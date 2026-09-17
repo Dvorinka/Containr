@@ -450,8 +450,12 @@ security scans produce real reports, not empty tables.
       the service Cron tab (worker + api demo services). Scaling, Previews,
       HA and Security sections still show empty in demo mode — acceptable:
       those are interaction surfaces, not dashboards.
-- [ ] **CI**: GitHub Actions — build, lint, typecheck, tests, compose boot
-      smoke; publish container images to GHCR with semver tags.
+- [x] **CI**: existing workflow already covered Go tests, frontend
+      lint/typecheck/build, compose config validation, and startup
+      preflight. Added: compose **boot** smoke (postgres + redis + backend
+      + frontend + traefik up, `/health` poll, frontend check, teardown)
+      and a tag-gated GHCR publish job (backend + frontend images on
+      `v*` tags). Not yet observed green on GitHub — first run pending.
 - [ ] **Release**: `v1.0.0` tag, changelog, release notes, screenshots refresh
       in README.
 - [ ] Post-build workflow per repo rules: codebase-to-course, desloppify,
