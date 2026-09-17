@@ -1658,3 +1658,12 @@ export async function updateVulnerability(id: string, status: 'open' | 'resolved
 export async function getSecurityMetrics(projectId: string): Promise<SecurityMetrics> {
   return requestJson<SecurityMetrics>(`/projects/${encodeURIComponent(projectId)}/security/metrics`);
 }
+
+export type ExecResult = { output?: string; exit_code?: number; error?: string };
+
+export async function execInService(serviceId: string, command: string): Promise<ExecResult> {
+  return requestJson<ExecResult>(`/services/${encodeURIComponent(serviceId)}/exec`, {
+    method: 'POST',
+    body: JSON.stringify({ command }),
+  });
+}

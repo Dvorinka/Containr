@@ -211,6 +211,9 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			protected.GET("/services/:id/logs", handleGetLogs)
 			protected.GET("/deployments/:id/logs", handleGetDeploymentLogs)
 
+			// One-off exec console (docker exec, 30s ceiling)
+			protected.POST("/services/:id/exec", handleExecInService)
+
 			// Git integration routes
 			protected.GET("/git/github-app/install-url", handleGetGitHubAppInstallURL)
 			protected.POST("/git/github-app/connect", handleConnectGitHubApp)

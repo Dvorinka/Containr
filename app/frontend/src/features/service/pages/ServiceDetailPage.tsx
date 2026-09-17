@@ -26,6 +26,7 @@ import {
   deleteScalingPolicy,
   getServiceScalingState,
   manualScaleService,
+  execInService,
   rollbackDeployment,
   updateServiceVariables,
   type CronJobEntity,
@@ -60,9 +61,10 @@ import {
   ChevronDown,
   GitPullRequest,
   ExternalLink,
+  Terminal,
 } from 'lucide-react';
 
-type ServiceSection = 'metrics' | 'logs' | 'config' | 'variables' | 'cron' | 'previews' | 'scaling' | 'settings';
+type ServiceSection = 'metrics' | 'logs' | 'config' | 'variables' | 'cron' | 'previews' | 'scaling' | 'console' | 'settings';
 
 const sectionItems: Array<{ key: ServiceSection; label: string; icon: typeof Activity }> = [
   { key: 'metrics', label: 'Metrics', icon: Activity },
@@ -72,6 +74,7 @@ const sectionItems: Array<{ key: ServiceSection; label: string; icon: typeof Act
   { key: 'cron', label: 'Cron', icon: Clock },
   { key: 'previews', label: 'Previews', icon: GitPullRequest },
   { key: 'scaling', label: 'Scaling', icon: Layers },
+  { key: 'console', label: 'Console', icon: Terminal },
   { key: 'settings', label: 'Settings', icon: Settings },
 ];
 
@@ -282,6 +285,22 @@ export function ServiceDetailPage() {
   const manualScaleMutation = useMutation({
     mutationFn: (replicas: number) => manualScaleService(serviceId, replicas),
     onSuccess: invalidateScaling,
+  });
+
+  // --- Console ---
+  const [consoleInput, setConsoleInput] = useState('');
+  const [consoleHistory, setConsoleHistory] = useState<
+    Array<{ command: string; output: string; exitCode: number; error: string }>
+  >([]);
+  const execMutation = useMutation({
+    mutationFn: (command: string) => execInService(serviceId, command),
+    onSuccess: (result, command) => {
+      setConsoleHistory((prev) => [
+        { command, output: result.output ?? '', exitCode: result.exit_code ?? 0, error: result.error ?? '' },
+        ...prev,
+      ]);
+      setConsoleInput('');
+    },
   });
   const triggerCronMutation = useMutation({
     mutationFn: (id: string) => triggerCronJob(id),
@@ -1656,6 +1675,75 @@ export function ServiceDetailPage() {
                   </p>
                 )}
               </>
+            )}
+          </div>
+        )}
+
+        {activeSection === 'console' && (
+          <div className="panel p-6">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
+                <Terminal size={20} className="text-[var(--accent-primary)]" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-[var(--text-primary)]">Console</h2>
+                <p className="text-sm text-[var(--text-secondary)]">One-off commands via docker exec — 30s limit, 64KB output cap</p>
+              </div>
+            </div>
+
+            <form
+              className="flex items-center gap-2 mb-4"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const cmd = consoleInput.trim();
+                if (cmd && !execMutation.isPending) execMutation.mutate(cmd);
+              }}
+            >
+              <span className="text-sm font-mono text-[var(--accent-primary)]">$</span>
+              <input
+                value={consoleInput}
+                onChange={(e) => setConsoleInput(e.target.value)}
+                placeholder="e.g. env | sort | head -20"
+                disabled={execMutation.isPending}
+                className="flex-1 px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-sm font-mono text-[var(--text-primary)] disabled:opacity-50"
+              />
+              <button
+                type="submit"
+                disabled={execMutation.isPending || !consoleInput.trim()}
+                className="px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-contrast)] text-sm font-medium disabled:opacity-50"
+              >
+                {execMutation.isPending ? 'Running…' : 'Run'}
+              </button>
+            </form>
+
+            {execMutation.isError && (
+              <p className="mb-4 text-xs text-[var(--error)]">
+                {(execMutation.error as Error)?.message ?? 'Command failed'}
+              </p>
+            )}
+
+            {consoleHistory.length === 0 ? (
+              <p className="text-xs text-[var(--text-tertiary)]">
+                Commands run inside the service's running container as its default user. No interactive shell — stdout/stderr is captured and returned.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {consoleHistory.map((entry, i) => (
+                  <div key={i} className="rounded-[var(--radius-md)] border border-[var(--border-primary)] bg-[var(--bg-secondary)] p-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <p className="text-xs font-mono text-[var(--text-primary)]">$ {entry.command}</p>
+                      <span className={`text-xs font-mono ${entry.exitCode === 0 && !entry.error ? 'text-[var(--success)]' : 'text-[var(--error)]'}`}>
+                        {entry.error ? 'error' : `exit ${entry.exitCode}`}
+                      </span>
+                    </div>
+                    {(entry.output || entry.error) && (
+                      <pre className="text-xs font-mono text-[var(--text-secondary)] whitespace-pre-wrap break-all max-h-64 overflow-y-auto">
+                        {entry.output}{entry.error ? `\n${entry.error}` : ''}
+                      </pre>
+                    )}
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         )}

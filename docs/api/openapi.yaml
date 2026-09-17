@@ -561,6 +561,57 @@ paths:
               schema:
                 $ref: '#/components/schemas/ServiceLogsResponse'
 
+  /services/{id}/exec:
+    post:
+      tags:
+        - Services
+      summary: Execute command in service container
+      description: Runs a one-off shell command via docker exec and returns captured output. 30s ceiling, 64KB output cap. For debugging only.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Service ID
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - command
+              properties:
+                command:
+                  type: string
+                  description: Shell command (executed via sh -c)
+                  maxLength: 4096
+      responses:
+        '200':
+          description: Command executed (check exit_code/error for failure)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  output:
+                    type: string
+                  exit_code:
+                    type: integer
+                  error:
+                    type: string
+        '400':
+          description: Invalid request
+        '404':
+          description: Service not found
+        '409':
+          description: No running container for this service
+        '503':
+          description: Docker unavailable
+
   /deployments/{id}/logs:
     get:
       tags:

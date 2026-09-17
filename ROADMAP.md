@@ -404,9 +404,11 @@ reaches the upstream container and appears in the analytics tables.
         with provider badge, VM/LXC lifecycle actions.
 - [ ] **Environments** (per §2.4): env switcher, per-env variables/domains,
       promote flow — ships with preview environments.
-- [ ] **Service exec console**: `docker exec` machinery now exists
-      (`Client.ExecRun` for cron) — expose a per-service web terminal or
-      one-off command runner on the service detail page.
+- [x] **Service exec console**: `POST /services/:id/exec` + Console section
+      on service detail — one-off `sh -c` commands via `ExecRun` (30s cap,
+      64KB output), ownership-checked, captured output + exit code per run.
+      Verified live: real container exec, stderr capture, 404 foreign
+      service, 401 unauthenticated. Interactive PTY remains out of scope.
 
 **Gate**: scaling and failover demonstrably work against a two-node lab;
 security scans produce real reports, not empty tables.
