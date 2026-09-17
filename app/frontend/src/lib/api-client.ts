@@ -1230,3 +1230,36 @@ export async function listGitBranches(
   );
   return payload.branches ?? [];
 }
+
+export type ConnectGitRepositoryInput = components['schemas']['ConnectGitRepoRequest'];
+export type CreateGitWebhookInput = components['schemas']['CreateWebhookRequest'];
+export type GitWebhookEntity = components['schemas']['GitWebhook'];
+
+export async function connectGitRepository(
+  input: ConnectGitRepositoryInput,
+): Promise<GitRepositoryEntity> {
+  const payload = await requestJson<{ repository?: GitRepositoryEntity }>(
+    '/git/repositories/connect',
+    { method: 'POST', body: JSON.stringify(input) },
+  );
+  if (!payload.repository?.id) {
+    throw new ApiError('Connect repository response is invalid', 500);
+  }
+  return payload.repository;
+}
+
+export async function listConnectedGitRepositories(): Promise<GitRepositoryEntity[]> {
+  const payload = await requestJson<{ repositories?: GitRepositoryEntity[] }>('/git/repositories');
+  return payload.repositories ?? [];
+}
+
+export async function createGitWebhook(input: CreateGitWebhookInput): Promise<GitWebhookEntity> {
+  const payload = await requestJson<{ webhook?: GitWebhookEntity }>('/git/webhooks', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  if (!payload.webhook?.id) {
+    throw new ApiError('Webhook response is invalid', 500);
+  }
+  return payload.webhook;
+}

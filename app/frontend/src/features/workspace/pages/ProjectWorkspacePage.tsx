@@ -2,8 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
+  ApiError,
+  connectGitRepository,
+  createGitWebhook,
   createService,
   getProjectById,
+  listConnectedGitRepositories,
   listGitBranches,
   listGitProviders,
   listGitRepositories,
@@ -50,10 +54,15 @@ const viewItems: Array<{ key: WorkspaceView; label: string; icon: typeof LayoutG
 const serviceTypes: Array<CreateServiceInput['type']> = ['web', 'worker', 'database', 'cron'];
 const serviceEnvironments = ['production', 'preview', 'development'] as const;
 
+type CreateServiceSubmit = CreateServiceInput & {
+  gitProviderId?: string;
+  gitRepoFullName?: string;
+};
+
 function ServiceCreateDialog(props: {
   open: boolean;
   onClose: () => void;
-  onSubmit: (payload: CreateServiceInput) => void;
+  onSubmit: (payload: CreateServiceSubmit) => void;
   loading: boolean;
   errorMessage?: string;
 }) {
@@ -365,6 +374,8 @@ function ServiceCreateDialog(props: {
                 git_repo: source === 'git' ? form.git_repo?.trim() : '',
                 git_branch: source === 'git' ? form.git_branch?.trim() : '',
                 build_path: source === 'git' ? form.build_path?.trim() : '',
+                gitProviderId: source === 'git' && repoFullName ? providerId : undefined,
+                gitRepoFullName: source === 'git' ? repoFullName || undefined : undefined,
               })
             }
             className="px-5 py-2 rounded-[var(--radius-md)] text-[var(--accent-on)] text-sm font-medium shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
@@ -416,7 +427,35 @@ export function ProjectWorkspacePage() {
   });
 
   const createServiceMutation = useMutation({
-    mutationFn: (payload: CreateServiceInput) => createService(projectId, payload),
+    mutationFn: async (payload: CreateServiceSubmit) => {
+      const { gitProviderId, gitRepoFullName, ...serviceInput } = payload;
+      const service = await createService(projectId, serviceInput);
+      if (gitProviderId && gitRepoFullName) {
+        let repoId: string | undefined;
+        try {
+          const repo = await connectGitRepository({
+            provider_id: gitProviderId,
+            repo_full_name: gitRepoFullName,
+          });
+          repoId = repo.id;
+        } catch (err) {
+          if (!(err instanceof ApiError && err.status === 409)) {
+            throw err;
+          }
+          repoId = (await listConnectedGitRepositories()).find(
+            (r) => r.full_name === gitRepoFullName,
+          )?.id;
+        }
+        if (repoId) {
+          await createGitWebhook({
+            repo_id: repoId,
+            events: ['push'],
+            branch: payload.git_branch ?? '',
+          });
+        }
+      }
+      return service;
+    },
     onSuccess: () => {
       setCreateOpen(false);
       queryClient.invalidateQueries({ queryKey: ['project-services', projectId] });

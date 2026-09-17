@@ -152,6 +152,10 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 	publicAgents := router.Group("/api")
 	agentHandler.SetupPublicRoutes(publicAgents)
 
+	// Public push receiver: HMAC signature on git_webhooks.webhook_secret
+	// replaces session auth. Providers POST to /api/git/webhooks/:id.
+	router.POST("/api/git/webhooks/:id", handleGitWebhookPush)
+
 	v1 := router.Group("/api/v1")
 	{
 		// Public routes (no authentication required)

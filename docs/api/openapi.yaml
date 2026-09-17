@@ -2919,6 +2919,73 @@ paths:
                     items:
                       $ref: '#/components/schemas/AgentCommand'
 
+  /api/git/webhooks/{id}:
+    servers:
+      - url: http://localhost:8080
+    post:
+      tags:
+        - Git
+      summary: Push event receiver
+      description: >-
+        Public provider webhook endpoint. The HMAC signature against the stored
+        webhook secret replaces session auth: GitHub X-Hub-Signature-256,
+        Gitea X-Gitea-Signature, GitLab X-Gitlab-Token. Matching branch pushes
+        enqueue deployments for connected services.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Provider push payload (ref, repository, head_commit)
+      responses:
+        '202':
+          description: Push accepted; matched services queued for deployment
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  received:
+                    type: boolean
+                  branch:
+                    type: string
+                  deployments:
+                    type: integer
+                  ignored:
+                    type: string
+        '400':
+          description: Invalid webhook ID or payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Invalid signature
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Webhook disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Webhook or repository not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/agents/{id}/commands/{commandId}/result:
     servers:
       - url: http://localhost:8080
@@ -4984,8 +5051,13 @@ components:
         provider_id:
           type: string
         events:
+          type: array
+          items:
+            type: string
+          description: Subscribed provider events
+        branch:
           type: string
-          description: JSON-encoded array of subscribed events
+          description: Branch filter for push events
         active:
           type: boolean
         created_at:

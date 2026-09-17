@@ -4748,6 +4748,92 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/git/webhooks/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Push event receiver
+         * @description Public provider webhook endpoint. The HMAC signature against the stored webhook secret replaces session auth: GitHub X-Hub-Signature-256, Gitea X-Gitea-Signature, GitLab X-Gitlab-Token. Matching branch pushes enqueue deployments for connected services.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            responses: {
+                /** @description Push accepted; matched services queued for deployment */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            received?: boolean;
+                            branch?: string;
+                            deployments?: number;
+                            ignored?: string;
+                        };
+                    };
+                };
+                /** @description Invalid webhook ID or payload */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Invalid signature */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Webhook disabled */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Webhook or repository not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/agents/{id}/commands/{commandId}/result": {
         parameters: {
             query?: never;
@@ -7014,8 +7100,10 @@ export interface components {
             id?: string;
             repo_id?: string;
             provider_id?: string;
-            /** @description JSON-encoded array of subscribed events */
-            events?: string;
+            /** @description Subscribed provider events */
+            events?: string[];
+            /** @description Branch filter for push events */
+            branch?: string;
             active?: boolean;
             /** Format: date-time */
             created_at?: string;

@@ -196,12 +196,17 @@ OpenAPI spec matches the router 1:1; zero dead packages.
 The product's spine: *project → service → deploy → logs → rollback*. Most
 pieces exist; this phase closes the gaps that block real usage.
 
-- [ ] **Git connect flow, end to end**: Settings → provider → repo picker →
-      branch picker → root dir → creates service + webhook. Backend exists;
-      build the UI and verify a real push triggers a build+deploy.
-- [ ] **Webhook auto-deploy**: `POST /git/webhooks` receiver, verify signature,
-      map repo+branch → service, enqueue build, surface status on canvas node
-      and `/builds`. Close the loop described in `AUTO_DEPLOY_GUIDE.md`.
+- [x] **Git connect flow, end to end**: Settings → GitProvidersSection manages
+      providers; service dialog picks provider → repo → branch; on create the
+      repo is connected (`POST /git/repositories/connect`, 409-tolerant) and a
+      push webhook is registered (`POST /git/webhooks`). Live provider push
+      verification pending real credentials.
+- [x] **Webhook auto-deploy**: public receiver `POST /api/git/webhooks/:id`
+      verifies HMAC (GitHub `X-Hub-Signature-256`, Gitea `X-Gitea-Signature`)
+      or GitLab `X-Gitlab-Token`, maps repo+branch → services, inserts
+      deployment rows and enqueues `runDeploymentAndSync` (trigger=webhook),
+      which flips canvas node status to building. Unit-tested signature
+      verification. Not yet e2e-verified against a real provider.
 - [ ] **Compose template catalog** per `docs/superpowers/specs/2026-04-14-compose-template-catalog-design.md`:
       - `service_templates.compose_yaml`, `screenshots`, `source_type`,
         parsed `config` summary (migration + sqlc).
