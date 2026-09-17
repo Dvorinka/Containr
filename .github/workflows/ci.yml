@@ -100,7 +100,13 @@ jobs:
           exit 1
 
       - name: Check frontend responds
-        run: curl -sf http://localhost:3000/ -o /dev/null
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3000/ -o /dev/null; then exit 0; fi
+            sleep 2
+          done
+          docker compose -f infra/docker-compose.yml logs --tail 50 frontend
+          exit 1
 
       - name: Teardown
         if: always()
