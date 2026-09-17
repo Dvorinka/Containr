@@ -26,6 +26,33 @@ templates/      Service template catalog notes
 - Frontend: `cd app/frontend && npm run build && npm test`
 - Compose: `docker compose config -q`
 
+## Boot Smoke Test
+
+Verify the API actually starts and serves against real dependencies:
+
+```bash
+# Requires Postgres + Redis reachable; migrations run automatically on boot.
+cd app/backend
+DATABASE_URL="postgres://user:pass@localhost:5432/containr?sslmode=disable" \
+REDIS_URL="redis://localhost:6379" \
+go run ./cmd/server &
+
+curl -fsS http://localhost:8080/live      # -> 200
+curl -fsS http://localhost:8080/health    # -> {"database":"ok","redis":"ok",...}
+curl -s http://localhost:8080/api/v1/services/x   # -> 401 (auth required, route exists)
+
+kill %1
+```
+
+To verify migrations alone against a scratch database:
+
+```bash
+cd app/backend
+DATABASE_URL="postgres://user:pass@localhost:5432/scratch?sslmode=disable" \
+  go run ./cmd/migrate up
+DATABASE_URL=... go run ./cmd/migrate goose-status
+```
+
 ## Conventions
 
 - Reuse existing utilities before adding dependencies.

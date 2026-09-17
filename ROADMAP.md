@@ -173,10 +173,15 @@ Everything else builds on a truthful API contract and a clean tree.
       entity types in `api-client.ts`.
 - [x] Fix auto-connection edges — `ServiceNode` lacked `Handle` components;
       invisible target/source handles added in `nodes.tsx`.
-- [ ] Rerun desloppify; record score. Target: keep ≥ 89 strict.
+- [x] Rerun desloppify; record score. 2026-09-17 scan (`ref/` excluded):
+      objective **66.1**, strict **16.5** — note the tool's scoring model
+      changed: strict now drags the 75%-weighted subjective pool (20 human
+      review items, all unscored). Mechanical dimensions: code quality 90.7,
+      security 97.0, file health 81.4, test health 35.0. The old "≥89 strict"
+      target is not comparable; treat objective ≥ 70 as the next milestone.
 - [x] `go vet`, `eslint`, `tsc`, `go test`, `vitest`, `vite build` all green;
-      boot smoke verified (`/live`, `/health`, 401s on protected routes).
-      `CONTRIBUTING.md` smoke procedure still to document.
+      boot smoke verified (`/live` → 200, `/health` → db/redis ok, protected
+      routes → 401) and documented in `CONTRIBUTING.md`.
 
 **Gate**: `docker compose up -d` from a clean clone produces a working stack;
 OpenAPI spec matches the router 1:1; zero dead packages.
