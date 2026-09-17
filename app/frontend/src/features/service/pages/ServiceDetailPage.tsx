@@ -96,6 +96,7 @@ export function ServiceDetailPage() {
   const [varDrafts, setVarDrafts] = useState<VariableDraft[] | null>(null);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkText, setBulkText] = useState('');
+  const [logDeploymentId, setLogDeploymentId] = useState<string | null>(null);
 
   const projectQuery = useQuery({
     queryKey: ['project', projectId],
@@ -148,11 +149,14 @@ export function ServiceDetailPage() {
     return deployments[0] ?? null;
   }, [deploymentsQuery.data, isDemoMode]);
 
+  const logsDeployment =
+    (deploymentsQuery.data ?? []).find((d) => d.id === logDeploymentId) ?? latestDeployment;
+
   const deploymentLogsQuery = useQuery({
-    queryKey: ['deployment-logs', latestDeployment?.id],
-    queryFn: () => getDeploymentLogs(latestDeployment!.id, { type: 'all' }),
+    queryKey: ['deployment-logs', logsDeployment?.id],
+    queryFn: () => getDeploymentLogs(logsDeployment!.id, { type: 'all' }),
     enabled:
-      Boolean(latestDeployment?.id) &&
+      Boolean(logsDeployment?.id) &&
       !isDemoMode &&
       activeSection === 'logs',
   });
@@ -775,7 +779,7 @@ export function ServiceDetailPage() {
                   <button
                     onClick={() => {
                       serviceLogsQuery.refetch();
-                      if (latestDeployment?.id) deploymentLogsQuery.refetch();
+                      if (logsDeployment?.id) deploymentLogsQuery.refetch();
                     }}
                     className="flex items-center gap-2 h-9 px-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-sm font-medium hover:border-[var(--border-default)] transition-colors"
                   >
@@ -824,13 +828,25 @@ export function ServiceDetailPage() {
               )}
             </div>
 
-            {!isDemoMode && latestDeployment && (
+            {!isDemoMode && logsDeployment && (
               <div className="mt-6 panel-soft p-4">
                 <div className="flex items-center justify-between mb-3">
-                  <p className="text-xs uppercase tracking-wider text-[var(--text-muted)]">Latest Deployment</p>
-                  <StatusBadge status={latestDeployment.status} />
+                  <p className="text-xs uppercase tracking-wider text-[var(--text-muted)]">
+                    {logsDeployment.id === latestDeployment?.id ? 'Latest Deployment' : 'Deployment'}
+                  </p>
+                  <div className="flex items-center gap-3">
+                    {logsDeployment.id !== latestDeployment?.id && (
+                      <button
+                        onClick={() => setLogDeploymentId(null)}
+                        className="text-xs text-[var(--accent-primary)] hover:underline"
+                      >
+                        Show latest
+                      </button>
+                    )}
+                    <StatusBadge status={logsDeployment.status} />
+                  </div>
                 </div>
-                <p className="text-xs text-[var(--text-tertiary)] mono">{latestDeployment.id}</p>
+                <p className="text-xs text-[var(--text-tertiary)] mono">{logsDeployment.id}</p>
                 <pre className="mono mt-3 max-h-40 overflow-auto whitespace-pre-wrap break-all text-xs text-[var(--text-secondary)]">
                   {deploymentLogsQuery.isLoading
                     ? 'Loading...'
@@ -1109,13 +1125,28 @@ export function ServiceDetailPage() {
                               {deployment.createdAt ? formatRelative(deployment.createdAt) : '—'}
                             </td>
                             <td className="px-4 py-3">
-                              <button
-                                onClick={() => rollbackMutation.mutate(deployment.id)}
-                                disabled={!canRollback(deployment.status) || rollbackMutation.isPending}
-                                className="px-3 py-1.5 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] text-xs font-medium hover:border-[var(--border-default)] disabled:opacity-50 transition-colors"
-                              >
-                                {rollbackMutation.isPending && rollbackMutation.variables === deployment.id ? '...' : 'Rollback'}
-                              </button>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => {
+                                    setLogDeploymentId(deployment.id);
+                                    setActiveSection('logs');
+                                  }}
+                                  className="px-3 py-1.5 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] text-xs font-medium hover:border-[var(--border-default)] transition-colors"
+                                >
+                                  Logs
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    if (window.confirm(`Rollback to deployment ${deployment.id.slice(0, 8)}?`)) {
+                                      rollbackMutation.mutate(deployment.id);
+                                    }
+                                  }}
+                                  disabled={!canRollback(deployment.status) || rollbackMutation.isPending}
+                                  className="px-3 py-1.5 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] text-xs font-medium hover:border-[var(--border-default)] disabled:opacity-50 transition-colors"
+                                >
+                                  {rollbackMutation.isPending && rollbackMutation.variables === deployment.id ? '...' : 'Rollback'}
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))

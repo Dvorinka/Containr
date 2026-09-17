@@ -491,6 +491,10 @@ export function ProjectWorkspacePage() {
     queryKey: ['project-services', projectId],
     queryFn: () => listServicesByProject(projectId),
     enabled: Boolean(projectId) && !isDemoMode,
+    refetchInterval: (query) =>
+      query.state.data?.some((s) => ['building', 'deploying', 'pending', 'rolling_back'].includes(s.status))
+        ? 3000
+        : 15000,
   });
 
   const createServiceMutation = useMutation({

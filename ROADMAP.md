@@ -225,8 +225,11 @@ pieces exist; this phase closes the gaps that block real usage.
       prefix, quoted values), inline validation (required / invalid / duplicate
       keys). Per-environment values are already covered by the schema: each
       environment owns its service instances, and variables are per-service.
-- [ ] **Deploy lifecycle polish**: build → deploy status propagation to canvas
-      node, failed-deploy surfacing with log tail link, rollback confirmation.
+- [x] **Deploy lifecycle polish**: backend already writes deploy progress to
+      `services.status`; the canvas now polls faster while any service is in a
+      transitional state so build → deploy propagates to nodes, deployment
+      history rows link straight into that deployment's log tail, and rollback
+      asks for confirmation before firing.
 - [ ] **Node/port collision handling**: two services claiming the same host
       port must produce a clear error, not a silent failure.
 - [ ] Auth hardening: e2e verify bootstrap gate (first user registers, second
