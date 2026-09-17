@@ -254,6 +254,9 @@ export type AuditLogEntity = {
 export type ListAuditLogsInput = {
   resource?: string;
   action?: string;
+  actor?: string;
+  userId?: string;
+  since?: string;
   page?: number;
   limit?: number;
 };
@@ -980,6 +983,15 @@ export async function listAuditLogs(input: ListAuditLogsInput = {}): Promise<Aud
   }
   if (input.action) {
     searchParams.set('action', input.action);
+  }
+  if (input.actor) {
+    searchParams.set('actor', input.actor);
+  }
+  if (input.userId) {
+    searchParams.set('user_id', input.userId);
+  }
+  if (input.since) {
+    searchParams.set('since', input.since);
   }
   if (input.page && input.page > 0) {
     searchParams.set('page', String(input.page));

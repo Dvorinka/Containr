@@ -6,6 +6,7 @@ import { ServiceDetailPage } from '@/features/service/pages/ServiceDetailPage';
 import { ServiceMetricsDashboard } from '@/features/service/pages/ServiceMetricsDashboard';
 import { BuildsPage } from '@/features/builds/pages/BuildsPage';
 import { TemplatesPage } from '@/features/templates/pages/TemplatesPage';
+import { AuditLogsPage } from '@/features/audit/pages/AuditLogsPage';
 import {
   DocsPage,
   PeoplePage,
@@ -62,6 +63,7 @@ export default function App() {
             <Route path="/usage" element={<UsagePage />} />
             <Route path="/people" element={<PeoplePage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/settings/audit-logs" element={<AuditLogsPage />} />
             <Route path="/docs" element={<DocsPage />} />
             <Route path="/showcase" element={<ComponentShowcase />} />
           </Route>

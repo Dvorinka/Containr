@@ -267,8 +267,13 @@ All of these have working APIs and no UI. Cheapest feature wins in the repo.
 - [ ] **Preview environments** (`/preview-environments/*`): per-PR/per-branch
       preview creation, promote-to-production action, expiry + cleanup job.
       Decide first whether this stays Phase 2 or moves with env support (§2.4).
-- [ ] **Audit logs**: real UI page under Settings (filterable by resource,
-      actor, time); already queried — needs a table, not just a list call.
+- [x] **Audit logs**: real page at `/settings/audit-logs` (linked from the
+      Settings page) — filterable table by resource, action, actor (email),
+      and time range, with pagination. Backend widened accordingly: the list
+      endpoint was self-scoped and dropped `user_email`; it now joins `users`
+      and accepts `user_id`/`actor`/`since` filters. Widening is consistent
+      with the platform's no-roles trust model (every authed user can already
+      create users).
 - [ ] **Agents/nodes**: onboarding flow — generate token, show install command
       for `cmd/agent`, node cards with heartbeat status + telemetry on Usage
       page.

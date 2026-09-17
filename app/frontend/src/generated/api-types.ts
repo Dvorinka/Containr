@@ -1202,13 +1202,19 @@ export interface paths {
         };
         /**
          * List audit logs
-         * @description Retrieve recent audit log entries for the current user with optional filters
+         * @description Retrieve audit log entries with optional filters
          */
         get: {
             parameters: {
                 query?: {
                     /** @description Filter audit logs by resource type */
                     resource?: string;
+                    /** @description Filter audit logs by actor email substring */
+                    actor?: string;
+                    /** @description Filter audit logs by actor user UUID */
+                    user_id?: string;
+                    /** @description Only return entries created at or after this RFC3339 timestamp */
+                    since?: string;
                     /** @description Filter audit logs by action type */
                     action?: string;
                     /** @description 1-based page number */

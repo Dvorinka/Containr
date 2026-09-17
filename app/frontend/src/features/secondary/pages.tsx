@@ -50,6 +50,8 @@ import {
   Unlink,
   Cpu,
   MemoryStick,
+  ScrollText,
+  ChevronRight,
 } from 'lucide-react';
 
 function SecondaryPageHeader({ title, description }: { title: string; description: string }) {
@@ -1056,6 +1058,29 @@ export function SettingsPage() {
 
           {/* Git Providers Section */}
           <GitProvidersSection />
+
+          {/* Audit Logs Section */}
+          <section className="panel p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
+                <ScrollText size={18} className="text-[var(--accent-primary)]" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-[var(--text-primary)]">Audit Logs</h2>
+                <p className="text-xs text-[var(--text-tertiary)]">Every authenticated action recorded by the platform</p>
+              </div>
+            </div>
+            <p className="text-sm text-[var(--text-secondary)] mb-4">
+              Filter the full audit trail by resource, action, actor, and time range.
+            </p>
+            <button
+              onClick={() => navigate('/settings/audit-logs')}
+              className="flex items-center gap-2 h-9 px-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-sm font-medium hover:border-[var(--border-default)] transition-colors"
+            >
+              Open audit logs
+              <ChevronRight size={14} />
+            </button>
+          </section>
 
           {/* Runtime & Local State Section */}
           <section className="panel p-6">

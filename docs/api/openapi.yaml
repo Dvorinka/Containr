@@ -827,7 +827,7 @@ paths:
       tags:
         - Audit
       summary: List audit logs
-      description: Retrieve recent audit log entries for the current user with optional filters
+      description: Retrieve audit log entries with optional filters
       security:
         - bearerAuth: []
       parameters:
@@ -837,6 +837,26 @@ paths:
           description: Filter audit logs by resource type
           schema:
             type: string
+        - name: actor
+          in: query
+          required: false
+          description: Filter audit logs by actor email substring
+          schema:
+            type: string
+        - name: user_id
+          in: query
+          required: false
+          description: Filter audit logs by actor user UUID
+          schema:
+            type: string
+            format: uuid
+        - name: since
+          in: query
+          required: false
+          description: Only return entries created at or after this RFC3339 timestamp
+          schema:
+            type: string
+            format: date-time
         - name: action
           in: query
           required: false
