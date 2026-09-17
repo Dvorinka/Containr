@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>03 — Aurora Glass</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Inter',system-ui,sans-serif; color:#eef0ff; display:flex; min-height:100vh;
+    background:radial-gradient(1200px 800px at 15% -10%, #3b2a6e 0%, transparent 55%),
+               radial-gradient(1000px 700px at 90% 10%, #6e1f4a 0%, transparent 55%),
+               radial-gradient(900px 900px at 50% 110%, #1f3a5e 0%, transparent 55%), #0b0d18; }
+  .rail { width:68px; display:flex; flex-direction:column; align-items:center; padding:18px 0; gap:20px; }
+  .rail .mark { width:40px; height:40px; border-radius:14px; background:linear-gradient(135deg,#ff5c8a,#a06cff); display:flex; align-items:center; justify-content:center; box-shadow:0 4px 24px rgba(255,92,138,.4); }
+  .rail .ic { width:40px; height:40px; border-radius:13px; display:flex; align-items:center; justify-content:center; color:rgba(238,240,255,.35); background:rgba(255,255,255,.04); backdrop-filter:blur(12px); border:1px solid rgba(255,255,255,.07); }
+  .rail .ic.on { background:linear-gradient(135deg,rgba(255,92,138,.25),rgba(160,108,255,.25)); color:#fff; border-color:rgba(255,140,180,.3); }
+  main { flex:1; padding:0 8px; }
+  .topbar { display:flex; align-items:center; gap:14px; padding:16px 24px 4px; }
+  .search { background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.09); border-radius:14px; padding:9px 16px; color:rgba(238,240,255,.5); font-size:13px; width:280px; backdrop-filter:blur(12px); }
+  .btn-upgrade { margin-left:auto; background:linear-gradient(135deg,#ff5c8a,#a06cff); color:#fff; border:none; border-radius:13px; padding:9px 20px; font-size:13px; font-weight:600; box-shadow:0 4px 20px rgba(200,80,160,.35); }
+  .crumb { padding:14px 24px 8px; font-size:13px; color:rgba(238,240,255,.45); }
+  .crumb b { color:rgba(238,240,255,.8); font-weight:500; }
+  .svc { display:flex; align-items:center; padding:0 24px 20px; gap:14px; }
+  .avatar { width:50px; height:50px; border-radius:16px; background:linear-gradient(135deg,#ff5c8a,#a06cff); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:19px; box-shadow:0 6px 24px rgba(255,92,138,.35); }
+  .svc h1 { font-size:21px; font-weight:700; letter-spacing:-.4px; }
+  .badge { display:inline-flex; align-items:center; gap:5px; background:rgba(80,227,194,.14); color:#50e3c2; font-size:10px; font-weight:700; padding:3px 10px; border-radius:20px; }
+  .badge i { width:5px; height:5px; border-radius:50%; background:#50e3c2; box-shadow:0 0 8px #50e3c2; }
+  .sub { font-size:12.5px; color:rgba(238,240,255,.45); margin-top:4px; }
+  .acts { margin-left:auto; display:flex; gap:10px; }
+  .btn-stop { background:rgba(255,255,255,.09); color:#eef0ff; border:1px solid rgba(255,255,255,.12); border-radius:13px; padding:10px 20px; font-weight:600; font-size:13px; backdrop-filter:blur(10px); }
+  .btn-restart { background:linear-gradient(135deg,#ff5c8a,#a06cff); color:#fff; border:none; border-radius:13px; padding:10px 20px; font-weight:700; font-size:13px; box-shadow:0 4px 20px rgba(200,80,160,.35); }
+  .tabs { display:flex; gap:8px; padding:0 24px 18px; font-size:13px; }
+  .tab { padding:8px 16px; color:rgba(238,240,255,.5); border-radius:11px; }
+  .tab.on { color:#fff; font-weight:600; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.1); }
+  .grid { padding:0 24px 24px; display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
+  .card { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.09); border-radius:20px; padding:20px; display:flex; flex-direction:column; backdrop-filter:blur(18px); box-shadow:0 8px 32px rgba(0,0,0,.25); }
+  .card .hd { display:flex; align-items:center; gap:10px; margin-bottom:12px; font-size:13.5px; font-weight:600; }
+  .cicon { width:34px; height:34px; border-radius:11px; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.09); display:flex; align-items:center; justify-content:center; font-size:14px; }
+  .big { font-size:36px; font-weight:800; letter-spacing:-1.2px; line-height:1; }
+  .meta { font-size:12px; color:rgba(238,240,255,.45); margin-top:5px; }
+  .meta b { font-weight:600; } .g{color:#50e3c2}.a{color:#fbbf24}
+  .segbar { display:flex; gap:5px; height:32px; margin-top:14px; }
+  .segbar div { border-radius:9px; }
+  .foot { margin-top:auto; padding-top:16px; display:flex; justify-content:space-between; align-items:center; }
+  .foot span { font-size:13px; color:rgba(238,240,255,.5); font-weight:500; }
+  .arrow { width:30px; height:30px; border-radius:10px; background:linear-gradient(135deg,#ff5c8a,#a06cff); display:flex; align-items:center; justify-content:center; color:#fff; font-size:15px; box-shadow:0 3px 14px rgba(200,80,160,.4); }
+  .legend { display:flex; gap:24px; margin-top:12px; font-size:12px; color:rgba(238,240,255,.5); }
+  .legend i { display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:6px; }
+  .legend b { color:#eef0ff; font-weight:600; }
+  .bars { display:flex; align-items:flex-end; gap:6px; height:76px; margin-top:10px; }
+  .bars div { flex:1; background:linear-gradient(180deg,#ff5c8a,#a06cff88); border-radius:5px 5px 0 0; }
+  .speed { font-size:12px; color:rgba(238,240,255,.5); display:flex; gap:6px; align-items:center; }
+</style></head><body>
+<nav class="rail">
+  <div class="mark"><svg width="20" height="20" viewBox="0 0 64 64"><g fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round"><rect x="12" y="16" width="40" height="30" rx="6"/><path d="M23 16v30M32 16v30M41 16v30M18 54h28"/></g></svg></div>
+  <div class="ic">⌗</div><div class="ic">▦</div><div class="ic on">▤</div><div class="ic">◉</div><div class="ic">⚙</div>
+</nav>
+<main>
+  <div class="topbar"><div class="search">⌕ Search projects, builds, logs</div><button class="btn-upgrade">Upgrade</button></div>
+  <div class="crumb">‹ Servers / <b>api-gateway</b></div>
+  <div class="svc">
+    <div class="avatar">⏸</div>
+    <div><h1>api-gateway <span class="badge"><i></i>ACTIVE</span></h1><div class="sub">https://api.containr.dev ↗ &nbsp;·&nbsp; Project Information ›</div></div>
+    <div class="acts"><button class="btn-stop">◉ STOP</button><button class="btn-restart">↻ RESTART</button></div>
+  </div>
+  <div class="tabs"><div class="tab on">Metrics</div><div class="tab">Requests</div><div class="tab">APIs</div><div class="tab">Config</div></div>
+  <div class="grid">
+    <div class="card"><div class="hd"><div class="cicon">▣</div>CPU Usage</div><div class="big">12%</div><div class="meta"><b class="g">Good</b> · Daily usage</div>
+      <svg viewBox="0 0 200 60" style="margin-top:14px;width:100%"><path d="M0 45 L18 42 L36 47 L54 40 L72 44 L90 36 L108 40 L126 30 L144 35 L162 22 L180 26 L200 14" fill="none" stroke="#ff9a6c" stroke-width="2.5" stroke-linecap="round"/><path d="M0 45 L18 42 L36 47 L54 40 L72 44 L90 36 L108 40 L126 30 L144 35 L162 22 L180 26 L200 14 V60 H0 Z" fill="url(#gg)"/><defs><linearGradient id="gg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff9a6c" stop-opacity=".3"/><stop offset="1" stop-color="#ff9a6c" stop-opacity="0"/></linearGradient></defs></svg>
+      <div class="foot"><span>Details</span><div class="arrow">›</div></div></div>
+    <div class="card"><div class="hd"><div class="cicon">▤</div>RAM Usage</div><div class="big">65%</div><div class="meta"><b class="a">Average</b> · Daily usage</div>
+      <svg viewBox="0 0 160 88" style="margin:10px auto 0;display:block"><defs><linearGradient id="ram" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#a06cff"/><stop offset="1" stop-color="#ff5c8a"/></linearGradient></defs><path d="M14 80 A 66 66 0 0 1 146 80" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="13"/><path d="M14 80 A 66 66 0 0 1 118 34" fill="none" stroke="url(#ram)" stroke-width="13" stroke-dasharray="5 4" stroke-linecap="round"/><text x="80" y="66" text-anchor="middle" fill="rgba(238,240,255,.45)" font-size="9">USED</text><text x="80" y="80" text-anchor="middle" fill="#eef0ff" font-size="12" font-weight="800">5.4 GB / 8GB</text></svg>
+      <div class="foot"><span>Details</span><div class="arrow">›</div></div></div>
+    <div class="card"><div class="hd"><div class="cicon">🗑</div>Cache</div><div class="big">352 MB</div><div class="meta"><b style="color:#ff9a6c">220MB Average</b> · cached images and files</div>
+      <div class="segbar"><div style="width:48%;background:linear-gradient(135deg,#ff9a6c,#ff5c8a)"></div><div style="width:20%;background:linear-gradient(135deg,#a06cff,#6c8ef0)"></div><div style="width:32%;background:rgba(255,255,255,.08)"></div></div>
+      <div class="legend"><span><i style="background:#ff9a6c"></i>Cache <b>212 MB</b> 12%</span><span><i style="background:#a06cff"></i>Non-Cache <b>85 MB</b> 4%</span><span><i style="background:rgba(255,255,255,.25)"></i>Total <b>1.75 GB</b></span></div>
+      <div class="foot"><span>Details</span><div class="arrow">›</div></div></div>
+    <div class="card" style="grid-column:span 2"><div class="hd"><div class="cicon">⚇</div>Active Users</div><div class="big">475 K</div><div class="meta">User active right now</div>
+      <div class="bars"><div style="height:80%"></div><div style="height:55%"></div><div style="height:90%"></div><div style="height:62%"></div><div style="height:75%"></div><div style="height:40%"></div><div style="height:68%"></div><div style="height:85%"></div><div style="height:58%"></div><div style="height:72%"></div><div style="height:48%"></div><div style="height:66%"></div><div style="height:78%"></div><div style="height:52%"></div></div>
+      <div class="foot"><span>Details</span><div class="arrow">›</div></div></div>
+    <div class="card"><div class="hd"><div class="cicon">✦</div>Performance</div><div class="big">89%</div><div class="meta"><b class="g">Good</b> · Last scan today</div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:14px"><div class="speed"><span style="color:#6c8ef0">↓</span> 10.4 Mbps down</div><div class="speed"><span style="color:#ff5c8a">↑</span> 5.2 Mbps up</div></div>
+      <div class="foot"><span>Check Speed</span><div class="arrow">›</div></div></div>
+  </div>
+</main></body></html>

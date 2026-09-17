@@ -39,7 +39,7 @@ func main() {
 	// Run startup migrations unless explicitly disabled.
 	if cfg.AutoMigrate {
 		migrationCtx, migrationCancel := context.WithTimeout(context.Background(), cfg.MigrationLockTimeout)
-		if err := db.MigrateAllWithLock(migrationCtx, "migrations", "migrations_goose"); err != nil {
+		if err := db.MigrateAllWithLock(migrationCtx, "migrations_goose"); err != nil {
 			migrationCancel()
 			log.Fatalf("Failed to run database migrations: %v", err)
 		}
@@ -48,8 +48,8 @@ func main() {
 		log.Println("AUTO_MIGRATE disabled; skipping startup migrations")
 	}
 
-	// Seed demo data in development (or when explicitly requested).
-	if cfg.IsDevelopment() || cfg.SeedDataOnStart {
+	// Seed demo data only when explicitly requested.
+	if cfg.SeedDataOnStart {
 		if err := db.SeedData(); err != nil {
 			log.Printf("Warning: Failed to seed data: %v", err)
 		}

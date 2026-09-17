@@ -1,37 +1,44 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { createProject, listProjects, type ProjectEntity, type ProjectStats } from '@/lib/api-client';
-import { 
-  Plus, 
-  Search, 
-  ArrowRight, 
-  Layers, 
-  Clock,
-  Sparkles,
+import {
+  createProject,
+  getHostMonitoring,
+  listBuilds,
+  listProjects,
+  type ProjectEntity,
+  type ProjectStats,
+} from '@/lib/api-client';
+import {
+  Search,
   FolderOpen,
   X,
-  Check,
-  AlertTriangle
 } from 'lucide-react';
 
 const demoProjects: ProjectEntity[] = [
   {
     id: 'project-demo',
-    name: 'Demo Project',
+    name: 'core-services',
     description: 'Sample project with mock services for UI preview.',
     createdAt: new Date(Date.now() - 14 * 86_400_000).toISOString(),
     updatedAt: new Date().toISOString(),
-    stats: { service_count: 3, deployment_count: 12, running_services: 2 },
+    stats: { service_count: 5, deployment_count: 12, running_services: 5, last_deployment: null },
   },
   {
     id: 'project-staging',
-    name: 'Staging Environment',
+    name: 'ml-pipeline',
     description: 'Pre-production environment for testing new releases.',
     createdAt: new Date(Date.now() - 7 * 86_400_000).toISOString(),
     updatedAt: new Date(Date.now() - 2 * 86_400_000).toISOString(),
-    stats: { service_count: 1, deployment_count: 5, running_services: 1 },
+    stats: { service_count: 2, deployment_count: 5, running_services: 1, last_deployment: null },
   },
+];
+
+const demoDeploys = [
+  { id: 'd1', name: 'api-gateway', project: 'core-services', status: 'DEPLOYED', when: '4m' },
+  { id: 'd2', name: 'web-frontend', project: 'core-services', status: 'BUILDING', when: '6m' },
+  { id: 'd3', name: 'worker', project: 'ml-pipeline', status: 'FAILED', when: '1h' },
+  { id: 'd4', name: 'site', project: 'growth-site', status: 'DEPLOYED', when: '2h' },
 ];
 
 function getHealthStatus(stats: ProjectStats): 'healthy' | 'degraded' | 'critical' {
@@ -41,145 +48,85 @@ function getHealthStatus(stats: ProjectStats): 'healthy' | 'degraded' | 'critica
   return 'critical';
 }
 
-function healthConfig(health: ReturnType<typeof getHealthStatus>) {
+function healthBadge(health: ReturnType<typeof getHealthStatus>) {
   switch (health) {
     case 'healthy':
-      return { 
-        label: 'Operational', 
-        color: 'var(--success)', 
-        bg: 'var(--success-soft)',
-        Icon: Check
-      };
+      return { label: 'RUNNING', cls: 'v-st-ok' };
     case 'degraded':
-      return { 
-        label: 'Degraded', 
-        color: 'var(--warning)', 
-        bg: 'var(--warning-soft)',
-        Icon: AlertTriangle
-      };
+      return { label: 'DEGRADED', cls: 'v-st-warn' };
     case 'critical':
-      return { 
-        label: 'Critical', 
-        color: 'var(--error)', 
-        bg: 'var(--error-soft)',
-        Icon: X
-      };
+      return { label: 'DOWN', cls: 'v-st-fail' };
   }
 }
 
 function formatRelative(date?: string): string {
   if (!date) return '—';
-  const now = Date.now();
-  const then = new Date(date).getTime();
-  const diff = now - then;
-
+  const diff = Date.now() - new Date(date).getTime();
   if (diff < 60_000) return 'just now';
   if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
   if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
   return `${Math.floor(diff / 86_400_000)}d ago`;
 }
 
+function MiniCanvas({ project }: { project: ProjectEntity }) {
+  const count = project.stats.service_count;
+  const running = project.stats.running_services;
+  const shown = Math.min(count, 4);
+  const extra = count - shown;
+  const positions = [
+    { left: 14, top: 22 },
+    { left: 96, top: 22 },
+    { left: 14, top: 62 },
+    { left: 96, top: 62 },
+  ];
+  return (
+    <div className="v-mini">
+      {count >= 2 ? <div className="v-edge" style={{ left: 46, top: 38, width: 50 }} /> : null}
+      {count >= 4 ? <div className="v-edge" style={{ left: 46, top: 78, width: 50 }} /> : null}
+      {Array.from({ length: shown }).map((_, i) => (
+        <div key={i} className="v-node" style={positions[i]}>
+          <b className={`v-nd ${i < running ? '' : 'r'}`} />
+          svc{i + 1}
+        </div>
+      ))}
+      {extra > 0 ? (
+        <div className="v-more" style={{ left: 178, top: 22 }}>+{extra}</div>
+      ) : null}
+    </div>
+  );
+}
+
 function ProjectCard({ project, href }: { project: ProjectEntity; href: string }) {
   const navigate = useNavigate();
   const health = getHealthStatus(project.stats);
-  const config = healthConfig(health);
-  const Icon = config.Icon;
-  const healthPercent = project.stats.service_count === 0 
-    ? 100 
-    : Math.round((project.stats.running_services / project.stats.service_count) * 100);
+  const badge = healthBadge(health);
+  const envOk = health === 'healthy';
 
   return (
-    <article 
-      className="group panel p-0 overflow-hidden cursor-pointer transition-all duration-300 hover:shadow-[var(--shadow-lg)] hover:border-[var(--border-default)]"
+    <article
+      className="group panel p-4 cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--border-strong)]"
       onClick={() => navigate(href)}
     >
-      {/* Header with solid accent */}
-      <div className="relative px-5 pt-5 pb-4">
-        <div className="absolute inset-0 h-28 bg-[#e8316a]/10" />
-        <div className="relative flex items-start justify-between gap-3">
-          <div className="flex-1 min-w-0">
-            <h3 className="font-headline text-lg font-semibold tracking-tight text-[var(--text-primary)] truncate group-hover:text-[var(--accent-primary)] transition-colors">
-              {project.name}
-            </h3>
-            <p className="mt-1.5 text-sm text-[var(--text-secondary)] line-clamp-2 leading-relaxed">
-              {project.description || 'No description provided'}
-            </p>
-          </div>
-          <div 
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium ring-1 ring-inset"
-            style={{ background: config.bg, color: config.color, borderColor: `${config.color}30` }}
-          >
-            <Icon size={12} />
-            {config.label}
-          </div>
-        </div>
+      <div className="mb-3 flex items-center gap-2">
+        <h3 className="truncate text-[14.5px] font-bold tracking-tight text-[var(--text-primary)]">
+          {project.name}
+        </h3>
+        <span className={`v-st ml-auto ${badge.cls}`}>{badge.label}</span>
       </div>
-
-      {/* Service Topology Preview */}
-      <div className="px-5 py-3 border-y border-[var(--border-subtle)] bg-[var(--surface-muted)]/30">
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1">
-            {Array.from({ length: Math.min(project.stats.service_count, 5) }).map((_, i) => (
-              <div 
-                key={i}
-                className="w-8 h-8 rounded-lg bg-[var(--surface-card)] border border-[var(--border-subtle)] flex items-center justify-center transition-colors group-hover:border-[var(--border-default)]"
-              >
-                <Layers size={14} className="text-[var(--text-tertiary)]" />
-              </div>
-            ))}
-            {project.stats.service_count > 5 && (
-              <div className="w-8 h-8 rounded-lg bg-[var(--surface-muted)] border border-[var(--border-subtle)] flex items-center justify-center text-xs text-[var(--text-tertiary)] font-medium">
-                +{project.stats.service_count - 5}
-              </div>
-            )}
-          </div>
-          <span className="text-xs text-[var(--text-tertiary)] font-medium">
-            {project.stats.service_count} service{project.stats.service_count !== 1 ? 's' : ''}
-          </span>
-        </div>
-      </div>
-
-      {/* Stats Grid */}
-      <div className="p-5">
-        <div className="grid grid-cols-3 gap-4">
-          <div>
-            <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] font-medium">Services</p>
-            <p className="mt-1.5 text-xl font-semibold text-[var(--text-primary)]">{project.stats.service_count}</p>
-          </div>
-          <div>
-            <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] font-medium">Running</p>
-            <p className="mt-1.5 text-xl font-semibold text-[var(--success)]">{project.stats.running_services}</p>
-          </div>
-          <div>
-            <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] font-medium">Health</p>
-            <p className="mt-1.5 text-xl font-semibold text-[var(--text-primary)]">{healthPercent}%</p>
-          </div>
-        </div>
-
-        {/* Health Progress Bar */}
-        <div className="mt-4">
-          <div className="h-1.5 rounded-full bg-[var(--surface-muted)] overflow-hidden">
-            <div 
-              className="h-full rounded-full transition-all duration-500"
-              style={{ 
-                width: `${healthPercent}%`,
-                background: config.color
-              }}
-            />
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="mt-4 flex items-center justify-between">
-          <div className="flex items-center gap-1.5 text-xs text-[var(--text-tertiary)]">
-            <Clock size={12} />
-            <span>Updated {formatRelative(project.updatedAt)}</span>
-          </div>
-          <div className="flex items-center gap-1 text-xs font-medium text-[var(--accent-primary)] opacity-0 group-hover:opacity-100 transition-all duration-200 translate-x-2 group-hover:translate-x-0">
-            <span>Open</span>
-            <ArrowRight size={12} />
-          </div>
-        </div>
+      <MiniCanvas project={project} />
+      <div className="v-mono mt-3 flex items-center gap-2 text-[10.5px] text-[var(--text-tertiary)]">
+        <i
+          className="inline-block h-1.5 w-1.5 rounded-full"
+          style={{ background: envOk ? 'var(--success)' : 'var(--warning)' }}
+        />
+        <span className="text-[var(--text-secondary)]">
+          {envOk ? 'production' : 'degraded'}
+        </span>
+        <span>·</span>
+        <span>
+          {project.stats.running_services}/{project.stats.service_count} online
+        </span>
+        <span className="ml-auto">{formatRelative(project.updatedAt)}</span>
       </div>
     </article>
   );
@@ -194,14 +141,26 @@ export function ProjectsPage() {
   const [search, setSearch] = useState('');
   const [isCreateOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState({ name: '', description: '' });
-  
-  const projectHref = (projectId: string) => 
+
+  const projectHref = (projectId: string) =>
     isDemoMode ? `/projects/${projectId}?demo=1` : `/projects/${projectId}`;
 
   const projectsQuery = useQuery({
     queryKey: ['projects'],
     enabled: !isDemoMode,
     queryFn: listProjects,
+  });
+  const hostQuery = useQuery({
+    queryKey: ['host-monitoring'],
+    enabled: !isDemoMode,
+    queryFn: getHostMonitoring,
+    refetchInterval: 30_000,
+  });
+  const buildsQuery = useQuery({
+    queryKey: ['recent-deploys'],
+    enabled: !isDemoMode,
+    queryFn: () => listBuilds({ page: 1, limit: 5 }),
+    refetchInterval: 30_000,
   });
 
   const createProjectMutation = useMutation({
@@ -218,93 +177,125 @@ export function ProjectsPage() {
     const source = isDemoMode ? demoProjects : projectsQuery.data ?? [];
     if (!search.trim()) return source;
     const needle = search.toLowerCase();
-    return source.filter((project) => 
-      project.name.toLowerCase().includes(needle) || 
+    return source.filter((project) =>
+      project.name.toLowerCase().includes(needle) ||
       project.description?.toLowerCase().includes(needle)
     );
   }, [isDemoMode, projectsQuery.data, search]);
 
+  const projects = isDemoMode ? demoProjects : projectsQuery.data ?? [];
+  const totalServices = projects.reduce((sum, p) => sum + p.stats.service_count, 0);
+  const runningServices = projects.reduce((sum, p) => sum + p.stats.running_services, 0);
+  const host = hostQuery.data;
+  const cpuPct = isDemoMode ? 14 : host && host.cpu.cores > 0
+    ? Math.min(100, Math.round((host.load.load1m / host.cpu.cores) * 100))
+    : null;
+  const memPct = isDemoMode ? 72 : host ? Math.round(host.memory.usagePercent) : null;
+  const diskPct = isDemoMode ? 73 : host ? Math.round(host.storage.usagePercent) : null;
+  const fmtGB = (v: number) => `${(v / (1024 * 1024 * 1024)).toFixed(0)}G`;
+  const builds = isDemoMode ? [] : buildsQuery.data?.builds ?? [];
+  const deployCount = buildsQuery.data?.total ?? builds.length;
+  const feed = isDemoMode
+    ? demoDeploys
+    : builds.map((b) => ({
+        id: b.id,
+        name: b.imageName || b.serviceId || b.id,
+        project: '',
+        status: (b.status || 'queued').toUpperCase(),
+        when: formatRelative(b.startedAt ?? b.completedAt),
+      }));
+
+  const statusClass = (status: string) =>
+    status === 'DEPLOYED' || status === 'SUCCESS' || status === 'SUCCEEDED'
+      ? 'v-st-ok'
+      : status === 'BUILDING' || status === 'RUNNING' || status === 'QUEUED'
+        ? 'v-st-run'
+        : status === 'FAILED' || status === 'CANCELLED'
+          ? 'v-st-fail'
+          : 'v-st-off';
+
   return (
-    <div className="min-h-screen relative">
-      {/* Hero Section - Premium ambient design */}
-      <div className="relative overflow-hidden border-b border-[var(--border-subtle)]">
-        {/* Solid ambient background */}
-        <div className="absolute inset-0 bg-[#e8316a]/5" />
-        <div className="absolute top-0 left-1/4 w-96 h-96 bg-[var(--accent-primary)]/5 rounded-full blur-3xl" />
-        <div className="absolute bottom-0 right-1/4 w-80 h-80 bg-[var(--accent-secondary)]/5 rounded-full blur-3xl" />
-        
-        <div className="relative mx-auto w-full max-w-[1400px] px-6 py-12 md:py-16 lg:py-20">
-          <div className="max-w-2xl">
-            <div className="flex items-center gap-3 mb-4">
-              <div 
-                className="flex items-center justify-center rounded-xl shadow-lg ring-1 ring-white/10"
-                style={{ width: '44px', height: '44px', background: '#e8316a' }}
-              >
-                <FolderOpen size={20} className="text-white" />
-              </div>
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[var(--surface-muted)] border border-[var(--border-subtle)]">
-                <div className="w-1.5 h-1.5 rounded-full bg-[var(--success)] live-pulse" />
-                <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-tertiary)]">
-                  Workspace
-                </span>
-              </div>
-            </div>
-            <h1 className="font-headline text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-[var(--text-primary)]">
-              Projects
-            </h1>
-            <p className="mt-4 text-lg text-[var(--text-secondary)] max-w-xl leading-relaxed">
-              Deploy, manage, and monitor your containerized services with visual topology mapping and real-time observability.
+    <div className="min-h-screen">
+      <div className="w-full px-8 py-6">
+        {/* Page head */}
+        <div className="mb-6 flex items-center justify-between gap-5">
+          <div>
+            <h1 className="v-title">Projects<span className="v-cursor">_</span></h1>
+            <p className="v-mono mt-1.5 text-[11px] text-[var(--text-tertiary)]">
+              <b className="text-[var(--text-secondary)]">{String(projects.length).padStart(2, '0')}</b> projects ·{' '}
+              <b className="text-[var(--text-secondary)]">{String(totalServices).padStart(2, '0')}</b> services ·{' '}
+              <b className="text-[var(--text-secondary)]">{runningServices}</b> online
             </p>
           </div>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="mx-auto w-full max-w-[1400px] px-6 py-8">
-        {/* Toolbar */}
-        <div className="flex flex-col sm:flex-row gap-4 mb-8">
-          <div className="relative flex-1">
-            <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search projects by name or description..."
-              className="w-full h-11 pl-11 pr-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-card)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all"
-            />
+          <div className="flex items-center gap-2.5">
+            <div className="search-box" style={{ width: 240 }}>
+              <Search size={13} />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="search projects…"
+                className="v-mono"
+                style={{ fontSize: 11.5 }}
+              />
+            </div>
+            <button onClick={() => setCreateOpen(true)} className="v-btn">
+              + new project
+            </button>
           </div>
-          <button
-            onClick={() => setCreateOpen(true)}
-            className="flex items-center justify-center gap-2 h-11 px-5 rounded-[var(--radius-md)] text-white font-medium text-sm shadow-lg hover:shadow-xl transition-all duration-300"
-            style={{ background: '#e8316a' }}
-          >
-            <Plus size={16} />
-            <span>New Project</span>
-          </button>
         </div>
 
-        {/* Demo Mode Banner */}
-        {isDemoMode && (
-          <div className="mb-6 px-4 py-3 rounded-[var(--radius-md)] border border-[var(--warning-soft)] bg-[var(--warning-soft)]/50">
-            <div className="flex items-center gap-2 text-sm text-[var(--warning)]">
-              <Sparkles size={16} />
-              <span>Demo mode active — using sample data for preview</span>
+        {/* Host stat row */}
+        <div className="mb-7 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="v-stat">
+            <div className="v-k"><span>HOST.CPU</span><span className="v-live" /></div>
+            <div className="v-v">{cpuPct ?? '—'}<span>%</span></div>
+            {isDemoMode ? (
+              <div className="v-spark">
+                {[28, 44, 36, 58, 42, 66, 50, 34, 56, 40, 30, 20].map((h, i) => (
+                  <i key={i} style={{ height: `${h}%` }} />
+                ))}
+              </div>
+            ) : null}
+            <div className="v-d">
+              {isDemoMode || host ? (
+                <><b style={{ color: 'var(--success)' }}>healthy</b> · {host?.cpu.cores ?? 16} cores</>
+              ) : 'no telemetry'}
             </div>
           </div>
-        )}
+          <div className="v-stat">
+            <div className="v-k"><span>HOST.MEM</span><span className="v-live" /></div>
+            <div className="v-v">{memPct ?? '—'}<span>%</span></div>
+            <div className="v-meter"><i className={memPct !== null && memPct > 85 ? 'r' : 'y'} style={{ width: `${memPct ?? 0}%` }} /></div>
+            <div className="v-d">{isDemoMode ? '9.8G / 13G' : host ? `${fmtGB(host.memory.used)} / ${fmtGB(host.memory.total)}` : 'no telemetry'}</div>
+          </div>
+          <div className="v-stat">
+            <div className="v-k"><span>HOST.DISK</span><span className="v-live" /></div>
+            <div className="v-v">{diskPct ?? '—'}<span>%</span></div>
+            <div className="v-meter"><i className="r" style={{ width: `${diskPct ?? 0}%` }} /></div>
+            <div className="v-d">{isDemoMode ? '338G of 465G · high' : host ? `${fmtGB(host.storage.used)} of ${fmtGB(host.storage.total)}` : 'no telemetry'}</div>
+          </div>
+          <div className="v-stat">
+            <div className="v-k"><span>DEPLOYS</span></div>
+            <div className="v-v">{isDemoMode ? 18 : deployCount}</div>
+            <div className="v-meter"><i style={{ width: '94%' }} /></div>
+            <div className="v-d"><b style={{ color: 'var(--success)' }}>{isDemoMode ? '17 ok' : `${builds.filter((b) => (b.status ?? '').toLowerCase() !== 'failed').length} recent`}</b></div>
+          </div>
+        </div>
 
-        {/* Loading State */}
+        {/* Projects grid */}
+        <p className="v-sect">PROJECTS <span className="v-sect-r">{filteredProjects.length} records</span></p>
+
         {!isDemoMode && projectsQuery.isLoading && (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="panel h-[320px] animate-pulse bg-[var(--surface-card)]" />
+              <div key={i} className="panel h-[210px] animate-pulse" />
             ))}
           </div>
         )}
 
-        {/* Error State */}
         {!isDemoMode && projectsQuery.isError && (
           <div className="panel p-8 text-center">
-            <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-[var(--error-soft)] flex items-center justify-center">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--error-soft)]">
               <X size={24} className="text-[var(--error)]" />
             </div>
             <p className="text-lg font-medium text-[var(--text-primary)]">Failed to load projects</p>
@@ -312,34 +303,49 @@ export function ProjectsPage() {
           </div>
         )}
 
-        {/* Empty State */}
-        {((isDemoMode && filteredProjects.length === 0) || (!isDemoMode && !projectsQuery.isLoading && !projectsQuery.isError && filteredProjects.length === 0)) && (
+        {filteredProjects.length === 0 && !projectsQuery.isLoading && !projectsQuery.isError ? (
           <div className="panel p-12 text-center">
-            <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-[var(--accent-primary-soft)] flex items-center justify-center">
+            <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-[var(--accent-primary-soft)]">
               <FolderOpen size={28} className="text-[var(--accent-primary)]" />
             </div>
             <p className="text-xl font-semibold text-[var(--text-primary)]">No projects yet</p>
-            <p className="mt-2 text-[var(--text-secondary)] max-w-md mx-auto">
+            <p className="mx-auto mt-2 max-w-md text-[var(--text-secondary)]">
               Create your first project to start deploying services with visual topology management.
             </p>
-            <button
-              onClick={() => setCreateOpen(true)}
-              className="mt-6 inline-flex items-center gap-2 px-5 py-2.5 rounded-[var(--radius-md)] border border-[var(--accent-primary)] text-[var(--accent-primary)] font-medium text-sm hover:bg-[var(--accent-primary-soft)] transition-colors"
-            >
-              <Plus size={16} />
-              Create Project
+            <button onClick={() => setCreateOpen(true)} className="v-btn mt-6">
+              + create project
             </button>
           </div>
-        )}
+        ) : null}
 
-        {/* Project Grid */}
-        {((isDemoMode && filteredProjects.length > 0) || (!isDemoMode && !projectsQuery.isLoading && !projectsQuery.isError && filteredProjects.length > 0)) && (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+        {filteredProjects.length > 0 && (
+          <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             {filteredProjects.map((project) => (
               <ProjectCard key={project.id} project={project} href={projectHref(project.id)} />
             ))}
           </div>
         )}
+
+        {/* Deploy feed */}
+        <p className="v-sect mt-7">RECENT DEPLOYMENTS <span className="v-sect-r">latest</span></p>
+        <div className="v-tbl">
+          <table>
+            <thead>
+              <tr><th>SERVICE</th><th>STATUS</th><th style={{ textAlign: 'right' }}>WHEN</th></tr>
+            </thead>
+            <tbody>
+              {feed.length === 0 ? (
+                <tr><td colSpan={3} className="text-center" style={{ color: 'var(--text-tertiary)' }}>no deployments yet</td></tr>
+              ) : feed.map((d) => (
+                <tr key={d.id}>
+                  <td className="v-lead">{d.name}{d.project ? <span className="v-mono ml-2 text-[10.5px] font-normal text-[var(--text-tertiary)]">{d.project}</span> : null}</td>
+                  <td><span className={`v-st ${statusClass(d.status)}`}>{d.status}</span></td>
+                  <td style={{ textAlign: 'right' }}>{d.when}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Create Modal */}
@@ -354,18 +360,18 @@ export function ProjectsPage() {
 
             <div className="mt-6 space-y-4">
               <div>
-                <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-tertiary)] mb-2">
+                <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-[var(--text-tertiary)]">
                   Project Name
                 </label>
                 <input
                   value={form.name}
                   onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
                   placeholder="my-awesome-project"
-                  className="w-full h-11 px-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all"
+                  className="h-11 w-full rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-4 text-[var(--text-primary)] transition-all placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)]"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-tertiary)] mb-2">
+                <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-[var(--text-tertiary)]">
                   Description <span className="normal-case text-[var(--text-muted)]">(optional)</span>
                 </label>
                 <textarea
@@ -373,29 +379,25 @@ export function ProjectsPage() {
                   onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
                   placeholder="Describe your project..."
                   rows={3}
-                  className="w-full px-4 py-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all resize-none"
+                  className="w-full resize-none rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-4 py-3 text-[var(--text-primary)] transition-all placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)]"
                 />
               </div>
             </div>
 
             {createProjectMutation.isError && (
-              <div className="mt-4 px-4 py-3 rounded-[var(--radius-md)] bg-[var(--error-soft)] text-sm text-[var(--error)]">
+              <div className="mt-4 rounded-[var(--radius-md)] bg-[var(--error-soft)] px-4 py-3 text-sm text-[var(--error)]">
                 {(createProjectMutation.error as Error).message}
               </div>
             )}
 
             <div className="mt-6 flex justify-end gap-3">
-              <button
-                onClick={() => setCreateOpen(false)}
-                className="px-4 py-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-[var(--text-secondary)] text-sm font-medium hover:text-[var(--text-primary)] hover:border-[var(--border-default)] transition-colors"
-              >
+              <button onClick={() => setCreateOpen(false)} className="v-btn-ghost">
                 Cancel
               </button>
               <button
                 onClick={() => createProjectMutation.mutate()}
                 disabled={!form.name.trim() || createProjectMutation.isPending}
-                className="px-5 py-2 rounded-[var(--radius-md)] text-white text-sm font-medium shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                style={{ background: '#e8316a' }}
+                className="v-btn"
               >
                 {createProjectMutation.isPending ? 'Creating...' : 'Create Project'}
               </button>

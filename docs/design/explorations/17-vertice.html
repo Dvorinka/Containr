@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>17 — Vertice (Dashboard)</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+  * { margin:0; padding:0; box-sizing:border-box; }
+  :root {
+    --bg:#0c0d0f; --surface:#131518; --surface2:#1a1d22; --line:rgba(255,255,255,.06);
+    --ink:#e9ebee; --dim:#8b919e; --faint:#575d69;
+    --lime:#b4e34a; --lime-soft:#cdf06f; --lime-glow:rgba(180,227,74,.1);
+    --yellow:#f2c94c; --ok:#5ee6a0; --err:#ff6f5c; --run:#7ab8ff;
+  }
+  body { font-family:'Inter',system-ui,sans-serif; background:var(--bg); color:var(--ink); display:flex; min-height:100vh; }
+  .mono { font-family:'JetBrains Mono',monospace; }
+
+  /* ── rail ── */
+  .rail { width:62px; flex-shrink:0; border-right:1px solid var(--line); background:#0e0f12;
+    display:flex; flex-direction:column; align-items:center; padding:16px 0; gap:7px; }
+  .mark { width:38px; height:38px; border-radius:12px; margin-bottom:14px;
+    background:linear-gradient(140deg,var(--lime-soft),#7fb524);
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 3px 14px rgba(180,227,74,.35); }
+  .mark svg { width:19px; height:19px; }
+  .rail .ic { width:40px; height:40px; border-radius:11px; display:flex; align-items:center;
+    justify-content:center; color:var(--faint); font-size:15px; transition:.15s; }
+  .rail .ic:hover { color:var(--dim); background:rgba(255,255,255,.03); }
+  .rail .ic.on { background:var(--lime-glow); color:var(--lime-soft); }
+  .rail .spacer { flex:1; }
+  .rail .usr { width:30px; height:30px; border-radius:50%; font:700 11px/30px 'JetBrains Mono',monospace;
+    text-align:center; color:#131507; background:linear-gradient(135deg,var(--lime-soft),var(--yellow)); }
+
+  main { flex:1; min-width:0; }
+
+  /* ── topbar ── */
+  .topbar { display:flex; align-items:center; gap:18px; padding:0 26px; height:52px;
+    border-bottom:1px solid var(--line); }
+  .brand { font-weight:800; font-size:15px; letter-spacing:-.3px; }
+  .brand em { font-style:normal; color:var(--lime); }
+  .tlm { display:flex; gap:16px; font:11px 'JetBrains Mono',monospace; color:var(--faint); }
+  .tlm b { color:var(--dim); font-weight:500; }
+  .search { margin-left:auto; width:290px; padding:7px 14px; border-radius:9px;
+    background:var(--surface); border:1px solid var(--line);
+    font:11.5px 'JetBrains Mono',monospace; color:var(--faint); transition:.15s; }
+  .search:hover, .search:focus-within { border-color:rgba(180,227,74,.35); }
+  .search::before { content:'$ '; color:var(--lime); }
+  .envp { font:10px 'JetBrains Mono',monospace; letter-spacing:.1em; color:var(--lime-soft);
+    border:1px solid rgba(180,227,74,.3); border-radius:999px; padding:5px 13px; }
+
+  /* ── content ── */
+  .content { padding:24px 26px 34px; max-width:1240px; }
+  .pagehead { display:flex; align-items:flex-end; justify-content:space-between; margin-bottom:18px; }
+  .pagehead h1 { font-size:21px; font-weight:800; letter-spacing:-.4px; }
+  .pagehead .sub { font:11px 'JetBrains Mono',monospace; color:var(--faint); margin-top:5px; }
+  .pagehead .sub b { color:var(--dim); font-weight:500; }
+  .btn-primary { background:var(--lime); color:#131507; border:none; border-radius:9px;
+    padding:9px 18px; font-size:12.5px; font-weight:800; cursor:pointer;
+    box-shadow:0 3px 14px rgba(180,227,74,.28); transition:.15s; }
+  .btn-primary:hover { background:var(--lime-soft); transform:translateY(-1px); }
+
+  /* ── stat row ── */
+  .statrow { display:grid; grid-template-columns:repeat(4,1fr); gap:13px; margin-bottom:24px; }
+  .stat { background:var(--surface); border:1px solid var(--line); border-radius:13px;
+    padding:15px 17px 13px; transition:.15s; }
+  .stat:hover { border-color:rgba(180,227,74,.22); }
+  .stat .k { display:flex; align-items:center; justify-content:space-between;
+    font:600 9.5px 'JetBrains Mono',monospace; letter-spacing:.16em; color:var(--faint); }
+  .live { width:5.5px; height:5.5px; border-radius:50%; background:var(--lime);
+    box-shadow:0 0 7px rgba(180,227,74,.8); animation:pulse 2.4s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+  .stat .v { font:500 30px/1.1 'JetBrains Mono',monospace; letter-spacing:-1.2px;
+    margin-top:9px; font-variant-numeric:tabular-nums; }
+  .stat .v span { font-size:14px; color:var(--faint); }
+  .spark { display:flex; gap:3px; align-items:flex-end; height:24px; margin:11px 0 7px; }
+  .spark i { flex:1; border-radius:1.5px;
+    background:linear-gradient(180deg, var(--lime), rgba(180,227,74,.12)); opacity:.75; }
+  .bar { height:5px; background:rgba(255,255,255,.06); border-radius:3px; margin:13px 0 8px; overflow:hidden; }
+  .bar i { display:block; height:100%; border-radius:3px;
+    background:linear-gradient(90deg,var(--lime),var(--yellow)); }
+  .stat .d { font:10.5px 'JetBrains Mono',monospace; color:var(--faint); letter-spacing:.02em; }
+  .stat .d b { font-weight:600; }
+  .ok-t{color:var(--ok)} .warn-t{color:var(--yellow)} .err-t{color:var(--err)}
+
+  /* ── sections ── */
+  .secttl { display:flex; align-items:center; gap:9px; margin:0 0 13px;
+    font:600 10.5px 'JetBrains Mono',monospace; letter-spacing:.2em; color:var(--faint); }
+  .secttl::before { content:'//'; color:var(--lime); font-weight:700; }
+  .secttl .r { margin-left:auto; letter-spacing:.08em; color:#41474f; }
+
+  /* ── project cards ── */
+  .projgrid { display:grid; grid-template-columns:repeat(3,1fr); gap:13px; margin-bottom:24px; }
+  .proj { background:var(--surface); border:1px solid var(--line); border-radius:15px;
+    padding:17px 18px 15px; transition:.18s; cursor:pointer; position:relative; overflow:hidden; }
+  .proj::before { content:''; position:absolute; inset:0 0 auto; height:1px;
+    background:linear-gradient(90deg,transparent,rgba(180,227,74,0),transparent); transition:.25s; }
+  .proj:hover { border-color:rgba(180,227,74,.35); transform:translateY(-2px); }
+  .proj:hover::before { background:linear-gradient(90deg,transparent,var(--lime),transparent); }
+  .proj .top { display:flex; align-items:center; gap:11px; margin-bottom:13px; }
+  .proj .ic { width:36px; height:36px; border-radius:11px; display:flex; align-items:center;
+    justify-content:center; font:700 12.5px 'JetBrains Mono',monospace; flex-shrink:0; }
+  .ic-lime { background:var(--lime-glow); color:var(--lime-soft); }
+  .ic-mint { background:rgba(94,230,160,.12); color:var(--ok); }
+  .ic-amber { background:rgba(242,201,76,.12); color:var(--yellow); }
+  .proj h3 { font-size:14.5px; font-weight:700; letter-spacing:-.2px; }
+  .proj .env { font:10px 'JetBrains Mono',monospace; color:var(--faint); margin-top:2.5px; }
+  .badge { margin-left:auto; font:600 9px 'JetBrains Mono',monospace; letter-spacing:.12em;
+    padding:4px 10px; border-radius:5px; }
+  .b-run { background:rgba(94,230,160,.1); color:var(--ok); }
+  .b-warn { background:rgba(242,201,76,.1); color:var(--yellow); }
+  .svcs { display:flex; gap:5px; flex-wrap:wrap; margin-bottom:14px; }
+  .svcs span { display:inline-flex; align-items:center; gap:6px; height:24px; padding:0 9px;
+    border-radius:7px; background:var(--surface2); border:1px solid rgba(255,255,255,.06);
+    font:600 9.5px 'JetBrains Mono',monospace; color:var(--dim); }
+  .dot { width:4.5px; height:4.5px; border-radius:50%; }
+  .dot-ok { background:var(--ok); } .dot-err { background:var(--err); } .dot-warn { background:var(--yellow); }
+  .proj .ft { display:flex; justify-content:space-between; align-items:center;
+    border-top:1px solid rgba(255,255,255,.05); padding-top:11px;
+    font:10.5px 'JetBrains Mono',monospace; color:var(--faint); }
+  .proj .ft .arrow { color:var(--lime); font-weight:700; transition:.15s; }
+  .proj:hover .ft .arrow { transform:translateX(3px); }
+
+  /* ── table ── */
+  .tbl { background:var(--surface); border:1px solid var(--line); border-radius:14px; overflow:hidden; }
+  table { width:100%; border-collapse:collapse; }
+  th { text-align:left; font:600 9px 'JetBrains Mono',monospace; letter-spacing:.2em;
+    color:var(--faint); padding:11px 18px; border-bottom:1px solid rgba(255,255,255,.06); }
+  td { padding:11.5px 18px; border-bottom:1px solid rgba(255,255,255,.035);
+    font:11.5px 'JetBrains Mono',monospace; color:#b0b6bf; }
+  tbody tr:last-child td { border-bottom:none; }
+  tbody tr { transition:.12s; } tbody tr:hover td { background:rgba(180,227,74,.03); }
+  td:first-child { color:var(--ink); font:600 12.5px 'Inter',sans-serif; }
+  .st { font:600 9.5px 'JetBrains Mono',monospace; letter-spacing:.1em; padding:3px 9px; border-radius:5px; }
+  .st-ok { background:rgba(94,230,160,.1); color:var(--ok); }
+  .st-run { background:rgba(122,184,255,.12); color:var(--run); }
+  .st-fail { background:rgba(255,111,92,.1); color:var(--err); }
+  .svc-tag { font:9px 'JetBrains Mono',monospace; color:var(--faint); border:1px solid var(--line);
+    border-radius:4px; padding:2px 6px; margin-right:8px; vertical-align:1px; }
+</style></head><body>
+<nav class="rail">
+  <div class="mark"><svg viewBox="0 0 64 64"><g fill="none" stroke="#14170a" stroke-width="6" stroke-linecap="round"><rect x="12" y="16" width="40" height="30" rx="5"/><path d="M23 16v30M32 16v30M41 16v30M18 54h28"/></g></svg></div>
+  <div class="ic on">▦</div><div class="ic">▤</div><div class="ic">◉</div><div class="ic">⚇</div><div class="ic">⛁</div>
+  <div class="spacer"></div>
+  <div class="ic">⚙</div>
+  <div class="usr">TD</div>
+</nav>
+<main>
+  <div class="topbar">
+    <div class="brand">contain<em>r</em></div>
+    <div class="tlm"><span>uptime <b>7h 41m</b></span><span>node <b>cnr-node-01</b></span><span>ver <b>0.4.2</b></span></div>
+    <div class="search">search projects, builds, logs…</div>
+    <span class="envp">env:production</span>
+  </div>
+  <div class="content">
+    <div class="pagehead">
+      <div><h1>Projects</h1><p class="sub"><b>3</b> projects · <b>9</b> services · <b>1</b> host · all systems nominal</p></div>
+      <button class="btn-primary">+ New Project</button>
+    </div>
+    <div class="statrow">
+      <div class="stat"><div class="k"><span>HOST.CPU</span><span class="live"></span></div>
+        <div class="v">14<span>%</span></div>
+        <div class="spark"><i style="height:28%"></i><i style="height:44%"></i><i style="height:36%"></i><i style="height:58%"></i><i style="height:42%"></i><i style="height:66%"></i><i style="height:50%"></i><i style="height:34%"></i><i style="height:56%"></i><i style="height:40%"></i><i style="height:30%"></i><i style="height:20%"></i></div>
+        <div class="d"><b class="ok-t">healthy</b> · 16 cores · load 2.41</div></div>
+      <div class="stat"><div class="k"><span>HOST.MEM</span><span class="live"></span></div>
+        <div class="v">72<span>%</span></div>
+        <div class="bar"><i style="width:72%"></i></div>
+        <div class="d">9.8G / 13G used</div></div>
+      <div class="stat"><div class="k"><span>HOST.DISK</span><span class="live"></span></div>
+        <div class="v">73<span>%</span></div>
+        <div class="bar"><i style="width:73%;background:linear-gradient(90deg,var(--yellow),var(--err))"></i></div>
+        <div class="d">338G of 465G · <b class="warn-t">high</b></div></div>
+      <div class="stat"><div class="k"><span>DEPLOYS.7D</span></div>
+        <div class="v">18</div>
+        <div class="bar"><i style="width:94%"></i></div>
+        <div class="d"><b class="ok-t">17 ok</b> · <b class="warn-t">1 failed</b></div></div>
+    </div>
+    <p class="secttl">PROJECTS <span class="r">3 records</span></p>
+    <div class="projgrid">
+      <div class="proj"><div class="top"><div class="ic ic-lime">CS</div><div><h3>core-services</h3><div class="env">prod · containr.dev</div></div><span class="badge b-run">RUNNING</span></div>
+        <div class="svcs"><span><b class="dot dot-ok"></b>api</span><span><b class="dot dot-ok"></b>web</span><span><b class="dot dot-ok"></b>db</span><span><b class="dot dot-ok"></b>worker</span><span>+1</span></div>
+        <div class="ft"><span>5 svc · deployed 4m ago</span><span class="arrow">→</span></div></div>
+      <div class="proj"><div class="top"><div class="ic ic-mint">GS</div><div><h3>growth-site</h3><div class="env">prod · growth.app</div></div><span class="badge b-run">RUNNING</span></div>
+        <div class="svcs"><span><b class="dot dot-ok"></b>site</span><span><b class="dot dot-ok"></b>api</span><span><b class="dot dot-ok"></b>redis</span></div>
+        <div class="ft"><span>3 svc · deployed 2h ago</span><span class="arrow">→</span></div></div>
+      <div class="proj"><div class="top"><div class="ic ic-amber">ML</div><div><h3>ml-pipeline</h3><div class="env">staging · internal</div></div><span class="badge b-warn">DEGRADED</span></div>
+        <div class="svcs"><span><b class="dot dot-ok"></b>api</span><span><b class="dot dot-err"></b>worker</span></div>
+        <div class="ft"><span>2 svc · 1 failed build</span><span class="arrow">→</span></div></div>
+    </div>
+    <p class="secttl">RECENT DEPLOYMENTS <span class="r">last 24h</span></p>
+    <div class="tbl"><table>
+      <tr><th>SERVICE</th><th>PROJECT</th><th>STATUS</th><th>DUR</th><th>WHEN</th></tr>
+      <tr><td><span class="svc-tag">svc</span>api-gateway</td><td>core-services</td><td><span class="st st-ok">DEPLOYED</span></td><td>48s</td><td>4m ago</td></tr>
+      <tr><td><span class="svc-tag">svc</span>web-frontend</td><td>core-services</td><td><span class="st st-run">BUILDING</span></td><td>—</td><td>6m ago</td></tr>
+      <tr><td><span class="svc-tag">svc</span>worker</td><td>ml-pipeline</td><td><span class="st st-fail">FAILED</span></td><td>1m32s</td><td>1h ago</td></tr>
+      <tr><td><span class="svc-tag">svc</span>site</td><td>growth-site</td><td><span class="st st-ok">DEPLOYED</span></td><td>39s</td><td>2h ago</td></tr>
+    </table></div>
+  </div>
+</main></body></html>

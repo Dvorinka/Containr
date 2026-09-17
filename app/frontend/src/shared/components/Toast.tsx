@@ -1,28 +1,14 @@
 import * as ToastPrimitive from '@radix-ui/react-toast';
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { useState } from 'react';
+import type { ReactNode } from 'react';
 import { IconX, IconCheck, IconAlertCircle, IconInfoCircle } from '@tabler/icons-react';
-
-type ToastType = 'success' | 'error' | 'info' | 'warning';
+import { ToastContext, type ToastType } from '../hooks/use-toast';
 
 interface Toast {
   id: string;
   type: ToastType;
   title: string;
   description?: string;
-}
-
-interface ToastContextValue {
-  showToast: (type: ToastType, title: string, description?: string) => void;
-}
-
-const ToastContext = createContext<ToastContextValue | undefined>(undefined);
-
-export function useToast() {
-  const context = useContext(ToastContext);
-  if (!context) {
-    throw new Error('useToast must be used within ToastProvider');
-  }
-  return context;
 }
 
 interface ToastProviderProps {
@@ -32,7 +18,11 @@ interface ToastProviderProps {
 export function ToastProvider({ children }: ToastProviderProps) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  const showToast = (type: ToastType, title: string, description?: string) => {
+  const showToast = (first: ToastType | string, second: ToastType | string, description?: string) => {
+    const toastTypes: ToastType[] = ['success', 'error', 'info', 'warning'];
+    const firstIsType = toastTypes.includes(first as ToastType);
+    const type = (firstIsType ? first : second) as ToastType;
+    const title = (firstIsType ? second : first) as string;
     const id = Math.random().toString(36).substring(7);
     setToasts((prev) => [...prev, { id, type, title, description }]);
 

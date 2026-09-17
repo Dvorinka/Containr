@@ -146,6 +146,9 @@ func Load() *Config {
 	cfg.CORSMethods = getenvSlice("CORS_METHODS", []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"})
 	cfg.CORSHeaders = getenvSlice("CORS_HEADERS", []string{"Origin", "Content-Type", "Accept", "Authorization"})
 	cfg.CORSCredentials = getenvBool("CORS_CREDENTIALS", true)
+	if cfg.IsDevelopment() {
+		cfg.CORSOrigins = expandDevelopmentCORSOrigins(cfg.CORSOrigins)
+	}
 
 	cfg.APIKeyHeader = getenv("API_KEY_HEADER", "X-API-Key")
 	cfg.ServiceTokenHeader = getenv("SERVICE_TOKEN_HEADER", "X-Service-Token")
@@ -329,6 +332,57 @@ func getenvSliceWithAliases(keys []string, defaultValue []string) []string {
 		}
 	}
 	return defaultValue
+}
+
+func expandDevelopmentCORSOrigins(origins []string) []string {
+	hasLocalOrigin := false
+	seen := make(map[string]struct{}, len(origins))
+	expanded := make([]string, 0, len(origins)+12)
+
+	for _, origin := range origins {
+		trimmed := strings.TrimSpace(origin)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		expanded = append(expanded, trimmed)
+
+		if strings.HasPrefix(trimmed, "http://localhost") ||
+			strings.HasPrefix(trimmed, "http://127.0.0.1") ||
+			strings.HasPrefix(trimmed, "http://0.0.0.0") {
+			hasLocalOrigin = true
+		}
+	}
+
+	if !hasLocalOrigin {
+		return expanded
+	}
+
+	for _, origin := range []string{
+		"http://localhost:3000",
+		"http://localhost:5173",
+		"http://localhost:5174",
+		"http://localhost:5175",
+		"http://127.0.0.1:3000",
+		"http://127.0.0.1:5173",
+		"http://127.0.0.1:5174",
+		"http://127.0.0.1:5175",
+		"http://0.0.0.0:3000",
+		"http://0.0.0.0:5173",
+		"http://0.0.0.0:5174",
+		"http://0.0.0.0:5175",
+	} {
+		if _, ok := seen[origin]; ok {
+			continue
+		}
+		seen[origin] = struct{}{}
+		expanded = append(expanded, origin)
+	}
+
+	return expanded
 }
 
 // encodeDatabasePassword URL-encodes the password in a database connection string

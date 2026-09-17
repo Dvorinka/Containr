@@ -2,12 +2,19 @@ package api
 
 import (
 	"containr/internal/database"
-	"encoding/json"
+	"containr/internal/database/sqlcdb"
+	"containr/internal/docker"
+	"context"
+	"database/sql"
+	"fmt"
+	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/robfig/cron/v3"
 )
 
 type CronJob struct {
@@ -62,6 +69,7 @@ func handleGetCronJobs(c *gin.Context) {
 	db := c.MustGet("db").(*database.DB)
 	userID := c.MustGet("user_id").(string)
 	projectID := c.Query("project_id")
+	serviceID := c.Query("service_id")
 
 	query := `SELECT cj.id, cj.project_id, cj.service_id, cj.name, cj.schedule, cj.timezone, 
 	          cj.enabled, cj.last_run_at, cj.next_run_at, cj.last_status, cj.last_output, 
@@ -72,8 +80,12 @@ func handleGetCronJobs(c *gin.Context) {
 	args := []interface{}{userID}
 
 	if projectID != "" {
-		query += " AND cj.project_id = $2"
 		args = append(args, projectID)
+		query += fmt.Sprintf(" AND cj.project_id = $%d", len(args))
+	}
+	if serviceID != "" {
+		args = append(args, serviceID)
+		query += fmt.Sprintf(" AND cj.service_id = $%d", len(args))
 	}
 
 	query += " ORDER BY cj.created_at DESC"
@@ -130,7 +142,11 @@ func handleCreateCronJob(c *gin.Context) {
 		req.Retention = 30
 	}
 
-	nextRun := calculateNextRun(req.Schedule, req.Timezone)
+	nextRun, err := calculateNextRun(req.Schedule, req.Timezone)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid schedule: %v", err)})
+		return
+	}
 
 	job := CronJob{
 		ID:        uuid.New().String(),
@@ -227,8 +243,13 @@ func handleUpdateCronJob(c *gin.Context) {
 		updates["name"] = req.Name
 	}
 	if req.Schedule != "" {
+		next, err := calculateNextRun(req.Schedule, req.Timezone)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid schedule: %v", err)})
+			return
+		}
 		updates["schedule"] = req.Schedule
-		updates["next_run_at"] = calculateNextRun(req.Schedule, "UTC")
+		updates["next_run_at"] = next
 	}
 	if req.Command != "" {
 		updates["command"] = req.Command
@@ -352,11 +373,12 @@ func handleTriggerCronJob(c *gin.Context) {
 	var job CronJob
 	var ownerCheck string
 	err := db.QueryRow(
-		`SELECT cj.command, p.owner_id FROM cron_jobs cj
+		`SELECT cj.service_id, cj.command, cj.schedule, cj.timezone, cj.retention, p.owner_id
+		 FROM cron_jobs cj
 		 JOIN projects p ON cj.project_id = p.id
 		 WHERE cj.id = $1`,
 		jobID,
-	).Scan(&job.Command, &ownerCheck)
+	).Scan(&job.ServiceID, &job.Command, &job.Schedule, &job.Timezone, &job.Retention, &ownerCheck)
 
 	if err != nil || ownerCheck != userID {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
@@ -372,7 +394,9 @@ func handleTriggerCronJob(c *gin.Context) {
 		execID, jobID, now, "running",
 	)
 
-	go executeCronJob(jobID, execID, job.Command)
+	dockerClient, _ := c.Get("docker_client")
+	dockerCli, _ := dockerClient.(*docker.Client)
+	go executeCronJob(db, dockerCli, jobID, job.ServiceID, execID, job.Command, job.Schedule, job.Timezone, job.Retention)
 
 	LogAudit(userID, "cron_job", jobID, "trigger", map[string]interface{}{
 		"execution_id": execID,
@@ -384,33 +408,186 @@ func handleTriggerCronJob(c *gin.Context) {
 	})
 }
 
-func calculateNextRun(schedule, timezone string) *time.Time {
-	now := time.Now()
-	next := now.Add(1 * time.Hour)
-	return &next
+// cronScheduleParser parses standard 5-field cron expressions plus
+// descriptors (@daily etc.) and CRON_TZ= prefixes.
+var cronScheduleParser = cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
+
+func calculateNextRun(schedule, timezone string) (*time.Time, error) {
+	expr := strings.TrimSpace(schedule)
+	if tz := strings.TrimSpace(timezone); tz != "" && tz != "UTC" {
+		expr = "CRON_TZ=" + tz + " " + expr
+	}
+	parsed, err := cronScheduleParser.Parse(expr)
+	if err != nil {
+		return nil, err
+	}
+	next := parsed.Next(time.Now())
+	return &next, nil
 }
 
-func executeCronJob(jobID, execID, command string) {
-	db := auditDB
-	if db == nil {
+// StartCronScheduler ticks every minute and executes enabled cron jobs whose
+// next_run_at is due. Each run is recorded in cron_executions and output is
+// captured from docker exec inside the service's container.
+func StartCronScheduler(ctx context.Context, db *database.DB, dockerClient *docker.Client) {
+	go func() {
+		ticker := time.NewTicker(time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				runDueCronJobs(db, dockerClient)
+				runDueDatabaseBackups(db, dockerClient)
+			}
+		}
+	}()
+}
+
+func runDueCronJobs(db *database.DB, dockerClient *docker.Client) {
+	rows, err := db.Query(
+		`SELECT id, project_id, service_id, name, schedule, command, timezone, enabled, retention
+		 FROM cron_jobs
+		 WHERE enabled = TRUE AND next_run_at IS NOT NULL AND next_run_at <= NOW()`)
+	if err != nil {
+		log.Printf("cron scheduler: failed to list due jobs: %v", err)
 		return
 	}
+	defer rows.Close()
 
-	time.Sleep(2 * time.Second)
+	type dueJob struct {
+		CronJob
+		Command string
+	}
+	var jobs []dueJob
+	for rows.Next() {
+		var j dueJob
+		if err := rows.Scan(&j.ID, &j.ProjectID, &j.ServiceID, &j.Name, &j.Schedule,
+			&j.Command, &j.Timezone, &j.Enabled, &j.Retention); err != nil {
+			continue
+		}
+		jobs = append(jobs, j)
+	}
+
+	for _, j := range jobs {
+		execID := uuid.New().String()
+		if _, err := db.Exec(
+			`INSERT INTO cron_executions (id, cron_job_id, started_at, status) VALUES ($1, $2, $3, $4)`,
+			execID, j.ID, time.Now(), "running"); err != nil {
+			log.Printf("cron scheduler: failed to record execution for %s: %v", j.ID, err)
+			continue
+		}
+		go executeCronJob(db, dockerClient, j.ID, j.ServiceID, execID, j.Command, j.Schedule, j.Timezone, j.Retention)
+	}
+}
+
+// runDueDatabaseBackups snapshots managed databases whose backup_schedule is
+// due, reusing the same archive pipeline as manual backups.
+func runDueDatabaseBackups(db *database.DB, dockerClient *docker.Client) {
+	if dockerClient == nil {
+		return
+	}
+	q := sqlcdb.New(db.DB)
+	due, err := q.ListDueDatabaseBackups(context.Background())
+	if err != nil {
+		log.Printf("cron scheduler: failed to list due database backups: %v", err)
+		return
+	}
+	handler := NewDatabaseHandler(db.DB, dockerClient)
+	for _, row := range due {
+		schedule := row.BackupSchedule.String
+		next, err := calculateNextRun(schedule, "UTC")
+		if err != nil {
+			log.Printf("cron scheduler: invalid backup schedule %q on %s: %v", schedule, row.ID, err)
+			continue
+		}
+		now := time.Now()
+		if err := q.SetDatabaseNextBackupAt(context.Background(), sqlcdb.SetDatabaseNextBackupAtParams{
+			NextBackupAt: sql.NullTime{Time: *next, Valid: true},
+			ID:           row.ID,
+		}); err != nil {
+			log.Printf("cron scheduler: failed to advance backup schedule on %s: %v", row.ID, err)
+			continue
+		}
+		backupID := generateDatabaseBackupID(row.ID)
+		archivePath := sanitizeBackupArchivePath(managedDatabaseBackupArchivePath(backupID))
+		if err := q.CreateDatabaseBackup(context.Background(), sqlcdb.CreateDatabaseBackupParams{
+			ID:         backupID,
+			DatabaseID: row.ID,
+			Size:       "pending",
+			Status:     "in_progress",
+			BackupPath: sql.NullString{String: archivePath, Valid: true},
+			CreatedAt:  sql.NullTime{Time: now, Valid: true},
+		}); err != nil {
+			log.Printf("cron scheduler: failed to record backup for %s: %v", row.ID, err)
+			continue
+		}
+		go handler.createBackupProcess(row.ID, backupID, archivePath)
+	}
+}
+
+// findServiceContainer returns the first running container whose name matches
+// the deployment naming convention containr-<serviceID>-*.
+func findServiceContainer(ctx context.Context, dockerClient *docker.Client, serviceID string) (string, error) {
+	containers, err := dockerClient.ListContainers(ctx, false)
+	if err != nil {
+		return "", err
+	}
+	prefix := "containr-" + serviceID + "-"
+	for _, ctr := range containers {
+		for _, name := range ctr.Names {
+			if strings.HasPrefix(strings.TrimPrefix(name, "/"), prefix) {
+				return ctr.ID, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("no running container for service %s", serviceID)
+}
+
+func executeCronJob(db *database.DB, dockerClient *docker.Client, jobID, serviceID, execID, command, schedule, timezone string, retention int) {
+	status := "success"
+	var output, errText string
+
+	if dockerClient == nil {
+		status, errText = "failed", "docker unavailable"
+	} else {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+		containerID, findErr := findServiceContainer(ctx, dockerClient, serviceID)
+		if findErr != nil {
+			status, errText = "failed", findErr.Error()
+		} else {
+			out, exitCode, runErr := dockerClient.ExecRun(ctx, containerID, []string{"sh", "-c", command})
+			output = out
+			if len(output) > 64*1024 {
+				output = output[:64*1024]
+			}
+			if runErr != nil {
+				status, errText = "failed", runErr.Error()
+			} else if exitCode != 0 {
+				status, errText = "failed", fmt.Sprintf("exit code %d", exitCode)
+			}
+		}
+	}
 
 	now := time.Now()
 	db.Exec(
-		`UPDATE cron_executions SET finished_at = $1, status = $2, output = $3 WHERE id = $4`,
-		now, "success", "Job completed successfully", execID,
+		`UPDATE cron_executions SET finished_at = $1, status = $2, output = $3, error = $4 WHERE id = $5`,
+		now, status, output, errText, execID,
 	)
 
+	next, _ := calculateNextRun(schedule, timezone)
 	db.Exec(
-		`UPDATE cron_jobs SET last_run_at = $1, last_status = $2, next_run_at = $3 WHERE id = $4`,
-		now, "success", time.Now().Add(1*time.Hour), jobID,
+		`UPDATE cron_jobs SET last_run_at = $1, last_status = $2, last_output = $3, next_run_at = $4 WHERE id = $5`,
+		now, status, output, next, jobID,
 	)
-}
 
-func init() {
-	cronJobsData, _ := json.Marshal([]CronJob{})
-	_ = cronJobsData
+	if retention > 0 {
+		db.Exec(
+			`DELETE FROM cron_executions WHERE cron_job_id = $1 AND id NOT IN (
+				SELECT id FROM cron_executions WHERE cron_job_id = $1
+				ORDER BY started_at DESC LIMIT $2)`,
+			jobID, retention,
+		)
+	}
 }

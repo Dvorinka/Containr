@@ -17,7 +17,7 @@ export function DonutChart({
   percentage,
   size = 160,
   thickness = 16,
-  color = '#9c7ef0',
+  color = '#b4e34a',
   trackColor = 'rgba(255, 255, 255, 0.07)',
   segments = 28,
   gap = 0.048,
@@ -75,10 +75,13 @@ export function DonutChart({
     }
   }, [animated, isVisible, resolvedPercent]);
 
-  const R = size / 2 - 4;
-  const r = R - thickness;
+  // Semicircle gauge: arc baseline sits at the bottom of the viewBox so the
+  // whole arc is visible. Radius is capped by both half-width and height.
+  const svgHeight = size * 0.55;
   const cx = size / 2;
-  const cy = size - 8;
+  const cy = svgHeight - 2;
+  const R = Math.min(size / 2 - 4, svgHeight - thickness - 6);
+  const r = R - thickness;
 
   const filled = Math.round(segments * (animatedPercent / 100));
 
@@ -110,8 +113,8 @@ export function DonutChart({
   }
 
   return (
-    <div ref={containerRef} className="relative" style={{ width: size, height: size * 0.6 }}>
-      <svg width={size} height={size * 0.6} viewBox={`0 0 ${size} ${size * 0.6}`}>
+    <div ref={containerRef} className="relative" style={{ width: size, height: svgHeight }}>
+      <svg width={size} height={svgHeight} viewBox={`0 0 ${size} ${svgHeight}`}>
         {segmentPaths}
       </svg>
     </div>
@@ -126,7 +129,7 @@ interface SegmentedBarProps {
 
 export function SegmentedBar({ segments, height = 32, className = '' }: SegmentedBarProps) {
   return (
-    <div className={`flex items-center gap-[5px] h-[${height}px] ${className}`}>
+    <div className={`flex items-center gap-[5px] ${className}`} style={{ height }}>
       {segments.map((seg, i) => (
         <div
           key={i}

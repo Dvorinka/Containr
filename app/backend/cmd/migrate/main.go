@@ -25,11 +25,6 @@ func main() {
 	}
 	defer db.Close()
 
-	legacyDir := os.Getenv("LEGACY_MIGRATIONS_DIR")
-	if legacyDir == "" {
-		legacyDir = "migrations"
-	}
-
 	gooseDir := os.Getenv("GOOSE_MIGRATIONS_DIR")
 	if gooseDir == "" {
 		gooseDir = "migrations_goose"
@@ -41,24 +36,14 @@ func main() {
 	}
 
 	switch command {
-	case "up":
+	case "up", "goose-up":
 		migrationCtx, migrationCancel := context.WithTimeout(context.Background(), cfg.MigrationLockTimeout)
-		if err := db.MigrateAllWithLock(migrationCtx, legacyDir, gooseDir); err != nil {
+		if err := db.MigrateAllWithLock(migrationCtx, gooseDir); err != nil {
 			migrationCancel()
 			log.Fatalf("Migration failed: %v", err)
 		}
 		migrationCancel()
-		log.Println("Legacy + goose migrations completed successfully")
-	case "legacy-up":
-		if err := db.Migrate(legacyDir); err != nil {
-			log.Fatalf("Legacy migration failed: %v", err)
-		}
-		log.Println("Legacy migrations completed successfully")
-	case "goose-up":
-		if err := db.MigrateGoose(gooseDir); err != nil {
-			log.Fatalf("Goose migration failed: %v", err)
-		}
-		log.Println("Goose migrations completed successfully")
+		log.Println("Migrations completed successfully")
 	case "goose-status":
 		if err := db.GooseStatus(gooseDir); err != nil {
 			log.Fatalf("Goose status failed: %v", err)
@@ -73,6 +58,6 @@ func main() {
 		}
 		log.Printf("Created goose migration %q in %q", name, gooseDir)
 	default:
-		log.Fatalf("Unknown command %q. Supported commands: up | legacy-up | goose-up | goose-status | goose-create", command)
+		log.Fatalf("Unknown command %q. Supported commands: up | goose-status | goose-create", command)
 	}
 }

@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>18 — Vertice v2 (Dashboard)</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+  * { margin:0; padding:0; box-sizing:border-box; }
+  :root {
+    --bg:#0c0d0f; --surface:#131518; --surface2:#1a1d22; --line:rgba(255,255,255,.07);
+    --ink:#ecedf0; --dim:#8b919e; --faint:#565d68;
+    --lime:#b4e34a; --lime-soft:#cdf06f;
+    --yellow:#f2c94c; --ok:#5ee6a0; --err:#ff6f5c; --run:#7ab8ff;
+  }
+  body { font-family:'Inter',system-ui,sans-serif; background:var(--bg); color:var(--ink); display:flex; min-height:100vh; }
+  .mono { font-family:'JetBrains Mono',monospace; }
+
+  /* ── rail ── */
+  .rail { width:62px; flex-shrink:0; border-right:1px solid var(--line); background:#0e0f12;
+    display:flex; flex-direction:column; align-items:center; padding:16px 0; gap:7px; }
+  .mark { width:38px; height:38px; border-radius:12px; margin-bottom:14px;
+    background:linear-gradient(140deg,var(--lime-soft),#7fb524);
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 3px 14px rgba(180,227,74,.3); }
+  .mark svg { width:19px; height:19px; }
+  .rail .ic { width:40px; height:40px; border-radius:11px; display:flex; align-items:center;
+    justify-content:center; color:var(--faint); font-size:15px; transition:.15s; position:relative; }
+  .rail .ic:hover { color:var(--dim); background:rgba(255,255,255,.03); }
+  .rail .ic.on { background:rgba(180,227,74,.1); color:var(--lime-soft); }
+  .rail .ic.on::before { content:''; position:absolute; left:-11px; width:2.5px; height:16px; border-radius:2px; background:var(--lime); }
+  .rail .spacer { flex:1; }
+  .rail .kbd { font:700 8.5px 'JetBrains Mono',monospace; color:var(--faint); border:1px solid var(--line);
+    border-radius:5px; padding:3px 6px; letter-spacing:.05em; }
+  .rail .usr { width:30px; height:30px; border-radius:50%; font:700 11px/30px 'JetBrains Mono',monospace;
+    text-align:center; color:#131507; background:linear-gradient(135deg,var(--lime-soft),var(--yellow)); }
+
+  main { flex:1; min-width:0; }
+
+  /* ── ticker topbar ── */
+  .topbar { display:flex; align-items:center; gap:0; height:46px; border-bottom:1px solid var(--line);
+    font:11px 'JetBrains Mono',monospace; overflow:hidden; }
+  .topbar .brand { padding:0 22px; font:800 14px 'Inter',sans-serif; letter-spacing:-.3px; border-right:1px solid var(--line); height:100%; display:flex; align-items:center; }
+  .topbar .brand em { font-style:normal; color:var(--lime); }
+  .tick { display:flex; gap:0; flex:1; height:100%; }
+  .tick span { display:flex; align-items:center; gap:7px; padding:0 18px; border-right:1px solid var(--line); color:var(--faint); white-space:nowrap; }
+  .tick span b { color:var(--dim); font-weight:500; }
+  .tick .sig { width:6px; height:6px; border-radius:50%; background:var(--ok); }
+  .tick .sig.y { background:var(--yellow); }
+  .topbar .envp { padding:0 22px; height:100%; display:flex; align-items:center; gap:8px; color:var(--lime-soft); border-left:1px solid var(--line); }
+  .topbar .envp::before { content:''; width:5px; height:5px; background:var(--lime); }
+
+  /* ── masthead ── */
+  .mast { display:flex; align-items:flex-end; gap:26px; padding:30px 32px 24px; border-bottom:1px solid var(--line); }
+  .mast h1 { font-size:54px; font-weight:800; letter-spacing:-2.5px; line-height:.95; }
+  .mast h1 .cursor { color:var(--lime); font-weight:400; }
+  .mast .meta { margin-left:auto; text-align:right; display:flex; flex-direction:column; gap:8px; align-items:flex-end; }
+  .mast .count { font:500 11px 'JetBrains Mono',monospace; color:var(--faint); letter-spacing:.14em; }
+  .mast .count b { color:var(--ink); font-weight:600; }
+  .btn-primary { background:var(--lime); color:#131507; border:none; border-radius:8px;
+    padding:10px 20px; font-size:12.5px; font-weight:800; cursor:pointer; transition:.15s;
+    font-family:'JetBrains Mono',monospace; }
+  .btn-primary:hover { background:var(--lime-soft); transform:translateY(-1px); }
+  .btn-primary .k { opacity:.55; font-weight:500; margin-left:8px; }
+
+  /* ── asymmetric body ── */
+  .body { display:grid; grid-template-columns:1fr 340px; }
+
+  /* left: project index */
+  .pindex { padding:8px 0 0; border-right:1px solid var(--line); }
+  .pindex .ph { display:flex; align-items:baseline; gap:12px; padding:14px 32px 10px;
+    font:600 10px 'JetBrains Mono',monospace; letter-spacing:.2em; color:var(--faint); }
+  .pindex .ph .r { margin-left:auto; }
+  .prow { display:grid; grid-template-columns:56px 1fr auto; align-items:center; gap:18px;
+    padding:20px 32px; border-top:1px solid var(--line); cursor:pointer; transition:.15s; position:relative; }
+  .prow::after { content:'→'; position:absolute; right:32px; opacity:0; color:var(--lime);
+    font-family:'JetBrains Mono',monospace; transition:.15s; }
+  .prow:hover { background:rgba(255,255,255,.02); }
+  .prow:hover::after { opacity:1; transform:translateX(4px); }
+  .prow:hover .stwrap { opacity:0; }
+  .prow .no { font:600 13px 'JetBrains Mono',monospace; color:var(--faint); }
+  .prow .no i { font-style:normal; color:var(--lime); }
+  .prow h3 { font-size:19px; font-weight:700; letter-spacing:-.4px; }
+  .prow .env { font:10.5px 'JetBrains Mono',monospace; color:var(--faint); margin-top:4px; }
+  .prow .env b { color:var(--dim); font-weight:500; }
+  .prow .svcs { display:flex; gap:5px; margin-top:10px; }
+  .prow .svcs span { display:inline-flex; align-items:center; gap:6px; height:22px; padding:0 9px;
+    border-radius:6px; background:var(--surface2); font:600 9.5px 'JetBrains Mono',monospace; color:var(--dim); }
+  .dot { width:4.5px; height:4.5px; border-radius:50%; }
+  .dot-ok { background:var(--ok); } .dot-err { background:var(--err); }
+  .stwrap { display:flex; flex-direction:column; align-items:flex-end; gap:7px; transition:.15s; }
+  .badge { font:600 9px 'JetBrains Mono',monospace; letter-spacing:.12em; padding:4px 10px; border-radius:5px; }
+  .b-run { background:rgba(94,230,160,.1); color:var(--ok); }
+  .b-warn { background:rgba(242,201,76,.1); color:var(--yellow); }
+  .stwrap .ago { font:10px 'JetBrains Mono',monospace; color:var(--faint); }
+
+  /* left: deploy feed below index */
+  .feed-h { display:flex; align-items:baseline; padding:16px 32px 10px; border-top:1px solid var(--line);
+    font:600 10px 'JetBrains Mono',monospace; letter-spacing:.2em; color:var(--faint); }
+  .feed-h .r { margin-left:auto; }
+  .frow { display:grid; grid-template-columns:14px 1fr auto auto auto; align-items:center; gap:16px;
+    padding:12px 32px; border-top:1px solid rgba(255,255,255,.04); font:11px 'JetBrains Mono',monospace; }
+  .frow:hover { background:rgba(255,255,255,.02); }
+  .frow .g { color:var(--faint); }
+  .frow .name { color:var(--ink); font:600 12px 'Inter',sans-serif; }
+  .frow .name span { color:var(--faint); font:400 10.5px 'JetBrains Mono',monospace; margin-left:9px; }
+  .frow .dur { color:var(--faint); }
+  .frow .ago { color:var(--faint); width:64px; text-align:right; }
+  .st { font:600 9.5px 'JetBrains Mono',monospace; letter-spacing:.1em; padding:3px 9px; border-radius:5px; }
+  .st-ok { background:rgba(94,230,160,.1); color:var(--ok); }
+  .st-run { background:rgba(122,184,255,.12); color:var(--run); }
+  .st-fail { background:rgba(255,111,92,.1); color:var(--err); }
+
+  /* right: host panel */
+  .host { padding:0; }
+  .host .hh { padding:14px 22px 12px; font:600 10px 'JetBrains Mono',monospace; letter-spacing:.2em;
+    color:var(--faint); display:flex; align-items:center; gap:8px; }
+  .host .hh::before { content:''; width:5px; height:5px; background:var(--lime); }
+  .host .hh .r { margin-left:auto; letter-spacing:.06em; color:#41474f; }
+  .hstat { padding:13px 22px; border-top:1px solid rgba(255,255,255,.045); }
+  .hstat .top { display:flex; justify-content:space-between; align-items:baseline; }
+  .hstat .k { font:600 9.5px 'JetBrains Mono',monospace; letter-spacing:.14em; color:var(--faint); }
+  .hstat .v { font:600 19px 'JetBrains Mono',monospace; letter-spacing:-.5px; font-variant-numeric:tabular-nums; }
+  .hstat .v span { font-size:11px; color:var(--faint); font-weight:500; }
+  .meter { height:4px; border-radius:2px; background:rgba(255,255,255,.06); margin-top:9px; overflow:hidden; }
+  .meter i { display:block; height:100%; border-radius:2px; background:var(--lime); }
+  .meter i.y { background:var(--yellow); }
+  .meter i.r { background:var(--err); }
+  .hstat .note { font:9.5px 'JetBrains Mono',monospace; color:var(--faint); margin-top:7px; }
+  .sparkline { display:flex; gap:2.5px; align-items:flex-end; height:30px; margin-top:10px; }
+  .sparkline i { flex:1; border-radius:1.5px; background:rgba(180,227,74,.5); }
+  .host .foot { padding:14px 22px 18px; border-top:1px solid rgba(255,255,255,.045);
+    font:10px 'JetBrains Mono',monospace; color:var(--faint); line-height:1.9; }
+  .host .foot b { color:var(--dim); font-weight:500; }
+  .linkrow { display:flex; gap:0; border-top:1px solid var(--line); }
+  .linkrow a { flex:1; text-align:center; padding:12px 0; font:600 9.5px 'JetBrains Mono',monospace;
+    letter-spacing:.14em; color:var(--faint); text-decoration:none; border-right:1px solid var(--line); transition:.15s; }
+  .linkrow a:last-child { border-right:none; }
+  .linkrow a:hover { color:var(--lime-soft); background:rgba(180,227,74,.04); }
+</style></head><body>
+<nav class="rail">
+  <div class="mark"><svg viewBox="0 0 64 64"><g fill="none" stroke="#14170a" stroke-width="6" stroke-linecap="round"><rect x="12" y="16" width="40" height="30" rx="5"/><path d="M23 16v30M32 16v30M41 16v30M18 54h28"/></g></svg></div>
+  <div class="ic on">▦</div><div class="ic">▤</div><div class="ic">◉</div><div class="ic">⚇</div><div class="ic">⛁</div>
+  <div class="spacer"></div>
+  <div class="kbd">⌘K</div>
+  <div class="ic">⚙</div>
+  <div class="usr">TD</div>
+</nav>
+<main>
+  <div class="topbar">
+    <div class="brand">contain<em>r</em></div>
+    <div class="tick">
+      <span><i class="sig"></i>all systems <b>nominal</b></span>
+      <span>uptime <b>7h 41m</b></span>
+      <span>node <b>cnr-node-01</b></span>
+      <span><i class="sig y"></i>1 build <b>failed</b></span>
+      <span>ver <b>0.4.2</b></span>
+    </div>
+    <div class="envp">env:production</div>
+  </div>
+
+  <div class="mast">
+    <h1>Projects<span class="cursor">_</span></h1>
+    <div class="meta">
+      <div class="count"><b>03</b> PROJECTS · <b>09</b> SERVICES · <b>01</b> HOST</div>
+      <button class="btn-primary">+ new project <span class="k">N</span></button>
+    </div>
+  </div>
+
+  <div class="body">
+    <div class="pindex">
+      <div class="ph"><span>// PROJECT INDEX</span><span class="r">sorted by last deploy</span></div>
+      <div class="prow">
+        <span class="no"><i>/</i>01</span>
+        <div><h3>core-services</h3><div class="env">production · <b>containr.dev</b> · 5 services</div>
+          <div class="svcs"><span><b class="dot dot-ok"></b>api</span><span><b class="dot dot-ok"></b>web</span><span><b class="dot dot-ok"></b>db</span><span><b class="dot dot-ok"></b>worker</span><span><b class="dot dot-ok"></b>cache</span></div></div>
+        <div class="stwrap"><span class="badge b-run">RUNNING</span><span class="ago">4m ago</span></div>
+      </div>
+      <div class="prow">
+        <span class="no"><i>/</i>02</span>
+        <div><h3>growth-site</h3><div class="env">production · <b>growth.app</b> · 3 services</div>
+          <div class="svcs"><span><b class="dot dot-ok"></b>site</span><span><b class="dot dot-ok"></b>api</span><span><b class="dot dot-ok"></b>redis</span></div></div>
+        <div class="stwrap"><span class="badge b-run">RUNNING</span><span class="ago">2h ago</span></div>
+      </div>
+      <div class="prow">
+        <span class="no"><i>/</i>03</span>
+        <div><h3>ml-pipeline</h3><div class="env">staging · <b>internal</b> · 2 services</div>
+          <div class="svcs"><span><b class="dot dot-ok"></b>api</span><span><b class="dot dot-err"></b>worker</span></div></div>
+        <div class="stwrap"><span class="badge b-warn">DEGRADED</span><span class="ago">1h ago</span></div>
+      </div>
+      <div class="feed-h"><span>// DEPLOY FEED</span><span class="r">last 24h</span></div>
+      <div class="frow"><span class="g">▸</span><span class="name">api-gateway<span>core-services</span></span><span class="st st-ok">DEPLOYED</span><span class="dur">48s</span><span class="ago">4m</span></div>
+      <div class="frow"><span class="g">▸</span><span class="name">web-frontend<span>core-services</span></span><span class="st st-run">BUILDING</span><span class="dur">—</span><span class="ago">6m</span></div>
+      <div class="frow"><span class="g">▸</span><span class="name">worker<span>ml-pipeline</span></span><span class="st st-fail">FAILED</span><span class="dur">1m32s</span><span class="ago">1h</span></div>
+      <div class="frow"><span class="g">▸</span><span class="name">site<span>growth-site</span></span><span class="st st-ok">DEPLOYED</span><span class="dur">39s</span><span class="ago">2h</span></div>
+      <div class="frow"><span class="g">▸</span><span class="name">api<span>growth-site</span></span><span class="st st-ok">DEPLOYED</span><span class="dur">41s</span><span class="ago">3h</span></div>
+    </div>
+    <aside class="host">
+      <div class="hh">HOST VITALS <span class="r">cnr-node-01</span></div>
+      <div class="hstat"><div class="top"><span class="k">CPU</span><span class="v">14<span>%</span></span></div>
+        <div class="sparkline"><i style="height:26%"></i><i style="height:42%"></i><i style="height:34%"></i><i style="height:55%"></i><i style="height:40%"></i><i style="height:64%"></i><i style="height:48%"></i><i style="height:32%"></i><i style="height:54%"></i><i style="height:38%"></i><i style="height:28%"></i><i style="height:18%"></i></div>
+        <div class="note">16 cores · load 2.41 · healthy</div></div>
+      <div class="hstat"><div class="top"><span class="k">MEMORY</span><span class="v">72<span>%</span></span></div>
+        <div class="meter"><i style="width:72%"></i></div>
+        <div class="note">9.8G / 13G used</div></div>
+      <div class="hstat"><div class="top"><span class="k">DISK</span><span class="v">73<span>%</span></span></div>
+        <div class="meter"><i class="y" style="width:73%"></i></div>
+        <div class="note">338G of 465G · high usage</div></div>
+      <div class="hstat"><div class="top"><span class="k">NETWORK</span><span class="v">84<span>MB/s</span></span></div>
+        <div class="meter"><i style="width:34%"></i></div>
+        <div class="note">rx 52 · tx 32</div></div>
+      <div class="hstat"><div class="top"><span class="k">DEPLOYS / 7D</span><span class="v">18</span></div>
+        <div class="meter"><i style="width:94%"></i></div>
+        <div class="note">17 ok · 1 failed</div></div>
+      <div class="foot">docker <b>26.1.4</b> · containerd <b>1.7</b><br>traefik <b>v3.1</b> · 9 containers<br>last gc <b>12m ago</b></div>
+      <div class="linkrow"><a href="#">METRICS</a><a href="#">LOGS</a><a href="#">DOCS</a></div>
+    </aside>
+  </div>
+</main></body></html>

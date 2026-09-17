@@ -2,11 +2,20 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
+  ApiError,
+  connectGitRepository,
+  createGitWebhook,
+  createManagedDatabase,
   createService,
   getProjectById,
+  listConnectedGitRepositories,
+  listGitBranches,
+  listGitProviders,
+  listGitRepositories,
   listServiceLogs,
   listServiceVariables,
   listServicesByProject,
+  type CreateDatabaseInput,
   type CreateServiceInput,
 } from '@/lib/api-client';
 import { getDemoProjectById, getDemoServicesByProject, getDemoVariablesByProject } from '@/lib/demo-data';
@@ -31,6 +40,8 @@ import {
   Sparkles,
   Box,
   Search,
+  GitBranch,
+  Container,
 } from 'lucide-react';
 
 type WorkspaceView = 'canvas' | 'observability' | 'logs' | 'settings';
@@ -45,10 +56,29 @@ const viewItems: Array<{ key: WorkspaceView; label: string; icon: typeof LayoutG
 const serviceTypes: Array<CreateServiceInput['type']> = ['web', 'worker', 'database', 'cron'];
 const serviceEnvironments = ['production', 'preview', 'development'] as const;
 
+type CreateServiceSubmit = CreateServiceInput & {
+  gitProviderId?: string;
+  gitRepoFullName?: string;
+  database?: { engine: CreateDatabaseInput['type']; plan: CreateDatabaseInput['plan'] };
+};
+
+const databaseEngines = [
+  { value: 'postgresql', label: 'PostgreSQL' },
+  { value: 'mysql', label: 'MySQL' },
+  { value: 'mariadb', label: 'MariaDB' },
+  { value: 'redis', label: 'Redis' },
+  { value: 'dragonfly', label: 'Dragonfly' },
+  { value: 'mongodb', label: 'MongoDB' },
+  { value: 'clickhouse', label: 'ClickHouse' },
+] as const;
+
+const databasePlans = ['hobby', 'starter', 'standard', 'business'] as const;
+
 function ServiceCreateDialog(props: {
   open: boolean;
   onClose: () => void;
-  onSubmit: (payload: CreateServiceInput) => void;
+  onSubmit: (payload: CreateServiceSubmit) => void;
+  onBrowseTemplates: () => void;
   loading: boolean;
   errorMessage?: string;
 }) {
@@ -59,6 +89,48 @@ function ServiceCreateDialog(props: {
     image: '',
     command: '',
   });
+  const [source, setSource] = useState<'image' | 'git'>('image');
+  const [providerId, setProviderId] = useState('');
+  const [repoFullName, setRepoFullName] = useState('');
+  const [repoSearch, setRepoSearch] = useState('');
+  const [dbEngine, setDbEngine] = useState<(typeof databaseEngines)[number]['value']>('postgresql');
+  const [dbPlan, setDbPlan] = useState<(typeof databasePlans)[number]>('hobby');
+
+  const isDatabase = form.type === 'database';
+
+  const providersQuery = useQuery({
+    queryKey: ['git-providers'],
+    queryFn: listGitProviders,
+    enabled: props.open && source === 'git',
+  });
+
+  const repositoriesQuery = useQuery({
+    queryKey: ['git-repositories', providerId, repoSearch],
+    queryFn: () => listGitRepositories(providerId, repoSearch),
+    enabled: props.open && source === 'git' && Boolean(providerId),
+  });
+
+  const selectedRepo = useMemo(
+    () => (repositoriesQuery.data ?? []).find((repo) => repo.full_name === repoFullName) ?? null,
+    [repositoriesQuery.data, repoFullName],
+  );
+
+  const branchesQuery = useQuery({
+    queryKey: ['git-branches', providerId, repoFullName],
+    queryFn: () => {
+      const [owner, repo] = repoFullName.split('/');
+      return listGitBranches(providerId, owner, repo);
+    },
+    enabled: props.open && source === 'git' && Boolean(providerId) && Boolean(repoFullName),
+  });
+
+  const providers = providersQuery.data ?? [];
+  const repositories = repositoriesQuery.data ?? [];
+  const branches = branchesQuery.data ?? [];
+
+  const canSubmit =
+    Boolean(form.name.trim()) &&
+    (isDatabase ? Boolean(dbEngine) : source === 'image' || Boolean(repoFullName));
 
   if (!props.open) return null;
 
@@ -120,17 +192,216 @@ function ServiceCreateDialog(props: {
             </div>
           </div>
 
+          {isDatabase ? (
+            <div className="space-y-3 p-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)]/50">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-tertiary)] mb-2">
+                    Engine
+                  </label>
+                  <select
+                    value={dbEngine}
+                    onChange={(e) => setDbEngine(e.target.value as typeof dbEngine)}
+                    className="w-full h-11 px-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-[var(--text-primary)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all"
+                  >
+                    {databaseEngines.map((engine) => (
+                      <option key={engine.value} value={engine.value}>{engine.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-tertiary)] mb-2">
+                    Plan
+                  </label>
+                  <select
+                    value={dbPlan}
+                    onChange={(e) => setDbPlan(e.target.value as typeof dbPlan)}
+                    className="w-full h-11 px-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-[var(--text-primary)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all"
+                  >
+                    {databasePlans.map((plan) => (
+                      <option key={plan} value={plan}>{plan.charAt(0).toUpperCase() + plan.slice(1)}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <p className="text-xs text-[var(--text-muted)]">
+                Provisions a managed database container. Connection details appear under Databases once running.
+              </p>
+            </div>
+          ) : (
           <div>
             <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-tertiary)] mb-2">
-              Image <span className="normal-case text-[var(--text-muted)]">(optional)</span>
+              Source
             </label>
-            <input
-              value={form.image ?? ''}
-              onChange={(e) => setForm((p) => ({ ...p, image: e.target.value }))}
-              className="w-full h-11 px-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all mono text-sm"
-              placeholder="ghcr.io/org/app:latest"
-            />
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => setSource('image')}
+                className={`flex items-center justify-center gap-2 h-10 rounded-[var(--radius-md)] border text-sm font-medium transition-colors ${
+                  source === 'image'
+                    ? 'border-[var(--accent-primary)] bg-[var(--accent-primary-soft)] text-[var(--text-primary)]'
+                    : 'border-[var(--border-subtle)] bg-[var(--surface-muted)] text-[var(--text-tertiary)] hover:border-[var(--border-default)]'
+                }`}
+              >
+                <Container size={14} />
+                Image
+              </button>
+              <button
+                type="button"
+                onClick={() => setSource('git')}
+                className={`flex items-center justify-center gap-2 h-10 rounded-[var(--radius-md)] border text-sm font-medium transition-colors ${
+                  source === 'git'
+                    ? 'border-[var(--accent-primary)] bg-[var(--accent-primary-soft)] text-[var(--text-primary)]'
+                    : 'border-[var(--border-subtle)] bg-[var(--surface-muted)] text-[var(--text-tertiary)] hover:border-[var(--border-default)]'
+                }`}
+              >
+                <GitBranch size={14} />
+                Git Repository
+              </button>
+              <button
+                type="button"
+                onClick={props.onBrowseTemplates}
+                className="flex items-center justify-center gap-2 h-10 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm font-medium text-[var(--text-tertiary)] hover:border-[var(--border-default)] transition-colors"
+              >
+                <Sparkles size={14} />
+                Template
+              </button>
+            </div>
           </div>
+          )}
+
+          {isDatabase ? null : source === 'image' ? (
+            <div>
+              <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-tertiary)] mb-2">
+                Image <span className="normal-case text-[var(--text-muted)]">(optional)</span>
+              </label>
+              <input
+                value={form.image ?? ''}
+                onChange={(e) => setForm((p) => ({ ...p, image: e.target.value }))}
+                className="w-full h-11 px-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all mono text-sm"
+                placeholder="ghcr.io/org/app:latest"
+              />
+            </div>
+          ) : (
+            <div className="space-y-3 p-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)]/50">
+              <div>
+                <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-tertiary)] mb-2">
+                  Provider
+                </label>
+                <select
+                  value={providerId}
+                  onChange={(e) => {
+                    setProviderId(e.target.value);
+                    setRepoFullName('');
+                    setForm((p) => ({ ...p, git_repo: '', git_branch: '' }));
+                  }}
+                  className="w-full h-11 px-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-[var(--text-primary)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all"
+                >
+                  <option value="">Select provider</option>
+                  {providers.map((provider) => (
+                    <option key={provider.id} value={provider.id}>{provider.display_name}</option>
+                  ))}
+                </select>
+                {!providersQuery.isLoading && providers.length === 0 && (
+                  <p className="text-xs text-[var(--warn)] mt-1.5">
+                    No providers connected — add one in Settings → Git Providers
+                  </p>
+                )}
+              </div>
+
+              {providerId && (
+                <div>
+                  <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-tertiary)] mb-2">
+                    Repository
+                  </label>
+                  <input
+                    value={repoSearch}
+                    onChange={(e) => setRepoSearch(e.target.value)}
+                    className="w-full h-9 px-3 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm mono mb-2"
+                    placeholder="Search repositories..."
+                  />
+                  {repositoriesQuery.isLoading ? (
+                    <div className="py-3 text-center">
+                      <Loader2 size={14} className="animate-spin mx-auto text-[var(--text-tertiary)]" />
+                    </div>
+                  ) : repositoriesQuery.isError ? (
+                    <p className="text-xs text-[var(--error)] py-2">Failed to load repositories — check the provider token</p>
+                  ) : repositories.length === 0 ? (
+                    <p className="text-xs text-[var(--text-muted)] py-2">No repositories found</p>
+                  ) : (
+                    <div className="max-h-40 overflow-y-auto space-y-0.5 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] p-1">
+                      {repositories.slice(0, 50).map((repo) => (
+                        <button
+                          key={repo.id}
+                          type="button"
+                          onClick={() => {
+                            setRepoFullName(repo.full_name);
+                            setForm((p) => ({
+                              ...p,
+                              git_repo: repo.clone_url ?? repo.full_name,
+                              git_branch: p.git_branch || repo.default_branch || '',
+                            }));
+                          }}
+                          className={`w-full flex items-center justify-between px-3 py-2 rounded-[var(--radius-sm)] text-left text-sm transition-colors ${
+                            repoFullName === repo.full_name
+                              ? 'bg-[var(--accent-primary-soft)] text-[var(--text-primary)]'
+                              : 'text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]'
+                          }`}
+                        >
+                          <span className="mono text-xs truncate">{repo.full_name}</span>
+                          <span className="text-[10px] text-[var(--text-muted)] ml-2 shrink-0">{repo.default_branch}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {repoFullName && (
+                <>
+                  <div>
+                    <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-tertiary)] mb-2">
+                      Branch
+                    </label>
+                    {branchesQuery.isLoading ? (
+                      <div className="py-2 text-center">
+                        <Loader2 size={14} className="animate-spin mx-auto text-[var(--text-tertiary)]" />
+                      </div>
+                    ) : branches.length > 0 ? (
+                      <select
+                        value={form.git_branch ?? ''}
+                        onChange={(e) => setForm((p) => ({ ...p, git_branch: e.target.value }))}
+                        className="w-full h-10 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm mono"
+                      >
+                        <option value="">Select branch</option>
+                        {branches.map((branch) => (
+                          <option key={branch.name} value={branch.name}>{branch.name}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        value={form.git_branch ?? ''}
+                        onChange={(e) => setForm((p) => ({ ...p, git_branch: e.target.value }))}
+                        className="w-full h-10 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm mono"
+                        placeholder={selectedRepo?.default_branch ?? 'main'}
+                      />
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-tertiary)] mb-2">
+                      Build Path <span className="normal-case text-[var(--text-muted)]">(optional)</span>
+                    </label>
+                    <input
+                      value={form.build_path ?? ''}
+                      onChange={(e) => setForm((p) => ({ ...p, build_path: e.target.value }))}
+                      className="w-full h-10 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm mono"
+                      placeholder="/ (repo root)"
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          )}
 
           <div>
             <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-tertiary)] mb-2">
@@ -159,12 +430,25 @@ function ServiceCreateDialog(props: {
             Cancel
           </button>
           <button
-            disabled={!form.name.trim() || props.loading}
-            onClick={() => props.onSubmit({ ...form, name: form.name.trim(), image: form.image?.trim(), command: form.command?.trim() })}
-            className="px-5 py-2 rounded-[var(--radius-md)] text-white text-sm font-medium shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-            style={{ background: '#e8316a' }}
+            disabled={!canSubmit || props.loading}
+            onClick={() =>
+              props.onSubmit({
+                ...form,
+                name: form.name.trim(),
+                image: !isDatabase && source === 'image' ? form.image?.trim() : '',
+                command: form.command?.trim(),
+                git_repo: !isDatabase && source === 'git' ? form.git_repo?.trim() : '',
+                git_branch: !isDatabase && source === 'git' ? form.git_branch?.trim() : '',
+                build_path: !isDatabase && source === 'git' ? form.build_path?.trim() : '',
+                gitProviderId: !isDatabase && source === 'git' && repoFullName ? providerId : undefined,
+                gitRepoFullName: !isDatabase && source === 'git' ? repoFullName || undefined : undefined,
+                database: isDatabase ? { engine: dbEngine, plan: dbPlan } : undefined,
+              })
+            }
+            className="px-5 py-2 rounded-[var(--radius-md)] text-[var(--accent-on)] text-sm font-medium shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            style={{ background: 'var(--accent-primary)' }}
           >
-            {props.loading ? 'Creating...' : 'Create Service'}
+            {props.loading ? 'Creating...' : isDatabase ? 'Create Database' : 'Create Service'}
           </button>
         </div>
       </div>
@@ -207,10 +491,51 @@ export function ProjectWorkspacePage() {
     queryKey: ['project-services', projectId],
     queryFn: () => listServicesByProject(projectId),
     enabled: Boolean(projectId) && !isDemoMode,
+    refetchInterval: (query) =>
+      query.state.data?.some((s) => ['building', 'deploying', 'pending', 'rolling_back'].includes(s.status))
+        ? 3000
+        : 15000,
   });
 
   const createServiceMutation = useMutation({
-    mutationFn: (payload: CreateServiceInput) => createService(projectId, payload),
+    mutationFn: async (payload: CreateServiceSubmit) => {
+      const { gitProviderId, gitRepoFullName, database, ...serviceInput } = payload;
+      if (database) {
+        await createManagedDatabase({
+          name: serviceInput.name,
+          type: database.engine,
+          plan: database.plan,
+          region: 'local',
+        });
+        return null;
+      }
+      const service = await createService(projectId, serviceInput);
+      if (gitProviderId && gitRepoFullName) {
+        let repoId: string | undefined;
+        try {
+          const repo = await connectGitRepository({
+            provider_id: gitProviderId,
+            repo_full_name: gitRepoFullName,
+          });
+          repoId = repo.id;
+        } catch (err) {
+          if (!(err instanceof ApiError && err.status === 409)) {
+            throw err;
+          }
+          repoId = (await listConnectedGitRepositories()).find(
+            (r) => r.full_name === gitRepoFullName,
+          )?.id;
+        }
+        if (repoId) {
+          await createGitWebhook({
+            repo_id: repoId,
+            events: ['push'],
+            branch: payload.git_branch ?? '',
+          });
+        }
+      }
+      return service;
+    },
     onSuccess: () => {
       setCreateOpen(false);
       queryClient.invalidateQueries({ queryKey: ['project-services', projectId] });
@@ -320,7 +645,7 @@ export function ProjectWorkspacePage() {
     <div className="min-h-screen">
       {/* Header */}
       <div className="border-b border-[var(--border-subtle)] bg-[var(--bg-base)]/50 backdrop-blur-sm">
-        <div className="mx-auto w-full max-w-[1400px] px-6 py-4">
+        <div className="w-full px-8 py-4">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-4">
               <button
@@ -332,7 +657,7 @@ export function ProjectWorkspacePage() {
               </button>
               <div className="w-px h-5 bg-[var(--border-subtle)]" />
               <div>
-                <h1 className="text-xl font-semibold text-[var(--text-primary)]">{project.name}</h1>
+                <h1 className="v-title">{project.name}<span className="v-cursor">_</span></h1>
                 <p className="text-sm text-[var(--text-secondary)]">{project.description || 'No description'}</p>
               </div>
             </div>
@@ -371,8 +696,8 @@ export function ProjectWorkspacePage() {
               {!isDemoMode && (
                 <button
                   onClick={() => setCreateOpen(true)}
-                  className="flex items-center gap-2 h-9 px-4 rounded-[var(--radius-md)] text-white text-sm font-medium shadow-lg hover:shadow-xl transition-all"
-                  style={{ background: '#e8316a' }}
+                  className="flex items-center gap-2 h-9 px-4 rounded-[var(--radius-md)] text-[var(--accent-on)] text-sm font-medium shadow-lg hover:shadow-xl transition-all"
+                  style={{ background: 'var(--accent-primary)' }}
                 >
                   <Plus size={16} />
                   <span className="hidden sm:inline">Add Service</span>
@@ -385,7 +710,7 @@ export function ProjectWorkspacePage() {
 
       {/* Demo Mode Banner */}
       {isDemoMode && (
-        <div className="mx-auto w-full max-w-[1400px] px-6 py-4">
+        <div className="w-full px-8 py-4">
           <div className="px-4 py-3 rounded-[var(--radius-md)] border border-[var(--warning-soft)] bg-[var(--warning-soft)]/50">
             <div className="flex items-center gap-2 text-sm text-[var(--warning)]">
               <Sparkles size={16} />
@@ -396,7 +721,7 @@ export function ProjectWorkspacePage() {
       )}
 
       {/* Main Content */}
-      <div className="mx-auto w-full max-w-[1400px] px-6 py-6">
+      <div className="w-full px-8 py-6">
         <div className="grid grid-cols-1 lg:grid-cols-[200px_1fr] gap-6">
           {/* Sidebar Navigation */}
           <aside className="lg:sticky lg:top-6 lg:h-fit">
@@ -636,6 +961,10 @@ export function ProjectWorkspacePage() {
           loading={createServiceMutation.isPending}
           errorMessage={createServiceMutation.error ? (createServiceMutation.error as Error).message : undefined}
           onSubmit={(payload) => createServiceMutation.mutate(payload)}
+          onBrowseTemplates={() => {
+            setCreateOpen(false);
+            navigate(`/templates?project=${projectId}`);
+          }}
         />
       )}
 

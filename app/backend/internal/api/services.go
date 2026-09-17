@@ -99,8 +99,18 @@ func handleGetServices(c *gin.Context) {
 
 	// Get services for the project
 	rows, err := db.(*database.DB).Query(
-		`SELECT id, project_id, name, type, status, image, command, environment, 
-				git_repo, git_branch, build_path, cpu, memory, created_at, updated_at 
+		`SELECT id, project_id, name,
+				COALESCE(type, service_type, ''),
+				COALESCE(status, ''),
+				COALESCE(image, image_name, ''),
+				COALESCE(command, start_command, ''),
+				COALESCE(environment, ''),
+				COALESCE(git_repo, source_url, ''),
+				COALESCE(git_branch, ''),
+				COALESCE(build_path, ''),
+				COALESCE(cpu, ''),
+				COALESCE(memory, ''),
+				created_at, updated_at 
 			FROM services 
 			WHERE project_id = $1 
 			ORDER BY created_at DESC`,
@@ -228,15 +238,25 @@ func handleCreateService(c *gin.Context) {
 		service.Memory = "512Mi"
 	}
 
+	environmentID, err := getProjectEnvironmentID(db.(*database.DB), service.ProjectID, service.Environment)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to resolve service environment"})
+		return
+	}
+
+	sourceType := inferServiceSourceType(service)
+
 	// Insert service into database
 	_, err = db.(*database.DB).Exec(
 		`INSERT INTO services 
-			(id, project_id, name, type, status, image, command, environment, 
+			(id, project_id, name, environment_id, service_type, source_type, source_url, image_name,
+				 build_command, start_command, type, status, image, command, environment,
 				 git_repo, git_branch, build_path, cpu, memory, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
-		service.ID, service.ProjectID, service.Name, service.Type, service.Status,
-		service.Image, service.Command, service.Environment, service.GitRepo,
-		service.GitBranch, service.BuildPath, service.CPU, service.Memory,
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)`,
+		service.ID, service.ProjectID, service.Name, environmentID, service.Type,
+		sourceType, firstNonEmpty(service.GitRepo, service.Image), service.Image,
+		"", service.Command, service.Type, service.Status, service.Image, service.Command,
+		service.Environment, service.GitRepo, service.GitBranch, service.BuildPath, service.CPU, service.Memory,
 		service.CreatedAt, service.UpdatedAt,
 	)
 
@@ -246,6 +266,26 @@ func handleCreateService(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"service": service})
+}
+
+func getProjectEnvironmentID(db *database.DB, projectID uuid.UUID, environment string) (uuid.UUID, error) {
+	var environmentID uuid.UUID
+	err := db.QueryRow(
+		"SELECT id FROM environments WHERE project_id = $1 AND name = $2",
+		projectID,
+		environment,
+	).Scan(&environmentID)
+	return environmentID, err
+}
+
+func inferServiceSourceType(service Service) string {
+	if service.GitRepo != "" {
+		return "github"
+	}
+	if service.Image != "" {
+		return "image"
+	}
+	return "dockerfile"
 }
 
 // handleGetService retrieves a specific service
@@ -273,8 +313,17 @@ func handleGetService(c *gin.Context) {
 	// Get service with project ownership check
 	var service Service
 	err = db.(*database.DB).QueryRow(
-		`SELECT s.id, s.project_id, s.name, s.type, s.status, s.image, s.command, 
-				s.environment, s.git_repo, s.git_branch, s.build_path, s.cpu, s.memory, 
+		`SELECT s.id, s.project_id, s.name,
+				COALESCE(s.type, s.service_type, ''),
+				COALESCE(s.status, ''),
+				COALESCE(s.image, s.image_name, ''),
+				COALESCE(s.command, s.start_command, ''),
+				COALESCE(s.environment, ''),
+				COALESCE(s.git_repo, s.source_url, ''),
+				COALESCE(s.git_branch, ''),
+				COALESCE(s.build_path, ''),
+				COALESCE(s.cpu, ''),
+				COALESCE(s.memory, ''),
 				s.created_at, s.updated_at
 			FROM services s
 			JOIN projects p ON s.project_id = p.id
@@ -326,8 +375,17 @@ func handleUpdateService(c *gin.Context) {
 	// Check if service exists and user has access
 	var existingService Service
 	err = db.(*database.DB).QueryRow(
-		`SELECT s.id, s.project_id, s.name, s.type, s.status, s.image, s.command, 
-				s.environment, s.git_repo, s.git_branch, s.build_path, s.cpu, s.memory, 
+		`SELECT s.id, s.project_id, s.name,
+				COALESCE(s.type, s.service_type, ''),
+				COALESCE(s.status, ''),
+				COALESCE(s.image, s.image_name, ''),
+				COALESCE(s.command, s.start_command, ''),
+				COALESCE(s.environment, ''),
+				COALESCE(s.git_repo, s.source_url, ''),
+				COALESCE(s.git_branch, ''),
+				COALESCE(s.build_path, ''),
+				COALESCE(s.cpu, ''),
+				COALESCE(s.memory, ''),
 				s.created_at, s.updated_at
 			FROM services s
 			JOIN projects p ON s.project_id = p.id

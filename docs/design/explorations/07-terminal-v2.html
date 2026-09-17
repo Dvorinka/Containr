@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>07 — Terminal v2 (Dashboard)</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&display=swap');
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'JetBrains Mono',monospace; background:#070807; color:#c9d1c9; display:flex; min-height:100vh; font-size:13px; }
+  body::before { content:''; position:fixed; inset:0; background:repeating-linear-gradient(0deg, transparent 0 2px, rgba(0,0,0,.14) 2px 4px); pointer-events:none; }
+  .rail { width:58px; border-right:1px solid #1c1f1c; display:flex; flex-direction:column; align-items:center; padding:14px 0; gap:14px; }
+  .rail .mark { width:34px; height:34px; border:1px solid #4ade80; color:#4ade80; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:15px; }
+  .rail .ic { color:#3d443d; font-size:14px; width:34px; height:34px; display:flex; align-items:center; justify-content:center; }
+  .rail .ic.on { color:#4ade80; background:#4ade8014; border:1px solid #4ade8030; }
+  main { flex:1; min-width:0; }
+  .topbar { display:flex; align-items:center; gap:16px; padding:10px 24px; border-bottom:1px solid #1c1f1c; font-size:12px; }
+  .brand { color:#4ade80; font-weight:800; }
+  .brand::before { content:'▮ '; }
+  .search { border:1px solid #242824; padding:5px 12px; color:#4a5049; width:320px; font-size:12px; }
+  .search::before { content:'$ '; color:#4ade80; }
+  .topright { margin-left:auto; display:flex; gap:14px; color:#4a5049; font-size:11px; align-items:center; }
+  .topright .env { color:#fbbf24; }
+  .content { padding:22px 26px; max-width:1240px; }
+  .pagehead { display:flex; align-items:flex-end; justify-content:space-between; margin-bottom:18px; border-bottom:1px dashed #242824; padding-bottom:14px; }
+  .pagehead h1 { font-size:18px; font-weight:800; color:#e8ede8; }
+  .pagehead h1::before { content:'## '; color:#4ade80; }
+  .pagehead p { font-size:11px; color:#4a5049; margin-top:4px; }
+  .btn-primary { background:#4ade80; color:#070807; border:none; padding:8px 16px; font-family:inherit; font-size:12px; font-weight:800; }
+  .statrow { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:20px; }
+  .stat { border:1px solid #1c1f1c; padding:14px 16px; background:#0b0d0b; position:relative; }
+  .stat .k { font-size:10px; color:#4a5049; letter-spacing:.1em; }
+  .stat .k::before { content:'● '; color:#4ade80; font-size:8px; }
+  .stat .v { font-size:24px; font-weight:800; color:#e8ede8; margin-top:6px; }
+  .stat .d { font-size:10.5px; color:#4a5049; margin-top:4px; }
+  .stat .d b { color:#4ade80; font-weight:400; }
+  .secttl { font-size:11px; color:#4a5049; margin:0 0 10px; letter-spacing:.12em; }
+  .secttl::before { content:'── '; color:#2a2f2a; } .secttl::after { content:' ──────────'; color:#2a2f2a; }
+  .projgrid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:20px; }
+  .proj { border:1px solid #1c1f1c; background:#0b0d0b; padding:16px; }
+  .proj:hover { border-color:#4ade80; }
+  .proj .top { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+  .proj .ic { width:32px; height:32px; border:1px solid #2a2f2a; color:#4ade80; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px; }
+  .proj h3 { font-size:13px; font-weight:700; color:#e8ede8; }
+  .proj .env { font-size:10px; color:#4a5049; margin-top:2px; }
+  .badge { margin-left:auto; font-size:9px; font-weight:700; padding:2px 8px; letter-spacing:.08em; }
+  .b-run { border:1px solid #4ade8044; color:#4ade80; } .b-warn { border:1px solid #fbbf2444; color:#fbbf24; }
+  .svcs { font-size:11px; color:#5a6159; margin-bottom:12px; line-height:1.7; }
+  .svcs b { color:#c9d1c9; font-weight:400; }
+  .proj .ft { display:flex; justify-content:space-between; font-size:10.5px; color:#4a5049; border-top:1px dashed #1c1f1c; padding-top:10px; }
+  .proj .ft .arrow { color:#4ade80; }
+  table { width:100%; border-collapse:collapse; border:1px solid #1c1f1c; font-size:12px; background:#0b0d0b; }
+  th { text-align:left; font-size:9.5px; letter-spacing:.14em; color:#4a5049; font-weight:700; padding:9px 16px; border-bottom:1px solid #1c1f1c; }
+  td { padding:9px 16px; border-bottom:1px solid #141714; color:#8a918a; }
+  td:first-child { color:#e8ede8; }
+  .st { font-size:10px; font-weight:700; }
+  .st-ok { color:#4ade80; } .st-run { color:#6c8ef0; } .st-fail { color:#f87171; }
+  .st-ok::before{content:'[OK] '}.st-run::before{content:'[..] '}.st-fail::before{content:'[!!] '}
+</style></head><body>
+<nav class="rail"><div class="mark">C</div><div class="ic on">▦</div><div class="ic">▤</div><div class="ic">◉</div><div class="ic">⚇</div><div class="ic">⚙</div></nav>
+<main>
+  <div class="topbar">
+    <div class="brand">containr</div>
+    <div class="search">search --projects --builds --logs_</div>
+    <div class="topright"><span class="env">env:production</span><span>tdvorak@containr</span></div>
+  </div>
+  <div class="content">
+    <div class="pagehead">
+      <div><h1>projects</h1><p># 3 projects · 9 services · 1 host · uptime 7h 41m</p></div>
+      <button class="btn-primary">+ new-project</button>
+    </div>
+    <div class="statrow">
+      <div class="stat"><div class="k">HOST.CPU</div><div class="v">14%</div><div class="d"><b>ok</b> · 16 cores · load 2.41</div></div>
+      <div class="stat"><div class="k">HOST.MEM</div><div class="v">72%</div><div class="d">9.8G / 13G used</div></div>
+      <div class="stat"><div class="k">HOST.DISK</div><div class="v">73%</div><div class="d">338G of 465G</div></div>
+      <div class="stat"><div class="k">DEPLOYS.7D</div><div class="v">18</div><div class="d"><b>17 ok</b> · 1 failed</div></div>
+    </div>
+    <p class="secttl">PROJECTS</p>
+    <div class="projgrid">
+      <div class="proj"><div class="top"><div class="ic">CS</div><div><h3>core-services</h3><div class="env">prod · containr.dev</div></div><span class="badge b-run">RUNNING</span></div>
+        <div class="svcs">├─ <b>api</b> · <b>web</b> · <b>db</b> · <b>worker</b><br>└─ 5 services total</div>
+        <div class="ft"><span>deployed 4m ago</span><span class="arrow">→</span></div></div>
+      <div class="proj"><div class="top"><div class="ic">GS</div><div><h3>growth-site</h3><div class="env">prod · growth.app</div></div><span class="badge b-run">RUNNING</span></div>
+        <div class="svcs">├─ <b>site</b> · <b>api</b> · <b>redis</b><br>└─ 3 services total</div>
+        <div class="ft"><span>deployed 2h ago</span><span class="arrow">→</span></div></div>
+      <div class="proj"><div class="top"><div class="ic">ML</div><div><h3>ml-pipeline</h3><div class="env">staging · internal</div></div><span class="badge b-warn">DEGRADED</span></div>
+        <div class="svcs">├─ <b>api</b> · <b>worker</b><br>└─ 2 services · 1 failed</div>
+        <div class="ft"><span>last deploy failed</span><span class="arrow">→</span></div></div>
+    </div>
+    <p class="secttl">RECENT DEPLOYMENTS</p>
+    <table>
+      <tr><th>SERVICE</th><th>PROJECT</th><th>STATUS</th><th>DUR</th><th>WHEN</th></tr>
+      <tr><td>api-gateway</td><td>core-services</td><td><span class="st st-ok">deployed</span></td><td>48s</td><td>4m ago</td></tr>
+      <tr><td>web-frontend</td><td>core-services</td><td><span class="st st-run">building</span></td><td>—</td><td>6m ago</td></tr>
+      <tr><td>worker</td><td>ml-pipeline</td><td><span class="st st-fail">failed</span></td><td>1m32s</td><td>1h ago</td></tr>
+      <tr><td>site</td><td>growth-site</td><td><span class="st st-ok">deployed</span></td><td>39s</td><td>2h ago</td></tr>
+    </table>
+  </div>
+</main></body></html>

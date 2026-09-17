@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>09 — Ledger (Dashboard)</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Inter',system-ui,sans-serif; background:#121214; color:#e9e7e2; display:flex; min-height:100vh; }
+  .mono { font-family:'JetBrains Mono',monospace; }
+  .rail { width:60px; border-right:1px solid rgba(233,231,226,.12); display:flex; flex-direction:column; align-items:center; padding:16px 0; gap:18px; }
+  .rail .mark { width:34px; height:34px; border-radius:50%; background:#ff4d2e; display:flex; align-items:center; justify-content:center; font-weight:800; color:#121214; font-family:'JetBrains Mono',monospace; font-size:14px; }
+  .rail .ic { color:#5c5c60; font-size:15px; } .rail .ic.on { color:#ff4d2e; }
+  main { flex:1; min-width:0; }
+  .topbar { display:flex; align-items:baseline; gap:18px; padding:14px 30px; border-bottom:1px solid rgba(233,231,226,.12); }
+  .brand { font-family:'Instrument Serif',serif; font-size:24px; letter-spacing:-.5px; }
+  .brand i { color:#ff4d2e; font-style:normal; }
+  .search { margin-left:auto; font-family:'JetBrains Mono',monospace; font-size:11px; color:#5c5c60; border-bottom:1px solid rgba(233,231,226,.2); padding-bottom:3px; width:260px; }
+  .topright { display:flex; gap:16px; font-family:'JetBrains Mono',monospace; font-size:11px; color:#8a8a8e; }
+  .content { padding:30px; max-width:1240px; }
+  .pagehead { display:flex; align-items:flex-end; justify-content:space-between; margin-bottom:8px; }
+  .pagehead h1 { font-family:'Instrument Serif',serif; font-size:56px; font-weight:400; letter-spacing:-1.5px; line-height:1; }
+  .pagehead h1 em { color:#ff4d2e; }
+  .btn-primary { background:#ff4d2e; color:#121214; border:none; border-radius:999px; padding:10px 22px; font-size:12px; font-weight:700; font-family:'JetBrains Mono',monospace; }
+  .rule { border:none; border-top:1px solid rgba(233,231,226,.14); margin:14px 0 24px; }
+  .statrow { display:grid; grid-template-columns:repeat(4,1fr); gap:0; border-top:1px solid rgba(233,231,226,.14); border-bottom:1px solid rgba(233,231,226,.14); margin-bottom:30px; }
+  .stat { padding:18px 20px; border-right:1px solid rgba(233,231,226,.14); }
+  .stat:last-child { border-right:none; }
+  .stat .k { font-family:'JetBrains Mono',monospace; font-size:10px; color:#5c5c60; letter-spacing:.16em; }
+  .stat .v { font-family:'Instrument Serif',serif; font-size:44px; font-weight:400; letter-spacing:-1px; margin-top:6px; line-height:1; }
+  .stat .v span { font-size:20px; color:#5c5c60; }
+  .stat .d { font-size:11px; color:#8a8a8e; margin-top:6px; }
+  .stat .d b { color:#ff4d2e; font-weight:500; }
+  .secttl { display:flex; align-items:baseline; gap:12px; margin:0 0 14px; }
+  .secttl .no { font-family:'JetBrains Mono',monospace; font-size:11px; color:#ff4d2e; }
+  .secttl h2 { font-family:'Instrument Serif',serif; font-size:24px; font-weight:400; letter-spacing:-.4px; }
+  .secttl .cnt { margin-left:auto; font-family:'JetBrains Mono',monospace; font-size:10px; color:#5c5c60; }
+  .projlist { margin-bottom:32px; }
+  .proj { display:grid; grid-template-columns:70px 1fr auto auto; align-items:center; gap:20px; padding:18px 4px; border-bottom:1px solid rgba(233,231,226,.12); transition:.15s; }
+  .proj:hover { background:rgba(255,77,46,.04); }
+  .proj .idx { font-family:'JetBrains Mono',monospace; font-size:12px; color:#5c5c60; }
+  .proj h3 { font-family:'Instrument Serif',serif; font-size:26px; font-weight:400; letter-spacing:-.5px; }
+  .proj .env { font-size:11.5px; color:#8a8a8e; margin-top:3px; font-family:'JetBrains Mono',monospace; }
+  .proj .svcs { font-size:11px; color:#8a8a8e; font-family:'JetBrains Mono',monospace; text-align:right; line-height:1.7; }
+  .proj .svcs b { color:#e9e7e2; font-weight:500; }
+  .badge { font-family:'JetBrains Mono',monospace; font-size:10px; font-weight:500; letter-spacing:.12em; padding:5px 12px; border-radius:999px; border:1px solid; }
+  .b-run { border-color:rgba(52,211,153,.4); color:#34d399; }
+  .b-warn { border-color:rgba(251,191,36,.4); color:#fbbf24; }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  th { text-align:left; font-family:'JetBrains Mono',monospace; font-size:9.5px; letter-spacing:.18em; color:#5c5c60; font-weight:500; padding:8px 4px; border-bottom:1px solid rgba(233,231,226,.18); }
+  td { padding:13px 4px; border-bottom:1px solid rgba(233,231,226,.08); color:#a8a6a0; font-family:'JetBrains Mono',monospace; font-size:11.5px; }
+  td:first-child { color:#e9e7e2; font-family:'Inter',sans-serif; font-weight:600; font-size:13px; }
+  .st { font-size:10px; letter-spacing:.1em; }
+  .st-ok { color:#34d399; } .st-run { color:#8ab4f8; } .st-fail { color:#ff4d2e; }
+  .st::before { content:'■ '; font-size:7px; vertical-align:2px; }
+</style></head><body>
+<nav class="rail"><div class="mark">C</div><div class="ic on">⌗</div><div class="ic">▦</div><div class="ic">▤</div><div class="ic">◉</div><div class="ic">⚙</div></nav>
+<main>
+  <div class="topbar">
+    <div class="brand">Containr<i>.</i></div>
+    <div class="search">search projects, builds, logs</div>
+    <div class="topright"><span>production</span><span>tdvorak</span></div>
+  </div>
+  <div class="content">
+    <div class="pagehead"><h1>Projects<em>.</em></h1><button class="btn-primary">+ new project</button></div>
+    <p class="mono" style="font-size:11px;color:#5c5c60">03 projects — 09 services — 01 host — uptime 7h 41m</p>
+    <hr class="rule">
+    <div class="statrow">
+      <div class="stat"><div class="k">HOST / CPU</div><div class="v">14<span>%</span></div><div class="d">healthy — 16 cores — load 2.41</div></div>
+      <div class="stat"><div class="k">HOST / MEMORY</div><div class="v">72<span>%</span></div><div class="d">9.8 GB of 13 GB used</div></div>
+      <div class="stat"><div class="k">HOST / DISK</div><div class="v">73<span>%</span></div><div class="d">338 GB of 465 GB</div></div>
+      <div class="stat"><div class="k">DEPLOYS / 7D</div><div class="v">18</div><div class="d"><b>17 ok</b> — 1 failed</div></div>
+    </div>
+    <div class="secttl"><span class="no">01</span><h2>Projects</h2><span class="cnt">3 entries</span></div>
+    <div class="projlist">
+      <div class="proj"><span class="idx">01</span><div><h3>core-services</h3><div class="env">production · containr.dev · deployed 4m ago</div></div><div class="svcs"><b>api web db worker cache</b><br>5 services</div><span class="badge b-run">RUNNING</span></div>
+      <div class="proj"><span class="idx">02</span><div><h3>growth-site</h3><div class="env">production · growth.app · deployed 2h ago</div></div><div class="svcs"><b>site api redis</b><br>3 services</div><span class="badge b-run">RUNNING</span></div>
+      <div class="proj"><span class="idx">03</span><div><h3>ml-pipeline</h3><div class="env">staging · internal · last deploy failed</div></div><div class="svcs"><b>api worker</b><br>2 services</div><span class="badge b-warn">DEGRADED</span></div>
+    </div>
+    <div class="secttl"><span class="no">02</span><h2>Recent deployments</h2><span class="cnt">last 24h</span></div>
+    <table>
+      <tr><th>SERVICE</th><th>PROJECT</th><th>STATUS</th><th>DUR</th><th>WHEN</th></tr>
+      <tr><td>api-gateway</td><td>core-services</td><td><span class="st st-ok">deployed</span></td><td>48s</td><td>4m ago</td></tr>
+      <tr><td>web-frontend</td><td>core-services</td><td><span class="st st-run">building</span></td><td>—</td><td>6m ago</td></tr>
+      <tr><td>worker</td><td>ml-pipeline</td><td><span class="st st-fail">failed</span></td><td>1m32s</td><td>1h ago</td></tr>
+      <tr><td>site</td><td>growth-site</td><td><span class="st st-ok">deployed</span></td><td>39s</td><td>2h ago</td></tr>
+    </table>
+  </div>
+</main></body></html>

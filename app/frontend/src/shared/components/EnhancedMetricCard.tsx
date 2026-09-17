@@ -30,9 +30,9 @@ export function EnhancedMetricCard({
   horizontal = false,
 }: EnhancedMetricCardProps) {
   const statusColors: Record<string, string> = {
-    good: '#3dd68c',
-    average: '#f0a040',
-    warning: '#ff7043',
+    good: '#5ee6a0',
+    average: '#f2c94c',
+    warning: '#f2c94c',
   };
 
   // Horizontal layout for cards like Active User
@@ -184,7 +184,6 @@ export function CacheMetricCard({
 }: CacheMetricCardProps) {
   const cachePercent = Math.round((cacheMB / totalMB) * 100);
   const nonCachePercent = Math.round((nonCacheMB / totalMB) * 100);
-  const freePercent = 100 - cachePercent - nonCachePercent;
 
   return (
     <div
@@ -217,7 +216,7 @@ export function CacheMetricCard({
       </div>
 
       <div style={{ fontSize: 12, color: '#6b6e7d', marginTop: 4 }}>
-        <span style={{ color: '#f0a040', fontWeight: 700 }}>{Math.round(totalMB * 0.625)}MB Average</span> cached images and files
+        <span style={{ color: '#f2c94c', fontWeight: 700 }}>{Math.round(totalMB * 0.625)}MB Average</span> cached images and files
       </div>
 
       {/* Segmented Bar */}
@@ -316,12 +315,11 @@ export function PerformanceMetricCard({
   percentage,
   upSpeed,
   downSpeed,
-  datasets,
   onClick,
   animationDelay = 0,
 }: PerformanceMetricCardProps) {
   const status = percentage >= 85 ? 'Good' : percentage >= 70 ? 'Average' : 'Warning';
-  const statusColor = percentage >= 85 ? '#3dd68c' : percentage >= 70 ? '#f0a040' : '#ff7043';
+  const statusColor = percentage >= 85 ? '#5ee6a0' : percentage >= 70 ? '#f2c94c' : '#ff6f5c';
 
   return (
     <div
@@ -365,14 +363,14 @@ export function PerformanceMetricCard({
           <div style={{ width: 134, height: 58, background: 'rgba(255,255,255,0.03)', borderRadius: 8 }} />
           
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
-            <div className="speed-row" style={{ color: '#6c8ef0' }}>
+            <div className="speed-row" style={{ color: '#7ab8ff' }}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                 <line x1="12" y1="19" x2="12" y2="5"/>
                 <polyline points="5 12 12 19 19 12"/>
               </svg>
               <span>{upSpeed}</span> Mbps
             </div>
-            <div className="speed-row" style={{ color: '#e8316a' }}>
+            <div className="speed-row" style={{ color: 'var(--accent-primary)' }}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                 <line x1="12" y1="5" x2="12" y2="19"/>
                 <polyline points="19 12 12 5 5 12"/>

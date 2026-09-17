@@ -37,15 +37,15 @@ export function ComponentShowcase() {
     <div className="min-h-screen p-8" style={{ background: '#16171c' }}>
       <div className="ambient-glow" />
       
-      <div className="max-w-7xl mx-auto relative z-10">
+      <div className="w-full relative z-10">
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-4">
             <div 
               className="w-12 h-12 rounded-xl flex items-center justify-center"
-              style={{ background: '#e8316a' }}
+              style={{ background: 'var(--accent-primary)' }}
             >
-              <Activity size={24} className="text-white" />
+              <Activity size={24} className="text-[var(--accent-on)]" />
             </div>
             <div>
               <h1 className="text-3xl font-bold text-[var(--text-primary)]">
@@ -97,7 +97,7 @@ export function ComponentShowcase() {
                   </h3>
                   <LineChart 
                     data={sampleLineData} 
-                    color="#ff7043" 
+                    color="#b4e34a" 
                     height={120}
                     showDots={true}
                     smooth={true}
@@ -109,7 +109,7 @@ export function ComponentShowcase() {
                   </h3>
                   <LineChart 
                     data={sampleLineData} 
-                    color="#6c8ef0" 
+                    color="#7ab8ff" 
                     height={120}
                     showDots={false}
                     smooth={true}
@@ -129,7 +129,7 @@ export function ComponentShowcase() {
                   </h3>
                   <LineAreaChart 
                     data={sampleAreaData} 
-                    color="#e8316a"
+                    color="var(--accent-primary)"
                     fillOpacity={0.15}
                     height={150}
                   />
@@ -140,7 +140,7 @@ export function ComponentShowcase() {
                   </h3>
                   <LineAreaChart 
                     data={sampleAreaData} 
-                    color="#3dd68c"
+                    color="#5ee6a0"
                     fillOpacity={0.2}
                     height={150}
                   />
@@ -159,8 +159,8 @@ export function ComponentShowcase() {
                   </h3>
                   <MultiLineChart 
                     datasets={[
-                      { data: sampleLineData.map(v => v + 10), color: '#6c8ef0', fillOpacity: 0.15 },
-                      { data: sampleLineData, color: '#9c7ef0', fillOpacity: 0.15 }
+                      { data: sampleLineData.map(v => v + 10), color: '#7ab8ff', fillOpacity: 0.15 },
+                      { data: sampleLineData, color: '#f2c94c', fillOpacity: 0.15 }
                     ]}
                     height={120}
                   />
@@ -171,7 +171,7 @@ export function ComponentShowcase() {
                   </h3>
                   <BarChart 
                     data={sampleBarData} 
-                    color="#3dd68c"
+                    color="#5ee6a0"
                     height={120}
                     gap={2}
                   />
@@ -188,19 +188,19 @@ export function ComponentShowcase() {
                   <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-4">
                     RAM Usage (65%)
                   </h3>
-                  <DonutChart percentage={65} color="#9c7ef0" size={160} />
+                  <DonutChart percentage={65} color="#f2c94c" size={160} />
                 </div>
                 <div className="panel p-6 flex flex-col items-center">
                   <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-4">
                     Disk Usage (82%)
                   </h3>
-                  <DonutChart percentage={82} color="#ff7043" size={160} />
+                  <DonutChart percentage={82} color="#b4e34a" size={160} />
                 </div>
                 <div className="panel p-6 flex flex-col items-center">
                   <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-4">
                     Network (45%)
                   </h3>
-                  <DonutChart percentage={45} color="#6c8ef0" size={160} />
+                  <DonutChart percentage={45} color="#7ab8ff" size={160} />
                 </div>
               </div>
             </section>
@@ -222,7 +222,7 @@ export function ComponentShowcase() {
                   status="good"
                   statusText="Good"
                   icon={<Cpu size={16} />}
-                  chart={<LineChart data={sampleLineData} color="#ff7043" height={76} />}
+                  chart={<LineChart data={sampleLineData} color="#b4e34a" height={76} />}
                   onClick={() => handleCardClick('CPU Usage')}
                   animationDelay={0.04}
                 />
@@ -233,7 +233,7 @@ export function ComponentShowcase() {
                   status="average"
                   statusText="Average"
                   icon={<MemoryStick size={16} />}
-                  chart={<LineChart data={sampleLineData.map(v => v + 20)} color="#9c7ef0" height={76} />}
+                  chart={<LineChart data={sampleLineData.map(v => v + 20)} color="#f2c94c" height={76} />}
                   onClick={() => handleCardClick('Memory')}
                   animationDelay={0.09}
                 />
@@ -242,7 +242,7 @@ export function ComponentShowcase() {
                   value="2.4K"
                   subtitle="Last 60 minutes"
                   icon={<Zap size={16} />}
-                  chart={<BarChart data={sampleBarData} color="#3dd68c" height={76} gap={2} />}
+                  chart={<BarChart data={sampleBarData} color="#5ee6a0" height={76} gap={2} />}
                   onClick={() => handleCardClick('Requests')}
                   animationDelay={0.14}
                 />
@@ -259,7 +259,7 @@ export function ComponentShowcase() {
                   value="475 K"
                   subtitle="Users active right now"
                   icon={<Users size={16} />}
-                  chart={<LineAreaChart data={sampleAreaData} color="#e8316a" height={130} />}
+                  chart={<LineAreaChart data={sampleAreaData} color="var(--accent-primary)" height={130} />}
                   details={
                     <div className="flex items-center gap-1.5 flex-wrap">
                       {['🇨🇳', '🇮🇩', '🇲🇲', '🇲🇾', '🇯🇵', '🇮🇳', '🇰🇷', '🇵🇭'].map((flag, i) => (
@@ -276,7 +276,7 @@ export function ComponentShowcase() {
                   value="12.5K"
                   subtitle="Queries per minute"
                   icon={<Database size={16} />}
-                  chart={<LineAreaChart data={sampleAreaData.map(v => v + 10)} color="#6c8ef0" height={130} />}
+                  chart={<LineAreaChart data={sampleAreaData.map(v => v + 10)} color="#7ab8ff" height={130} />}
                   details={
                     <div className="flex items-center gap-3 text-xs">
                       <div className="flex items-center gap-1.5">
@@ -313,8 +313,8 @@ export function ComponentShowcase() {
                   upSpeed={10.4}
                   downSpeed={5.2}
                   datasets={[
-                    { data: sampleLineData.map(v => v + 20), color: '#6c8ef0', fillOpacity: 0.15 },
-                    { data: sampleLineData.map(v => v + 10), color: '#9c7ef0', fillOpacity: 0.15 }
+                    { data: sampleLineData.map(v => v + 20), color: '#7ab8ff', fillOpacity: 0.15 },
+                    { data: sampleLineData.map(v => v + 10), color: '#f2c94c', fillOpacity: 0.15 }
                   ]}
                   onClick={() => handleCardClick('Performance')}
                   animationDelay={0.09}

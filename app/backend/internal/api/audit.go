@@ -93,10 +93,11 @@ func SetAuditDB(db *database.DB) {
 
 func handleGetAuditLogs(c *gin.Context) {
 	db := c.MustGet("db").(*database.DB)
-	userID := c.MustGet("user_id").(string)
-
 	resource := strings.TrimSpace(c.Query("resource"))
 	action := strings.TrimSpace(c.Query("action"))
+	actor := strings.TrimSpace(c.Query("actor"))
+	userIDFilter := strings.TrimSpace(c.Query("user_id"))
+	since := strings.TrimSpace(c.Query("since"))
 	page := parsePositiveInt(c.DefaultQuery("page", "1"), 1)
 	limit := parsePositiveInt(c.DefaultQuery("limit", "50"), 50)
 	if limit > 500 {
@@ -104,35 +105,57 @@ func handleGetAuditLogs(c *gin.Context) {
 	}
 	offset := (page - 1) * limit
 
-	conditions := []string{"user_id::text = $1"}
-	args := []interface{}{userID}
-	nextArg := 2
+	conditions := []string{"TRUE"}
+	args := []interface{}{}
+	nextArg := 1
 
+	if userIDFilter != "" {
+		conditions = append(conditions, fmt.Sprintf("a.user_id = $%d::uuid", nextArg))
+		args = append(args, userIDFilter)
+		nextArg++
+	}
+	if actor != "" {
+		conditions = append(conditions, fmt.Sprintf("u.email ILIKE $%d", nextArg))
+		args = append(args, "%"+actor+"%")
+		nextArg++
+	}
 	if resource != "" {
-		conditions = append(conditions, fmt.Sprintf("resource = $%d", nextArg))
+		conditions = append(conditions, fmt.Sprintf("a.resource = $%d", nextArg))
 		args = append(args, resource)
 		nextArg++
 	}
 	if action != "" {
-		conditions = append(conditions, fmt.Sprintf("action = $%d", nextArg))
+		conditions = append(conditions, fmt.Sprintf("a.action = $%d", nextArg))
 		args = append(args, action)
+		nextArg++
+	}
+	if since != "" {
+		sinceTime, err := time.Parse(time.RFC3339, since)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid since timestamp, expected RFC3339"})
+			return
+		}
+		conditions = append(conditions, fmt.Sprintf("a.created_at >= $%d", nextArg))
+		args = append(args, sinceTime)
 		nextArg++
 	}
 
 	whereClause := strings.Join(conditions, " AND ")
 	query := fmt.Sprintf(`SELECT
-		id,
-		COALESCE(user_id::text, ''),
-		resource,
-		COALESCE(resource_id::text, ''),
-		action,
-		COALESCE(details::text, '{}'),
-		COALESCE(ip_address::text, ''),
-		COALESCE(user_agent, ''),
-		created_at
-		FROM audit_logs
+		a.id,
+		COALESCE(a.user_id::text, ''),
+		COALESCE(u.email, ''),
+		a.resource,
+		COALESCE(a.resource_id::text, ''),
+		a.action,
+		COALESCE(a.details::text, '{}'),
+		COALESCE(a.ip_address::text, ''),
+		COALESCE(a.user_agent, ''),
+		a.created_at
+		FROM audit_logs a
+		LEFT JOIN users u ON u.id = a.user_id
 		WHERE %s
-		ORDER BY created_at DESC
+		ORDER BY a.created_at DESC
 		LIMIT $%d OFFSET $%d`, whereClause, nextArg, nextArg+1)
 	args = append(args, limit, offset)
 
@@ -146,7 +169,7 @@ func handleGetAuditLogs(c *gin.Context) {
 	var logs []AuditLog
 	for rows.Next() {
 		var log AuditLog
-		err := rows.Scan(&log.ID, &log.UserID, &log.Resource, &log.ResourceID, &log.Action, &log.Details, &log.IPAddress, &log.UserAgent, &log.CreatedAt)
+		err := rows.Scan(&log.ID, &log.UserID, &log.UserEmail, &log.Resource, &log.ResourceID, &log.Action, &log.Details, &log.IPAddress, &log.UserAgent, &log.CreatedAt)
 		if err != nil {
 			continue
 		}

@@ -17,13 +17,11 @@ import (
 	"containr/internal/scaling"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
 )
 
 func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg *config.Config) {
 	// Expose Better Auth through backend so frontend can use a single backend origin.
-	setupAuthProxyRoutes(router, cfg)
+	setupAuthProxyRoutes(router, cfg, db)
 
 	// Initialize Docker client (non-fatal if it fails)
 	var dockerClient *docker.Client
@@ -50,20 +48,23 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 	}
 	metricsCollector := metrics.NewMetricsCollector(scheduler, metricsStorage)
 	autoScaler := scaling.NewAutoScaler(scheduler, metricsCollector)
+	if db != nil && db.DB != nil {
+		autoScaler.WithPersistence(db.DB)
+		if err := autoScaler.LoadPolicies(context.Background()); err != nil {
+			log.Printf("Failed to restore scaling policies: %v", err)
+		}
+	}
 	haManager := ha.NewHighAvailabilityManager(scheduler, metricsCollector)
 	haAPIManager := NewHAManager(haManager)
 
 	// Initialize scaling handler
 	scalingHandler := NewScalingHandler(autoScaler)
 
-	// Initialize GORM for agent system
-	gormDB, err := gorm.Open(postgres.Open(cfg.DatabaseURL), &gorm.Config{})
-	if err != nil {
-		panic("Failed to initialize GORM: " + err.Error())
-	}
+	// Initialize agent handler (sqlc-backed)
+	agentHandler := NewNodeAgentHandler(db)
 
-	// Initialize agent handler
-	agentHandler := NewNodeAgentHandler(gormDB)
+	// Start the cron scheduler — executes due cron_jobs via docker exec.
+	StartCronScheduler(context.Background(), db, dockerClient)
 
 	// Initialize database handler
 	databaseHandler := NewDatabaseHandler(db.DB, dockerClient)
@@ -90,7 +91,6 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 		c.Set("auto_scaler", autoScaler)
 		c.Set("ha_manager", haManager)
 		c.Set("scaling_handler", scalingHandler)
-		c.Set("gorm_db", gormDB)
 		c.Next()
 	})
 
@@ -158,11 +158,19 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 	router.HEAD("/ready", healthHandler)
 
 	// API v1 routes
+	publicAgents := router.Group("/api")
+	agentHandler.SetupPublicRoutes(publicAgents)
+
+	// Public push receiver: HMAC signature on git_webhooks.webhook_secret
+	// replaces session auth. Providers POST to /api/git/webhooks/:id.
+	router.POST("/api/git/webhooks/:id", handleGitWebhookPush)
+
 	v1 := router.Group("/api/v1")
 	{
 		// Public routes (no authentication required)
 		public := v1.Group("/")
 		{
+			public.GET("/auth/bootstrap", handleAuthBootstrap)
 			public.POST("/auth/login", handleLogin)
 			public.POST("/auth/register", handleRegister)
 		}
@@ -174,6 +182,7 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			// User routes
 			protected.GET("/user/profile", handleGetProfile)
 			protected.PUT("/user/profile", handleUpdateProfile)
+			protected.POST("/users", handleCreateUser)
 
 			// Project routes
 			protected.GET("/projects", handleGetProjects)
@@ -192,6 +201,7 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			protected.GET("/services/:id", handleGetService)
 			protected.PUT("/services/:id", handleUpdateService)
 			protected.DELETE("/services/:id", handleDeleteService)
+			protected.GET("/services/:id/metrics", handleGetServiceMetrics)
 
 			// Deployment routes
 			protected.GET("/services/:id/deployments", handleGetDeployments)
@@ -207,12 +217,17 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			protected.GET("/services/:id/logs", handleGetLogs)
 			protected.GET("/deployments/:id/logs", handleGetDeploymentLogs)
 
+			// One-off exec console (docker exec, 30s ceiling)
+			protected.POST("/services/:id/exec", handleExecInService)
+
 			// Git integration routes
 			protected.GET("/git/github-app/install-url", handleGetGitHubAppInstallURL)
 			protected.POST("/git/github-app/connect", handleConnectGitHubApp)
 			protected.GET("/git/providers", handleGetGitProviders)
 			protected.POST("/git/providers", handleCreateGitProvider)
+			protected.DELETE("/git/providers/:providerId", handleDeleteGitProvider)
 			protected.GET("/git/providers/:providerId/repositories", handleGetGitRepositories)
+			protected.GET("/git/providers/:providerId/repositories/:owner/:repo/branches", handleGetGitRepositoryBranches)
 			protected.POST("/git/repositories/connect", handleConnectGitRepository)
 			protected.GET("/git/repositories", handleGetConnectedRepositories)
 			protected.POST("/git/webhooks", handleCreateWebhook)
@@ -225,6 +240,11 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			protected.GET("/builds/:id/logs", buildHandler.GetBuildLogs)
 			protected.POST("/builds/plan", buildHandler.GetBuildPlan)
 			protected.GET("/builds/detect", buildHandler.DetectBuildType)
+
+			// System routes
+			protected.GET("/system/upgrade/status", handleGetUpgradeStatus)
+			protected.POST("/system/upgrade/pull", handlePullUpgradeImage)
+			protected.GET("/system/host", handleGetHostMonitoring)
 
 			// Scaling routes
 			scalingHandler.RegisterRoutes(protected)
@@ -239,11 +259,15 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			protected.POST("/databases/:id/action", databaseHandler.PerformDatabaseAction)
 			protected.POST("/databases/:id/backup", databaseHandler.CreateBackup)
 			protected.POST("/databases/:id/restore", databaseHandler.RestoreBackup)
+			protected.GET("/databases/:id/backups/:bid/download", databaseHandler.DownloadBackup)
+
+			// Notification routes
+			protected.GET("/notifications", handleListNotifications)
+			protected.POST("/notifications/:id/read", handleMarkNotificationRead)
+			protected.POST("/notifications/read-all", handleMarkAllNotificationsRead)
 
 			// Node Agent routes
-			api := router.Group("/api")
-			api.Use(middleware.Auth(cfg.JWTSecret))
-			agentHandler.SetupRoutes(api)
+			agentHandler.SetupRoutes(protected)
 
 			// Preview Environments routes
 			protected.GET("/projects/:id/preview-environments", handleGetPreviewEnvironments)
@@ -287,42 +311,23 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			// Audit Logs routes
 			protected.GET("/audit-logs", handleGetAuditLogs)
 			protected.GET("/audit-logs/:resource/:id", handleGetResourceAuditLogs)
-		}
 
-		// APwhy Gateway routes
-		apwhy := router.Group("/api/v1")
-		{
-			// Health check (no auth required)
-			apwhy.GET("/health", func(c *gin.Context) {
-				c.JSON(200, gin.H{
-					"ok": true,
-					"data": gin.H{
-						"status":      "ok",
-						"name":        "Containr + APwhy",
-						"database":    "postgresql",
-						"generatedAt": time.Now().UTC().Format(time.RFC3339),
-					},
-				})
-			})
-		}
+			// API Gateway routes (merged APwhy) - namespaced to avoid
+			// colliding with Containr's own /services paths.
+			gateway := protected.Group("/gateway")
+			{
+				gateway.GET("/services", handleAPwhyServicesList)
+				gateway.POST("/services", handleAPwhyServicesCreate)
+				gateway.PATCH("/services/:id", handleAPwhyServicesPatch)
+				gateway.GET("/services/:id/validate", handleAPwhyServiceValidate)
 
-		// Protected APwhy routes (authentication required)
-		protectedAPwhy := router.Group("/api/v1")
-		protectedAPwhy.Use(middleware.Auth(cfg.JWTSecret))
-		{
-			// Service management
-			protectedAPwhy.GET("/services", handleAPwhyServicesList)
-			protectedAPwhy.POST("/services", handleAPwhyServicesCreate)
-			protectedAPwhy.PATCH("/services/:id", handleAPwhyServicesPatch)
+				gateway.GET("/keys", handleAPwhyKeysList)
+				gateway.POST("/keys", handleAPwhyKeysCreate)
+				gateway.PATCH("/keys/:id", handleAPwhyKeysPatch)
 
-			// API Keys
-			protectedAPwhy.GET("/keys", handleAPwhyKeysList)
-			protectedAPwhy.POST("/keys", handleAPwhyKeysCreate)
-			protectedAPwhy.PATCH("/keys/:id", handleAPwhyKeysPatch)
-
-			// Analytics
-			protectedAPwhy.GET("/analytics/ops", handleAPwhyAnalyticsOps)
-			protectedAPwhy.GET("/analytics/traffic", handleAPwhyAnalyticsTraffic)
+				gateway.GET("/analytics/ops", handleAPwhyAnalyticsOps)
+				gateway.GET("/analytics/traffic", handleAPwhyAnalyticsTraffic)
+			}
 		}
 	}
 }

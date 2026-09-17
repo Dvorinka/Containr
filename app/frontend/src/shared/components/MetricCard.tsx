@@ -50,9 +50,9 @@ export function MetricCard({
   }, [animationDelay]);
 
   const statusColors: Record<string, string> = {
-    good: '#3dd68c',
-    average: '#f0a040',
-    warning: '#ff7043',
+    good: '#5ee6a0',
+    average: '#f2c94c',
+    warning: '#f2c94c',
   };
 
   // Horizontal layout for cards like Active User

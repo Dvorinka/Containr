@@ -137,7 +137,7 @@ containr/
 │   ├── proxmox/         # Proxmox integration
 │   ├── scaling/          # Auto-scaling engine
 │   └── security/        # Security scanning
-├── migrations/           # Database migrations
+├── migrations_goose/     # Goose-managed database migrations
 ├── pkg/                 # Public library code
 ├── scripts/             # Build and utility scripts
 ├── src/                 # Frontend source code
@@ -162,7 +162,7 @@ git checkout -b feature/your-feature-name
 
 #### Backend Changes
 - Add new API endpoints in `internal/api/`
-- Update database schema in `migrations/`
+- Update database schema in `migrations_goose/` (goose format: `-- +goose Up/Down`)
 - Add tests in `tests/`
 - Update documentation
 

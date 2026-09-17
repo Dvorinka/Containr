@@ -4,6 +4,7 @@ import (
 	"containr/internal/database"
 	"containr/internal/deployment"
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -198,10 +199,10 @@ func handleCreateDeployment(c *gin.Context) {
 	}
 
 	_, err = db.(*database.DB).Exec(
-		`INSERT INTO deployments 
-		 (id, service_id, commit_hash, status, image_name, image_tag, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-		d.ID, d.ServiceID, d.CommitHash, d.Status, d.ImageName, d.ImageTag, d.CreatedAt, d.UpdatedAt,
+		`INSERT INTO deployments
+		 (id, service_id, version, commit_hash, status, image_name, image_tag, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		d.ID, d.ServiceID, fmt.Sprintf("v%d", now.Unix()), d.CommitHash, d.Status, d.ImageName, d.ImageTag, d.CreatedAt, d.UpdatedAt,
 	)
 
 	if err != nil {
@@ -368,12 +369,19 @@ func runDeploymentAndSync(
 					`UPDATE services SET status = 'running', updated_at = $1 WHERE id = $2`,
 					time.Now(), service.ID,
 				)
+				insertUserNotification(db, userID, "deployment", "Deployment succeeded",
+					fmt.Sprintf("Service %s is now running.", service.Name), "service", service.ID.String())
 				return
 			case "failed":
 				_, _ = db.Exec(
 					`UPDATE services SET status = 'failed', updated_at = $1 WHERE id = $2`,
 					time.Now(), service.ID,
 				)
+				body := fmt.Sprintf("Service %s failed to deploy.", service.Name)
+				if current.Error != "" {
+					body = fmt.Sprintf("Service %s failed to deploy: %s", service.Name, current.Error)
+				}
+				insertUserNotification(db, userID, "deployment", "Deployment failed", body, "service", service.ID.String())
 				return
 			}
 		}
@@ -525,10 +533,10 @@ func handleRollbackDeployment(c *gin.Context) {
 	}
 
 	_, err = db.(*database.DB).Exec(
-		`INSERT INTO deployments 
-		 (id, service_id, commit_hash, status, image_name, image_tag, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-		rollback.ID, rollback.ServiceID, rollback.CommitHash, rollback.Status,
+		`INSERT INTO deployments
+		 (id, service_id, version, commit_hash, status, image_name, image_tag, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		rollback.ID, rollback.ServiceID, fmt.Sprintf("rollback-%d", now.Unix()), rollback.CommitHash, rollback.Status,
 		rollback.ImageName, rollback.ImageTag, rollback.CreatedAt, rollback.UpdatedAt,
 	)
 

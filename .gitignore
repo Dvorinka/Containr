@@ -13,7 +13,7 @@ build/
 *.tsbuildinfo
 
 # Keep internal build system code
-!internal/build/
+!**/internal/build/
 
 # Environment variables
 .env
@@ -21,6 +21,11 @@ build/
 .env.development.local
 .env.test.local
 .env.production.local
+.env.prod
+.env.production
+.env.*.local
+!.env.example
+!.env.production.example
 
 # Logs
 logs/
@@ -69,7 +74,7 @@ jspm_packages/
 
 # Gatsby files
 .cache/
-public
+/public/
 
 # Storybook build outputs
 .out
@@ -110,3 +115,9 @@ test-results.xml
 .claude
 .desloppify
 bin
+# Tool session dirs
+.jj/
+.playwright-cli/
+
+# Local reference checkouts (not project code)
+ref/

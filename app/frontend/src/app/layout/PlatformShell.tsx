@@ -1,263 +1,348 @@
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { 
-  FolderKanban, 
-  Hammer, 
-  LayoutTemplate, 
-  ChartBar, 
-  Users, 
-  Settings, 
-  BookOpen,
-  Container,
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
   Bell,
+  BookOpen,
+  ChartBar,
+  CheckCircle2,
+  Container,
+  Database,
+  FolderKanban,
+  LayoutTemplate,
+  LogOut,
+  Moon,
+  RefreshCw,
   Search,
-  Zap,
-  Activity,
+  Settings,
+  Shield,
+  ShieldCheck,
+  Sun,
+  UploadCloud,
+  Users,
 } from 'lucide-react';
+import {
+  getUpgradeStatus,
+  listNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+  pullUpgradeImage,
+} from '@/lib/api-client';
+import { signOutAuthSession } from '@/lib/auth-client';
+import { useAuthSession } from '@/lib/use-auth-session';
+import { useToast } from '@/shared/components';
 
 const navItems = [
   { label: 'Projects', href: '/projects', icon: FolderKanban },
-  { label: 'Builds', href: '/builds', icon: Hammer },
   { label: 'Templates', href: '/templates', icon: LayoutTemplate },
+  { label: 'Databases', href: '/databases', icon: Database },
+  { label: 'HA', href: '/ha', icon: ShieldCheck },
+  { label: 'Security', href: '/security', icon: Shield },
   { label: 'Usage', href: '/usage', icon: ChartBar },
   { label: 'People', href: '/people', icon: Users },
   { label: 'Settings', href: '/settings', icon: Settings },
   { label: 'Docs', href: '/docs', icon: BookOpen },
 ];
 
-// Developer/Demo pages
-const demoNavItems = [
-  { label: 'Metrics Demo', href: '/metrics-demo', icon: Activity },
-  { label: 'Showcase', href: '/showcase', icon: Zap },
-];
+type ThemeMode = 'dark' | 'light';
+
+function getInitialTheme(): ThemeMode {
+  if (typeof window === 'undefined') {
+    return 'dark';
+  }
+  return localStorage.getItem('containr.theme') === 'light' ? 'light' : 'dark';
+}
 
 export function PlatformShell() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { showToast } = useToast();
   const isDemoMode = new URLSearchParams(location.search).get('demo') === '1';
   const href = (target: string) => (isDemoMode ? `${target}?demo=1` : target);
+  const [theme, setTheme] = useState<ThemeMode>(() => getInitialTheme());
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
 
-  const isActiveRoute = (itemHref: string) => 
+  const sessionQuery = useAuthSession({ enabled: !isDemoMode });
+  const upgradeQuery = useQuery({
+    queryKey: ['upgrade-status'],
+    queryFn: getUpgradeStatus,
+    enabled: !isDemoMode,
+  });
+  const notificationsQuery = useQuery({
+    queryKey: ['shell-notifications'],
+    queryFn: () => listNotifications(20),
+    enabled: !isDemoMode,
+    refetchInterval: 30_000,
+  });
+  const markReadMutation = useMutation({
+    mutationFn: (id: string) => markNotificationRead(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['shell-notifications'] }),
+  });
+  const markAllReadMutation = useMutation({
+    mutationFn: markAllNotificationsRead,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['shell-notifications'] }),
+  });
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem('containr.theme', theme);
+  }, [theme]);
+
+  const pullMutation = useMutation({
+    mutationFn: pullUpgradeImage,
+    onSuccess: (status) => {
+      queryClient.invalidateQueries({ queryKey: ['upgrade-status'] });
+      showToast('success', 'Upgrade image pulled', status.digest || status.imageRef || status.message);
+    },
+    onError: (error) => {
+      showToast('error', 'Upgrade failed', error instanceof Error ? error.message : 'Unable to pull image');
+    },
+  });
+
+  const notifications = notificationsQuery.data?.notifications ?? [];
+  const unreadCount = notificationsQuery.data?.unread ?? 0;
+
+  const signOut = async () => {
+    try {
+      await signOutAuthSession();
+    } finally {
+      queryClient.clear();
+      navigate('/auth/sign-in', { replace: true });
+    }
+  };
+
+  const isActiveRoute = (itemHref: string) =>
     location.pathname === itemHref || location.pathname.startsWith(`${itemHref}/`);
+
+  const userName = sessionQuery.data?.user.name ?? 'Account';
+  const userEmail = sessionQuery.data?.user.email ?? 'Local session';
+  const initials = userName
+    .split(' ')
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase() || 'C';
 
   return (
     <div className="app-shell min-h-screen">
-      {/* Ambient glow background */}
       <div className="ambient-glow" />
-      
-      <div className="flex min-h-screen relative">
-        {/* Desktop Sidebar - self.html exact match: 64px width */}
-        <aside 
-          className="hidden md:flex shrink-0 flex-col items-center border-r"
-          style={{ 
-            width: '64px',
-            background: '#111217',
-            borderRight: '1px solid rgba(255,255,255,0.07)',
-            padding: '16px 0',
-            gap: '5px'
+
+      <div className="relative flex min-h-screen">
+        <aside
+          className="hidden h-screen shrink-0 flex-col items-center border-r py-4 md:flex"
+          style={{
+            width: '62px',
+            background: 'var(--bg-base)',
+            borderRightColor: 'var(--border-subtle)',
           }}
         >
-          {/* Logo - exact self.html: 38px circular pink */}
-          <div 
-            className="rounded-full flex items-center justify-center"
-            style={{ 
-              width: '38px', 
-              height: '38px', 
-              background: '#e8316a',
-              marginBottom: '14px'
-            }}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
-              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"/>
-            </svg>
-          </div>
-          
-          {/* Nav Items - 40x40 icon-only */}
-          {navItems.map((item) => {
-            const isActive = isActiveRoute(item.href);
-            const Icon = item.icon;
-            return (
-              <NavLink
-                key={item.href}
-                to={href(item.href)}
-                className={`nav-item ${isActive ? 'active' : ''}`}
-                title={item.label}
-              >
-                <Icon size={18} />
-              </NavLink>
-            );
-          })}
-          
-          {/* Separator */}
-          <div style={{ width: '32px', height: '1px', background: 'rgba(255,255,255,0.07)', margin: '8px 0' }} />
-          
-          {/* Demo/Developer Items */}
-          {demoNavItems.map((item) => {
-            const isActive = isActiveRoute(item.href);
-            const Icon = item.icon;
-            return (
-              <NavLink
-                key={item.href}
-                to={href(item.href)}
-                className={`nav-item ${isActive ? 'active' : ''}`}
-                title={item.label}
-              >
-                <Icon size={18} />
-              </NavLink>
-            );
-          })}
-          
-          {/* Spacer */}
+          <NavLink to={href('/projects')} className="mb-3" title="Containr">
+            <img src="/containr.svg" alt="Containr" className="h-[38px] w-[38px] rounded-xl" />
+          </NavLink>
+
+          <nav className="flex flex-col items-center gap-1.5">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = isActiveRoute(item.href);
+              return (
+                <NavLink
+                  key={item.href}
+                  to={href(item.href)}
+                  title={item.label}
+                  className={`relative flex h-10 w-10 items-center justify-center rounded-[11px] transition-colors ${
+                    isActive
+                      ? 'bg-[var(--accent-primary-soft)] text-[var(--accent-primary)]'
+                      : 'text-[var(--text-tertiary)] hover:bg-[var(--surface-muted)] hover:text-[var(--text-secondary)]'
+                  }`}
+                >
+                  {isActive ? (
+                    <span
+                      className="absolute -left-[11px] h-4 w-[2.5px] rounded-full"
+                      style={{ background: 'var(--accent-primary)' }}
+                    />
+                  ) : null}
+                  <Icon size={17} />
+                </NavLink>
+              );
+            })}
+          </nav>
+
           <div className="flex-1" />
-          
-          {/* Bottom icons - Settings */}
-          <NavLink to="/settings" className="nav-item" title="Settings">
-            <Settings size={18} />
-          </NavLink>
-          <NavLink to="/docs" className="nav-item" title="Help">
-            <BookOpen size={18} />
-          </NavLink>
-          
-          {/* User Avatar - exact self.html: 34px */}
-          <div 
-            className="rounded-full flex items-center justify-center cursor-pointer"
-            style={{ 
-              width: '34px', 
-              height: '34px', 
-              background: '#22233a',
-              fontSize: '11px',
-              fontWeight: 700,
-              color: '#9295a4',
-              marginTop: '4px',
-              letterSpacing: '-0.3px'
-            }}
-            title="User"
-          >
-            w.
+
+          <div className="flex flex-col items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void signOut()}
+              title={`Sign out (${userName})`}
+              className="flex h-10 w-10 items-center justify-center rounded-[11px] text-[var(--text-tertiary)] transition-colors hover:bg-[var(--error-soft)] hover:text-[var(--error)]"
+            >
+              <LogOut size={16} />
+            </button>
+            <div
+              title={userEmail}
+              className="flex h-[30px] w-[30px] items-center justify-center rounded-full text-[11px] font-bold"
+              style={{ background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))', color: 'var(--accent-on)' }}
+            >
+              {initials}
+            </div>
           </div>
         </aside>
 
-        {/* Main Content */}
-        <div className="min-w-0 flex-1 relative z-10 flex flex-col min-h-screen overflow-hidden">
-          {/* Topbar - self.html exact match: 52px height */}
-          <header 
-            className="shrink-0 flex items-center"
-            style={{ 
-              height: '52px',
-              background: '#111217',
-              borderBottom: '1px solid rgba(255,255,255,0.07)',
-              padding: '0 22px',
-              gap: '14px'
+        <div className="relative z-10 flex min-h-screen min-w-0 flex-1 flex-col overflow-hidden">
+          <header
+            className="hidden h-[46px] shrink-0 items-center border-b px-5 md:flex"
+            style={{
+              background: 'var(--bg-base)',
+              borderBottomColor: 'var(--border-subtle)',
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: '11px',
             }}
           >
-            {/* Search Box */}
-            <div className="search-box">
-              <Search size={14} />
-              <input type="text" placeholder="Search logs..." />
+            <NavLink to={href('/projects')} className="mr-5 text-sm font-extrabold tracking-tight text-[var(--text-primary)]" style={{ fontFamily: 'Inter, sans-serif' }}>
+              contain<span style={{ color: 'var(--accent-primary)' }}>r</span>
+            </NavLink>
+
+            <div className="flex items-center gap-5">
+              <span className="v-tick"><i className="sig" /><b>{isDemoMode ? 'demo' : 'nominal'}</b></span>
+              <span className="v-tick"><i className="sig" style={{ background: 'var(--text-tertiary)' }} />node <b>local</b></span>
             </div>
-            
-            {/* Right side */}
-            <div className="ml-auto flex items-center" style={{ gap: '8px' }}>
-              <button 
-                className="rounded-[9px] border bg-transparent text-[#9295a4] font-medium cursor-pointer"
-                style={{
-                  height: '32px',
-                  padding: '0 14px',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  fontSize: '13px',
-                  fontFamily: 'inherit'
-                }}
+
+            <div className="search-box ml-6 max-w-[300px]" style={{ height: 30 }}>
+              <Search size={13} />
+              <input type="text" placeholder="search…" className="v-mono" style={{ fontSize: 11.5 }} />
+            </div>
+
+            <div className="ml-auto flex items-center gap-4">
+              <span className="v-env">env:production</span>
+              <button
+                type="button"
+                onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
+                className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-md)] border text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                style={{ borderColor: 'var(--border-subtle)' }}
+                title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
               >
-                Support
+                {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
               </button>
-              <button 
-                className="rounded-[9px] border-none flex items-center text-[#e8e9f0] font-medium cursor-pointer"
-                style={{
-                  height: '32px',
-                  padding: '0 14px',
-                  background: 'rgba(255,255,255,0.08)',
-                  fontSize: '13px',
-                  fontFamily: 'inherit',
-                  gap: '6px'
-                }}
+
+              <button
+                type="button"
+                onClick={() => pullMutation.mutate()}
+                disabled={isDemoMode || pullMutation.isPending || !upgradeQuery.data?.imageRef}
+                className="inline-flex h-8 items-center gap-2 rounded-[var(--radius-md)] px-3 text-xs font-semibold text-[var(--accent-on)] disabled:cursor-not-allowed disabled:opacity-50"
+                style={{ background: 'var(--accent-primary)' }}
+                title={upgradeQuery.data?.message || 'Pull latest configured image'}
               >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-                  <polyline points="17 11 12 6 7 11"/>
-                  <polyline points="17 18 12 13 7 18"/>
-                </svg>
+                {pullMutation.isPending ? <RefreshCw size={14} className="animate-spin" /> : <UploadCloud size={14} />}
                 Upgrade
               </button>
-              <button 
-                className="rounded-[9px] border flex items-center justify-center cursor-pointer bg-transparent"
-                style={{
-                  width: '32px',
-                  height: '32px',
-                  border: '1px solid rgba(255,255,255,0.1)'
-                }}
-              >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9295a4" strokeWidth="2" strokeLinecap="round">
-                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-                  <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-                </svg>
-              </button>
+
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setNotificationsOpen((open) => !open)}
+                  className="relative flex h-8 w-8 items-center justify-center rounded-[var(--radius-md)] border text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                  style={{ borderColor: 'var(--border-subtle)' }}
+                  aria-label="Notifications"
+                >
+                  <Bell size={15} />
+                  {unreadCount > 0 ? (
+                    <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--accent-primary)] px-1 text-[10px] font-semibold text-[var(--accent-on)]">
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </span>
+                  ) : null}
+                </button>
+
+                {notificationsOpen ? (
+                  <div className="absolute right-0 top-10 z-50 w-80 rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--surface-card)] p-3 shadow-2xl">
+                    <div className="mb-2 flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-semibold text-[var(--text-primary)]">Notifications</p>
+                        <p className="text-xs text-[var(--text-tertiary)]">
+                          {unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {unreadCount > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => markAllReadMutation.mutate()}
+                            className="rounded-[var(--radius-sm)] px-2 py-1 text-xs text-[var(--text-tertiary)] hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)]"
+                          >
+                            Mark all read
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => queryClient.invalidateQueries({ queryKey: ['shell-notifications'] })}
+                          className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-tertiary)] hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)]"
+                          aria-label="Refresh notifications"
+                        >
+                          <RefreshCw size={13} />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="max-h-80 space-y-2 overflow-y-auto">
+                      {notifications.length > 0 ? (
+                        notifications.map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => { if (!item.read_at) markReadMutation.mutate(item.id ?? ''); }}
+                            className="w-full rounded-[var(--radius-md)] bg-[var(--surface-muted)] p-3 text-left hover:bg-[var(--surface-raised)]"
+                          >
+                            <div className="flex items-start gap-2">
+                              {!item.read_at ? (
+                                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent-primary)]" />
+                              ) : null}
+                              <div className="min-w-0">
+                                <p className={`text-sm ${item.read_at ? 'text-[var(--text-secondary)]' : 'font-medium text-[var(--text-primary)]'}`}>{item.title}</p>
+                                <p className="mt-1 truncate text-xs text-[var(--text-tertiary)]">{item.body}</p>
+                              </div>
+                            </div>
+                          </button>
+                        ))
+                      ) : (
+                        <div className="flex items-center gap-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] p-3 text-sm text-[var(--text-secondary)]">
+                          <CheckCircle2 size={15} className="text-[var(--success)]" />
+                          No notifications yet
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
             </div>
           </header>
 
-          {/* Mobile Header */}
-          <header className="md:hidden sticky top-0 z-50 border-b border-[var(--border-subtle)] bg-[var(--bg-base)]/70 backdrop-blur-2xl">
+          <header className="md:hidden sticky top-0 z-50 border-b border-[var(--border-subtle)] bg-[var(--bg-base)]/85 backdrop-blur-2xl">
             <div className="flex items-center justify-between p-4">
-              <div className="flex items-center gap-3">
-                <div 
-                  className="rounded-xl flex items-center justify-center"
-                  style={{ 
-                    width: '36px', 
-                    height: '36px', 
-                    background: '#e8316a'
-                  }}
-                >
-                  <Container size={16} className="text-white" />
+              <NavLink to={href('/projects')} className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-on)]">
+                  <Container size={16} />
                 </div>
                 <span className="font-headline font-semibold text-[var(--text-primary)]">Containr</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <button className="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-muted)] transition-all">
-                  <Search size={16} />
-                </button>
-                <button className="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-muted)] transition-all relative">
-                  <Bell size={16} />
-                  <div className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[var(--accent-primary)]" />
-                </button>
-              </div>
+              </NavLink>
+              <button
+                type="button"
+                onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
+                className="h-9 w-9 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-[var(--text-secondary)]"
+              >
+                {theme === 'dark' ? <Sun size={15} className="mx-auto" /> : <Moon size={15} className="mx-auto" />}
+              </button>
             </div>
-            <nav className="flex gap-1 px-3 pb-3 overflow-x-auto scrollbar-hide">
+            <nav className="flex gap-1 overflow-x-auto px-3 pb-3">
               {navItems.map((item) => {
-                const isActive = isActiveRoute(item.href);
                 const Icon = item.icon;
+                const isActive = isActiveRoute(item.href);
                 return (
                   <NavLink
                     key={item.href}
                     to={href(item.href)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all ${
+                    className={`flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
                       isActive
                         ? 'bg-[var(--accent-primary-soft)] text-[var(--accent-primary)]'
-                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-muted)]'
-                    }`}
-                  >
-                    <Icon size={14} />
-                    {item.label}
-                  </NavLink>
-                );
-              })}
-              {/* Demo items */}
-              {demoNavItems.map((item) => {
-                const isActive = isActiveRoute(item.href);
-                const Icon = item.icon;
-                return (
-                  <NavLink
-                    key={item.href}
-                    to={href(item.href)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all ${
-                      isActive
-                        ? 'bg-[var(--accent-primary-soft)] text-[var(--accent-primary)]'
-                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-muted)]'
+                        : 'text-[var(--text-secondary)] hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)]'
                     }`}
                   >
                     <Icon size={14} />
@@ -268,7 +353,6 @@ export function PlatformShell() {
             </nav>
           </header>
 
-          {/* Page Content - scrollable */}
           <main className="flex-1 overflow-y-auto">
             <Outlet />
           </main>

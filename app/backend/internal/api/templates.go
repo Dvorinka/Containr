@@ -279,8 +279,15 @@ func handleCreateFromTemplate(c *gin.Context) {
 
 	serviceImage := resolveTemplateRuntimeImage(config.Runtime)
 	serviceCommand := strings.TrimSpace(config.StartCommand)
+	buildCommand := strings.TrimSpace(config.BuildCommand)
 	cpu, memory := defaultTemplateResources(serviceType)
 	serviceEnvironment := "production"
+
+	environmentID, err := getProjectEnvironmentID(db, projectID, serviceEnvironment)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to resolve service environment"})
+		return
+	}
 
 	serviceID := uuid.New()
 	now := time.Now()
@@ -294,18 +301,24 @@ func handleCreateFromTemplate(c *gin.Context) {
 
 	txQueries := queries.WithTx(tx)
 	err = txQueries.CreateServiceFromTemplate(ctx, sqlcdb.CreateServiceFromTemplateParams{
-		ID:          serviceID,
-		ProjectID:   projectID,
-		Name:        req.Name,
-		Type:        serviceType,
-		Status:      "stopped",
-		Image:       sql.NullString{String: serviceImage, Valid: true},
-		Command:     sql.NullString{String: serviceCommand, Valid: true},
-		Environment: sql.NullString{String: serviceEnvironment, Valid: true},
-		Cpu:         sql.NullString{String: cpu, Valid: true},
-		Memory:      sql.NullString{String: memory, Valid: true},
-		CreatedAt:   sql.NullTime{Time: now, Valid: true},
-		UpdatedAt:   sql.NullTime{Time: now, Valid: true},
+		ID:            serviceID,
+		ProjectID:     projectID,
+		Name:          req.Name,
+		EnvironmentID: environmentID,
+		ServiceType:   serviceType,
+		SourceType:    "template",
+		ImageName:     sql.NullString{String: serviceImage, Valid: serviceImage != ""},
+		BuildCommand:  sql.NullString{String: buildCommand, Valid: buildCommand != ""},
+		StartCommand:  sql.NullString{String: serviceCommand, Valid: serviceCommand != ""},
+		Type:          sql.NullString{String: serviceType, Valid: true},
+		Status:        sql.NullString{String: "stopped", Valid: true},
+		Image:         sql.NullString{String: serviceImage, Valid: serviceImage != ""},
+		Command:       sql.NullString{String: serviceCommand, Valid: serviceCommand != ""},
+		Environment:   sql.NullString{String: serviceEnvironment, Valid: true},
+		Cpu:           sql.NullString{String: cpu, Valid: true},
+		Memory:        sql.NullString{String: memory, Valid: true},
+		CreatedAt:     sql.NullTime{Time: now, Valid: true},
+		UpdatedAt:     sql.NullTime{Time: now, Valid: true},
 	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create service from template"})

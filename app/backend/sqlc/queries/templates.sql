@@ -25,8 +25,48 @@ FROM services
 WHERE project_id = $1 AND name = $2;
 
 -- name: CreateServiceFromTemplate :exec
-INSERT INTO services (id, project_id, name, type, status, image, command, environment, cpu, memory, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);
+INSERT INTO services (
+    id,
+    project_id,
+    name,
+    environment_id,
+    service_type,
+    source_type,
+    source_url,
+    image_name,
+    build_command,
+    start_command,
+    type,
+    status,
+    image,
+    command,
+    environment,
+    cpu,
+    memory,
+    created_at,
+    updated_at
+)
+VALUES (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5,
+    $6,
+    $7,
+    $8,
+    $9,
+    $10,
+    $11,
+    $12,
+    $13,
+    $14,
+    $15,
+    $16,
+    $17,
+    $18,
+    $19
+);
 
 -- name: UpsertEnvironmentVariable :exec
 INSERT INTO environment_variables (id, service_id, key, value, is_secret, created_at, updated_at)

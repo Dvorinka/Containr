@@ -68,7 +68,7 @@ function gradientId(prefix: string, color: string, index = 0) {
 
 export function LineChart({
   data,
-  color = '#ff7043',
+  color = '#b4e34a',
   fillColor = 'transparent',
   height = 76,
   showDots = true,
@@ -96,7 +96,7 @@ export function LineChart({
 
 export function LineAreaChart({
   data,
-  color = '#e8316a',
+  color = 'var(--accent-primary)',
   fillOpacity = 0.15,
   height = 130,
 }: LineAreaChartProps) {
@@ -181,7 +181,7 @@ export function MultiLineChart({
 
 export function LineMetricChart({
   data,
-  color = '#ff7043',
+  color = '#b4e34a',
   fillOpacity = 0.15,
   height = 76,
   showArea = false,
@@ -204,8 +204,8 @@ export function DualLineChart({
   data1,
   data2,
   height = 58,
-  color1 = '#6c8ef0',
-  color2 = '#9c7ef0',
+  color1 = '#7ab8ff',
+  color2 = '#f2c94c',
   fillOpacity1 = 0.15,
   fillOpacity2 = 0.15,
 }: DualLineChartProps) {
@@ -222,7 +222,7 @@ export function DualLineChart({
 
 export function BarChart({
   data,
-  color = '#3dd68c',
+  color = '#5ee6a0',
   height = 128,
   gap = 4,
 }: BarChartProps) {

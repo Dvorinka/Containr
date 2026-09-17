@@ -2,12 +2,7 @@ import type { components, paths } from '@/generated/api-types';
 
 export type ServiceStatus = 'running' | 'stopped' | 'building' | 'failed' | 'unknown';
 
-export type ProjectStats = {
-  service_count: number;
-  deployment_count: number;
-  running_services: number;
-  last_deployment?: string;
-};
+export type ProjectStats = components['schemas']['ProjectStats'];
 
 export type ProjectEntity = {
   id: string;
@@ -148,6 +143,101 @@ export type UpdateUserProfileInput = {
   avatarUrl?: string;
 };
 
+export type CreateUserInput = components['schemas']['ManualUserCreateRequest'];
+
+export type UpgradeStatus = {
+  imageRef: string;
+  registry: string;
+  dockerAvailable: boolean;
+  installed: boolean;
+  digest?: string;
+  size?: number;
+  authConfigured: boolean;
+  message: string;
+};
+
+export type SystemLoad = {
+  load1m: number;
+  load5m: number;
+  load15m: number;
+};
+
+export type HostMonitoring = {
+  hostname: string;
+  os: string;
+  architecture: string;
+  cpu: {
+    cores: number;
+  };
+  memory: {
+    total: number;
+    used: number;
+    available: number;
+    usagePercent: number;
+  };
+  storage: {
+    path: string;
+    total: number;
+    used: number;
+    available: number;
+    usagePercent: number;
+  };
+  load: SystemLoad;
+  uptimeSeconds: number;
+  dockerAvailable: boolean;
+  docker?: {
+    containers?: number;
+    images?: number;
+    driver?: string;
+    server?: string;
+  };
+  collectedAt: string;
+};
+
+export type AgentCapabilities = {
+  containerRuntimes: string[];
+  supportedArchitectures: string[];
+  maxContainers: number;
+  storageDriver: string;
+  networkPlugins: string[];
+  features: string[];
+};
+
+export type NodeResources = {
+  cpu: {
+    cores: number;
+    allocation: number;
+    usage: number;
+  };
+  memory: {
+    total: number;
+    allocated: number;
+    used: number;
+    available: number;
+  };
+  storage: {
+    total: number;
+    allocated: number;
+    used: number;
+    available: number;
+  };
+};
+
+export type NodeAgentEntity = {
+  id: string;
+  name: string;
+  hostname: string;
+  ipAddress: string;
+  port: number;
+  status: string;
+  version: string;
+  capabilities: AgentCapabilities;
+  resources: NodeResources;
+  lastHeartbeat?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 export type AuditLogEntity = {
   id: string;
   userId: string;
@@ -164,6 +254,9 @@ export type AuditLogEntity = {
 export type ListAuditLogsInput = {
   resource?: string;
   action?: string;
+  actor?: string;
+  userId?: string;
+  since?: string;
   page?: number;
   limit?: number;
 };
@@ -211,34 +304,11 @@ export type GetDeploymentLogsInput = {
   type?: 'all' | 'build' | 'runtime';
 };
 
-type RawProject = components['schemas']['Project'] & {
-  stats?: Partial<ProjectStats>;
-};
+type RawProject = components['schemas']['Project'];
+type RawService = components['schemas']['Service'];
+type RawUserProfile = components['schemas']['User'];
 
-type RawService = components['schemas']['Service'] & {
-  image?: string;
-  command?: string;
-  environment?: string;
-  git_repo?: string;
-  git_branch?: string;
-  build_path?: string;
-  cpu?: string;
-  memory?: string;
-};
-
-type RawUserProfile = components['schemas']['User'] & {
-  avatar_url?: string;
-};
-
-type RawServiceVariable = {
-  id?: string;
-  service_id?: string;
-  key?: string;
-  value?: string;
-  is_secret?: boolean;
-  created_at?: string;
-  updated_at?: string;
-};
+type RawServiceVariable = components['schemas']['ServiceVariable'];
 
 type RawBuildStatus = components['schemas']['BuildStatus'];
 type RawBuildListResponse = components['schemas']['BuildListResponse'];
@@ -256,19 +326,13 @@ type RawServiceLog = components['schemas']['ServiceLogEntry'];
 type RawServiceLogsResponse = components['schemas']['ServiceLogsResponse'];
 type RawDeploymentLogsResponse = components['schemas']['DeploymentLogsResponse'];
 type RawRollbackDeploymentResponse = components['schemas']['RollbackDeploymentResponse'];
+type RawUpgradeStatus = components['schemas']['UpgradeStatus'];
+type RawHostMonitoring = components['schemas']['HostMonitoring'];
+type RawSystemLoad = NonNullable<RawHostMonitoring['load']>;
+type RawNodeAgent = components['schemas']['NodeAgent'];
 
 export type CreateProjectInput = components['schemas']['CreateProjectRequest'];
-export type CreateServiceInput = components['schemas']['CreateServiceRequest'] & {
-  environment?: 'production' | 'preview' | 'development';
-  project_id?: string;
-  image?: string;
-  command?: string;
-  git_repo?: string;
-  git_branch?: string;
-  build_path?: string;
-  cpu?: string;
-  memory?: string;
-};
+export type CreateServiceInput = components['schemas']['CreateServiceRequest'];
 
 export class ApiError extends Error {
   readonly status: number;
@@ -286,10 +350,15 @@ type JsonLike = Record<string, unknown>;
 
 const rawBase = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:8082';
 const normalizedBase = rawBase.replace(/\/$/, '');
+const API_ROOT = normalizedBase.replace(/\/api\/v1$/, '').replace(/\/api$/, '');
 const API_BASE = /\/api\/v1$/.test(normalizedBase) ? normalizedBase : `${normalizedBase}/api/v1`;
 
 export function getApiBaseUrl(): string {
   return API_BASE;
+}
+
+export function getAgentPublicBaseUrl(): string {
+  return `${API_ROOT}/api/agents`;
 }
 
 function authHeaders(): HeadersInit {
@@ -354,10 +423,10 @@ function normalizeProject(project: RawProject): ProjectEntity | null {
     createdAt: project.created_at,
     updatedAt: project.updated_at,
     stats: {
-      service_count: project.stats?.service_count ?? project.services_count ?? 0,
+      service_count: project.stats?.service_count ?? 0,
       deployment_count: project.stats?.deployment_count ?? 0,
       running_services: project.stats?.running_services ?? 0,
-      last_deployment: project.stats?.last_deployment ?? undefined,
+      last_deployment: project.stats?.last_deployment ?? null,
     },
   };
 }
@@ -669,6 +738,170 @@ export async function updateCurrentUserProfile(input: UpdateUserProfileInput): P
   return profile;
 }
 
+export async function createUser(input: CreateUserInput): Promise<UserProfile> {
+  const payload = await requestJson<RawUserProfile | { user?: RawUserProfile }>(`/users`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+
+  const rawProfile = (payload as { user?: RawUserProfile }).user ?? (payload as RawUserProfile);
+  const profile = normalizeUserProfile(rawProfile);
+
+  if (!profile) {
+    throw new ApiError('Create user response is invalid', 500);
+  }
+
+  return profile;
+}
+
+function normalizeUpgradeStatus(payload: RawUpgradeStatus): UpgradeStatus {
+  return {
+    imageRef: payload.image_ref ?? '',
+    registry: payload.registry ?? '',
+    dockerAvailable: Boolean(payload.docker_available),
+    installed: Boolean(payload.installed),
+    digest: payload.digest,
+    size: payload.size,
+    authConfigured: Boolean(payload.auth_configured),
+    message: payload.message ?? '',
+  };
+}
+
+function normalizeSystemLoad(payload?: RawSystemLoad): SystemLoad {
+  return {
+    load1m: payload?.load_1m ?? 0,
+    load5m: payload?.load_5m ?? 0,
+    load15m: payload?.load_15m ?? 0,
+  };
+}
+
+function normalizeHostMonitoring(payload: RawHostMonitoring): HostMonitoring {
+  return {
+    hostname: payload.hostname ?? '',
+    os: payload.os ?? '',
+    architecture: payload.architecture ?? '',
+    cpu: {
+      cores: payload.cpu?.cores ?? 0,
+    },
+    memory: {
+      total: payload.memory?.total ?? 0,
+      used: payload.memory?.used ?? 0,
+      available: payload.memory?.available ?? 0,
+      usagePercent: payload.memory?.usage_percent ?? 0,
+    },
+    storage: {
+      path: payload.storage?.path ?? '/',
+      total: payload.storage?.total ?? 0,
+      used: payload.storage?.used ?? 0,
+      available: payload.storage?.available ?? 0,
+      usagePercent: payload.storage?.usage_percent ?? 0,
+    },
+    load: normalizeSystemLoad(payload.load),
+    uptimeSeconds: payload.uptime_seconds ?? 0,
+    dockerAvailable: Boolean(payload.docker_available),
+    docker: payload.docker,
+    collectedAt: payload.collected_at ?? '',
+  };
+}
+
+function normalizeAgent(agent: RawNodeAgent): NodeAgentEntity | null {
+  if (!agent.id || !agent.name) {
+    return null;
+  }
+
+  return {
+    id: agent.id,
+    name: agent.name,
+    hostname: agent.hostname ?? '',
+    ipAddress: agent.ip_address ?? '',
+    port: agent.port ?? 0,
+    status: agent.status ?? 'unknown',
+    version: agent.version ?? '',
+    capabilities: {
+      containerRuntimes: agent.capabilities?.container_runtimes ?? [],
+      supportedArchitectures: agent.capabilities?.supported_architectures ?? [],
+      maxContainers: agent.capabilities?.max_containers ?? 0,
+      storageDriver: agent.capabilities?.storage_driver ?? '',
+      networkPlugins: agent.capabilities?.network_plugins ?? [],
+      features: agent.capabilities?.features ?? [],
+    },
+    resources: {
+      cpu: {
+        cores: agent.resources?.cpu?.cores ?? 0,
+        allocation: agent.resources?.cpu?.allocation ?? 0,
+        usage: agent.resources?.cpu?.usage ?? 0,
+      },
+      memory: {
+        total: agent.resources?.memory?.total ?? 0,
+        allocated: agent.resources?.memory?.allocated ?? 0,
+        used: agent.resources?.memory?.used ?? 0,
+        available: agent.resources?.memory?.available ?? 0,
+      },
+      storage: {
+        total: agent.resources?.storage?.total ?? 0,
+        allocated: agent.resources?.storage?.allocated ?? 0,
+        used: agent.resources?.storage?.used ?? 0,
+        available: agent.resources?.storage?.available ?? 0,
+      },
+    },
+    lastHeartbeat: agent.last_heartbeat,
+    createdAt: agent.created_at,
+    updatedAt: agent.updated_at,
+  };
+}
+
+function normalizeAgentArray(raw: unknown): NodeAgentEntity[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  return raw
+    .map((entry) => normalizeAgent(entry as RawNodeAgent))
+    .filter((entry): entry is NodeAgentEntity => entry !== null);
+}
+
+export async function getUpgradeStatus(): Promise<UpgradeStatus> {
+  const payload = await requestJson<RawUpgradeStatus>(`/system/upgrade/status`);
+  return normalizeUpgradeStatus(payload);
+}
+
+export async function pullUpgradeImage(): Promise<UpgradeStatus> {
+  const payload = await requestJson<RawUpgradeStatus>(`/system/upgrade/pull`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+  return normalizeUpgradeStatus(payload);
+}
+
+export async function getHostMonitoring(): Promise<HostMonitoring> {
+  const payload = await requestJson<RawHostMonitoring>(`/system/host`);
+  return normalizeHostMonitoring(payload);
+}
+
+export async function listAgents(): Promise<NodeAgentEntity[]> {
+  const payload = await requestJson<{ agents?: RawNodeAgent[] }>(`/agents`);
+  return normalizeAgentArray(payload.agents);
+}
+
+export type AgentAuthToken = components['schemas']['AgentAuthToken'];
+export type AgentAuthTokenCreated = components['schemas']['AgentAuthTokenCreated'];
+
+export async function createAgentToken(label?: string): Promise<AgentAuthTokenCreated> {
+  return requestJson<AgentAuthTokenCreated>(`/agent-tokens`, {
+    method: 'POST',
+    body: JSON.stringify({ label: label ?? '' }),
+  });
+}
+
+export async function listAgentTokens(): Promise<AgentAuthToken[]> {
+  const payload = await requestJson<{ tokens?: AgentAuthToken[] }>(`/agent-tokens`);
+  return payload.tokens ?? [];
+}
+
+export async function revokeAgentToken(id: string): Promise<void> {
+  await requestJson(`/agent-tokens/${id}`, { method: 'DELETE' });
+}
+
 export async function createProject(input: CreateProjectInput): Promise<ProjectEntity> {
   const payload = await requestJson<RawProject | { project?: RawProject }>(`/projects`, {
     method: 'POST',
@@ -725,16 +958,12 @@ export async function deleteService(serviceId: string): Promise<void> {
   });
 }
 
-export async function listServiceVariables(serviceId: string): Promise<ServiceVariable[]> {
-  const payload = await requestJson<{ variables?: RawServiceVariable[] }>(`/services/${serviceId}/variables`);
-  const rows = payload.variables ?? [];
+function normalizeServiceVariables(rows: RawServiceVariable[] | undefined): ServiceVariable[] {
   const result: ServiceVariable[] = [];
-
-  for (const row of rows) {
+  for (const row of rows ?? []) {
     if (!row.id || !row.service_id || !row.key) {
       continue;
     }
-
     result.push({
       id: row.id,
       serviceId: row.service_id,
@@ -745,8 +974,25 @@ export async function listServiceVariables(serviceId: string): Promise<ServiceVa
       updatedAt: row.updated_at,
     });
   }
-
   return result;
+}
+
+export async function listServiceVariables(serviceId: string): Promise<ServiceVariable[]> {
+  const payload = await requestJson<{ variables?: RawServiceVariable[] }>(`/services/${serviceId}/variables`);
+  return normalizeServiceVariables(payload.variables);
+}
+
+export type UpdateServiceVariableInput = components['schemas']['VariableInput'];
+
+export async function updateServiceVariables(
+  serviceId: string,
+  variables: UpdateServiceVariableInput[],
+): Promise<ServiceVariable[]> {
+  const payload = await requestJson<{ variables?: RawServiceVariable[] }>(
+    `/services/${serviceId}/variables`,
+    { method: 'PUT', body: JSON.stringify({ variables }) },
+  );
+  return normalizeServiceVariables(payload.variables);
 }
 
 export async function listAuditLogs(input: ListAuditLogsInput = {}): Promise<AuditLogEntity[]> {
@@ -756,6 +1002,15 @@ export async function listAuditLogs(input: ListAuditLogsInput = {}): Promise<Aud
   }
   if (input.action) {
     searchParams.set('action', input.action);
+  }
+  if (input.actor) {
+    searchParams.set('actor', input.actor);
+  }
+  if (input.userId) {
+    searchParams.set('user_id', input.userId);
+  }
+  if (input.since) {
+    searchParams.set('since', input.since);
   }
   if (input.page && input.page > 0) {
     searchParams.set('page', String(input.page));
@@ -957,4 +1212,458 @@ export function serviceStatusClass(status: ServiceStatus): string {
     default:
       return 'status-stopped';
   }
+}
+
+export type ServiceInstanceMetrics = components['schemas']['ServiceInstanceMetrics'];
+export type ServiceMetrics = components['schemas']['ServiceMetrics'];
+
+export async function getServiceMetrics(serviceId: string): Promise<ServiceMetrics> {
+  const payload = await requestJson<{ metrics?: ServiceMetrics }>(`/services/${serviceId}/metrics`);
+  if (!payload.metrics) {
+    throw new ApiError('Service metrics payload is invalid', 500);
+  }
+  return payload.metrics;
+}
+
+export type GitProviderEntity = components['schemas']['GitProvider'];
+export type GitRepositoryEntity = components['schemas']['GitRepository'];
+export type GitBranchEntity = components['schemas']['GitBranch'];
+export type CreateGitProviderInput = components['schemas']['CreateGitProviderRequest'];
+
+export async function listGitProviders(): Promise<GitProviderEntity[]> {
+  const payload = await requestJson<{ providers?: GitProviderEntity[] }>('/git/providers');
+  return payload.providers ?? [];
+}
+
+export async function createGitProvider(input: CreateGitProviderInput): Promise<GitProviderEntity> {
+  const payload = await requestJson<GitProviderEntity>('/git/providers', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  if (!payload.id) {
+    throw new ApiError('Provider response is invalid', 500);
+  }
+  return payload;
+}
+
+export async function deleteGitProvider(providerId: string): Promise<void> {
+  await requestJson(`/git/providers/${providerId}`, { method: 'DELETE' });
+}
+
+export async function listGitRepositories(
+  providerId: string,
+  search?: string,
+): Promise<GitRepositoryEntity[]> {
+  const params = new URLSearchParams({ limit: '100' });
+  if (search?.trim()) {
+    params.set('search', search.trim());
+  }
+  const payload = await requestJson<{ repositories?: GitRepositoryEntity[] }>(
+    `/git/providers/${providerId}/repositories?${params.toString()}`,
+  );
+  return payload.repositories ?? [];
+}
+
+export async function listGitBranches(
+  providerId: string,
+  owner: string,
+  repo: string,
+): Promise<GitBranchEntity[]> {
+  const payload = await requestJson<{ branches?: GitBranchEntity[] }>(
+    `/git/providers/${providerId}/repositories/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/branches`,
+  );
+  return payload.branches ?? [];
+}
+
+export type CreateDatabaseInput = components['schemas']['CreateDatabaseRequest'];
+export type DatabaseEntity = components['schemas']['Database'];
+export type DatabaseBackupEntity = components['schemas']['DatabaseBackup'];
+
+export async function listDatabases(): Promise<DatabaseEntity[]> {
+  const payload = await requestJson<{ databases?: DatabaseEntity[] }>('/databases');
+  return payload.databases ?? [];
+}
+
+export async function getDatabase(id: string): Promise<DatabaseEntity> {
+  return requestJson<DatabaseEntity>(`/databases/${encodeURIComponent(id)}`);
+}
+
+export async function databaseAction(id: string, action: 'start' | 'stop' | 'restart'): Promise<void> {
+  await requestJson(`/databases/${encodeURIComponent(id)}/action`, {
+    method: 'POST',
+    body: JSON.stringify({ action }),
+  });
+}
+
+export async function updateDatabaseBackupSchedule(id: string, schedule: string): Promise<void> {
+  await requestJson(`/databases/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ backup_schedule: schedule }),
+  });
+}
+
+export async function createDatabaseBackup(id: string): Promise<void> {
+  await requestJson(`/databases/${encodeURIComponent(id)}/backup`, {
+    method: 'POST',
+    body: JSON.stringify({ database_id: id }),
+  });
+}
+
+export async function restoreDatabaseBackup(id: string, backupId: string): Promise<void> {
+  await requestJson(`/databases/${encodeURIComponent(id)}/restore`, {
+    method: 'POST',
+    body: JSON.stringify({ database_id: id, backup_id: backupId }),
+  });
+}
+
+export async function createManagedDatabase(
+  input: CreateDatabaseInput,
+): Promise<{ id: string; status: string }> {
+  const payload = await requestJson<{ id?: string; status?: string }>('/databases', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  if (!payload.id) {
+    throw new ApiError('Database response is invalid', 500);
+  }
+  return { id: payload.id, status: payload.status ?? 'building' };
+}
+
+export type ConnectGitRepositoryInput = components['schemas']['ConnectGitRepoRequest'];
+export type CreateGitWebhookInput = components['schemas']['CreateWebhookRequest'];
+export type GitWebhookEntity = components['schemas']['GitWebhook'];
+
+export async function getGitHubAppInstallUrl(): Promise<string> {
+  const payload = await requestJson<{ install_url?: string }>('/git/github-app/install-url');
+  if (!payload.install_url) {
+    throw new ApiError('GitHub App install URL unavailable', 500);
+  }
+  return payload.install_url;
+}
+
+export async function connectGitHubApp(installationId: number, displayName?: string): Promise<GitProviderEntity> {
+  const payload = await requestJson<{ provider?: GitProviderEntity }>('/git/github-app/connect', {
+    method: 'POST',
+    body: JSON.stringify({ installation_id: installationId, display_name: displayName }),
+  });
+  if (!payload.provider?.id) {
+    throw new ApiError('GitHub App connect response is invalid', 500);
+  }
+  return payload.provider;
+}
+
+export async function connectGitRepository(
+  input: ConnectGitRepositoryInput,
+): Promise<GitRepositoryEntity> {
+  const payload = await requestJson<{ repository?: GitRepositoryEntity }>(
+    '/git/repositories/connect',
+    { method: 'POST', body: JSON.stringify(input) },
+  );
+  if (!payload.repository?.id) {
+    throw new ApiError('Connect repository response is invalid', 500);
+  }
+  return payload.repository;
+}
+
+export async function listConnectedGitRepositories(): Promise<GitRepositoryEntity[]> {
+  const payload = await requestJson<{ repositories?: GitRepositoryEntity[] }>('/git/repositories');
+  return payload.repositories ?? [];
+}
+
+export async function createGitWebhook(input: CreateGitWebhookInput): Promise<GitWebhookEntity> {
+  const payload = await requestJson<{ webhook?: GitWebhookEntity }>('/git/webhooks', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  if (!payload.webhook?.id) {
+    throw new ApiError('Webhook response is invalid', 500);
+  }
+  return payload.webhook;
+}
+
+// --- Cron jobs ---
+
+export type CronJobEntity = components['schemas']['CronJob'];
+export type CronExecutionEntity = components['schemas']['CronExecution'];
+export type CreateCronJobInput = components['schemas']['CreateCronJobRequest'];
+export type UpdateCronJobInput = components['schemas']['UpdateCronJobRequest'];
+
+export async function listCronJobs(serviceId: string): Promise<CronJobEntity[]> {
+  const payload = await requestJson<{ cron_jobs?: CronJobEntity[] }>(
+    `/cron-jobs?service_id=${encodeURIComponent(serviceId)}`,
+  );
+  return payload.cron_jobs ?? [];
+}
+
+export async function createCronJob(input: CreateCronJobInput): Promise<CronJobEntity> {
+  const payload = await requestJson<{ cron_job?: CronJobEntity }>('/cron-jobs', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  if (!payload.cron_job?.id) {
+    throw new ApiError('Create cron job response is invalid', 500);
+  }
+  return payload.cron_job;
+}
+
+export async function updateCronJob(id: string, input: UpdateCronJobInput): Promise<void> {
+  await requestJson(`/cron-jobs/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteCronJob(id: string): Promise<void> {
+  await requestJson(`/cron-jobs/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export async function listCronExecutions(id: string): Promise<CronExecutionEntity[]> {
+  const payload = await requestJson<{ executions?: CronExecutionEntity[] }>(
+    `/cron-jobs/${encodeURIComponent(id)}/executions`,
+  );
+  return payload.executions ?? [];
+}
+
+export async function triggerCronJob(id: string): Promise<void> {
+  await requestJson(`/cron-jobs/${encodeURIComponent(id)}/trigger`, { method: 'POST' });
+}
+
+export type NotificationEntity = components['schemas']['Notification'];
+
+export type NotificationList = {
+  notifications: NotificationEntity[];
+  unread: number;
+};
+
+export async function listNotifications(limit = 20): Promise<NotificationList> {
+  const payload = await requestJson<{ notifications?: NotificationEntity[]; unread?: number }>(
+    `/notifications?limit=${limit}`,
+  );
+  return { notifications: payload.notifications ?? [], unread: payload.unread ?? 0 };
+}
+
+export async function markNotificationRead(id: string): Promise<void> {
+  await requestJson(`/notifications/${encodeURIComponent(id)}/read`, { method: 'POST' });
+}
+
+export async function markAllNotificationsRead(): Promise<void> {
+  await requestJson('/notifications/read-all', { method: 'POST' });
+}
+
+export type PreviewEnvironmentEntity = components['schemas']['PreviewEnvironment'];
+
+export async function listPreviewEnvironments(projectId: string): Promise<PreviewEnvironmentEntity[]> {
+  const payload = await requestJson<{ preview_environments?: PreviewEnvironmentEntity[] }>(
+    `/projects/${encodeURIComponent(projectId)}/preview-environments`,
+  );
+  return payload.preview_environments ?? [];
+}
+
+export async function createPreviewEnvironment(
+  projectId: string,
+  input: components['schemas']['CreatePreviewEnvironmentRequest'],
+): Promise<PreviewEnvironmentEntity> {
+  return requestJson<PreviewEnvironmentEntity>(
+    `/projects/${encodeURIComponent(projectId)}/preview-environments`,
+    { method: 'POST', body: JSON.stringify(input) },
+  );
+}
+
+export async function deletePreviewEnvironment(id: string): Promise<void> {
+  await requestJson(`/preview-environments/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export async function promotePreviewEnvironment(
+  id: string,
+  input: components['schemas']['PromotePreviewEnvironmentRequest'],
+): Promise<void> {
+  await requestJson(`/preview-environments/${encodeURIComponent(id)}/promote`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export type ScalingPolicy = components['schemas']['ScalingPolicy'];
+
+export type ServiceScalingState = {
+  ServiceID?: string;
+  CurrentReplicas?: number;
+  DesiredReplicas?: number;
+  LastScaleAction?: string;
+  LastScaleDirection?: string;
+};
+
+export async function getScalingPolicy(serviceId: string): Promise<ScalingPolicy | null> {
+  try {
+    const payload = await requestJson<{ policy?: ScalingPolicy }>(
+      `/scaling/policies/${encodeURIComponent(serviceId)}`,
+    );
+    return payload.policy ?? null;
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export async function setScalingPolicy(policy: ScalingPolicy): Promise<void> {
+  await requestJson('/scaling/policies', { method: 'POST', body: JSON.stringify(policy) });
+}
+
+export async function deleteScalingPolicy(serviceId: string): Promise<void> {
+  await requestJson(`/scaling/policies/${encodeURIComponent(serviceId)}`, { method: 'DELETE' });
+}
+
+export async function getServiceScalingState(serviceId: string): Promise<ServiceScalingState | null> {
+  try {
+    const payload = await requestJson<{ state?: ServiceScalingState }>(
+      `/scaling/services/${encodeURIComponent(serviceId)}`,
+    );
+    return payload.state ?? null;
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export async function manualScaleService(serviceId: string, replicas: number, reason = ''): Promise<void> {
+  await requestJson(`/scaling/services/${encodeURIComponent(serviceId)}/scale`, {
+    method: 'POST',
+    body: JSON.stringify({ replicas, reason }),
+  });
+}
+
+export type FailoverPolicy = components['schemas']['FailoverPolicy'];
+
+export type HAStatus = {
+  enabled?: boolean;
+  nodes?: { total?: number; healthy?: number; unhealthy?: number };
+  health_checks?: { total?: number; healthy?: number; unhealthy?: number };
+  alerts?: { active?: number };
+};
+
+export type HAAlert = {
+  id?: string;
+  rule_id?: string;
+  status?: string;
+  severity?: string;
+  message?: string;
+  starts_at?: string;
+  ends_at?: string;
+};
+
+export type HAHealthResult = {
+  check_id?: string;
+  status?: string;
+  message?: string;
+  latency?: number;
+  timestamp?: string;
+};
+
+export async function getHAStatus(): Promise<HAStatus> {
+  const payload = await requestJson<{ status?: HAStatus }>('/ha/status');
+  return payload.status ?? {};
+}
+
+export async function setHAEnabled(enabled: boolean): Promise<void> {
+  await requestJson(enabled ? '/ha/enable' : '/ha/disable', { method: 'POST' });
+}
+
+export async function triggerFailover(reason: string): Promise<void> {
+  await requestJson('/ha/failover', { method: 'POST', body: JSON.stringify({ reason }) });
+}
+
+export async function listFailoverPolicies(): Promise<FailoverPolicy[]> {
+  const payload = await requestJson<{ policies?: FailoverPolicy[] }>('/ha/failover/policies');
+  return payload.policies ?? [];
+}
+
+export async function setFailoverPolicy(policy: FailoverPolicy): Promise<void> {
+  await requestJson('/ha/failover/policies', { method: 'POST', body: JSON.stringify(policy) });
+}
+
+export async function deleteFailoverPolicy(serviceId: string): Promise<void> {
+  await requestJson(`/ha/failover/policies/${encodeURIComponent(serviceId)}`, { method: 'DELETE' });
+}
+
+export async function listActiveAlerts(): Promise<HAAlert[]> {
+  const payload = await requestJson<{ alerts?: HAAlert[] }>('/ha/alerts/active');
+  return payload.alerts ?? [];
+}
+
+export async function resolveAlert(alertId: string): Promise<void> {
+  await requestJson(`/ha/alerts/${encodeURIComponent(alertId)}/resolve`, { method: 'POST' });
+}
+
+export async function listHealthResults(): Promise<HAHealthResult[]> {
+  const payload = await requestJson<{ results?: HAHealthResult[] }>('/ha/health/results');
+  return payload.results ?? [];
+}
+
+export type SecurityScan = components['schemas']['SecurityScan'];
+export type Vulnerability = components['schemas']['Vulnerability'];
+
+export type SecurityMetrics = {
+  vulnerabilities?: {
+    total?: number; critical?: number; high?: number; medium?: number;
+    low?: number; open?: number; resolved?: number;
+  };
+  latest_scan?: { id?: string; score?: number; scanned_at?: string; status?: string };
+  compliance?: { overall_status?: string; score?: number; last_assessed?: string };
+  security_score?: number;
+};
+
+export async function startSecurityScan(input: {
+  project_id: string;
+  service_id?: string;
+  scan_type: 'dependency' | 'configuration' | 'comprehensive';
+}): Promise<SecurityScan> {
+  return requestJson<SecurityScan>('/security/scans', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function getSecurityScan(scanId: string): Promise<SecurityScan> {
+  const payload = await requestJson<{ scan?: SecurityScan } | SecurityScan>(
+    `/security/scans/${encodeURIComponent(scanId)}`,
+  );
+  return 'scan' in payload && payload.scan ? payload.scan : (payload as SecurityScan);
+}
+
+export async function getSecurityHistory(projectId: string): Promise<SecurityScan[]> {
+  const payload = await requestJson<{ scans?: SecurityScan[] }>(
+    `/projects/${encodeURIComponent(projectId)}/security/history`,
+  );
+  return payload.scans ?? [];
+}
+
+export async function listVulnerabilities(projectId: string): Promise<Vulnerability[]> {
+  const payload = await requestJson<{ vulnerabilities?: Vulnerability[] }>(
+    `/projects/${encodeURIComponent(projectId)}/vulnerabilities`,
+  );
+  return payload.vulnerabilities ?? [];
+}
+
+export async function updateVulnerability(id: string, status: 'open' | 'resolved' | 'ignored'): Promise<void> {
+  await requestJson(`/vulnerabilities/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ status }),
+  });
+}
+
+export async function getSecurityMetrics(projectId: string): Promise<SecurityMetrics> {
+  return requestJson<SecurityMetrics>(`/projects/${encodeURIComponent(projectId)}/security/metrics`);
+}
+
+export type ExecResult = { output?: string; exit_code?: number; error?: string };
+
+export async function execInService(serviceId: string, command: string): Promise<ExecResult> {
+  return requestJson<ExecResult>(`/services/${encodeURIComponent(serviceId)}/exec`, {
+    method: 'POST',
+    body: JSON.stringify({ command }),
+  });
 }

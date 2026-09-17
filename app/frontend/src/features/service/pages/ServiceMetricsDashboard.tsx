@@ -1,25 +1,21 @@
 import { useMemo, useState, useEffect } from 'react';
-import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
-import { 
-  Cpu, 
-  MemoryStick, 
-  Zap, 
-  Users, 
+import { useParams, useNavigate } from 'react-router-dom';
+import {
+  Cpu,
+  MemoryStick,
+  Zap,
+  Users,
   Globe,
-  ArrowLeft,
   Search,
   Bell,
   ChevronUp,
   Activity,
-  FileText,
   Sliders,
-  Settings as SettingsIcon
 } from 'lucide-react';
-import { 
-  LineChart, 
-  LineAreaChart, 
-  DonutChart, 
-  MultiLineChart,
+import {
+  LineChart,
+  LineAreaChart,
+  DonutChart,
   EnhancedMetricCard,
   CacheMetricCard,
   PerformanceMetricCard
@@ -49,7 +45,6 @@ const timePeriods = ['Day', 'Month', 'Year'];
 
 export function ServiceMetricsDashboard() {
   const { serviceId = 'demo-service' } = useParams();
-  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   
   const [activeTab, setActiveTab] = useState<TabKey>('metrics');
@@ -83,13 +78,13 @@ export function ServiceMetricsDashboard() {
       userData,
       perf: perfPercent,
       perfData: [
-        { data: perfData1, color: '#6c8ef0', fillOpacity: 0.15 },
-        { data: perfData2, color: '#9c7ef0', fillOpacity: 0.15 }
+        { data: perfData1, color: '#7ab8ff', fillOpacity: 0.15 },
+        { data: perfData2, color: '#f2c94c', fillOpacity: 0.15 }
       ],
-      upSpeed: (Math.random() * 5 + 8).toFixed(1),
-      downSpeed: (Math.random() * 3 + 4).toFixed(1),
+      upSpeed: seededRandom(`${serviceId}:upspeed`, 8, 13).toFixed(1),
+      downSpeed: seededRandom(`${serviceId}:downspeed`, 4, 7).toFixed(1),
     };
-  }, [serviceId, timePeriod]);
+  }, [serviceId]);
 
   // Auto-update metrics every 2 seconds
   useEffect(() => {
@@ -134,7 +129,7 @@ export function ServiceMetricsDashboard() {
             style={{ 
               width: '38px', 
               height: '38px', 
-              background: '#e8316a',
+              background: 'var(--accent-primary)',
               marginBottom: '14px'
             }}
           >
@@ -275,7 +270,7 @@ export function ServiceMetricsDashboard() {
                 style={{ 
                   width: '46px', 
                   height: '46px', 
-                  background: '#e8316a',
+                  background: 'var(--accent-primary)',
                   marginRight: '14px'
                 }}
               >
@@ -413,7 +408,7 @@ export function ServiceMetricsDashboard() {
                 status="good"
                 statusText="Good"
                 icon={<Cpu size={16} />}
-                chart={<LineChart data={metrics.cpuData} color="#ff7043" height={76} />}
+                chart={<LineChart data={metrics.cpuData} color="#b4e34a" height={76} />}
                 animationDelay={0.04}
               />
 
@@ -429,10 +424,10 @@ export function ServiceMetricsDashboard() {
                   {metrics.ram}%
                 </div>
                 <div style={{ fontSize: 12, color: '#6b6e7d', marginTop: 4 }}>
-                  <span style={{ color: '#f0a040', fontWeight: 700 }}>Average</span> Daily usage
+                  <span style={{ color: '#f2c94c', fontWeight: 700 }}>Average</span> Daily usage
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', margin: '10px 0 4px', position: 'relative' }}>
-                  <DonutChart percentage={metrics.ram} color="#9c7ef0" />
+                  <DonutChart percentage={metrics.ram} color="#f2c94c" />
                   <div style={{ position: 'absolute', bottom: 14, textAlign: 'center' }}>
                     <div style={{ fontSize: 10.5, color: '#6b6e7d', marginBottom: 1 }}>Used</div>
                     <div style={{ fontSize: 12.5, fontWeight: 700, color: '#e8e9f0' }}>{metrics.ramUsedGB} GB / 8GB</div>
@@ -465,7 +460,7 @@ export function ServiceMetricsDashboard() {
                 value={`${metrics.users} K`}
                 subtitle="User active right now"
                 icon={<Users size={16} />}
-                chart={<LineAreaChart data={metrics.userData} color="#e8316a" height={130} />}
+                chart={<LineAreaChart data={metrics.userData} color="var(--accent-primary)" height={130} />}
                 details={
                   <div className="flex items-center gap-1.5 flex-wrap">
                     {['🇨🇳', '🇮🇩', '🇲🇲', '🇲🇾', '🇯🇵', '🇮🇳', '🇰🇷', '🇵🇭'].map((flag, i) => (

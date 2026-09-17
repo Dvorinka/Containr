@@ -1,16 +1,14 @@
 import { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, ArrowRight, Github, Gitlab, KeyRound, Loader2, Mail, Shield, User2, Workflow } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { AlertCircle, ArrowRight, Github, Loader2, Mail, User2 } from 'lucide-react';
 import {
   AuthError,
-  startBitbucketSignIn,
-  startGitLabSignIn,
-  requestMagicLinkInvite,
+  getAuthBootstrap,
+  startGoogleSignIn,
   signInWithEmail,
   signUpWithEmail,
-  startGiteaSignIn,
   startGitHubSignIn,
 } from '@/lib/auth-client';
 import { useAuthSession } from '@/lib/use-auth-session';
@@ -33,45 +31,14 @@ function buildOAuthCallbackURL(path: string): string {
   return `${window.location.origin}${cleanPath}`;
 }
 
-function AuthCanvas() {
-  const bars = [32, 44, 28, 60, 52, 64, 36, 48, 54, 72, 66, 78];
-
+function GoogleMark() {
   return (
-    <div className="relative hidden border-r border-[var(--border-subtle)] bg-[var(--bg-base)]/70 backdrop-blur-2xl xl:flex xl:w-[46%]">
-      <div className="absolute inset-0 bg-[#e8316a]/10" />
-      <div className="relative z-10 flex h-full w-full flex-col justify-between p-10">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">Containr Access</p>
-          <h1 className="mt-3 font-headline text-4xl font-semibold leading-tight text-[var(--text-primary)]">
-            Secure Sessions,
-            <br />
-            Better Auth
-          </h1>
-          <p className="mt-4 max-w-md text-sm leading-relaxed text-[var(--text-secondary)]">
-            Email/password, invite magic links, and OAuth providers (GitHub, GitLab, Bitbucket, Gitea) are handled by a dedicated Better Auth service with cookie sessions.
-          </p>
-        </div>
-
-        <div className="panel p-5">
-          <div className="mb-4 flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">Auth Health</p>
-            <span className="flex items-center gap-2 text-xs text-[var(--success)]">
-              <span className="live-pulse h-2 w-2 rounded-full bg-[var(--success)]" />
-              Live
-            </span>
-          </div>
-          <div className="grid grid-cols-12 items-end gap-1.5">
-            {bars.map((height, index) => (
-              <div
-                key={`bar-${index}`}
-                className="rounded-sm"
-                style={{ height: `${height}px`, background: '#e8316a' }}
-              />
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
+    <svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1Z"/>
+      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23Z"/>
+      <path fill="#FBBC05" d="M5.84 14.1a6.6 6.6 0 0 1 0-4.2V7.06H2.18a11 11 0 0 0 0 9.88l3.66-2.84Z"/>
+      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.46 2.09 14.97 1 12 1A11 11 0 0 0 2.18 7.06l3.66 2.84C6.71 7.3 9.14 5.38 12 5.38Z"/>
+    </svg>
   );
 }
 
@@ -85,24 +52,35 @@ function AuthCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="w-full max-w-[520px] rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--surface-card)]/92 p-7 shadow-2xl shadow-black/35 backdrop-blur-xl md:p-8">
-      <div className="mb-6">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--text-muted)]">Containr</p>
-        <h2 className="mt-2 font-headline text-2xl font-semibold text-[var(--text-primary)]">{title}</h2>
-        <p className="mt-2 text-sm text-[var(--text-secondary)]">{subtitle}</p>
+    <div className="w-full max-w-[400px]">
+      <div className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--surface-card)]/95 p-8 shadow-2xl shadow-black/50 backdrop-blur-xl">
+        <h2 className="font-headline text-xl font-semibold text-[var(--text-primary)]">{title}</h2>
+        <p className="mb-6 mt-1.5 text-sm text-[var(--text-secondary)]">{subtitle}</p>
+        {children}
       </div>
-      {children}
     </div>
   );
 }
 
 function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-[var(--bg-void)]">
+    <div className="relative min-h-screen overflow-hidden bg-[var(--bg-void)]">
+      <div className="subtle-grid absolute inset-0" />
       <div className="ambient-glow" />
-      <div className="relative flex min-h-screen">
-        <AuthCanvas />
-        <div className="flex w-full items-center justify-center px-5 py-8 md:px-8">{children}</div>
+      <div
+        className="absolute left-1/2 top-0 h-[420px] w-[720px] -translate-x-1/2 -translate-y-1/2 rounded-full"
+        style={{ background: 'radial-gradient(ellipse at center, rgba(180,227,74,0.10) 0%, transparent 65%)' }}
+      />
+      <div className="relative flex min-h-screen flex-col items-center justify-center px-5 py-10">
+        <div className="mb-8 flex flex-col items-center">
+          <img src="/containr.svg" alt="Containr" className="h-14 w-14" />
+          <span className="mt-4 font-headline text-2xl font-bold tracking-tight text-[var(--text-primary)]">Containr</span>
+          <span className="mt-1 text-xs text-[var(--text-muted)]">Self-hosted container platform</span>
+        </div>
+        {children}
+        <p className="mt-8 text-center text-[11px] text-[var(--text-muted)]">
+          Sessions are cookie-based · first account becomes platform owner
+        </p>
       </div>
     </div>
   );
@@ -132,16 +110,22 @@ export function SignInPage() {
   const redirectPath = useMemo(() => sanitizeRedirect(searchParams.get('redirect')), [searchParams]);
 
   const sessionQuery = useAuthSession();
+  const bootstrapQuery = useQuery({
+    queryKey: ['auth-bootstrap'],
+    queryFn: getAuthBootstrap,
+  });
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [magicEmail, setMagicEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isMagicLoading, setIsMagicLoading] = useState(false);
 
   if (sessionQuery.data) {
     return <Navigate to={redirectPath} replace />;
+  }
+
+  if (bootstrapQuery.data?.mode === 'register') {
+    return <Navigate to={`/auth/sign-up?redirect=${encodeURIComponent(redirectPath)}`} replace />;
   }
 
   const submitEmailPassword = async (event: FormEvent) => {
@@ -162,48 +146,32 @@ export function SignInPage() {
     }
   };
 
-  const submitMagicLink = async (event: FormEvent) => {
-    event.preventDefault();
+  const signInWithGitHubProvider = async () => {
     setError(null);
-    setInfo(null);
-    setIsMagicLoading(true);
-
     try {
-      await requestMagicLinkInvite(magicEmail.trim(), buildOAuthCallbackURL(redirectPath));
-      setInfo('Magic invite link sent. Check your email inbox.');
+      await startGitHubSignIn(buildOAuthCallbackURL(redirectPath));
     } catch (exception) {
-      const message = exception instanceof AuthError ? exception.message : 'Failed to send magic link';
+      const message = exception instanceof AuthError ? exception.message : 'GitHub sign-in failed';
       setError(message);
-    } finally {
-      setIsMagicLoading(false);
     }
   };
 
-  const signInWithGitHubProvider = async () => {
+  const signInWithGoogleProvider = async () => {
     setError(null);
-    await startGitHubSignIn(buildOAuthCallbackURL(redirectPath));
-  };
-
-  const signInWithGiteaProvider = async () => {
-    setError(null);
-    await startGiteaSignIn(buildOAuthCallbackURL(redirectPath));
-  };
-
-  const signInWithGitLabProvider = async () => {
-    setError(null);
-    await startGitLabSignIn(buildOAuthCallbackURL(redirectPath));
-  };
-
-  const signInWithBitbucketProvider = async () => {
-    setError(null);
-    await startBitbucketSignIn(buildOAuthCallbackURL(redirectPath));
+    try {
+      await startGoogleSignIn(buildOAuthCallbackURL(redirectPath));
+    } catch (exception) {
+      const message = exception instanceof AuthError ? exception.message : 'Google sign-in failed';
+      setError(message);
+    }
   };
 
   return (
     <AuthLayout>
-      <AuthCard title="Sign In" subtitle="Use your Containr account, invite magic link, or provider OAuth.">
+      <AuthCard title="Sign In" subtitle="Use email/password, GitHub, or Google.">
         {error ? <AuthErrorNotice message={error} /> : null}
         {info ? <AuthInfoNotice message={info} /> : null}
+        {bootstrapQuery.isLoading ? <AuthInfoNotice message="Checking platform access mode..." /> : null}
 
         <form className="space-y-3" onSubmit={submitEmailPassword}>
           <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
@@ -235,15 +203,19 @@ export function SignInPage() {
           <button
             type="submit"
             disabled={isSubmitting || sessionQuery.isPending}
-            className="mt-1 inline-flex h-10 w-full items-center justify-center gap-2 rounded-[var(--radius-md)] text-sm font-semibold text-white shadow-lg transition-all disabled:cursor-not-allowed disabled:opacity-60"
-            style={{ background: '#e8316a' }}
+            className="mt-1 inline-flex h-10 w-full items-center justify-center gap-2 rounded-[var(--radius-md)] text-sm font-semibold text-[var(--accent-on)] shadow-lg transition-all disabled:cursor-not-allowed disabled:opacity-60"
+            style={{ background: 'var(--accent-primary)' }}
           >
             {isSubmitting ? <Loader2 size={15} className="animate-spin" /> : <Mail size={15} />}
             Continue
           </button>
         </form>
 
-        <div className="my-5 h-px bg-[var(--border-subtle)]" />
+        <div className="my-5 flex items-center gap-3">
+          <div className="h-px flex-1 bg-[var(--border-subtle)]" />
+          <span className="text-[11px] uppercase tracking-wider text-[var(--text-muted)]">or continue with</span>
+          <div className="h-px flex-1 bg-[var(--border-subtle)]" />
+        </div>
 
         <div className="grid gap-2 sm:grid-cols-2">
           <button
@@ -256,58 +228,17 @@ export function SignInPage() {
           </button>
           <button
             type="button"
-            onClick={() => void signInWithGitLabProvider()}
+            onClick={() => void signInWithGoogleProvider()}
             className="inline-flex h-10 items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--border-default)]"
           >
-            <Gitlab size={15} />
-            GitLab
-          </button>
-          <button
-            type="button"
-            onClick={() => void signInWithBitbucketProvider()}
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--border-default)]"
-          >
-            <Workflow size={15} />
-            Bitbucket
-          </button>
-          <button
-            type="button"
-            onClick={() => void signInWithGiteaProvider()}
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--border-default)]"
-          >
-            <Shield size={15} />
-            Gitea
+            <GoogleMark />
+            Google
           </button>
         </div>
 
-        <form className="mt-4 space-y-2" onSubmit={submitMagicLink}>
-          <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
-            Magic Link Invite
-            <input
-              type="email"
-              autoComplete="email"
-              value={magicEmail}
-              onChange={(event) => setMagicEmail(event.target.value)}
-              required
-              className="mt-2 w-full rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 py-2.5 text-sm text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--accent-primary)]"
-              placeholder="invite@example.com"
-            />
-          </label>
-          <button
-            type="submit"
-            disabled={isMagicLoading}
-            className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-sm font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--border-default)] disabled:opacity-60"
-          >
-            {isMagicLoading ? <Loader2 size={15} className="animate-spin" /> : <KeyRound size={15} />}
-            Send Invite Link
-          </button>
-        </form>
-
         <div className="mt-5 flex items-center justify-between text-xs text-[var(--text-secondary)]">
-          <span>No account yet?</span>
-          <Link to={`/auth/sign-up?redirect=${encodeURIComponent(redirectPath)}`} className="inline-flex items-center gap-1 text-[var(--accent-primary)] hover:underline">
-            Create one <ArrowRight size={12} />
-          </Link>
+          <span>Need access?</span>
+          <span>Ask platform owner to create account.</span>
         </div>
       </AuthCard>
     </AuthLayout>
@@ -321,6 +252,10 @@ export function SignUpPage() {
   const redirectPath = useMemo(() => sanitizeRedirect(searchParams.get('redirect')), [searchParams]);
 
   const sessionQuery = useAuthSession();
+  const bootstrapQuery = useQuery({
+    queryKey: ['auth-bootstrap'],
+    queryFn: getAuthBootstrap,
+  });
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -329,6 +264,10 @@ export function SignUpPage() {
 
   if (sessionQuery.data) {
     return <Navigate to={redirectPath} replace />;
+  }
+
+  if (bootstrapQuery.data?.mode === 'login') {
+    return <Navigate to={`/auth/sign-in?redirect=${encodeURIComponent(redirectPath)}`} replace />;
   }
 
   const submitSignUp = async (event: FormEvent) => {
@@ -350,8 +289,9 @@ export function SignUpPage() {
 
   return (
     <AuthLayout>
-      <AuthCard title="Create Account" subtitle="Provision your operator account with email/password auth.">
+      <AuthCard title="Create Account" subtitle="Create first platform owner account. Registration closes after bootstrap.">
         {error ? <AuthErrorNotice message={error} /> : null}
+        {bootstrapQuery.isLoading ? <AuthInfoNotice message="Checking platform bootstrap state..." /> : null}
 
         <form className="space-y-3" onSubmit={submitSignUp}>
           <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
@@ -396,8 +336,8 @@ export function SignUpPage() {
           <button
             type="submit"
             disabled={isSubmitting || sessionQuery.isPending}
-            className="mt-1 inline-flex h-10 w-full items-center justify-center gap-2 rounded-[var(--radius-md)] text-sm font-semibold text-white shadow-lg transition-all disabled:cursor-not-allowed disabled:opacity-60"
-            style={{ background: '#e8316a' }}
+            className="mt-1 inline-flex h-10 w-full items-center justify-center gap-2 rounded-[var(--radius-md)] text-sm font-semibold text-[var(--accent-on)] shadow-lg transition-all disabled:cursor-not-allowed disabled:opacity-60"
+            style={{ background: 'var(--accent-primary)' }}
           >
             {isSubmitting ? <Loader2 size={15} className="animate-spin" /> : <User2 size={15} />}
             Create Account

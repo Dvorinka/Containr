@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>12 — Vector (Dashboard)</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap');
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Inter',system-ui,sans-serif; background:#0a0c10; color:#e4e9f1; display:flex; min-height:100vh;
+    background-image:linear-gradient(rgba(110,160,255,.028) 1px, transparent 1px), linear-gradient(90deg, rgba(110,160,255,.028) 1px, transparent 1px);
+    background-size:48px 48px; }
+  .mono { font-family:'IBM Plex Mono',monospace; }
+  .rail { width:60px; border-right:1px solid rgba(255,255,255,.05); background:#0c0e13; display:flex; flex-direction:column; align-items:center; padding:16px 0; gap:9px; }
+  .rail .mark { width:36px; height:36px; border-radius:11px; background:linear-gradient(135deg,#4da1ff,#1f6fe8); display:flex; align-items:center; justify-content:center; font-weight:800; color:#0a0c10; font-size:14px; margin-bottom:12px; font-family:'IBM Plex Mono',monospace; }
+  .rail .ic { width:38px; height:38px; border-radius:10px; display:flex; align-items:center; justify-content:center; color:#49556b; font-size:15px; }
+  .rail .ic.on { background:rgba(77,161,255,.12); color:#6db1ff; }
+  main { flex:1; min-width:0; }
+  .topbar { display:flex; align-items:center; gap:18px; padding:11px 26px; border-bottom:1px solid rgba(255,255,255,.05); }
+  .brand { font-weight:800; font-size:14.5px; letter-spacing:-.2px; }
+  .brand em { font-style:normal; color:#4da1ff; }
+  .tlm { font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#49556b; display:flex; gap:16px; margin-left:8px; }
+  .tlm b { color:#8fb8e8; font-weight:500; }
+  .search { margin-left:auto; background:#12141b; border:1px solid rgba(255,255,255,.06); border-radius:9px; padding:7px 14px; color:#5c6577; font-size:11.5px; width:270px; font-family:'IBM Plex Mono',monospace; }
+  .search::before { content:'⌕ '; color:#4da1ff; }
+  .topright { display:flex; align-items:center; gap:10px; }
+  .envp { font-family:'IBM Plex Mono',monospace; font-size:10px; color:#6db1ff; border:1px solid rgba(77,161,255,.3); border-radius:999px; padding:4px 12px; letter-spacing:.1em; }
+  .avatar-t { width:30px; height:30px; border-radius:50%; background:linear-gradient(135deg,#4da1ff,#7c5cf0); display:flex; align-items:center; justify-content:center; font-size:11.5px; font-weight:700; }
+  .content { padding:26px; max-width:1240px; }
+  .pagehead { display:flex; align-items:flex-end; justify-content:space-between; margin-bottom:20px; }
+  .pagehead h1 { font-size:21px; font-weight:800; letter-spacing:-.4px; }
+  .pagehead p { font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#49556b; margin-top:5px; letter-spacing:.04em; }
+  .btn-primary { background:#4da1ff; color:#06101f; border:none; border-radius:9px; padding:9px 18px; font-size:12.5px; font-weight:700; }
+  .statrow { display:grid; grid-template-columns:repeat(4,1fr); gap:13px; margin-bottom:22px; }
+  .stat { position:relative; background:#10131a; border:1px solid rgba(255,255,255,.055); border-radius:12px; padding:14px 17px; }
+  .stat::before { content:''; position:absolute; top:-1px; left:-1px; width:9px; height:9px; border-top:1.5px solid #4da1ff; border-left:1.5px solid #4da1ff; border-radius:12px 0 0 0; }
+  .stat .k { font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:.16em; color:#49556b; display:flex; justify-content:space-between; }
+  .stat .k i { font-style:normal; color:#4da1ff; }
+  .stat .v { font-family:'IBM Plex Mono',monospace; font-size:30px; font-weight:500; letter-spacing:-1px; margin-top:7px; font-variant-numeric:tabular-nums; }
+  .stat .v span { font-size:14px; color:#49556b; }
+  .stat .d { font-size:11px; color:#5c6577; margin-top:6px; font-family:'IBM Plex Mono',monospace; }
+  .stat .d b { font-weight:500; }
+  .ok{color:#3dd68c}.warn{color:#f0a040}.blue{color:#6db1ff}
+  .secttl { font-family:'IBM Plex Mono',monospace; font-size:10.5px; font-weight:500; letter-spacing:.2em; color:#49556b; margin:0 0 12px; display:flex; align-items:center; gap:9px; }
+  .secttl::before { content:''; width:7px; height:7px; background:#4da1ff; border-radius:2px; }
+  .secttl .r { margin-left:auto; letter-spacing:.08em; color:#3a4356; }
+  .projgrid { display:grid; grid-template-columns:repeat(3,1fr); gap:13px; margin-bottom:22px; }
+  .proj { background:#10131a; border:1px solid rgba(255,255,255,.055); border-radius:14px; padding:17px; transition:.15s; }
+  .proj:hover { border-color:rgba(77,161,255,.4); transform:translateY(-1px); }
+  .proj .top { display:flex; align-items:center; gap:11px; margin-bottom:13px; }
+  .proj .ic { width:35px; height:35px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:12.5px; color:#fff; font-family:'IBM Plex Mono',monospace; }
+  .proj h3 { font-size:14px; font-weight:700; }
+  .proj .env { font-family:'IBM Plex Mono',monospace; font-size:9.5px; color:#49556b; margin-top:2px; letter-spacing:.05em; }
+  .badge { margin-left:auto; font-family:'IBM Plex Mono',monospace; font-size:9px; font-weight:500; letter-spacing:.12em; padding:3px 9px; border-radius:4px; }
+  .b-run { background:rgba(61,214,140,.1); color:#3dd68c; } .b-warn { background:rgba(240,160,64,.1); color:#f0a040; }
+  .svcs { display:flex; gap:5px; flex-wrap:wrap; margin-bottom:13px; }
+  .svcs span { font-family:'IBM Plex Mono',monospace; font-size:9.5px; color:#8fb8e8; border:1px solid rgba(110,160,255,.16); border-radius:6px; padding:3px 8px; }
+  .proj .ft { display:flex; justify-content:space-between; align-items:center; font-family:'IBM Plex Mono',monospace; font-size:10px; color:#49556b; border-top:1px solid rgba(255,255,255,.05); padding-top:11px; letter-spacing:.04em; }
+  .proj .ft .arrow { color:#6db1ff; }
+  .tbl { position:relative; background:#10131a; border:1px solid rgba(255,255,255,.055); border-radius:14px; overflow:hidden; }
+  table { width:100%; border-collapse:collapse; font-size:12px; }
+  th { text-align:left; font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:.2em; color:#49556b; font-weight:500; padding:11px 18px; border-bottom:1px solid rgba(255,255,255,.06); }
+  td { padding:11px 18px; border-bottom:1px solid rgba(255,255,255,.04); color:#a9b4c6; font-family:'IBM Plex Mono',monospace; font-size:11.5px; }
+  td:first-child { color:#e4e9f1; font-family:'Inter',sans-serif; font-weight:600; font-size:12.5px; }
+  .st { font-size:9.5px; font-weight:500; letter-spacing:.1em; padding:3px 9px; border-radius:4px; }
+  .st-ok { background:rgba(61,214,140,.1); color:#3dd68c; } .st-run { background:rgba(77,161,255,.12); color:#6db1ff; } .st-fail { background:rgba(255,95,86,.1); color:#ff5f56; }
+</style></head><body>
+<nav class="rail"><div class="mark">C</div><div class="ic on">▦</div><div class="ic">▤</div><div class="ic">◉</div><div class="ic">⚇</div><div class="ic">⚙</div></nav>
+<main>
+  <div class="topbar">
+    <div class="brand">contain<em>r</em></div>
+    <div class="tlm"><span>uptime <b>7h 41m</b></span><span>node <b>cnr-node-01</b></span></div>
+    <div class="search">search projects, builds, logs</div>
+    <div class="topright"><span class="envp">production</span><div class="avatar-t">TD</div></div>
+  </div>
+  <div class="content">
+    <div class="pagehead">
+      <div><h1>Projects</h1><p>3 projects · 9 services · 1 host</p></div>
+      <button class="btn-primary">+ New Project</button>
+    </div>
+    <div class="statrow">
+      <div class="stat"><div class="k"><span>HOST.CPU</span><i>◦</i></div><div class="v">14<span>%</span></div><div class="d"><b class="ok">healthy</b> · 16 cores · load 2.41</div></div>
+      <div class="stat"><div class="k"><span>HOST.MEM</span><i>◦</i></div><div class="v">72<span>%</span></div><div class="d">9.8G / 13G used</div></div>
+      <div class="stat"><div class="k"><span>HOST.DISK</span><i>◦</i></div><div class="v">73<span>%</span></div><div class="d">338G of 465G</div></div>
+      <div class="stat"><div class="k"><span>DEPLOYS.7D</span><i>◦</i></div><div class="v">18</div><div class="d"><b class="ok">17 ok</b> · <b class="warn">1 failed</b></div></div>
+    </div>
+    <p class="secttl">PROJECTS <span class="r">3</span></p>
+    <div class="projgrid">
+      <div class="proj"><div class="top"><div class="ic" style="background:#4da1ff">CS</div><div><h3>core-services</h3><div class="env">prod · containr.dev</div></div><span class="badge b-run">RUNNING</span></div>
+        <div class="svcs"><span>api</span><span>web</span><span>db</span><span>worker</span><span>cache</span></div>
+        <div class="ft"><span>5 svc · deployed 4m ago</span><span class="arrow">→</span></div></div>
+      <div class="proj"><div class="top"><div class="ic" style="background:#7c5cf0">GS</div><div><h3>growth-site</h3><div class="env">prod · growth.app</div></div><span class="badge b-run">RUNNING</span></div>
+        <div class="svcs"><span>site</span><span>api</span><span>redis</span></div>
+        <div class="ft"><span>3 svc · deployed 2h ago</span><span class="arrow">→</span></div></div>
+      <div class="proj"><div class="top"><div class="ic" style="background:#f0a040">ML</div><div><h3>ml-pipeline</h3><div class="env">staging · internal</div></div><span class="badge b-warn">DEGRADED</span></div>
+        <div class="svcs"><span>api</span><span>worker</span></div>
+        <div class="ft"><span>2 svc · 1 failed build</span><span class="arrow">→</span></div></div>
+    </div>
+    <p class="secttl">RECENT DEPLOYMENTS <span class="r">last 24h</span></p>
+    <div class="tbl"><table>
+      <tr><th>SERVICE</th><th>PROJECT</th><th>STATUS</th><th>DUR</th><th>WHEN</th></tr>
+      <tr><td>api-gateway</td><td>core-services</td><td><span class="st st-ok">DEPLOYED</span></td><td>48s</td><td>4m ago</td></tr>
+      <tr><td>web-frontend</td><td>core-services</td><td><span class="st st-run">BUILDING</span></td><td>—</td><td>6m ago</td></tr>
+      <tr><td>worker</td><td>ml-pipeline</td><td><span class="st st-fail">FAILED</span></td><td>1m32s</td><td>1h ago</td></tr>
+      <tr><td>site</td><td>growth-site</td><td><span class="st st-ok">DEPLOYED</span></td><td>39s</td><td>2h ago</td></tr>
+    </table></div>
+  </div>
+</main></body></html>

@@ -377,7 +377,7 @@ export function TemplatesPage() {
   const [categoryFilter, setCategoryFilter] = useState('');
   const [searchFilter, setSearchFilter] = useState('');
   const [selectedTemplateIdState, setSelectedTemplateId] = useState<string | null>(null);
-  const [deployProjectIdState, setDeployProjectId] = useState('');
+  const [deployProjectIdState, setDeployProjectId] = useState(searchParams.get('project') ?? '');
   const [deployNameByTemplate, setDeployNameByTemplate] = useState<Record<string, string>>({});
   const [variableValuesByTemplate, setVariableValuesByTemplate] = useState<
     Record<string, Record<string, string>>
@@ -557,10 +557,10 @@ export function TemplatesPage() {
     <div className="min-h-screen">
       {/* Header */}
       <div className="border-b border-[var(--border-subtle)] bg-[var(--bg-base)]/50 backdrop-blur-sm">
-        <div className="mx-auto w-full max-w-[1400px] px-6 py-4">
+        <div className="w-full px-8 py-4">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <h1 className="text-xl font-semibold text-[var(--text-primary)]">Template Catalog</h1>
+              <h1 className="v-title">Template Catalog<span className="v-cursor">_</span></h1>
               <p className="text-sm text-[var(--text-secondary)]">Deploy services from pre-configured templates</p>
             </div>
             <div className="flex items-center gap-2 text-sm text-[var(--text-tertiary)]">
@@ -573,7 +573,7 @@ export function TemplatesPage() {
 
       {/* Demo Mode Banner */}
       {isDemoMode && (
-        <div className="mx-auto w-full max-w-[1400px] px-6 py-4">
+        <div className="w-full px-8 py-4">
           <div className="px-4 py-3 rounded-[var(--radius-md)] border border-[var(--warning-soft)] bg-[var(--warning-soft)]/50">
             <div className="flex items-center gap-2 text-sm text-[var(--warning)]">
               <Sparkles size={16} />
@@ -584,7 +584,7 @@ export function TemplatesPage() {
       )}
 
       {/* Main Content */}
-      <div className="mx-auto w-full max-w-[1400px] px-6 py-6">
+      <div className="w-full px-8 py-6">
         <div className="grid grid-cols-1 xl:grid-cols-[380px_1fr] gap-6">
           {/* Template List */}
           <section className="panel overflow-hidden">
@@ -657,7 +657,7 @@ export function TemplatesPage() {
                   {filteredTemplates.map((template) => {
                     const selected = template.id === selectedTemplateId;
                     const Icon = categoryIcon(template.category);
-                    const categoryColor = template.category === 'database' ? '#9c7ef0' : template.category === 'frontend' ? '#6c8ef0' : template.category === 'web' ? '#e8316a' : '#9295a4';
+                    const categoryColor = template.category === 'database' ? '#7ab8ff' : template.category === 'frontend' ? '#f2c94c' : template.category === 'web' ? 'var(--accent-primary)' : '#9295a4';
                     return (
                       <button
                         key={template.id}
@@ -935,8 +935,8 @@ export function TemplatesPage() {
                     <button
                       onClick={() => deployMutation.mutate()}
                       disabled={isDeployDisabled}
-                      className="flex items-center gap-2 h-11 px-6 rounded-[var(--radius-md)] text-white text-sm font-medium shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                      style={{ background: '#e8316a' }}
+                      className="flex items-center gap-2 h-11 px-6 rounded-[var(--radius-md)] text-[var(--accent-on)] text-sm font-medium shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                      style={{ background: 'var(--accent-primary)' }}
                     >
                       {deployMutation.isPending ? (
                         <>

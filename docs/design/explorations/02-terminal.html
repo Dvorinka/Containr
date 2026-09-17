@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>02 — Terminal</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'JetBrains Mono','SF Mono',monospace; background:#0a0a0a; color:#d4d4d4; display:flex; min-height:100vh; font-size:13px; }
+  .rail { width:56px; border-right:1px solid #1f1f1f; display:flex; flex-direction:column; align-items:center; padding:16px 0; gap:18px; }
+  .rail .mark { width:32px; height:32px; border:1px solid #4ade80; color:#4ade80; display:flex; align-items:center; justify-content:center; font-weight:700; }
+  .rail .ic { color:#404040; font-size:14px; } .rail .ic.on { color:#4ade80; }
+  main { flex:1; }
+  .topbar { display:flex; align-items:center; gap:14px; padding:10px 24px; border-bottom:1px solid #1f1f1f; }
+  .search { border:1px solid #262626; padding:6px 12px; color:#525252; width:300px; font-size:12px; }
+  .search::before { content:'$ '; color:#4ade80; }
+  .btn-upgrade { margin-left:auto; background:#4ade80; color:#0a0a0a; border:none; padding:7px 16px; font-family:inherit; font-size:12px; font-weight:700; }
+  .crumb { padding:12px 24px 8px; font-size:12px; color:#525252; }
+  .crumb b { color:#a3a3a3; font-weight:400; }
+  .svc { display:flex; align-items:center; padding:0 24px 16px; gap:14px; }
+  .avatar { width:42px; height:42px; border:1px solid #4ade80; color:#4ade80; display:flex; align-items:center; justify-content:center; font-weight:700; }
+  .svc h1 { font-size:17px; font-weight:700; }
+  .badge { color:#4ade80; font-size:11px; border:1px solid #4ade8033; padding:2px 8px; }
+  .badge::before { content:'● '; }
+  .sub { font-size:11px; color:#525252; margin-top:4px; }
+  .acts { margin-left:auto; display:flex; gap:8px; }
+  .btn-stop { background:transparent; color:#d4d4d4; border:1px solid #404040; padding:9px 18px; font-family:inherit; font-size:12px; font-weight:700; }
+  .btn-restart { background:#4ade80; color:#0a0a0a; border:none; padding:9px 18px; font-family:inherit; font-size:12px; font-weight:700; }
+  .tabs { display:flex; gap:22px; padding:0 24px; border-bottom:1px solid #1f1f1f; font-size:12px; }
+  .tab { padding:10px 2px; color:#525252; }
+  .tab.on { color:#4ade80; border-bottom:1px solid #4ade80; }
+  .grid { padding:18px 24px; display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+  .card { border:1px solid #1f1f1f; padding:18px; display:flex; flex-direction:column; background:#0e0e0e; }
+  .card .hd { display:flex; align-items:center; gap:10px; margin-bottom:10px; font-size:12px; color:#a3a3a3; }
+  .card .hd::before { content:'▣'; color:#4ade80; font-size:11px; }
+  .big { font-size:30px; font-weight:700; color:#e5e5e5; }
+  .meta { font-size:11px; color:#525252; margin-top:4px; }
+  .g{color:#4ade80}.a{color:#fbbf24}
+  .segbar { display:flex; gap:3px; height:26px; margin-top:14px; }
+  .legend { display:flex; gap:20px; margin-top:12px; font-size:11px; color:#525252; }
+  .legend b { color:#d4d4d4; font-weight:400; }
+  .foot { margin-top:auto; padding-top:14px; display:flex; justify-content:space-between; align-items:center; font-size:11px; color:#525252; }
+  .foot .arrow { color:#4ade80; }
+  .bars { display:flex; align-items:flex-end; gap:4px; height:70px; margin-top:10px; }
+  .bars div { flex:1; background:#4ade80; opacity:.85; }
+  .speed { font-size:11px; color:#525252; display:flex; gap:6px; }
+</style></head><body>
+<nav class="rail"><div class="mark">C</div><div class="ic">~</div><div class="ic">▦</div><div class="ic on">▤</div><div class="ic">◉</div><div class="ic">⚙</div></nav>
+<main>
+  <div class="topbar"><div class="search">search projects, builds, logs_</div><button class="btn-upgrade">upgrade --pro</button></div>
+  <div class="crumb">~/servers/<b>api-gateway</b></div>
+  <div class="svc">
+    <div class="avatar">AG</div>
+    <div><h1>api-gateway <span class="badge">ACTIVE</span></h1><div class="sub">→ https://api.containr.dev &nbsp;·&nbsp; ./project-info</div></div>
+    <div class="acts"><button class="btn-stop">[ stop ]</button><button class="btn-restart">[ restart ]</button></div>
+  </div>
+  <div class="tabs"><div class="tab on">metrics</div><div class="tab">requests</div><div class="tab">apis</div><div class="tab">config</div></div>
+  <div class="grid">
+    <div class="card"><div class="hd">cpu_usage</div><div class="big">12%</div><div class="meta"><span class="g">[OK]</span> daily usage</div>
+      <svg viewBox="0 0 200 55" style="margin-top:12px;width:100%"><path d="M0 42 L18 40 L36 44 L54 38 L72 41 L90 33 L108 37 L126 28 L144 32 L162 20 L180 24 L200 12" fill="none" stroke="#4ade80" stroke-width="1.5"/></svg>
+      <div class="foot"><span>[ details ]</span><span class="arrow">→</span></div></div>
+    <div class="card"><div class="hd">ram_usage</div><div class="big">65%</div><div class="meta"><span class="a">[WARN]</span> daily usage</div>
+      <svg viewBox="0 0 160 80" style="margin:8px auto 0;display:block"><path d="M14 72 A 62 62 0 0 1 146 72" fill="none" stroke="#262626" stroke-width="10"/><path d="M14 72 A 62 62 0 0 1 115 32" fill="none" stroke="#fbbf24" stroke-width="10" stroke-dasharray="4 3"/><text x="80" y="58" text-anchor="middle" fill="#525252" font-size="8">USED</text><text x="80" y="72" text-anchor="middle" fill="#d4d4d4" font-size="11" font-weight="700">5.4G/8G</text></svg>
+      <div class="foot"><span>[ details ]</span><span class="arrow">→</span></div></div>
+    <div class="card"><div class="hd">cache</div><div class="big">352M</div><div class="meta"><span class="a">220M avg</span> cached images/files</div>
+      <div class="segbar"><div style="width:48%;background:#4ade80"></div><div style="width:20%;background:#fbbf24"></div><div style="width:32%;background:#1f1f1f"></div></div>
+      <div class="legend"><span>cache <b>212M</b></span><span>other <b>85M</b></span><span>total <b>1.75G</b></span></div>
+      <div class="foot"><span>[ details ]</span><span class="arrow">→</span></div></div>
+    <div class="card" style="grid-column:span 2"><div class="hd">active_users</div><div class="big">475,231</div><div class="meta">users online right now</div>
+      <div class="bars"><div style="height:80%"></div><div style="height:55%"></div><div style="height:90%"></div><div style="height:62%"></div><div style="height:75%"></div><div style="height:40%"></div><div style="height:68%"></div><div style="height:85%"></div><div style="height:58%"></div><div style="height:72%"></div><div style="height:48%"></div><div style="height:66%"></div><div style="height:78%"></div><div style="height:52%"></div></div>
+      <div class="foot"><span>[ details ]</span><span class="arrow">→</span></div></div>
+    <div class="card"><div class="hd">performance</div><div class="big">89%</div><div class="meta"><span class="g">[OK]</span> last scan today</div>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:12px"><div class="speed">↓ 10.4 Mbps</div><div class="speed">↑ 5.2 Mbps</div></div>
+      <div class="foot"><span>[ check speed ]</span><span class="arrow">→</span></div></div>
+  </div>
+</main></body></html>

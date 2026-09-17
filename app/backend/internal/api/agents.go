@@ -1,7 +1,14 @@
 package api
 
 import (
+	"context"
+	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
+	"database/sql"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -9,26 +16,29 @@ import (
 	"strings"
 	"time"
 
+	"containr/internal/database"
+	"containr/internal/database/sqlcdb"
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"gorm.io/gorm"
+	"github.com/sqlc-dev/pqtype"
 )
 
 // NodeAgent represents a container orchestration agent
 type NodeAgent struct {
-	ID            string                 `json:"id" gorm:"primaryKey"`
-	Name          string                 `json:"name" gorm:"not null"`
-	Hostname      string                 `json:"hostname" gorm:"not null"`
-	IPAddress     string                 `json:"ip_address" gorm:"not null"`
-	Port          int                    `json:"port" gorm:"not null"`
-	Status        string                 `json:"status" gorm:"default:'offline'"`
+	ID            string                 `json:"id"`
+	Name          string                 `json:"name"`
+	Hostname      string                 `json:"hostname"`
+	IPAddress     string                 `json:"ip_address"`
+	Port          int                    `json:"port"`
+	Status        string                 `json:"status"`
 	Version       string                 `json:"version"`
-	Capabilities  AgentCapabilities      `json:"capabilities" gorm:"serializer:json"`
-	Resources     NodeResources          `json:"resources" gorm:"serializer:json"`
+	Capabilities  AgentCapabilities      `json:"capabilities"`
+	Resources     NodeResources          `json:"resources"`
 	LastHeartbeat time.Time              `json:"last_heartbeat"`
 	CreatedAt     time.Time              `json:"created_at"`
 	UpdatedAt     time.Time              `json:"updated_at"`
-	Metadata      map[string]interface{} `json:"metadata" gorm:"serializer:json"`
+	Metadata      map[string]interface{} `json:"metadata"`
 }
 
 // AgentCapabilities defines what the agent can do
@@ -89,20 +99,20 @@ type BandwidthInfo struct {
 
 // ContainerInstance represents a container running on an agent
 type ContainerInstance struct {
-	ID            string             `json:"id" gorm:"primaryKey"`
-	Name          string             `json:"name" gorm:"not null"`
-	Image         string             `json:"image" gorm:"not null"`
-	ProjectID     string             `json:"project_id" gorm:"not null"`
-	ServiceID     string             `json:"service_id" gorm:"not null"`
-	NodeAgentID   string             `json:"node_agent_id" gorm:"not null"`
-	Status        ContainerStatus    `json:"status" gorm:"serializer:json"`
-	Resources     ContainerResources `json:"resources" gorm:"serializer:json"`
-	Ports         []PortMapping      `json:"ports" gorm:"serializer:json"`
-	Environment   map[string]string  `json:"environment" gorm:"serializer:json"`
-	Volumes       []VolumeMount      `json:"volumes" gorm:"serializer:json"`
-	Networks      []string           `json:"networks" gorm:"serializer:json"`
-	RestartPolicy RestartPolicy      `json:"restart_policy" gorm:"serializer:json"`
-	HealthCheck   *HealthCheck       `json:"health_check" gorm:"serializer:json"`
+	ID            string             `json:"id"`
+	Name          string             `json:"name"`
+	Image         string             `json:"image"`
+	ProjectID     string             `json:"project_id"`
+	ServiceID     string             `json:"service_id"`
+	NodeAgentID   string             `json:"node_agent_id"`
+	Status        ContainerStatus    `json:"status"`
+	Resources     ContainerResources `json:"resources"`
+	Ports         []PortMapping      `json:"ports"`
+	Environment   map[string]string  `json:"environment"`
+	Volumes       []VolumeMount      `json:"volumes"`
+	Networks      []string           `json:"networks"`
+	RestartPolicy RestartPolicy      `json:"restart_policy"`
+	HealthCheck   *HealthCheck       `json:"health_check"`
 	CreatedAt     time.Time          `json:"created_at"`
 	StartedAt     *time.Time         `json:"started_at"`
 	UpdatedAt     time.Time          `json:"updated_at"`
@@ -155,12 +165,12 @@ type HealthCheck struct {
 
 // AgentCommand represents a command sent to an agent
 type AgentCommand struct {
-	ID          string                 `json:"id" gorm:"primaryKey"`
-	Type        string                 `json:"type" gorm:"not null"`
-	NodeAgentID string                 `json:"node_agent_id" gorm:"not null"`
+	ID          string                 `json:"id"`
+	Type        string                 `json:"type"`
+	NodeAgentID string                 `json:"node_agent_id"`
 	ContainerID *string                `json:"container_id"`
-	Payload     map[string]interface{} `json:"payload" gorm:"serializer:json"`
-	Status      string                 `json:"status" gorm:"default:'pending'"`
+	Payload     map[string]interface{} `json:"payload"`
+	Status      string                 `json:"status"`
 	Result      *string                `json:"result"`
 	Error       *string                `json:"error"`
 	CreatedAt   time.Time              `json:"created_at"`
@@ -171,6 +181,7 @@ type AgentCommand struct {
 // AgentHeartbeat represents a heartbeat message from an agent
 type AgentHeartbeat struct {
 	NodeAgentID    string        `json:"node_agent_id"`
+	AuthToken      string        `json:"auth_token,omitempty"`
 	Timestamp      time.Time     `json:"timestamp"`
 	Status         string        `json:"status"`
 	Resources      NodeResources `json:"resources"`
@@ -178,19 +189,6 @@ type AgentHeartbeat struct {
 	SystemLoad     SystemLoad    `json:"system_load"`
 	Uptime         int64         `json:"uptime"`
 	Version        string        `json:"version"`
-}
-
-type AgentHeartbeatRecord struct {
-	ID             string        `json:"id" gorm:"primaryKey"`
-	NodeAgentID    string        `json:"node_agent_id" gorm:"index;not null"`
-	Timestamp      time.Time     `json:"timestamp" gorm:"index;not null"`
-	Status         string        `json:"status"`
-	Resources      NodeResources `json:"resources" gorm:"serializer:json"`
-	ContainerCount int           `json:"container_count"`
-	SystemLoad     SystemLoad    `json:"system_load" gorm:"serializer:json"`
-	Uptime         int64         `json:"uptime"`
-	Version        string        `json:"version"`
-	CreatedAt      time.Time     `json:"created_at"`
 }
 
 type SystemLoad struct {
@@ -201,12 +199,124 @@ type SystemLoad struct {
 
 // NodeAgentHandler handles agent-related endpoints
 type NodeAgentHandler struct {
-	db *gorm.DB
+	q *sqlcdb.Queries
 }
 
-func NewNodeAgentHandler(db *gorm.DB) *NodeAgentHandler {
-	return &NodeAgentHandler{db: db}
+func NewNodeAgentHandler(db *database.DB) *NodeAgentHandler {
+	return &NodeAgentHandler{q: sqlcdb.New(db.DB)}
 }
+
+// --- row <-> API type conversion helpers ---
+
+func rawJSON(v interface{}) pqtype.NullRawMessage {
+	if v == nil {
+		return pqtype.NullRawMessage{}
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return pqtype.NullRawMessage{}
+	}
+	return pqtype.NullRawMessage{RawMessage: b, Valid: true}
+}
+
+func unmarshalRaw(raw pqtype.NullRawMessage, dst interface{}) {
+	if raw.Valid && len(raw.RawMessage) > 0 {
+		_ = json.Unmarshal(raw.RawMessage, dst)
+	}
+}
+
+func agentFromRow(row sqlcdb.NodeAgent) NodeAgent {
+	agent := NodeAgent{
+		ID:        row.ID,
+		Name:      row.Name,
+		Hostname:  row.Hostname,
+		IPAddress: row.IpAddress,
+		Port:      int(row.Port),
+		Status:    row.Status.String,
+		Version:   row.Version.String,
+		Metadata:  map[string]interface{}{},
+	}
+	if row.LastHeartbeat.Valid {
+		agent.LastHeartbeat = row.LastHeartbeat.Time
+	}
+	if row.CreatedAt.Valid {
+		agent.CreatedAt = row.CreatedAt.Time
+	}
+	if row.UpdatedAt.Valid {
+		agent.UpdatedAt = row.UpdatedAt.Time
+	}
+	unmarshalRaw(row.Capabilities, &agent.Capabilities)
+	unmarshalRaw(row.Resources, &agent.Resources)
+	unmarshalRaw(row.Metadata, &agent.Metadata)
+	return agent
+}
+
+func containerFromRow(row sqlcdb.ContainerInstance) ContainerInstance {
+	container := ContainerInstance{
+		ID:          row.ID,
+		Name:        row.Name,
+		Image:       row.Image,
+		ProjectID:   row.ProjectID,
+		ServiceID:   row.ServiceID,
+		NodeAgentID: row.NodeAgentID,
+	}
+	if row.CreatedAt.Valid {
+		container.CreatedAt = row.CreatedAt.Time
+	}
+	if row.UpdatedAt.Valid {
+		container.UpdatedAt = row.UpdatedAt.Time
+	}
+	if row.StartedAt.Valid {
+		t := row.StartedAt.Time
+		container.StartedAt = &t
+	}
+	unmarshalRaw(row.Status, &container.Status)
+	unmarshalRaw(row.Resources, &container.Resources)
+	unmarshalRaw(row.Ports, &container.Ports)
+	unmarshalRaw(row.Environment, &container.Environment)
+	unmarshalRaw(row.Volumes, &container.Volumes)
+	unmarshalRaw(row.Networks, &container.Networks)
+	unmarshalRaw(row.RestartPolicy, &container.RestartPolicy)
+	if row.HealthCheck.Valid {
+		var hc HealthCheck
+		if err := json.Unmarshal(row.HealthCheck.RawMessage, &hc); err == nil {
+			container.HealthCheck = &hc
+		}
+	}
+	return container
+}
+
+func commandFromRow(row sqlcdb.AgentCommand) AgentCommand {
+	cmd := AgentCommand{
+		ID:          row.ID,
+		Type:        row.Type,
+		NodeAgentID: row.NodeAgentID,
+		Status:      row.Status.String,
+	}
+	if row.ContainerID.Valid {
+		cmd.ContainerID = &row.ContainerID.String
+	}
+	if row.Result.Valid {
+		cmd.Result = &row.Result.String
+	}
+	if row.Error.Valid {
+		cmd.Error = &row.Error.String
+	}
+	if row.CreatedAt.Valid {
+		cmd.CreatedAt = row.CreatedAt.Time
+	}
+	if row.UpdatedAt.Valid {
+		cmd.UpdatedAt = row.UpdatedAt.Time
+	}
+	if row.CompletedAt.Valid {
+		t := row.CompletedAt.Time
+		cmd.CompletedAt = &t
+	}
+	unmarshalRaw(row.Payload, &cmd.Payload)
+	return cmd
+}
+
+// --- handlers ---
 
 // RegisterAgent handles agent registration
 func (h *NodeAgentHandler) RegisterAgent(c *gin.Context) {
@@ -216,7 +326,7 @@ func (h *NodeAgentHandler) RegisterAgent(c *gin.Context) {
 		IPAddress    string            `json:"ip_address" binding:"required"`
 		Port         int               `json:"port" binding:"required"`
 		Capabilities AgentCapabilities `json:"capabilities" binding:"required"`
-		AuthToken    string            `json:"auth_token" binding:"required"`
+		AuthToken    string            `json:"auth_token"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -224,101 +334,105 @@ func (h *NodeAgentHandler) RegisterAgent(c *gin.Context) {
 		return
 	}
 
-	if !isValidAgentAuthToken(req.AuthToken) {
+	authToken := firstNonEmpty(req.AuthToken, agentAuthTokenFromRequest(c))
+	if !h.isValidAgentAuthToken(c.Request.Context(), authToken) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid auth token"})
 		return
 	}
 
-	// Check if agent already exists
-	var existingAgent NodeAgent
-	if err := h.db.Where("hostname = ? AND ip_address = ?", req.Hostname, req.IPAddress).First(&existingAgent).Error; err == nil {
-		// Update existing agent
-		existingAgent.Name = req.Name
-		existingAgent.Port = req.Port
-		existingAgent.Capabilities = req.Capabilities
-		existingAgent.Status = "connecting"
-		existingAgent.LastHeartbeat = time.Now()
+	ctx := c.Request.Context()
 
-		if err := h.db.Save(&existingAgent).Error; err != nil {
+	// Re-registering an existing host updates it in place.
+	if existing, err := h.q.GetAgentByHostAndIP(ctx, sqlcdb.GetAgentByHostAndIPParams{
+		Hostname:  req.Hostname,
+		IpAddress: req.IPAddress,
+	}); err == nil {
+		updated, err := h.q.UpdateAgent(ctx, sqlcdb.UpdateAgentParams{
+			ID:            existing.ID,
+			Name:          req.Name,
+			Hostname:      existing.Hostname,
+			IpAddress:     existing.IpAddress,
+			Port:          int32(req.Port),
+			Status:        sql.NullString{String: "connecting", Valid: true},
+			Version:       existing.Version,
+			Capabilities:  rawJSON(req.Capabilities),
+			Resources:     existing.Resources,
+			LastHeartbeat: sql.NullTime{Time: time.Now(), Valid: true},
+			Metadata:      existing.Metadata,
+		})
+		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update agent"})
 			return
 		}
 
 		c.JSON(http.StatusOK, gin.H{
-			"agent_id":   existingAgent.ID,
-			"auth_token": req.AuthToken,
+			"agent_id":   updated.ID,
+			"auth_token": authToken,
 			"status":     "updated",
 		})
 		return
 	}
 
-	// Create new agent
-	agent := NodeAgent{
-		ID:           uuid.New().String(),
-		Name:         req.Name,
-		Hostname:     req.Hostname,
-		IPAddress:    req.IPAddress,
-		Port:         req.Port,
-		Status:       "connecting",
-		Capabilities: req.Capabilities,
-		Resources: NodeResources{
-			CPU: CPUResources{
-				Cores:      4,
-				Allocation: 0,
-				Usage:      0,
-			},
-			Memory: MemoryResources{
-				Total:     8 * 1024 * 1024 * 1024, // 8GB
-				Allocated: 0,
-				Used:      0,
-				Available: 8 * 1024 * 1024 * 1024,
-			},
-			Storage: StorageResources{
-				Total:     100 * 1024 * 1024 * 1024, // 100GB
-				Allocated: 0,
-				Used:      0,
-				Available: 100 * 1024 * 1024 * 1024,
-			},
-			Network: NetworkResources{
-				Interfaces: []NetworkInterface{
-					{
-						Name:       "eth0",
-						IPAddress:  req.IPAddress,
-						MACAddress: "00:00:00:00:00:00",
-						Speed:      1000,
-						Status:     "up",
-					},
-				},
-				Bandwidth: BandwidthInfo{
-					Inbound:  0,
-					Outbound: 0,
+	agentID := uuid.New().String()
+	resources := NodeResources{
+		CPU: CPUResources{Cores: 4},
+		Memory: MemoryResources{
+			Total:     8 * 1024 * 1024 * 1024, // 8GB
+			Available: 8 * 1024 * 1024 * 1024,
+		},
+		Storage: StorageResources{
+			Total:     100 * 1024 * 1024 * 1024, // 100GB
+			Available: 100 * 1024 * 1024 * 1024,
+		},
+		Network: NetworkResources{
+			Interfaces: []NetworkInterface{
+				{
+					Name:       "eth0",
+					IPAddress:  req.IPAddress,
+					MACAddress: "00:00:00:00:00:00",
+					Speed:      1000,
+					Status:     "up",
 				},
 			},
 		},
-		LastHeartbeat: time.Now(),
-		CreatedAt:     time.Now(),
-		UpdatedAt:     time.Now(),
-		Metadata:      make(map[string]interface{}),
 	}
 
-	if err := h.db.Create(&agent).Error; err != nil {
+	_, err := h.q.CreateAgent(ctx, sqlcdb.CreateAgentParams{
+		ID:            agentID,
+		Name:          req.Name,
+		Hostname:      req.Hostname,
+		IpAddress:     req.IPAddress,
+		Port:          int32(req.Port),
+		Status:        sql.NullString{String: "connecting", Valid: true},
+		Version:       sql.NullString{},
+		Capabilities:  rawJSON(req.Capabilities),
+		Resources:     rawJSON(resources),
+		LastHeartbeat: sql.NullTime{Time: time.Now(), Valid: true},
+		Metadata:      rawJSON(map[string]interface{}{}),
+	})
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create agent"})
 		return
 	}
 
 	c.JSON(http.StatusCreated, gin.H{
-		"agent_id":   agent.ID,
-		"auth_token": req.AuthToken,
+		"agent_id":   agentID,
+		"auth_token": authToken,
 		"status":     "registered",
 	})
 }
 
 // GetAgents returns all registered agents
 func (h *NodeAgentHandler) GetAgents(c *gin.Context) {
-	var agents []NodeAgent
-	if err := h.db.Find(&agents).Error; err != nil {
+	rows, err := h.q.ListAgents(c.Request.Context())
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch agents"})
 		return
+	}
+
+	agents := make([]NodeAgent, 0, len(rows))
+	for _, row := range rows {
+		agents = append(agents, agentFromRow(row))
 	}
 
 	c.JSON(http.StatusOK, gin.H{"agents": agents})
@@ -326,11 +440,9 @@ func (h *NodeAgentHandler) GetAgents(c *gin.Context) {
 
 // GetAgent returns a specific agent
 func (h *NodeAgentHandler) GetAgent(c *gin.Context) {
-	id := c.Param("id")
-
-	var agent NodeAgent
-	if err := h.db.First(&agent, "id = ?", id).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
+	row, err := h.q.GetAgent(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		if err == sql.ErrNoRows {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Agent not found"})
 			return
 		}
@@ -338,16 +450,17 @@ func (h *NodeAgentHandler) GetAgent(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"agent": agent})
+	c.JSON(http.StatusOK, gin.H{"agent": agentFromRow(row)})
 }
 
 // UpdateAgent updates an agent's information
 func (h *NodeAgentHandler) UpdateAgent(c *gin.Context) {
 	id := c.Param("id")
+	ctx := c.Request.Context()
 
-	var agent NodeAgent
-	if err := h.db.First(&agent, "id = ?", id).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
+	row, err := h.q.GetAgent(ctx, id)
+	if err != nil {
+		if err == sql.ErrNoRows {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Agent not found"})
 			return
 		}
@@ -361,19 +474,53 @@ func (h *NodeAgentHandler) UpdateAgent(c *gin.Context) {
 		return
 	}
 
-	if err := h.db.Model(&agent).Updates(updates).Error; err != nil {
+	agent := agentFromRow(row)
+	applyAgentUpdates(&agent, updates)
+
+	updated, err := h.q.UpdateAgent(ctx, sqlcdb.UpdateAgentParams{
+		ID:            agent.ID,
+		Name:          agent.Name,
+		Hostname:      agent.Hostname,
+		IpAddress:     agent.IPAddress,
+		Port:          int32(agent.Port),
+		Status:        sql.NullString{String: agent.Status, Valid: agent.Status != ""},
+		Version:       sql.NullString{String: agent.Version, Valid: agent.Version != ""},
+		Capabilities:  rawJSON(agent.Capabilities),
+		Resources:     rawJSON(agent.Resources),
+		LastHeartbeat: sql.NullTime{Time: agent.LastHeartbeat, Valid: !agent.LastHeartbeat.IsZero()},
+		Metadata:      rawJSON(agent.Metadata),
+	})
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update agent"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"agent": agent})
+	c.JSON(http.StatusOK, gin.H{"agent": agentFromRow(updated)})
+}
+
+// applyAgentUpdates merges whitelisted keys from an arbitrary update map.
+func applyAgentUpdates(agent *NodeAgent, updates map[string]interface{}) {
+	remarshal := func(key string, dst interface{}) {
+		if v, ok := updates[key]; ok {
+			if b, err := json.Marshal(v); err == nil {
+				_ = json.Unmarshal(b, dst)
+			}
+		}
+	}
+	remarshal("name", &agent.Name)
+	remarshal("hostname", &agent.Hostname)
+	remarshal("ip_address", &agent.IPAddress)
+	remarshal("port", &agent.Port)
+	remarshal("status", &agent.Status)
+	remarshal("version", &agent.Version)
+	remarshal("capabilities", &agent.Capabilities)
+	remarshal("resources", &agent.Resources)
+	remarshal("metadata", &agent.Metadata)
 }
 
 // DeleteAgent removes an agent
 func (h *NodeAgentHandler) DeleteAgent(c *gin.Context) {
-	id := c.Param("id")
-
-	if err := h.db.Delete(&NodeAgent{}, "id = ?", id).Error; err != nil {
+	if err := h.q.DeleteAgent(c.Request.Context(), c.Param("id")); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete agent"})
 		return
 	}
@@ -388,13 +535,18 @@ func (h *NodeAgentHandler) SendHeartbeat(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	authToken := firstNonEmpty(heartbeat.AuthToken, agentAuthTokenFromRequest(c))
+	if !h.isValidAgentAuthToken(c.Request.Context(), authToken) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid auth token"})
+		return
+	}
 	if heartbeat.Timestamp.IsZero() {
 		heartbeat.Timestamp = time.Now()
 	}
 
-	var agent NodeAgent
-	if err := h.db.First(&agent, "id = ?", heartbeat.NodeAgentID).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
+	ctx := c.Request.Context()
+	if _, err := h.q.GetAgent(ctx, heartbeat.NodeAgentID); err != nil {
+		if err == sql.ErrNoRows {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Agent not found"})
 			return
 		}
@@ -402,48 +554,158 @@ func (h *NodeAgentHandler) SendHeartbeat(c *gin.Context) {
 		return
 	}
 
-	// Update agent status and resources
-	agent.Status = heartbeat.Status
-	agent.Resources = heartbeat.Resources
-	agent.LastHeartbeat = heartbeat.Timestamp
-	agent.UpdatedAt = time.Now()
-
-	if err := h.db.Save(&agent).Error; err != nil {
+	if err := h.q.UpdateAgentHeartbeat(ctx, sqlcdb.UpdateAgentHeartbeatParams{
+		ID:            heartbeat.NodeAgentID,
+		Status:        sql.NullString{String: heartbeat.Status, Valid: heartbeat.Status != ""},
+		Resources:     rawJSON(heartbeat.Resources),
+		LastHeartbeat: sql.NullTime{Time: heartbeat.Timestamp, Valid: true},
+	}); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update agent"})
 		return
 	}
 
-	record := AgentHeartbeatRecord{
+	err := h.q.InsertAgentHeartbeat(ctx, sqlcdb.InsertAgentHeartbeatParams{
 		ID:             uuid.New().String(),
 		NodeAgentID:    heartbeat.NodeAgentID,
 		Timestamp:      heartbeat.Timestamp,
 		Status:         heartbeat.Status,
-		Resources:      heartbeat.Resources,
-		ContainerCount: heartbeat.ContainerCount,
-		SystemLoad:     heartbeat.SystemLoad,
+		Resources:      rawJSON(heartbeat.Resources).RawMessage,
+		ContainerCount: int32(heartbeat.ContainerCount),
+		SystemLoad:     rawJSON(heartbeat.SystemLoad).RawMessage,
 		Uptime:         heartbeat.Uptime,
 		Version:        heartbeat.Version,
-		CreatedAt:      time.Now(),
-	}
-	if err := h.db.Create(&record).Error; err != nil {
+	})
+	if err != nil && !isMissingTableError(err) {
 		// Keep heartbeat endpoint available even if history table is not yet migrated.
-		if !isMissingTableError(err) {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to persist heartbeat"})
-			return
-		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to persist heartbeat"})
+		return
 	}
 
 	c.Status(http.StatusOK)
 }
 
+// GetPendingCommandsForAgent exposes queued commands to token-authenticated node agents.
+func (h *NodeAgentHandler) GetPendingCommandsForAgent(c *gin.Context) {
+	if !h.isValidAgentAuthToken(c.Request.Context(), agentAuthTokenFromRequest(c)) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid auth token"})
+		return
+	}
+
+	rows, err := h.q.ListPendingCommands(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch commands"})
+		return
+	}
+
+	commands := make([]AgentCommand, 0, len(rows))
+	for _, row := range rows {
+		commands = append(commands, commandFromRow(row))
+	}
+
+	c.JSON(http.StatusOK, gin.H{"commands": commands})
+}
+
+// CompleteCommand lets a node agent report command completion or failure.
+func (h *NodeAgentHandler) CompleteCommand(c *gin.Context) {
+	if !h.isValidAgentAuthToken(c.Request.Context(), agentAuthTokenFromRequest(c)) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid auth token"})
+		return
+	}
+
+	agentID := c.Param("id")
+	commandID := c.Param("commandId")
+	var req struct {
+		Status string `json:"status" binding:"required"`
+		Result string `json:"result"`
+		Error  string `json:"error"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.Status != "completed" && req.Status != "failed" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "status must be completed or failed"})
+		return
+	}
+
+	ctx := c.Request.Context()
+	command, err := h.q.CompleteCommand(ctx, sqlcdb.CompleteCommandParams{
+		ID:          commandID,
+		NodeAgentID: agentID,
+		Status:      sql.NullString{String: req.Status, Valid: true},
+		Result:      sql.NullString{String: req.Result, Valid: req.Result != ""},
+		Error:       sql.NullString{String: req.Error, Valid: req.Error != ""},
+	})
+	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Command not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update command"})
+		return
+	}
+
+	out := commandFromRow(command)
+	if out.ContainerID != nil {
+		h.updateContainerStatusAfterCommand(ctx, out)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"command": out})
+}
+
+func (h *NodeAgentHandler) updateContainerStatusAfterCommand(ctx context.Context, command AgentCommand) {
+	row, err := h.q.GetContainer(ctx, *command.ContainerID)
+	if err != nil {
+		return
+	}
+
+	container := containerFromRow(row)
+
+	if command.Status == "failed" {
+		errorMessage := ""
+		if command.Error != nil {
+			errorMessage = *command.Error
+		}
+		container.Status.State = "error"
+		container.Status.Error = &errorMessage
+		_ = h.q.UpdateContainerStatus(ctx, sqlcdb.UpdateContainerStatusParams{
+			ID:     container.ID,
+			Status: rawJSON(container.Status),
+		})
+		return
+	}
+
+	now := time.Now()
+	switch command.Type {
+	case "create_container", "start_container", "restart_container":
+		container.Status.State = "running"
+		container.Status.Health = "unknown"
+		container.Status.StartedAt = &now
+		container.Status.Error = nil
+	case "stop_container":
+		container.Status.State = "stopped"
+		container.Status.FinishedAt = &now
+	case "remove_container":
+		container.Status.State = "removed"
+		container.Status.FinishedAt = &now
+	}
+	_ = h.q.UpdateContainerStatus(ctx, sqlcdb.UpdateContainerStatusParams{
+		ID:     container.ID,
+		Status: rawJSON(container.Status),
+	})
+}
+
 // GetAgentContainers returns containers running on a specific agent
 func (h *NodeAgentHandler) GetAgentContainers(c *gin.Context) {
-	agentID := c.Param("id")
-
-	var containers []ContainerInstance
-	if err := h.db.Where("node_agent_id = ?", agentID).Find(&containers).Error; err != nil {
+	rows, err := h.q.ListContainersForAgent(c.Request.Context(), c.Param("id"))
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch containers"})
 		return
+	}
+
+	containers := make([]ContainerInstance, 0, len(rows))
+	for _, row := range rows {
+		containers = append(containers, containerFromRow(row))
 	}
 
 	c.JSON(http.StatusOK, gin.H{"containers": containers})
@@ -472,10 +734,11 @@ func (h *NodeAgentHandler) CreateContainer(c *gin.Context) {
 		return
 	}
 
+	ctx := c.Request.Context()
+
 	// Verify agent exists
-	var agent NodeAgent
-	if err := h.db.First(&agent, "id = ?", agentID).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
+	if _, err := h.q.GetAgent(ctx, agentID); err != nil {
+		if err == sql.ErrNoRows {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Agent not found"})
 			return
 		}
@@ -483,17 +746,15 @@ func (h *NodeAgentHandler) CreateContainer(c *gin.Context) {
 		return
 	}
 
+	containerID := uuid.New().String()
 	container := ContainerInstance{
-		ID:          uuid.New().String(),
-		Name:        req.Name,
-		Image:       req.Image,
-		ProjectID:   req.ProjectID,
-		ServiceID:   req.ServiceID,
-		NodeAgentID: agentID,
-		Status: ContainerStatus{
-			State:  "created",
-			Health: "none",
-		},
+		ID:            containerID,
+		Name:          req.Name,
+		Image:         req.Image,
+		ProjectID:     req.ProjectID,
+		ServiceID:     req.ServiceID,
+		NodeAgentID:   agentID,
+		Status:        ContainerStatus{State: "created", Health: "none"},
 		Resources:     req.Resources,
 		Ports:         req.Ports,
 		Environment:   req.Environment,
@@ -505,26 +766,36 @@ func (h *NodeAgentHandler) CreateContainer(c *gin.Context) {
 		UpdatedAt:     time.Now(),
 	}
 
-	if err := h.db.Create(&container).Error; err != nil {
+	_, err := h.q.CreateContainer(ctx, sqlcdb.CreateContainerParams{
+		ID:            container.ID,
+		Name:          container.Name,
+		Image:         container.Image,
+		ProjectID:     container.ProjectID,
+		ServiceID:     container.ServiceID,
+		NodeAgentID:   container.NodeAgentID,
+		Status:        rawJSON(container.Status),
+		Resources:     rawJSON(container.Resources),
+		Ports:         rawJSON(container.Ports),
+		Environment:   rawJSON(container.Environment),
+		Volumes:       rawJSON(container.Volumes),
+		Networks:      rawJSON(container.Networks),
+		RestartPolicy: rawJSON(container.RestartPolicy),
+		HealthCheck:   rawJSON(container.HealthCheck),
+	})
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create container"})
 		return
 	}
 
 	// Create command to start container on agent
-	command := AgentCommand{
+	_, err = h.q.CreateCommand(ctx, sqlcdb.CreateCommandParams{
 		ID:          uuid.New().String(),
 		Type:        "create_container",
 		NodeAgentID: agentID,
-		ContainerID: &container.ID,
-		Payload: map[string]interface{}{
-			"container": container,
-		},
-		Status:    "pending",
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-	}
-
-	if err := h.db.Create(&command).Error; err != nil {
+		ContainerID: sql.NullString{String: container.ID, Valid: true},
+		Payload:     rawJSON(map[string]interface{}{"container": container}),
+	})
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create container command"})
 		return
 	}
@@ -546,32 +817,31 @@ func (h *NodeAgentHandler) ExecuteCommand(c *gin.Context) {
 		return
 	}
 
-	command := AgentCommand{
+	command, err := h.q.CreateCommand(c.Request.Context(), sqlcdb.CreateCommandParams{
 		ID:          uuid.New().String(),
 		Type:        req.Type,
 		NodeAgentID: agentID,
-		Payload:     req.Payload,
-		Status:      "pending",
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
-	}
-
-	if err := h.db.Create(&command).Error; err != nil {
+		Payload:     rawJSON(req.Payload),
+	})
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create command"})
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"command": command})
+	c.JSON(http.StatusCreated, gin.H{"command": commandFromRow(command)})
 }
 
 // GetAgentCommands returns commands for an agent
 func (h *NodeAgentHandler) GetAgentCommands(c *gin.Context) {
-	agentID := c.Param("id")
-
-	var commands []AgentCommand
-	if err := h.db.Where("node_agent_id = ?", agentID).Order("created_at DESC").Find(&commands).Error; err != nil {
+	rows, err := h.q.ListCommandsForAgent(c.Request.Context(), c.Param("id"))
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch commands"})
 		return
+	}
+
+	commands := make([]AgentCommand, 0, len(rows))
+	for _, row := range rows {
+		commands = append(commands, commandFromRow(row))
 	}
 
 	c.JSON(http.StatusOK, gin.H{"commands": commands})
@@ -579,12 +849,12 @@ func (h *NodeAgentHandler) GetAgentCommands(c *gin.Context) {
 
 // GetCommandStatus returns the status of a specific command
 func (h *NodeAgentHandler) GetCommandStatus(c *gin.Context) {
-	agentID := c.Param("id")
-	commandID := c.Param("commandId")
-
-	var command AgentCommand
-	if err := h.db.First(&command, "id = ? AND node_agent_id = ?", commandID, agentID).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
+	command, err := h.q.GetCommandForAgent(c.Request.Context(), sqlcdb.GetCommandForAgentParams{
+		ID:          c.Param("commandId"),
+		NodeAgentID: c.Param("id"),
+	})
+	if err != nil {
+		if err == sql.ErrNoRows {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Command not found"})
 			return
 		}
@@ -592,7 +862,7 @@ func (h *NodeAgentHandler) GetCommandStatus(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"command": command})
+	c.JSON(http.StatusOK, gin.H{"command": commandFromRow(command)})
 }
 
 // ContainerAction handles container lifecycle actions
@@ -616,10 +886,15 @@ func (h *NodeAgentHandler) ContainerAction(c *gin.Context) {
 		return
 	}
 
+	ctx := c.Request.Context()
+
 	// Verify container exists
-	var container ContainerInstance
-	if err := h.db.First(&container, "id = ? AND node_agent_id = ?", containerID, agentID).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
+	containerRow, err := h.q.GetContainerForAgent(ctx, sqlcdb.GetContainerForAgentParams{
+		ID:          containerID,
+		NodeAgentID: agentID,
+	})
+	if err != nil {
+		if err == sql.ErrNoRows {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Container not found"})
 			return
 		}
@@ -628,20 +903,18 @@ func (h *NodeAgentHandler) ContainerAction(c *gin.Context) {
 	}
 
 	// Create command for the action
-	command := AgentCommand{
+	_, err = h.q.CreateCommand(ctx, sqlcdb.CreateCommandParams{
 		ID:          uuid.New().String(),
 		Type:        fmt.Sprintf("%s_container", action),
 		NodeAgentID: agentID,
-		ContainerID: &container.ID,
-		Payload: map[string]interface{}{
-			"container_id": containerID,
-		},
-		Status:    "pending",
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-	}
-
-	if err := h.db.Create(&command).Error; err != nil {
+		ContainerID: sql.NullString{String: containerRow.ID, Valid: true},
+		Payload: rawJSON(map[string]interface{}{
+			"container_id":   containerID,
+			"container_name": containerRow.Name,
+			"docker_name":    containerRow.Name,
+		}),
+	})
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create command"})
 		return
 	}
@@ -669,22 +942,23 @@ func (h *NodeAgentHandler) GetAgentMetrics(c *gin.Context) {
 		return
 	}
 
-	var agent NodeAgent
-	if err := h.db.First(&agent, "id = ?", agentID).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
+	ctx := c.Request.Context()
+	agentRow, err := h.q.GetAgent(ctx, agentID)
+	if err != nil {
+		if err == sql.ErrNoRows {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Agent not found"})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch agent"})
 		return
 	}
+	agent := agentFromRow(agentRow)
 
 	from := time.Now().Add(-duration)
-	var records []AgentHeartbeatRecord
-	queryErr := h.db.
-		Where("node_agent_id = ? AND timestamp >= ?", agentID, from).
-		Order("timestamp ASC").
-		Find(&records).Error
+	records, queryErr := h.q.ListAgentHeartbeatsSince(ctx, sqlcdb.ListAgentHeartbeatsSinceParams{
+		NodeAgentID: agentID,
+		Timestamp:   from,
+	})
 	if queryErr != nil && !isMissingTableError(queryErr) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch agent metrics"})
 		return
@@ -692,7 +966,11 @@ func (h *NodeAgentHandler) GetAgentMetrics(c *gin.Context) {
 
 	metrics := make([]map[string]interface{}, 0, len(records))
 	for _, record := range records {
-		metrics = append(metrics, buildMetricPoint(record.Timestamp, record.Resources, record.SystemLoad, record.ContainerCount))
+		var resources NodeResources
+		var load SystemLoad
+		_ = json.Unmarshal(record.Resources, &resources)
+		_ = json.Unmarshal(record.SystemLoad, &load)
+		metrics = append(metrics, buildMetricPoint(record.Timestamp, resources, load, int(record.ContainerCount)))
 	}
 
 	if len(metrics) == 0 {
@@ -739,22 +1017,60 @@ func buildMetricPoint(ts time.Time, resources NodeResources, load SystemLoad, co
 }
 
 func isValidAgentAuthToken(token string) bool {
-	candidates := configuredAgentAuthTokens()
-	if len(candidates) == 0 {
+	token = strings.TrimSpace(token)
+	if token == "" {
 		return false
+	}
+
+	for _, candidate := range configuredAgentAuthTokens() {
+		if subtle.ConstantTimeCompare([]byte(token), []byte(candidate)) == 1 {
+			return true
+		}
+	}
+	return false
+}
+
+// isValidAgentAuthTokenDB accepts env-configured shared tokens or a
+// DB-issued onboarding token (matched by sha256 hash, never stored raw).
+func (h *NodeAgentHandler) isValidAgentAuthToken(ctx context.Context, token string) bool {
+	if isValidAgentAuthToken(token) {
+		return true
 	}
 
 	token = strings.TrimSpace(token)
 	if token == "" {
 		return false
 	}
+	sum := sha256.Sum256([]byte(token))
+	hash := hex.EncodeToString(sum[:])
+	if _, err := h.q.GetActiveAgentAuthTokenByHash(ctx, hash); err != nil {
+		return false
+	}
+	_ = h.q.TouchAgentAuthToken(ctx, hash)
+	return true
+}
 
-	for _, candidate := range candidates {
-		if subtle.ConstantTimeCompare([]byte(token), []byte(candidate)) == 1 {
-			return true
+func generateAgentAuthToken() (token string, hash string, err error) {
+	buf := make([]byte, 24)
+	if _, err = rand.Read(buf); err != nil {
+		return "", "", err
+	}
+	token = "cagt_" + hex.EncodeToString(buf)
+	sum := sha256.Sum256([]byte(token))
+	return token, hex.EncodeToString(sum[:]), nil
+}
+
+func agentAuthTokenFromRequest(c *gin.Context) string {
+	if token := strings.TrimSpace(c.GetHeader("X-Containr-Agent-Token")); token != "" {
+		return token
+	}
+	if authHeader := strings.TrimSpace(c.GetHeader("Authorization")); authHeader != "" {
+		const bearerPrefix = "Bearer "
+		if strings.HasPrefix(authHeader, bearerPrefix) {
+			return strings.TrimSpace(strings.TrimPrefix(authHeader, bearerPrefix))
 		}
 	}
-	return false
+	return strings.TrimSpace(c.Query("auth_token"))
 }
 
 func configuredAgentAuthTokens() []string {
@@ -806,16 +1122,116 @@ func maxInt(a, b int) int {
 	return b
 }
 
-// SetupRoutes registers the agent routes
-func (h *NodeAgentHandler) SetupRoutes(router *gin.RouterGroup) {
+// --- onboarding token management ---
+
+func agentAuthTokenJSON(t sqlcdb.AgentAuthToken) gin.H {
+	row := gin.H{
+		"id":      t.ID,
+		"label":   t.Label,
+		"revoked": t.RevokedAt.Valid,
+	}
+	if t.CreatedAt.Valid {
+		row["created_at"] = t.CreatedAt.Time
+	}
+	if t.LastUsedAt.Valid {
+		row["last_used_at"] = t.LastUsedAt.Time
+	}
+	if t.RevokedAt.Valid {
+		row["revoked_at"] = t.RevokedAt.Time
+	}
+	return row
+}
+
+// CreateAgentToken issues a new onboarding token. The raw token is returned
+// once and never stored — only its sha256 hash persists.
+func (h *NodeAgentHandler) CreateAgentToken(c *gin.Context) {
+	var req struct {
+		Label string `json:"label"`
+	}
+	_ = c.ShouldBindJSON(&req)
+
+	token, hash, err := generateAgentAuthToken()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
+		return
+	}
+
+	row, err := h.q.CreateAgentAuthToken(c.Request.Context(), sqlcdb.CreateAgentAuthTokenParams{
+		TokenHash: hash,
+		Label:     strings.TrimSpace(req.Label),
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to store token"})
+		return
+	}
+
+	payload := agentAuthTokenJSON(row)
+	payload["token"] = token
+	c.JSON(http.StatusCreated, payload)
+}
+
+// ListAgentTokens returns issued onboarding tokens (metadata only, never hashes).
+func (h *NodeAgentHandler) ListAgentTokens(c *gin.Context) {
+	rows, err := h.q.ListAgentAuthTokens(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch tokens"})
+		return
+	}
+
+	tokens := make([]gin.H, 0, len(rows))
+	for _, row := range rows {
+		tokens = append(tokens, agentAuthTokenJSON(row))
+	}
+	c.JSON(http.StatusOK, gin.H{"tokens": tokens})
+}
+
+// RevokeAgentToken marks an onboarding token as revoked; agents presenting it
+// are rejected from then on.
+func (h *NodeAgentHandler) RevokeAgentToken(c *gin.Context) {
+	id, err := uuid.Parse(strings.TrimSpace(c.Param("id")))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid token id"})
+		return
+	}
+
+	row, err := h.q.RevokeAgentAuthToken(c.Request.Context(), id)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, sql.ErrNoRows) {
+			status = http.StatusNotFound
+		}
+		c.JSON(status, gin.H{"error": "Token not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "revoked", "id": row.ID})
+}
+
+// SetupPublicRoutes registers token-authenticated agent ingestion routes.
+func (h *NodeAgentHandler) SetupPublicRoutes(router *gin.RouterGroup) {
 	agents := router.Group("/agents")
 	{
 		agents.POST("/register", h.RegisterAgent)
+		agents.POST("/heartbeat", h.SendHeartbeat)
+		agents.GET("/:id/commands", h.GetPendingCommandsForAgent)
+		agents.POST("/:id/commands/:commandId/result", h.CompleteCommand)
+	}
+}
+
+// SetupRoutes registers authenticated dashboard/control agent routes.
+func (h *NodeAgentHandler) SetupRoutes(router *gin.RouterGroup) {
+	tokens := router.Group("/agent-tokens")
+	{
+		tokens.POST("", h.CreateAgentToken)
+		tokens.GET("", h.ListAgentTokens)
+		tokens.DELETE("/:id", h.RevokeAgentToken)
+	}
+
+	agents := router.Group("/agents")
+	{
 		agents.GET("", h.GetAgents)
 		agents.GET("/:id", h.GetAgent)
 		agents.PUT("/:id", h.UpdateAgent)
 		agents.DELETE("/:id", h.DeleteAgent)
-		agents.POST("/heartbeat", h.SendHeartbeat)
 
 		agents.GET("/:id/containers", h.GetAgentContainers)
 		agents.POST("/:id/containers", h.CreateContainer)

@@ -6,11 +6,15 @@ import { ServiceDetailPage } from '@/features/service/pages/ServiceDetailPage';
 import { ServiceMetricsDashboard } from '@/features/service/pages/ServiceMetricsDashboard';
 import { BuildsPage } from '@/features/builds/pages/BuildsPage';
 import { TemplatesPage } from '@/features/templates/pages/TemplatesPage';
+import { AuditLogsPage } from '@/features/audit/pages/AuditLogsPage';
 import {
   DocsPage,
   PeoplePage,
   SettingsPage,
   UsagePage,
+  DatabasesPage,
+  HighAvailabilityPage,
+  SecurityPage,
   ComponentShowcase,
 } from '@/features/secondary/pages';
 import { SignInPage, SignUpPage } from '@/features/auth/pages';
@@ -60,14 +64,18 @@ export default function App() {
 
             <Route path="/templates" element={<TemplatesPage />} />
             <Route path="/usage" element={<UsagePage />} />
+            <Route path="/databases" element={<DatabasesPage />} />
+            <Route path="/ha" element={<HighAvailabilityPage />} />
+            <Route path="/security" element={<SecurityPage />} />
             <Route path="/people" element={<PeoplePage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/settings/audit-logs" element={<AuditLogsPage />} />
             <Route path="/docs" element={<DocsPage />} />
-            
-            {/* Enhanced Dashboard & Showcase */}
-            <Route path="/metrics-demo" element={<ServiceMetricsDashboard />} />
             <Route path="/showcase" element={<ComponentShowcase />} />
           </Route>
+
+          {/* Full-bleed design demo — renders its own chrome, no app shell */}
+          <Route path="/metrics-demo" element={<ServiceMetricsDashboard />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/projects" replace />} />

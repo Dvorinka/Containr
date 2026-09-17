@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -13,21 +14,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
+	"github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
 )
 
-// Constants for validation and limits
+// Default quota limits applied when the request omits them.
 const (
-	MaxServiceNameLength = 100
-	MaxRoutePrefixLength = 200
-	MaxUpstreamURLLength = 500
-	MaxAPIKeyNameLength  = 100
-	MinAPIKeyLength      = 20
-	MaxAPIKeyLength      = 100
-	DefaultRPMLimit      = 60
-	DefaultMonthlyQuota  = 1000
-	MaxRPMLimit          = 10000
-	MaxMonthlyQuota      = 10000000
+	DefaultRPMLimit     = 60
+	DefaultMonthlyQuota = 1000
 )
 
 // Validator instance for request validation
@@ -73,15 +67,6 @@ type APIKeyRequest struct {
 	Enabled      *bool  `json:"enabled,omitempty"`
 	RPMLimit     *int   `json:"rpmLimit,omitempty" validate:"omitempty,min=1,max=10000"`
 	MonthlyQuota *int   `json:"monthlyQuota,omitempty" validate:"omitempty,min=1,max=10000000"`
-}
-
-// generateServiceID generates a cryptographically secure service ID
-func generateServiceID() (string, error) {
-	bytes := make([]byte, 16)
-	if _, err := rand.Read(bytes); err != nil {
-		return "", fmt.Errorf("failed to generate random bytes: %w", err)
-	}
-	return "svc_" + hex.EncodeToString(bytes), nil
 }
 
 // generateAPIKey generates a cryptographically secure API key
@@ -162,6 +147,84 @@ func validateRequest(c *gin.Context, req interface{}) error {
 	return nil
 }
 
+// isUniqueViolation reports whether err is a Postgres unique-constraint violation.
+func isUniqueViolation(err error) bool {
+	var pqErr *pq.Error
+	return errors.As(err, &pqErr) && pqErr.Code == "23505"
+}
+
+// handleAPwhyServiceValidate probes the upstream health path and records the
+// result on the service row. Ported from the standalone APwhy server.
+func handleAPwhyServiceValidate(c *gin.Context) {
+	serviceID := c.Param("id")
+	db := c.MustGet("db").(*database.DB)
+	ctx := c.Request.Context()
+
+	var upstreamURL, healthPath string
+	var authHeader, authValue sql.NullString
+	var timeoutMs sql.NullInt64
+	err := db.QueryRowContext(ctx, `
+		SELECT upstream_url, health_path, upstream_auth_header, upstream_auth_value, request_timeout_ms
+		FROM api_services WHERE id = $1
+	`, serviceID).Scan(&upstreamURL, &healthPath, &authHeader, &authValue, &timeoutMs)
+	if err != nil {
+		sendErrorResponse(c, http.StatusNotFound, "SERVICE_NOT_FOUND", "Service not found", nil)
+		return
+	}
+
+	timeout := 8000
+	if timeoutMs.Valid && timeoutMs.Int64 > 0 {
+		timeout = int(timeoutMs.Int64)
+	}
+	target := strings.TrimRight(upstreamURL, "/") + "/" + strings.TrimLeft(healthPath, "/")
+
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+	if authHeader.Valid && authHeader.String != "" {
+		req.Header.Set(authHeader.String, authValue.String)
+	}
+
+	client := &http.Client{Timeout: time.Duration(timeout) * time.Millisecond}
+	res, probeErr := client.Do(req)
+
+	status := http.StatusBadGateway
+	message := ""
+	ok := false
+	if probeErr != nil {
+		message = probeErr.Error()
+	} else {
+		defer res.Body.Close()
+		status = res.StatusCode
+		message = fmt.Sprintf("HTTP %d", res.StatusCode)
+		ok = res.StatusCode >= 200 && res.StatusCode < 300
+	}
+
+	validationStatus := "failed"
+	if ok {
+		validationStatus = "healthy"
+	}
+
+	_, _ = db.ExecContext(ctx, `
+		UPDATE api_services
+		SET last_validation_at = NOW(), last_validation_status = $1, last_validation_message = $2, updated_at = NOW()
+		WHERE id = $3
+	`, validationStatus, message, serviceID)
+
+	if !ok {
+		_, _ = db.ExecContext(ctx, `
+			INSERT INTO incident_events (service_id, code, message, severity, http_status, occurred_at)
+			VALUES ($1, 'SERVICE_VALIDATION_FAILED', $2, 'medium', $3, NOW())
+		`, serviceID, message, status)
+	}
+
+	sendSuccessResponse(c, http.StatusOK, map[string]interface{}{
+		"validation": map[string]interface{}{
+			"ok":      ok,
+			"status":  status,
+			"message": message,
+		},
+	})
+}
+
 // handleAPwhyServicesList returns a list of API services
 func handleAPwhyServicesList(c *gin.Context) {
 	db := c.MustGet("db").(*database.DB)
@@ -170,7 +233,7 @@ func handleAPwhyServicesList(c *gin.Context) {
 	// Query services from database
 	rows, err := db.QueryContext(ctx, `
 		SELECT id, name, slug, upstream_url, route_prefix, enabled, created_at, updated_at
-		FROM api_services 
+		FROM api_services
 		ORDER BY created_at DESC
 	`)
 	if err != nil {
@@ -180,10 +243,10 @@ func handleAPwhyServicesList(c *gin.Context) {
 	}
 	defer rows.Close()
 
-	var services []map[string]interface{}
+	services := make([]map[string]interface{}, 0)
 	for rows.Next() {
 		var id, name, slug, upstreamURL, routePrefix, createdAt, updatedAt string
-		var enabled bool
+		var enabled int
 		err := rows.Scan(&id, &name, &slug, &upstreamURL, &routePrefix, &enabled, &createdAt, &updatedAt)
 		if err != nil {
 			continue // Skip malformed rows
@@ -195,7 +258,7 @@ func handleAPwhyServicesList(c *gin.Context) {
 			"slug":        slug,
 			"upstreamUrl": upstreamURL,
 			"routePrefix": routePrefix,
-			"enabled":     enabled,
+			"enabled":     enabled != 0,
 			"createdAt":   createdAt,
 			"updatedAt":   updatedAt,
 		})
@@ -220,23 +283,7 @@ func handleAPwhyServicesCreate(c *gin.Context) {
 	db := c.MustGet("db").(*database.DB)
 	ctx := context.Background()
 
-	// Generate slug and ID
-	id, err := generateServiceID()
-	if err != nil {
-		sendErrorResponse(c, http.StatusInternalServerError, "GENERATION_ERROR",
-			"Failed to generate service ID", err.Error())
-		return
-	}
-
 	slug := strings.ToLower(strings.ReplaceAll(req.Name, " ", "-"))
-
-	// Insert service into database
-	query := `
-		INSERT INTO api_services (
-			id, name, slug, upstream_url, route_prefix, health_path,
-			enabled, rpm_limit, monthly_quota, created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, '/health', true, $6, $7, NOW(), NOW())
-	`
 
 	var rpmLimit, monthlyQuota int
 	if req.RPMLimit != nil {
@@ -251,10 +298,22 @@ func handleAPwhyServicesCreate(c *gin.Context) {
 		monthlyQuota = DefaultMonthlyQuota
 	}
 
-	_, err = db.ExecContext(ctx, query, id, req.Name, slug, req.UpstreamURL,
-		req.RoutePrefix, rpmLimit, monthlyQuota)
+	// id defaults to gen_random_uuid(); enabled defaults to 1.
+	var id string
+	err := db.QueryRowContext(ctx, `
+		INSERT INTO api_services (
+			name, slug, upstream_url, route_prefix, health_path,
+			rpm_limit, monthly_quota, created_at, updated_at
+		) VALUES ($1, $2, $3, $4, '/health', $5, $6, NOW(), NOW())
+		RETURNING id
+	`, req.Name, slug, req.UpstreamURL, req.RoutePrefix, rpmLimit, monthlyQuota).Scan(&id)
 
 	if err != nil {
+		if isUniqueViolation(err) {
+			sendErrorResponse(c, http.StatusConflict, "CONFLICT",
+				"A service with this slug or route prefix already exists", err.Error())
+			return
+		}
 		sendErrorResponse(c, http.StatusInternalServerError, "DATABASE_ERROR",
 			"Failed to create service", err.Error())
 		return
@@ -297,9 +356,13 @@ func handleAPwhyServicesPatch(c *gin.Context) {
 	db := c.MustGet("db").(*database.DB)
 
 	if input.Enabled != nil {
+		enabled := 0
+		if *input.Enabled {
+			enabled = 1
+		}
 		_, err := db.ExecContext(context.Background(),
 			"UPDATE api_services SET enabled = $1, updated_at = NOW() WHERE id = $2",
-			*input.Enabled, serviceID)
+			enabled, serviceID)
 
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
@@ -334,10 +397,10 @@ func handleAPwhyKeysList(c *gin.Context) {
 	}
 	defer rows.Close()
 
-	var keys []map[string]interface{}
+	keys := make([]map[string]interface{}, 0)
 	for rows.Next() {
 		var id, name, keyPrefix, plan, createdAt, updatedAt string
-		var enabled bool
+		var enabled int
 		var rpmLimit, monthlyQuota sql.NullInt64
 
 		err := rows.Scan(&id, &name, &keyPrefix, &plan, &enabled, &rpmLimit, &monthlyQuota, &createdAt, &updatedAt)
@@ -350,7 +413,7 @@ func handleAPwhyKeysList(c *gin.Context) {
 			"name":      name,
 			"keyPrefix": keyPrefix,
 			"plan":      plan,
-			"enabled":   enabled,
+			"enabled":   enabled != 0,
 			"createdAt": createdAt,
 			"updatedAt": updatedAt,
 		}
@@ -407,36 +470,25 @@ func handleAPwhyKeysCreate(c *gin.Context) {
 		return
 	}
 
-	// Generate ID and prefix
-	id, err := generateServiceID()
-	if err != nil {
-		sendErrorResponse(c, http.StatusInternalServerError, "GENERATION_ERROR",
-			"Failed to generate key ID", err.Error())
-		return
-	}
-
 	keyPrefix := apiKey[:8]
 
 	// Set default limits based on plan
-	var rpmLimit, monthlyQuota int
-	switch input.Plan {
-	case "free":
-		rpmLimit, monthlyQuota = 60, 1000
-	case "pro":
-		rpmLimit, monthlyQuota = 600, 50000
-	case "business":
-		rpmLimit, monthlyQuota = 3000, 300000
-	default:
-		rpmLimit, monthlyQuota = 60, 1000
+	plan, rpmLimit, monthlyQuota, err := validateAPIKeyPlan(input.Plan)
+	if err != nil {
+		sendErrorResponse(c, http.StatusBadRequest, "VALIDATION_ERROR",
+			"Invalid plan", err.Error())
+		return
 	}
 
-	// Insert key into database
-	_, err = db.ExecContext(context.Background(), `
+	// id defaults to gen_random_uuid(); enabled defaults to 1.
+	var id string
+	err = db.QueryRowContext(context.Background(), `
 		INSERT INTO api_keys (
-			id, name, key_hash, key_prefix, plan, allowed_service_ids,
-			enabled, rpm_limit, monthly_quota, created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, '[]', true, $6, $7, NOW(), NOW())
-	`, id, input.Name, keyHash, keyPrefix, input.Plan, rpmLimit, monthlyQuota)
+			name, key_hash, key_prefix, plan, allowed_service_ids,
+			rpm_limit, monthly_quota, created_at, updated_at
+		) VALUES ($1, $2, $3, $4, '[]', $5, $6, NOW(), NOW())
+		RETURNING id
+	`, input.Name, keyHash, keyPrefix, plan, rpmLimit, monthlyQuota).Scan(&id)
 
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -451,7 +503,7 @@ func handleAPwhyKeysCreate(c *gin.Context) {
 		"data": gin.H{
 			"id":           id,
 			"name":         input.Name,
-			"plan":         input.Plan,
+			"plan":         plan,
 			"key":          apiKey, // Only return the actual key once
 			"keyPrefix":    keyPrefix,
 			"enabled":      true,
@@ -480,9 +532,13 @@ func handleAPwhyKeysPatch(c *gin.Context) {
 	db := c.MustGet("db").(*database.DB)
 
 	if input.Enabled != nil {
+		enabled := 0
+		if *input.Enabled {
+			enabled = 1
+		}
 		_, err := db.ExecContext(context.Background(),
 			"UPDATE api_keys SET enabled = $1, updated_at = NOW() WHERE id = $2",
-			*input.Enabled, keyID)
+			enabled, keyID)
 
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{

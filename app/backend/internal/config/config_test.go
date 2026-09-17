@@ -12,9 +12,14 @@ func TestLoadUsesCORSAllowedOriginsAlias(t *testing.T) {
 	t.Setenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000,https://app.example.com")
 
 	cfg := Load()
-	want := []string{"http://localhost:3000", "https://app.example.com"}
-	if !reflect.DeepEqual(cfg.CORSOrigins, want) {
-		t.Fatalf("unexpected CORS origins: got %v want %v", cfg.CORSOrigins, want)
+	if !containsAll(cfg.CORSOrigins, []string{
+		"http://localhost:3000",
+		"http://localhost:5173",
+		"http://localhost:5174",
+		"http://127.0.0.1:5174",
+		"https://app.example.com",
+	}) {
+		t.Fatalf("unexpected CORS origins: got %v", cfg.CORSOrigins)
 	}
 }
 
@@ -179,4 +184,28 @@ func TestLoadUsesNewStartupDefaults(t *testing.T) {
 	if cfg.MaxRequestBody <= 0 {
 		t.Fatalf("expected positive MAX_REQUEST_BODY_BYTES, got %d", cfg.MaxRequestBody)
 	}
+}
+
+func TestLoadDoesNotExpandNonLocalDevelopmentCORSOrigins(t *testing.T) {
+	t.Setenv("ENVIRONMENT", "development")
+	t.Setenv("CORS_ORIGINS", "https://preferred.example.com")
+
+	cfg := Load()
+	want := []string{"https://preferred.example.com"}
+	if !reflect.DeepEqual(cfg.CORSOrigins, want) {
+		t.Fatalf("unexpected CORS origins: got %v want %v", cfg.CORSOrigins, want)
+	}
+}
+
+func containsAll(haystack []string, needles []string) bool {
+	seen := make(map[string]struct{}, len(haystack))
+	for _, item := range haystack {
+		seen[item] = struct{}{}
+	}
+	for _, needle := range needles {
+		if _, ok := seen[needle]; !ok {
+			return false
+		}
+	}
+	return true
 }

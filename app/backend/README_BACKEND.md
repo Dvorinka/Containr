@@ -170,8 +170,7 @@ internal/
 ├── config/          - Configuration management
 ├── database/        - Database connections and migrations
 └── middleware/      - HTTP middleware
-migrations/          - SQL migration files
-migrations_goose/    - Goose-managed migrations for new schema changes
+migrations_goose/    - Goose-managed migrations (single migration path)
 ```
 
 ### Adding New Endpoints
@@ -179,9 +178,9 @@ migrations_goose/    - Goose-managed migrations for new schema changes
 1. Create handler functions in `internal/api/`
 2. Add routes in `internal/api/routes.go`
 3. Update database schema:
-   - Legacy chain lives in `migrations/` and is executed first.
-   - New migrations must be added to `migrations_goose/` using goose format (`-- +goose Up/Down`).
-   - Keep legacy files immutable after they are shipped.
+   - All migrations live in `migrations_goose/` using goose format (`-- +goose Up/Down`).
+   - `20260401163000_baseline.sql` carries the consolidated schema; append new files after it.
+   - Never edit the baseline in place; always add a new migration file.
 
 ### SQLC (Type-Safe Queries)
 
