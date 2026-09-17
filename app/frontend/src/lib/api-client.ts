@@ -1449,3 +1449,36 @@ export async function markNotificationRead(id: string): Promise<void> {
 export async function markAllNotificationsRead(): Promise<void> {
   await requestJson('/notifications/read-all', { method: 'POST' });
 }
+
+export type PreviewEnvironmentEntity = components['schemas']['PreviewEnvironment'];
+
+export async function listPreviewEnvironments(projectId: string): Promise<PreviewEnvironmentEntity[]> {
+  const payload = await requestJson<{ preview_environments?: PreviewEnvironmentEntity[] }>(
+    `/projects/${encodeURIComponent(projectId)}/preview-environments`,
+  );
+  return payload.preview_environments ?? [];
+}
+
+export async function createPreviewEnvironment(
+  projectId: string,
+  input: components['schemas']['CreatePreviewEnvironmentRequest'],
+): Promise<PreviewEnvironmentEntity> {
+  return requestJson<PreviewEnvironmentEntity>(
+    `/projects/${encodeURIComponent(projectId)}/preview-environments`,
+    { method: 'POST', body: JSON.stringify(input) },
+  );
+}
+
+export async function deletePreviewEnvironment(id: string): Promise<void> {
+  await requestJson(`/preview-environments/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export async function promotePreviewEnvironment(
+  id: string,
+  input: components['schemas']['PromotePreviewEnvironmentRequest'],
+): Promise<void> {
+  await requestJson(`/preview-environments/${encodeURIComponent(id)}/promote`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}

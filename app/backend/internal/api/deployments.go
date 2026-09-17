@@ -199,10 +199,10 @@ func handleCreateDeployment(c *gin.Context) {
 	}
 
 	_, err = db.(*database.DB).Exec(
-		`INSERT INTO deployments 
-		 (id, service_id, commit_hash, status, image_name, image_tag, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-		d.ID, d.ServiceID, d.CommitHash, d.Status, d.ImageName, d.ImageTag, d.CreatedAt, d.UpdatedAt,
+		`INSERT INTO deployments
+		 (id, service_id, version, commit_hash, status, image_name, image_tag, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		d.ID, d.ServiceID, fmt.Sprintf("v%d", now.Unix()), d.CommitHash, d.Status, d.ImageName, d.ImageTag, d.CreatedAt, d.UpdatedAt,
 	)
 
 	if err != nil {
@@ -533,10 +533,10 @@ func handleRollbackDeployment(c *gin.Context) {
 	}
 
 	_, err = db.(*database.DB).Exec(
-		`INSERT INTO deployments 
-		 (id, service_id, commit_hash, status, image_name, image_tag, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-		rollback.ID, rollback.ServiceID, rollback.CommitHash, rollback.Status,
+		`INSERT INTO deployments
+		 (id, service_id, version, commit_hash, status, image_name, image_tag, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		rollback.ID, rollback.ServiceID, fmt.Sprintf("rollback-%d", now.Unix()), rollback.CommitHash, rollback.Status,
 		rollback.ImageName, rollback.ImageTag, rollback.CreatedAt, rollback.UpdatedAt,
 	)
 

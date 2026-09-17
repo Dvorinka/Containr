@@ -17,6 +17,10 @@ import {
   deleteCronJob,
   listCronExecutions,
   triggerCronJob,
+  listPreviewEnvironments,
+  createPreviewEnvironment,
+  deletePreviewEnvironment,
+  promotePreviewEnvironment,
   rollbackDeployment,
   updateServiceVariables,
   type CronJobEntity,
@@ -49,9 +53,11 @@ import {
   Box,
   Play,
   ChevronDown,
+  GitPullRequest,
+  ExternalLink,
 } from 'lucide-react';
 
-type ServiceSection = 'metrics' | 'logs' | 'config' | 'variables' | 'cron' | 'settings';
+type ServiceSection = 'metrics' | 'logs' | 'config' | 'variables' | 'cron' | 'previews' | 'settings';
 
 const sectionItems: Array<{ key: ServiceSection; label: string; icon: typeof Activity }> = [
   { key: 'metrics', label: 'Metrics', icon: Activity },
@@ -59,6 +65,7 @@ const sectionItems: Array<{ key: ServiceSection; label: string; icon: typeof Act
   { key: 'config', label: 'Config', icon: Sliders },
   { key: 'variables', label: 'Variables', icon: KeyRound },
   { key: 'cron', label: 'Cron', icon: Clock },
+  { key: 'previews', label: 'Previews', icon: GitPullRequest },
   { key: 'settings', label: 'Settings', icon: Settings },
 ];
 
@@ -195,6 +202,38 @@ export function ServiceDetailPage() {
     mutationFn: (job: CronJobEntity) => updateCronJob(job.id as string, { enabled: !job.enabled }),
     onSuccess: invalidateCron,
   });
+
+  // --- Preview environments ---
+  const [previewForm, setPreviewForm] = useState<{ branch: string; prNumber: string; ttlHours: string } | null>(null);
+  const previewsQuery = useQuery({
+    queryKey: ['project-preview-envs', projectId],
+    queryFn: () => listPreviewEnvironments(projectId),
+    enabled: Boolean(projectId) && !isDemoMode && activeSection === 'previews',
+    refetchInterval: 15_000,
+  });
+  const invalidatePreviews = () => queryClient.invalidateQueries({ queryKey: ['project-preview-envs', projectId] });
+  const createPreviewMutation = useMutation({
+    mutationFn: async () => {
+      if (!previewForm) return;
+      await createPreviewEnvironment(projectId, {
+        project_id: projectId,
+        service_id: serviceId,
+        branch_name: previewForm.branch.trim(),
+        pr_number: previewForm.prNumber ? Number(previewForm.prNumber) : undefined,
+        ttl_hours: previewForm.ttlHours ? Number(previewForm.ttlHours) : undefined,
+      });
+    },
+    onSuccess: () => { setPreviewForm(null); invalidatePreviews(); },
+  });
+  const deletePreviewMutation = useMutation({
+    mutationFn: (id: string) => deletePreviewEnvironment(id),
+    onSuccess: invalidatePreviews,
+  });
+  const promotePreviewMutation = useMutation({
+    mutationFn: (id: string) => promotePreviewEnvironment(id, { target_environment: 'production' }),
+    onSuccess: invalidatePreviews,
+  });
+  const previews = (previewsQuery.data ?? []).filter((p) => p.service_id === serviceId);
   const triggerCronMutation = useMutation({
     mutationFn: (id: string) => triggerCronJob(id),
     onSuccess: () => {
@@ -1281,6 +1320,135 @@ export function ServiceDetailPage() {
                   </div>
                 ))}
               </div>
+            )}
+          </div>
+        )}
+
+        {activeSection === 'previews' && (
+          <div className="panel p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
+                  <GitPullRequest size={20} className="text-[var(--accent-primary)]" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-[var(--text-primary)]">Preview Environments</h2>
+                  <p className="text-sm text-[var(--text-secondary)]">Ephemeral per-branch deployments of this service</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setPreviewForm({ branch: '', prNumber: '', ttlHours: '72' })}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-secondary)] hover:border-[var(--border-default)] transition-colors"
+              >
+                <Plus size={12} /> New preview
+              </button>
+            </div>
+
+            {previewForm && (
+              <div className="mb-6 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] p-4 space-y-3">
+                <div className="flex flex-wrap items-end gap-3">
+                  <label className="flex flex-col gap-1 text-xs text-[var(--text-muted)]">
+                    Branch
+                    <input
+                      value={previewForm.branch}
+                      onChange={(e) => setPreviewForm({ ...previewForm, branch: e.target.value })}
+                      placeholder="feature/my-branch"
+                      className="w-52 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-2 py-1.5 text-xs text-[var(--text-primary)]"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1 text-xs text-[var(--text-muted)]">
+                    PR number (optional)
+                    <input
+                      value={previewForm.prNumber}
+                      onChange={(e) => setPreviewForm({ ...previewForm, prNumber: e.target.value })}
+                      placeholder="123"
+                      className="w-24 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-2 py-1.5 text-xs text-[var(--text-primary)]"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1 text-xs text-[var(--text-muted)]">
+                    TTL hours
+                    <input
+                      value={previewForm.ttlHours}
+                      onChange={(e) => setPreviewForm({ ...previewForm, ttlHours: e.target.value })}
+                      placeholder="72"
+                      className="w-24 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-2 py-1.5 text-xs text-[var(--text-primary)]"
+                    />
+                  </label>
+                  <button
+                    onClick={() => createPreviewMutation.mutate()}
+                    disabled={!previewForm.branch.trim() || createPreviewMutation.isPending}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-on)] text-xs font-medium disabled:opacity-40"
+                  >
+                    {createPreviewMutation.isPending ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />} Create
+                  </button>
+                  <button
+                    onClick={() => setPreviewForm(null)}
+                    className="px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs text-[var(--text-secondary)] hover:border-[var(--border-default)]"
+                  >
+                    Cancel
+                  </button>
+                </div>
+                {createPreviewMutation.isError && (
+                  <p className="text-xs text-[var(--error)]">
+                    {createPreviewMutation.error instanceof Error ? createPreviewMutation.error.message : 'Create failed'}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {previewsQuery.isLoading ? (
+              <p className="text-sm text-[var(--text-muted)]">Loading previews…</p>
+            ) : previews.length === 0 ? (
+              <p className="text-sm text-[var(--text-muted)]">No preview environments for this service.</p>
+            ) : (
+              <div className="space-y-2">
+                {previews.map((env) => (
+                  <div key={env.id} className="flex flex-wrap items-center gap-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-4 py-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-[var(--text-primary)]">{env.environment}</span>
+                        <StatusBadge status={env.status ?? 'stopped'} />
+                      </div>
+                      <p className="mt-0.5 text-xs text-[var(--text-muted)]">
+                        {env.branch_name}
+                        {env.pr_number ? ` · PR #${env.pr_number}` : ''}
+                        {env.expires_at ? ` · expires ${formatRelative(env.expires_at)}` : ''}
+                      </p>
+                    </div>
+                    {env.url && env.status === 'running' && (
+                      <a
+                        href={env.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-1 text-xs text-[var(--accent-primary)] hover:underline"
+                      >
+                        <ExternalLink size={11} /> Open
+                      </a>
+                    )}
+                    {env.status === 'running' && (
+                      <button
+                        onClick={() => { if (window.confirm('Promote this preview to production?')) promotePreviewMutation.mutate(env.id ?? ''); }}
+                        disabled={promotePreviewMutation.isPending}
+                        className="px-2.5 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs text-[var(--text-secondary)] hover:border-[var(--border-default)] disabled:opacity-40"
+                      >
+                        Promote
+                      </button>
+                    )}
+                    <button
+                      onClick={() => { if (window.confirm(`Delete preview ${env.environment}?`)) deletePreviewMutation.mutate(env.id ?? ''); }}
+                      disabled={deletePreviewMutation.isPending}
+                      className="px-2.5 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs text-[var(--error)] hover:border-[var(--error)] disabled:opacity-40"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {(deletePreviewMutation.isError || promotePreviewMutation.isError) && (
+              <p className="mt-3 text-xs text-[var(--error)]">
+                {((deletePreviewMutation.error ?? promotePreviewMutation.error) as Error)?.message ?? 'Operation failed'}
+              </p>
             )}
           </div>
         )}

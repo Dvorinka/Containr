@@ -48,7 +48,7 @@ The backend exposes **~95 route registrations**; the frontend consumes
 | GitHub App install flow | done (`install_url` + connect endpoint) | done — Install button + `installation_id` return handling | done (real-provider e2e pending credentials) |
 | Cron jobs (CRUD, trigger, executions) | done — real scheduler + `docker exec` capture | done — Cron tab on service detail | not documented |
 | Managed databases (CRUD, actions, backup/restore) | done | done — `/databases` page (conn info, actions, backups) | mentioned in README |
-| Preview environments (CRUD, promote, cleanup) | done | **missing** | not documented |
+| Preview environments (CRUD, promote, cleanup) | done (bookkeeping only — no real container deploy; URL is a placeholder) | done — Previews section on service detail | not documented |
 | Security scans, vulnerabilities, compliance/GDPR reports | done | **missing** | README lists it |
 | Audit logs | done | done — `/settings/audit-logs` filterable page | done |
 | Autoscaling policies + manual scale | done | **missing** | `docs/guides/AUTOSCALING.md` describes UI that does not exist |
@@ -275,9 +275,18 @@ All of these have working APIs and no UI. Cheapest feature wins in the repo.
       edit/enable-toggle, manual Run, execution history with logs. (Not added
       to Add Service: jobs exec into an existing service's container, so they
       live on the service, not as a standalone type.)
-- [ ] **Preview environments** (`/preview-environments/*`): per-PR/per-branch
-      preview creation, promote-to-production action, expiry + cleanup job.
-      Decide first whether this stays Phase 2 or moves with env support (§2.4).
+- [x] **Preview environments UI**: service-detail "Previews" section — list
+      per service, create (branch/PR/TTL), promote-to-production with
+      confirm, delete with confirm. Verified e2e: create→list→promote→delete.
+      Fixed two latent backend bugs: create scanned NULL `services.type`
+      (every real service failed) and three deployment inserts omitted the
+      NOT NULL `version` column (create + rollback + promote all broke on
+      fresh installs).
+- [ ] **Preview environments runtime**: preview creation writes bookkeeping
+      rows and a fake `*.preview.containr.local` URL — nothing is actually
+      deployed. Real preview = build the branch + deploy container + route a
+      real subdomain + TTL cleanup that tears down containers. Sizeable;
+      schedule with env support (§2.4).
 - [x] **Audit logs**: real page at `/settings/audit-logs` (linked from the
       Settings page) — filterable table by resource, action, actor (email),
       and time range, with pagination. Backend widened accordingly: the list

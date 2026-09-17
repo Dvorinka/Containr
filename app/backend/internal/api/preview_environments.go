@@ -201,7 +201,7 @@ func handleCreatePreviewEnvironment(c *gin.Context) {
 	// Check if service exists and belongs to the project
 	var service Service
 	err = db.(*database.DB).QueryRow(
-		"SELECT id, name, type FROM services WHERE id = $1 AND project_id = $2",
+		"SELECT id, name, COALESCE(type, service_type, '') FROM services WHERE id = $1 AND project_id = $2",
 		req.ServiceID, req.ProjectID,
 	).Scan(&service.ID, &service.Name, &service.Type)
 
@@ -586,10 +586,11 @@ func handlePromotePreviewEnvironment(c *gin.Context) {
 	}
 
 	deploymentID := uuid.New()
+	promotionVersion := fmt.Sprintf("promote-%s-%d", strings.ReplaceAll(env.BranchName, "/", "-"), time.Now().Unix())
 	_, err = db.(*database.DB).Exec(
-		`INSERT INTO deployments (id, service_id, status, created_at, updated_at)
-		 VALUES ($1, $2, $3, NOW(), NOW())`,
-		deploymentID, env.ServiceID, "pending",
+		`INSERT INTO deployments (id, service_id, version, status, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, NOW(), NOW())`,
+		deploymentID, env.ServiceID, promotionVersion, "pending",
 	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create promotion deployment"})
