@@ -322,10 +322,10 @@ All of these have working APIs and no UI. Cheapest feature wins in the repo.
       `?installation_id=` return by calling `POST /git/github-app/connect`.
       (Verified at typecheck/lint level; real GitHub App redirect e2e tracked
       under the OAuth/provider-credentials item in Phase 4.)
-- [ ] **Database → service binding**: creating a managed DB does not wire it
-      into a service. Add a bind action that injects the resolved
-      `connection_url` as an env var (e.g. `DATABASE_URL`) on a chosen
-      service, so apps can actually consume provisioned databases.
+- [x] **Database → service binding**: `/databases` cards have a Bind action —
+      pick project → service → variable key (default `DATABASE_URL`) and the
+      `connection_url` is injected as a secret env var. Verified e2e: merged
+      PUT lands the URL and preserves masked secrets verbatim.
 - [x] **Backup export**: `GET /databases/:id/backups/:bid/download` streams
       the archive out of the `containr-db-backups` volume via a stopped utility
       container + `CopyFromContainer` (daemon logs mangle non-UTF-8, so `cat`

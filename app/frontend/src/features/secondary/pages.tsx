@@ -22,6 +22,9 @@ import {
   databaseAction,
   createDatabaseBackup,
   restoreDatabaseBackup,
+  listServicesByProject,
+  listServiceVariables,
+  updateServiceVariables,
   getGitHubAppInstallUrl,
   connectGitHubApp,
   updateCurrentUserProfile,
@@ -1514,6 +1517,7 @@ const dbStatusClass: Record<string, string> = {
 export function DatabasesPage() {
   const queryClient = useQueryClient();
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [bindDb, setBindDb] = useState<DatabaseEntity | null>(null);
   const databasesQuery = useQuery({
     queryKey: ['databases'],
     queryFn: listDatabases,
@@ -1625,12 +1629,27 @@ export function DatabasesPage() {
                         >
                           <RefreshCw size={11} /> Restart
                         </button>
+                        <button
+                          onClick={() => setBindDb(bindDb?.id === db.id ? null : db)}
+                          disabled={!db.connection_url}
+                          title={db.connection_url ? 'Inject connection URL into a service' : 'No connection URL available'}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-secondary)] hover:border-[var(--border-default)] disabled:opacity-40 transition-colors"
+                        >
+                          <Link2 size={11} /> Bind
+                        </button>
                         {actionMutation.isError && (
                           <span className="text-xs text-[var(--error)]">
                             {actionMutation.error instanceof Error ? actionMutation.error.message : 'Action failed'}
                           </span>
                         )}
                       </div>
+
+                      {bindDb?.id === db.id && db.connection_url && (
+                        <BindDatabasePanel
+                          connectionUrl={db.connection_url}
+                          onClose={() => setBindDb(null)}
+                        />
+                      )}
 
                       {db.metrics && (
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -1705,6 +1724,106 @@ export function DatabasesPage() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function BindDatabasePanel({
+  connectionUrl,
+  onClose,
+}: {
+  connectionUrl: string;
+  onClose: () => void;
+}) {
+  const [projectId, setProjectId] = useState('');
+  const [serviceId, setServiceId] = useState('');
+  const [varKey, setVarKey] = useState('DATABASE_URL');
+  const [bound, setBound] = useState(false);
+
+  const projectsQuery = useQuery({ queryKey: ['projects'], queryFn: listProjects });
+  const servicesQuery = useQuery({
+    queryKey: ['services', projectId],
+    queryFn: () => listServicesByProject(projectId),
+    enabled: projectId !== '',
+  });
+
+  const bindMutation = useMutation({
+    mutationFn: async () => {
+      const existing = await listServiceVariables(serviceId);
+      const merged = existing
+        .filter((v) => v.key !== varKey)
+        .map((v) => ({ key: v.key, value: v.value, is_secret: v.isSecret }));
+      merged.push({ key: varKey, value: connectionUrl, is_secret: true });
+      await updateServiceVariables(serviceId, merged);
+    },
+    onSuccess: () => setBound(true),
+  });
+
+  const services = servicesQuery.data ?? [];
+
+  return (
+    <div className="rounded-[var(--radius-md)] border border-[var(--border-default)] bg-[var(--surface-raised)] p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-medium text-[var(--text-primary)]">Bind to service</p>
+        <button onClick={onClose} className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)]">Close</button>
+      </div>
+      <p className="text-xs text-[var(--text-muted)]">
+        Injects this database's connection URL as an environment variable on the selected service.
+      </p>
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="flex flex-col gap-1 text-xs text-[var(--text-muted)]">
+          Project
+          <select
+            value={projectId}
+            onChange={(e) => { setProjectId(e.target.value); setServiceId(''); }}
+            className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-2 py-1.5 text-xs text-[var(--text-primary)]"
+          >
+            <option value="">Select…</option>
+            {(projectsQuery.data ?? []).map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-[var(--text-muted)]">
+          Service
+          <select
+            value={serviceId}
+            onChange={(e) => setServiceId(e.target.value)}
+            disabled={!projectId}
+            className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-2 py-1.5 text-xs text-[var(--text-primary)] disabled:opacity-40"
+          >
+            <option value="">Select…</option>
+            {services.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-[var(--text-muted)]">
+          Variable key
+          <input
+            value={varKey}
+            onChange={(e) => setVarKey(e.target.value)}
+            className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-2 py-1.5 text-xs mono text-[var(--text-primary)] w-40"
+          />
+        </label>
+        <button
+          onClick={() => bindMutation.mutate()}
+          disabled={!serviceId || !varKey.trim() || bindMutation.isPending}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-contrast)] text-xs font-medium disabled:opacity-40"
+        >
+          {bindMutation.isPending ? <Loader2 size={11} className="animate-spin" /> : <Link2 size={11} />} Bind
+        </button>
+      </div>
+      {bound && (
+        <p className="text-xs text-[var(--success)]">
+          Bound — {varKey} is set on the service. Redeploy the service for it to take effect.
+        </p>
+      )}
+      {bindMutation.isError && (
+        <p className="text-xs text-[var(--error)]">
+          {bindMutation.error instanceof Error ? bindMutation.error.message : 'Bind failed'}
+        </p>
+      )}
     </div>
   );
 }
