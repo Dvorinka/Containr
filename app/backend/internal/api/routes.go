@@ -17,8 +17,6 @@ import (
 	"containr/internal/scaling"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
 )
 
 func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg *config.Config) {
@@ -56,14 +54,8 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 	// Initialize scaling handler
 	scalingHandler := NewScalingHandler(autoScaler)
 
-	// Initialize GORM for agent system
-	gormDB, err := gorm.Open(postgres.Open(cfg.DatabaseURL), &gorm.Config{})
-	if err != nil {
-		panic("Failed to initialize GORM: " + err.Error())
-	}
-
-	// Initialize agent handler
-	agentHandler := NewNodeAgentHandler(gormDB)
+	// Initialize agent handler (sqlc-backed)
+	agentHandler := NewNodeAgentHandler(db)
 
 	// Initialize database handler
 	databaseHandler := NewDatabaseHandler(db.DB, dockerClient)
@@ -90,7 +82,6 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 		c.Set("auto_scaler", autoScaler)
 		c.Set("ha_manager", haManager)
 		c.Set("scaling_handler", scalingHandler)
-		c.Set("gorm_db", gormDB)
 		c.Next()
 	})
 
@@ -298,42 +289,23 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			// Audit Logs routes
 			protected.GET("/audit-logs", handleGetAuditLogs)
 			protected.GET("/audit-logs/:resource/:id", handleGetResourceAuditLogs)
-		}
 
-		// APwhy Gateway routes
-		apwhy := router.Group("/api/v1")
-		{
-			// Health check (no auth required)
-			apwhy.GET("/health", func(c *gin.Context) {
-				c.JSON(200, gin.H{
-					"ok": true,
-					"data": gin.H{
-						"status":      "ok",
-						"name":        "Containr + APwhy",
-						"database":    "postgresql",
-						"generatedAt": time.Now().UTC().Format(time.RFC3339),
-					},
-				})
-			})
-		}
+			// API Gateway routes (merged APwhy) - namespaced to avoid
+			// colliding with Containr's own /services paths.
+			gateway := protected.Group("/gateway")
+			{
+				gateway.GET("/services", handleAPwhyServicesList)
+				gateway.POST("/services", handleAPwhyServicesCreate)
+				gateway.PATCH("/services/:id", handleAPwhyServicesPatch)
+				gateway.GET("/services/:id/validate", handleAPwhyServiceValidate)
 
-		// Protected APwhy routes (authentication required)
-		protectedAPwhy := router.Group("/api/v1")
-		protectedAPwhy.Use(middleware.Auth(cfg.JWTSecret))
-		{
-			// Service management
-			protectedAPwhy.GET("/services", handleAPwhyServicesList)
-			protectedAPwhy.POST("/services", handleAPwhyServicesCreate)
-			protectedAPwhy.PATCH("/services/:id", handleAPwhyServicesPatch)
+				gateway.GET("/keys", handleAPwhyKeysList)
+				gateway.POST("/keys", handleAPwhyKeysCreate)
+				gateway.PATCH("/keys/:id", handleAPwhyKeysPatch)
 
-			// API Keys
-			protectedAPwhy.GET("/keys", handleAPwhyKeysList)
-			protectedAPwhy.POST("/keys", handleAPwhyKeysCreate)
-			protectedAPwhy.PATCH("/keys/:id", handleAPwhyKeysPatch)
-
-			// Analytics
-			protectedAPwhy.GET("/analytics/ops", handleAPwhyAnalyticsOps)
-			protectedAPwhy.GET("/analytics/traffic", handleAPwhyAnalyticsTraffic)
+				gateway.GET("/analytics/ops", handleAPwhyAnalyticsOps)
+				gateway.GET("/analytics/traffic", handleAPwhyAnalyticsTraffic)
+			}
 		}
 	}
 }

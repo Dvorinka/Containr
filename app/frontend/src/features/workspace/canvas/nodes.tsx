@@ -1,4 +1,4 @@
-import type { Node, NodeProps } from '@xyflow/react';
+import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import type { ServiceEntity } from '@/lib/api-client';
 import { serviceStatusClass } from '@/lib/api-client';
 import { Box, ArrowUpRight, Globe, Database, Terminal, MoreHorizontal, ExternalLink } from 'lucide-react';
@@ -62,10 +62,14 @@ export function ServiceNode({ data }: NodeProps<ServiceNodeType>) {
       style={{ minWidth: 220, maxWidth: 280 }}
     >
       {/* Ambient overlay */}
-      <div 
+      <div
         className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
         style={{ background: `${typeColor}10` }}
       />
+
+      {/* Invisible connection points - required by React Flow for edge attachment */}
+      <Handle type="target" position={Position.Left} className="!opacity-0 !w-2 !h-2 !border-0" />
+      <Handle type="source" position={Position.Right} className="!opacity-0 !w-2 !h-2 !border-0" />
 
       {/* Status indicator bar at top */}
       <div 

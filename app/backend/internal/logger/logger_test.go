@@ -72,27 +72,27 @@ func TestLoggerWithContext(t *testing.T) {
 
 func TestLogLevels(t *testing.T) {
 	tests := []struct {
-		name       string
-		logLevel   Level
-		logFunc    func(*Logger)
-		shouldLog  bool
+		name      string
+		logLevel  Level
+		logFunc   func(*Logger)
+		shouldLog bool
 	}{
 		{
-			name:     "debug logs at debug level",
-			logLevel: DebugLevel,
-			logFunc:  func(l *Logger) { l.Debug("test") },
+			name:      "debug logs at debug level",
+			logLevel:  DebugLevel,
+			logFunc:   func(l *Logger) { l.Debug("test") },
 			shouldLog: true,
 		},
 		{
-			name:     "debug doesn't log at info level",
-			logLevel: InfoLevel,
-			logFunc:  func(l *Logger) { l.Debug("test") },
+			name:      "debug doesn't log at info level",
+			logLevel:  InfoLevel,
+			logFunc:   func(l *Logger) { l.Debug("test") },
 			shouldLog: false,
 		},
 		{
-			name:     "error logs at info level",
-			logLevel: InfoLevel,
-			logFunc:  func(l *Logger) { l.Error("test") },
+			name:      "error logs at info level",
+			logLevel:  InfoLevel,
+			logFunc:   func(l *Logger) { l.Error("test") },
 			shouldLog: true,
 		},
 	}

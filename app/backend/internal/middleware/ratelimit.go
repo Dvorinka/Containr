@@ -10,10 +10,10 @@ import (
 
 // RateLimiter implements a token bucket rate limiter
 type RateLimiter struct {
-	mu       sync.RWMutex
-	buckets  map[string]*bucket
-	rate     int           // requests per window
-	window   time.Duration // time window
+	mu              sync.RWMutex
+	buckets         map[string]*bucket
+	rate            int           // requests per window
+	window          time.Duration // time window
 	cleanupInterval time.Duration
 }
 
@@ -26,15 +26,15 @@ type bucket struct {
 // NewRateLimiter creates a new rate limiter
 func NewRateLimiter(rate int, window time.Duration) *RateLimiter {
 	rl := &RateLimiter{
-		buckets:  make(map[string]*bucket),
-		rate:     rate,
-		window:   window,
+		buckets:         make(map[string]*bucket),
+		rate:            rate,
+		window:          window,
 		cleanupInterval: window * 2,
 	}
-	
+
 	// Start cleanup goroutine
 	go rl.cleanup()
-	
+
 	return rl
 }
 
@@ -107,7 +107,7 @@ func RateLimit(rate int, window time.Duration) gin.HandlerFunc {
 
 		if !limiter.Allow(key) {
 			c.JSON(http.StatusTooManyRequests, gin.H{
-				"error": "rate_limit_exceeded",
+				"error":   "rate_limit_exceeded",
 				"message": "Too many requests. Please try again later.",
 			})
 			c.Abort()
@@ -125,7 +125,7 @@ func RateLimitByIP(rate int, window time.Duration) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if !limiter.Allow(c.ClientIP()) {
 			c.JSON(http.StatusTooManyRequests, gin.H{
-				"error": "rate_limit_exceeded",
+				"error":   "rate_limit_exceeded",
 				"message": "Too many requests from your IP. Please try again later.",
 			})
 			c.Abort()
@@ -155,7 +155,7 @@ func RateLimitByUser(rate int, window time.Duration) gin.HandlerFunc {
 
 		if !limiter.Allow("user:" + uid) {
 			c.JSON(http.StatusTooManyRequests, gin.H{
-				"error": "rate_limit_exceeded",
+				"error":   "rate_limit_exceeded",
 				"message": "Too many requests. Please slow down.",
 			})
 			c.Abort()

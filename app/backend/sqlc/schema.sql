@@ -25,19 +25,33 @@ CREATE TABLE environments (
 );
 
 CREATE TABLE services (
-    id UUID PRIMARY KEY,
-    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(255) NOT NULL,
-    type VARCHAR(50) NOT NULL,
-    status VARCHAR(50) NOT NULL,
-    image TEXT,
-    command TEXT,
-    environment VARCHAR(50) DEFAULT 'production',
-    cpu VARCHAR(20) DEFAULT '0.5',
-    memory VARCHAR(20) DEFAULT '512Mi',
+    description TEXT,
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    environment_id UUID NOT NULL REFERENCES environments(id) ON DELETE CASCADE,
+    service_type VARCHAR(50) NOT NULL,
+    source_type VARCHAR(50) NOT NULL,
+    source_url VARCHAR(500),
+    image_name VARCHAR(500),
+    build_command TEXT,
+    start_command TEXT,
+    cpu_limit INTEGER,
+    memory_limit INTEGER,
+    public_url VARCHAR(500),
+    health_check_url VARCHAR(500),
+    status VARCHAR(50) DEFAULT 'created',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    UNIQUE(project_id, name)
+    type VARCHAR(50),
+    image VARCHAR(500),
+    command TEXT,
+    environment VARCHAR(50),
+    git_repo VARCHAR(500),
+    git_branch VARCHAR(100),
+    build_path VARCHAR(500),
+    cpu VARCHAR(50),
+    memory VARCHAR(50)
 );
 
 CREATE TABLE deployments (
@@ -94,4 +108,67 @@ CREATE TABLE database_backups (
     backup_path TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     completed_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE TABLE node_agents (
+    id VARCHAR(255) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    hostname VARCHAR(255) NOT NULL,
+    ip_address VARCHAR(45) NOT NULL,
+    port INTEGER NOT NULL,
+    status VARCHAR(50) DEFAULT 'offline',
+    version VARCHAR(50),
+    capabilities JSONB,
+    resources JSONB,
+    last_heartbeat TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    metadata JSONB
+);
+
+CREATE TABLE container_instances (
+    id VARCHAR(255) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    image VARCHAR(255) NOT NULL,
+    project_id VARCHAR(255) NOT NULL,
+    service_id VARCHAR(255) NOT NULL,
+    node_agent_id VARCHAR(255) NOT NULL REFERENCES node_agents(id) ON DELETE CASCADE,
+    status JSONB,
+    resources JSONB,
+    ports JSONB,
+    environment JSONB,
+    volumes JSONB,
+    networks JSONB,
+    restart_policy JSONB,
+    health_check JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    started_at TIMESTAMP WITH TIME ZONE,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE agent_commands (
+    id VARCHAR(255) PRIMARY KEY,
+    type VARCHAR(100) NOT NULL,
+    node_agent_id VARCHAR(255) NOT NULL REFERENCES node_agents(id) ON DELETE CASCADE,
+    container_id VARCHAR(255) REFERENCES container_instances(id) ON DELETE CASCADE,
+    payload JSONB,
+    status VARCHAR(50) DEFAULT 'pending',
+    result TEXT,
+    error TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    completed_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE TABLE agent_heartbeats (
+    id VARCHAR(255) PRIMARY KEY,
+    node_agent_id VARCHAR(255) NOT NULL REFERENCES node_agents(id) ON DELETE CASCADE,
+    timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    status VARCHAR(50) NOT NULL DEFAULT 'unknown',
+    resources JSONB NOT NULL DEFAULT '{}'::jsonb,
+    container_count INTEGER NOT NULL DEFAULT 0,
+    system_load JSONB NOT NULL DEFAULT '{}'::jsonb,
+    uptime BIGINT NOT NULL DEFAULT 0,
+    version VARCHAR(50) NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

@@ -11,27 +11,23 @@ import (
 )
 
 const (
-	defaultLegacyMigrationsDir = "migrations"
-	defaultGooseMigrationsDir  = "migrations_goose"
-	migrationAdvisoryLockKey   = int64(637266846588921720)
+	defaultGooseMigrationsDir = "migrations_goose"
+	migrationAdvisoryLockKey  = int64(637266846588921720)
 )
 
 var migrationLockRetryInterval = 250 * time.Millisecond
 
-// MigrateAll runs legacy app migrations first, then goose-managed migrations.
-// This allows a safe transition without breaking existing installations.
-func (db *DB) MigrateAll(legacyDir, gooseDir string) error {
+// MigrateAll runs the goose-managed migrations. goose is the only migration
+// path; the legacy filename-tracked system was consolidated into the baseline.
+func (db *DB) MigrateAll(gooseDir string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	return db.MigrateAllWithLock(ctx, legacyDir, gooseDir)
+	return db.MigrateAllWithLock(ctx, gooseDir)
 }
 
-// MigrateAllWithLock runs legacy + goose migrations while holding a PostgreSQL
+// MigrateAllWithLock runs goose migrations while holding a PostgreSQL
 // advisory lock to prevent concurrent migrators from racing.
-func (db *DB) MigrateAllWithLock(ctx context.Context, legacyDir, gooseDir string) error {
-	if legacyDir == "" {
-		legacyDir = defaultLegacyMigrationsDir
-	}
+func (db *DB) MigrateAllWithLock(ctx context.Context, gooseDir string) error {
 	if gooseDir == "" {
 		gooseDir = defaultGooseMigrationsDir
 	}
@@ -46,15 +42,7 @@ func (db *DB) MigrateAllWithLock(ctx context.Context, legacyDir, gooseDir string
 		}
 	}()
 
-	if err := db.Migrate(legacyDir); err != nil {
-		return err
-	}
-
-	if err := db.MigrateGoose(gooseDir); err != nil {
-		return err
-	}
-
-	return nil
+	return db.MigrateGoose(gooseDir)
 }
 
 func (db *DB) acquireMigrationLock(ctx context.Context) (func() error, error) {
@@ -110,6 +98,10 @@ func (db *DB) MigrateGoose(migrationsDir string) error {
 			return nil
 		}
 		return fmt.Errorf("failed to access goose migrations directory %q: %w", migrationsDir, err)
+	}
+
+	if err := db.ensureRequiredExtensions(); err != nil {
+		return err
 	}
 
 	if err := goose.SetDialect("postgres"); err != nil {

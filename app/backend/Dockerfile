@@ -32,7 +32,6 @@ RUN addgroup -g 1001 -S appgroup && \
 WORKDIR /app
 
 COPY --from=go-builder /app/main ./main
-COPY --from=go-builder /app/migrations ./migrations
 COPY --from=go-builder /app/migrations_goose ./migrations_goose
 COPY --from=auth-builder /auth ./auth
 

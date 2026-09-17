@@ -121,11 +121,11 @@ internal/
 ├── config/          - Configuration management
 ├── database/        - Database connections and migrations
 └── middleware/      - HTTP middleware
-migrations/          - SQL migration files
+migrations_goose/    - Goose-managed migrations (single migration path)
 ```
 
 ### Adding New Endpoints
 
 1. Create handler functions in `internal/api/`
 2. Add routes in `internal/api/routes.go`
-3. Update database schema if needed in `migrations/`
+3. Update database schema if needed in `migrations_goose/` (goose format: `-- +goose Up/Down`)

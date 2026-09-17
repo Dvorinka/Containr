@@ -39,7 +39,7 @@ func main() {
 	// Run startup migrations unless explicitly disabled.
 	if cfg.AutoMigrate {
 		migrationCtx, migrationCancel := context.WithTimeout(context.Background(), cfg.MigrationLockTimeout)
-		if err := db.MigrateAllWithLock(migrationCtx, "migrations", "migrations_goose"); err != nil {
+		if err := db.MigrateAllWithLock(migrationCtx, "migrations_goose"); err != nil {
 			migrationCancel()
 			log.Fatalf("Failed to run database migrations: %v", err)
 		}
