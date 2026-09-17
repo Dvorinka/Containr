@@ -2,12 +2,7 @@ import type { components, paths } from '@/generated/api-types';
 
 export type ServiceStatus = 'running' | 'stopped' | 'building' | 'failed' | 'unknown';
 
-export type ProjectStats = {
-  service_count: number;
-  deployment_count: number;
-  running_services: number;
-  last_deployment?: string;
-};
+export type ProjectStats = components['schemas']['ProjectStats'];
 
 export type ProjectEntity = {
   id: string;
@@ -148,11 +143,7 @@ export type UpdateUserProfileInput = {
   avatarUrl?: string;
 };
 
-export type CreateUserInput = {
-  name: string;
-  email: string;
-  password: string;
-};
+export type CreateUserInput = components['schemas']['ManualUserCreateRequest'];
 
 export type UpgradeStatus = {
   imageRef: string;
@@ -310,34 +301,11 @@ export type GetDeploymentLogsInput = {
   type?: 'all' | 'build' | 'runtime';
 };
 
-type RawProject = components['schemas']['Project'] & {
-  stats?: Partial<ProjectStats>;
-};
+type RawProject = components['schemas']['Project'];
+type RawService = components['schemas']['Service'];
+type RawUserProfile = components['schemas']['User'];
 
-type RawService = components['schemas']['Service'] & {
-  image?: string;
-  command?: string;
-  environment?: string;
-  git_repo?: string;
-  git_branch?: string;
-  build_path?: string;
-  cpu?: string;
-  memory?: string;
-};
-
-type RawUserProfile = components['schemas']['User'] & {
-  avatar_url?: string;
-};
-
-type RawServiceVariable = {
-  id?: string;
-  service_id?: string;
-  key?: string;
-  value?: string;
-  is_secret?: boolean;
-  created_at?: string;
-  updated_at?: string;
-};
+type RawServiceVariable = components['schemas']['ServiceVariable'];
 
 type RawBuildStatus = components['schemas']['BuildStatus'];
 type RawBuildListResponse = components['schemas']['BuildListResponse'];
@@ -355,104 +323,13 @@ type RawServiceLog = components['schemas']['ServiceLogEntry'];
 type RawServiceLogsResponse = components['schemas']['ServiceLogsResponse'];
 type RawDeploymentLogsResponse = components['schemas']['DeploymentLogsResponse'];
 type RawRollbackDeploymentResponse = components['schemas']['RollbackDeploymentResponse'];
-type RawUpgradeStatus = {
-  image_ref?: string;
-  registry?: string;
-  docker_available?: boolean;
-  installed?: boolean;
-  digest?: string;
-  size?: number;
-  auth_configured?: boolean;
-  message?: string;
-};
-type RawSystemLoad = {
-  load_1m?: number;
-  load_5m?: number;
-  load_15m?: number;
-};
-type RawHostMonitoring = {
-  hostname?: string;
-  os?: string;
-  architecture?: string;
-  cpu?: {
-    cores?: number;
-  };
-  memory?: {
-    total?: number;
-    used?: number;
-    available?: number;
-    usage_percent?: number;
-  };
-  storage?: {
-    path?: string;
-    total?: number;
-    used?: number;
-    available?: number;
-    usage_percent?: number;
-  };
-  load?: RawSystemLoad;
-  uptime_seconds?: number;
-  docker_available?: boolean;
-  docker?: {
-    containers?: number;
-    images?: number;
-    driver?: string;
-    server?: string;
-  };
-  collected_at?: string;
-};
-type RawNodeAgent = {
-  id?: string;
-  name?: string;
-  hostname?: string;
-  ip_address?: string;
-  port?: number;
-  status?: string;
-  version?: string;
-  capabilities?: {
-    container_runtimes?: string[];
-    supported_architectures?: string[];
-    max_containers?: number;
-    storage_driver?: string;
-    network_plugins?: string[];
-    features?: string[];
-  };
-  resources?: {
-    cpu?: {
-      cores?: number;
-      allocation?: number;
-      usage?: number;
-    };
-    memory?: {
-      total?: number;
-      allocated?: number;
-      used?: number;
-      available?: number;
-    };
-    storage?: {
-      total?: number;
-      allocated?: number;
-      used?: number;
-      available?: number;
-    };
-  };
-  last_heartbeat?: string;
-  created_at?: string;
-  updated_at?: string;
-};
+type RawUpgradeStatus = components['schemas']['UpgradeStatus'];
+type RawHostMonitoring = components['schemas']['HostMonitoring'];
+type RawSystemLoad = NonNullable<RawHostMonitoring['load']>;
+type RawNodeAgent = components['schemas']['NodeAgent'];
 
 export type CreateProjectInput = components['schemas']['CreateProjectRequest'];
-export type CreateServiceInput = components['schemas']['CreateServiceRequest'] & {
-  environment?: 'production' | 'preview' | 'development';
-  project_id?: string;
-  image?: string;
-  command?: string;
-  git_repo?: string;
-  git_branch?: string;
-  build_path?: string;
-  cpu?: string;
-  memory?: string;
-};
+export type CreateServiceInput = components['schemas']['CreateServiceRequest'];
 
 export class ApiError extends Error {
   readonly status: number;
@@ -543,10 +420,10 @@ function normalizeProject(project: RawProject): ProjectEntity | null {
     createdAt: project.created_at,
     updatedAt: project.updated_at,
     stats: {
-      service_count: project.stats?.service_count ?? project.services_count ?? 0,
+      service_count: project.stats?.service_count ?? 0,
       deployment_count: project.stats?.deployment_count ?? 0,
       running_services: project.stats?.running_services ?? 0,
-      last_deployment: project.stats?.last_deployment ?? undefined,
+      last_deployment: project.stats?.last_deployment ?? null,
     },
   };
 }
@@ -1293,29 +1170,8 @@ export function serviceStatusClass(status: ServiceStatus): string {
   }
 }
 
-export type ServiceInstanceMetrics = {
-  container_id: string;
-  name: string;
-  state: string;
-  cpu_percent: number;
-  memory_usage_bytes: number;
-  memory_limit_bytes: number;
-  network_rx_bytes: number;
-  network_tx_bytes: number;
-  started_at?: string;
-};
-
-export type ServiceMetrics = {
-  service_id: string;
-  status: 'ok' | 'no_containers' | 'docker_unavailable';
-  instances: ServiceInstanceMetrics[];
-  cpu_percent: number;
-  memory_usage_bytes: number;
-  memory_limit_bytes: number;
-  network_rx_bytes: number;
-  network_tx_bytes: number;
-  collected_at: string;
-};
+export type ServiceInstanceMetrics = components['schemas']['ServiceInstanceMetrics'];
+export type ServiceMetrics = components['schemas']['ServiceMetrics'];
 
 export async function getServiceMetrics(serviceId: string): Promise<ServiceMetrics> {
   const payload = await requestJson<{ metrics?: ServiceMetrics }>(`/services/${serviceId}/metrics`);
@@ -1325,41 +1181,17 @@ export async function getServiceMetrics(serviceId: string): Promise<ServiceMetri
   return payload.metrics;
 }
 
-export type GitProviderEntity = {
-  id: string;
-  name: string;
-  display_name: string;
-  api_url: string;
-  created_at?: string;
-};
-
-export type GitRepositoryEntity = {
-  id: string;
-  provider_id: string;
-  name: string;
-  full_name: string;
-  description: string;
-  clone_url: string;
-  default_branch: string;
-  is_private: boolean;
-};
-
-export type GitBranchEntity = {
-  name: string;
-  protected: boolean;
-};
+export type GitProviderEntity = components['schemas']['GitProvider'];
+export type GitRepositoryEntity = components['schemas']['GitRepository'];
+export type GitBranchEntity = components['schemas']['GitBranch'];
+export type CreateGitProviderInput = components['schemas']['CreateGitProviderRequest'];
 
 export async function listGitProviders(): Promise<GitProviderEntity[]> {
   const payload = await requestJson<{ providers?: GitProviderEntity[] }>('/git/providers');
   return payload.providers ?? [];
 }
 
-export async function createGitProvider(input: {
-  name: 'github' | 'gitlab' | 'bitbucket' | 'gitea';
-  display_name: string;
-  access_token: string;
-  api_url?: string;
-}): Promise<GitProviderEntity> {
+export async function createGitProvider(input: CreateGitProviderInput): Promise<GitProviderEntity> {
   const payload = await requestJson<GitProviderEntity>('/git/providers', {
     method: 'POST',
     body: JSON.stringify(input),

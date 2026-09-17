@@ -13,7 +13,7 @@ export interface paths {
         };
         /**
          * Health check endpoint
-         * @description Returns the current status of the API service
+         * @description Served at the root, outside /api/v1. Returns dependency status: {"checks":{"database":"ok","redis":"ok"},"service":"containr-api","status":"ok"}
          */
         get: {
             parameters: {
@@ -436,7 +436,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/projects/{project_id}/services": {
+    "/projects/{id}/services": {
         parameters: {
             query?: never;
             header?: never;
@@ -453,7 +453,7 @@ export interface paths {
                 header?: never;
                 path: {
                     /** @description Project ID */
-                    project_id: string;
+                    id: string;
                 };
                 cookie?: never;
             };
@@ -481,7 +481,7 @@ export interface paths {
                 header?: never;
                 path: {
                     /** @description Project ID */
-                    project_id: string;
+                    id: string;
                 };
                 cookie?: never;
             };
@@ -1156,8 +1156,9 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Create service from template
-         * @description Create a new service in a project using a selected template
+         * Create resource from template
+         * @description Create a new resource in a project using a selected template.
+         *     For `database` templates, this creates a managed database service.
          */
         post: {
             parameters: {
@@ -1293,7 +1294,7 @@ export interface paths {
         };
         /**
          * List databases
-         * @description Retrieve all databases
+         * @description Retrieve all managed databases for the authenticated user
          */
         get: {
             parameters: {
@@ -1310,7 +1311,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["Database"][];
+                        "application/json": components["schemas"]["DatabaseListResponse"];
                     };
                 };
             };
@@ -1318,7 +1319,7 @@ export interface paths {
         put?: never;
         /**
          * Create database
-         * @description Create a new database
+         * @description Create a new managed database and start provisioning
          */
         post: {
             parameters: {
@@ -1333,13 +1334,13 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Database created successfully */
+                /** @description Database provisioning started */
                 201: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["Database"];
+                        "application/json": components["schemas"]["DatabaseCreateResponse"];
                     };
                 };
             };
@@ -1384,8 +1385,198 @@ export interface paths {
                 };
             };
         };
-        put?: never;
+        /**
+         * Update database
+         * @description Update mutable database metadata (name or plan)
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Database ID */
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["UpdateDatabaseRequest"];
+                };
+            };
+            responses: {
+                /** @description Database updated successfully */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MessageResponse"];
+                    };
+                };
+            };
+        };
         post?: never;
+        /**
+         * Delete database
+         * @description Delete managed database and associated runtime
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Database ID */
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Database deleted successfully */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MessageResponse"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/databases/{id}/action": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute database action
+         * @description Execute start, stop, or restart action for a managed database
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Database ID */
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["DatabaseActionRequest"];
+                };
+            };
+            responses: {
+                /** @description Action accepted */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DatabaseActionResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/databases/{id}/backup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create backup
+         * @description Create a managed snapshot backup for a database
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Database ID */
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Backup started */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DatabaseBackupCreateResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/databases/{id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore backup
+         * @description Restore a managed database from a completed backup
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Database ID */
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["DatabaseRestoreRequest"];
+                };
+            };
+            responses: {
+                /** @description Restore started */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MessageResponse"];
+                    };
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -1488,6 +1679,4487 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["GitRepository"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/live": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Liveness probe
+         * @description Process liveness check served at the root, outside /api/v1.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Process is alive */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ready": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Readiness probe
+         * @description Same handler as /health — reports database and Redis status.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Service is ready */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["HealthResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/bootstrap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bootstrap status
+         * @description Reports whether the instance already has a registered user. Drives the first-run setup gate.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Bootstrap state */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @description True when no user exists yet */
+                            needs_setup?: boolean;
+                            user_count?: number;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create user (manual)
+         * @description Manually create a user account. Used for internal/admin user creation outside the bootstrap flow.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ManualUserCreateRequest"];
+                };
+            };
+            responses: {
+                /** @description User created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["User"];
+                    };
+                };
+                /** @description Invalid input */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/services/{id}/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Service metrics
+         * @description Live resource usage for the service's containers (CPU, memory, network, block I/O via Docker stats).
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Current service metrics */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            metrics?: components["schemas"]["ServiceMetrics"];
+                        };
+                    };
+                };
+                /** @description Service not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/services/{id}/variables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List service variables
+         * @description Environment variables for a service. Secret values are masked.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Variables retrieved */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            variables?: components["schemas"]["ServiceVariable"][];
+                        };
+                    };
+                };
+                /** @description Service not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        /**
+         * Replace service variables
+         * @description Replace the full variable set for a service.
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["UpdateVariablesRequest"];
+                };
+            };
+            responses: {
+                /** @description Variables updated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            variables?: components["schemas"]["ServiceVariable"][];
+                        };
+                    };
+                };
+                /** @description Invalid input */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/git/github-app/install-url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * GitHub App install URL
+         * @description Returns the URL to install the Containr GitHub App, or 404 when no app is configured.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Install URL */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: uri */
+                            install_url?: string;
+                        };
+                    };
+                };
+                /** @description GitHub App not configured */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/git/github-app/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Connect GitHub App installation
+         * @description Register a completed GitHub App installation as a git provider.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ConnectGitHubAppRequest"];
+                };
+            };
+            responses: {
+                /** @description Provider created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GitProvider"];
+                    };
+                };
+                /** @description Invalid input */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/git/providers/{providerId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete git provider
+         * @description Remove a git provider and its stored credentials.
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    providerId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Provider deleted */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MessageResponse"];
+                    };
+                };
+                /** @description Provider not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/git/providers/{providerId}/repositories/{owner}/{repo}/branches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List repository branches
+         * @description List branches for a repository through the provider API.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    providerId: string;
+                    owner: string;
+                    repo: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Branches retrieved */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            branches?: components["schemas"]["GitBranch"][];
+                        };
+                    };
+                };
+                /** @description Provider API error */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/git/repositories/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Connect repository
+         * @description Connect a provider repository so it can back services and webhooks.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ConnectGitRepoRequest"];
+                };
+            };
+            responses: {
+                /** @description Repository connected */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GitRepository"];
+                    };
+                };
+                /** @description Invalid input */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/git/repositories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List connected repositories
+         * @description Repositories connected to Containr across all providers.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Connected repositories */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            repositories?: components["schemas"]["GitRepository"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/git/webhooks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create webhook
+         * @description Register a webhook on a connected repository to trigger deployments on push.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreateWebhookRequest"];
+                };
+            };
+            responses: {
+                /** @description Webhook created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GitWebhook"];
+                    };
+                };
+                /** @description Invalid input */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/builds/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview build plan
+         * @description Resolve how a build would run (detected build type, commands) without executing it.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["BuildRequest"];
+                };
+            };
+            responses: {
+                /** @description Resolved build plan */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @description Detected build type, commands, and resolved options */
+                            plan?: Record<string, never>;
+                        };
+                    };
+                };
+                /** @description Invalid input */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/builds/detect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Detect build type
+         * @description Auto-detect the build strategy (Dockerfile, Railpack, etc.) for a source path.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    source_path?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Detected build type */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            build_type?: string;
+                            detected?: boolean;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/system/upgrade/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Upgrade status
+         * @description Current version, latest available image, and whether an upgrade is in progress.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Upgrade status */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["UpgradeStatus"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/system/upgrade/pull": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pull upgrade image
+         * @description Pull the latest Containr image and restart the stack to self-upgrade.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Upgrade started */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MessageResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/system/host": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Host monitoring
+         * @description Host-level telemetry: CPU, memory, disk, network, uptime, and container counts.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Host metrics */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["HostMonitoring"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ws": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * WebSocket stream
+         * @description Upgrades to WebSocket. Streams build status, deployment events, and container log output.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description WebSocket upgrade */
+                101: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scaling/policies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List scaling policies */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description All scaling policies */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            policies?: components["schemas"]["ScalingPolicy"][];
+                            count?: number;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Create or replace scaling policy */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ScalingPolicy"];
+                };
+            };
+            responses: {
+                /** @description Policy stored */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            message?: string;
+                            policy?: components["schemas"]["ScalingPolicy"];
+                        };
+                    };
+                };
+                /** @description Invalid input */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scaling/policies/{serviceId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get scaling policy */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Service ID */
+                    serviceId: components["parameters"]["ServiceIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Scaling policy */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            policy?: components["schemas"]["ScalingPolicy"];
+                        };
+                    };
+                };
+                /** @description Policy not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        /** Update scaling policy */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Service ID */
+                    serviceId: components["parameters"]["ServiceIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ScalingPolicy"];
+                };
+            };
+            responses: {
+                /** @description Policy updated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            policy?: components["schemas"]["ScalingPolicy"];
+                        };
+                    };
+                };
+            };
+        };
+        post?: never;
+        /** Delete scaling policy */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Service ID */
+                    serviceId: components["parameters"]["ServiceIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Policy deleted */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MessageResponse"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scaling/services": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List service scaling states */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Per-service scaling state (replicas, last scale, cooldowns) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            services?: Record<string, never>[];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scaling/services/{serviceId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get service scaling state */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Service ID */
+                    serviceId: components["parameters"]["ServiceIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Scaling state for one service */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": Record<string, never>;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scaling/services/{serviceId}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Scaling history */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Service ID */
+                    serviceId: components["parameters"]["ServiceIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Scaling events for the service */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            history?: components["schemas"]["ScalingEvent"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scaling/services/{serviceId}/scale": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Manual scale
+         * @description Immediately scale a service to a replica count.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Service ID */
+                    serviceId: components["parameters"]["ServiceIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        replicas: number;
+                        reason?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Scale event recorded */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ScalingEvent"];
+                    };
+                };
+                /** @description Invalid replica count or cooldown active */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scaling/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Autoscaler status */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Whether the autoscaler is enabled plus counts */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": Record<string, never>;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scaling/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Enable autoscaler */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Autoscaler enabled */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MessageResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scaling/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Disable autoscaler */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Autoscaler disabled */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MessageResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scaling/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Scaling engine metrics */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Internal autoscaler metrics */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": Record<string, never>;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scaling/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Recent scaling events */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description All recent scale up/down events */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            events?: components["schemas"]["ScalingEvent"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ha/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** HA status */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Overall HA status (enabled, policies, active alerts) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": Record<string, never>;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ha/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Enable HA management */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description HA enabled */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MessageResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ha/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Disable HA management */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description HA disabled */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MessageResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ha/failover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Trigger failover
+         * @description Manually trigger a failover evaluation across services with failover policies.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        reason?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Failover triggered */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MessageResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ha/failover/policies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List failover policies */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description All failover policies */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            policies?: components["schemas"]["FailoverPolicy"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Create or replace failover policy */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["FailoverPolicy"];
+                };
+            };
+            responses: {
+                /** @description Policy stored */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            policy?: components["schemas"]["FailoverPolicy"];
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ha/failover/policies/{serviceId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get failover policy */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Service ID */
+                    serviceId: components["parameters"]["ServiceIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Failover policy */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            policy?: components["schemas"]["FailoverPolicy"];
+                        };
+                    };
+                };
+                /** @description Policy not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        /** Update failover policy */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Service ID */
+                    serviceId: components["parameters"]["ServiceIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["FailoverPolicy"];
+                };
+            };
+            responses: {
+                /** @description Policy updated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            policy?: components["schemas"]["FailoverPolicy"];
+                        };
+                    };
+                };
+            };
+        };
+        post?: never;
+        /** Delete failover policy */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Service ID */
+                    serviceId: components["parameters"]["ServiceIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Policy deleted */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MessageResponse"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ha/health/checks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List health checks */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Configured health checks */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            checks?: components["schemas"]["HealthCheck"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Add health check */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["HealthCheck"];
+                };
+            };
+            responses: {
+                /** @description Health check created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            check?: components["schemas"]["HealthCheck"];
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ha/health/checks/{checkId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get health check */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    checkId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Health check */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            check?: components["schemas"]["HealthCheck"];
+                        };
+                    };
+                };
+                /** @description Check not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        /** Update health check */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    checkId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["HealthCheck"];
+                };
+            };
+            responses: {
+                /** @description Health check updated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            check?: components["schemas"]["HealthCheck"];
+                        };
+                    };
+                };
+            };
+        };
+        post?: never;
+        /** Delete health check */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    checkId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Health check deleted */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MessageResponse"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ha/health/results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Health check results */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Latest result per health check */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": Record<string, never>;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ha/alerts/rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List alert rules */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description All alert rules */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            rules?: components["schemas"]["AlertRule"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Add alert rule */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AlertRule"];
+                };
+            };
+            responses: {
+                /** @description Alert rule created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            rule?: components["schemas"]["AlertRule"];
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ha/alerts/rules/{ruleId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get alert rule */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    ruleId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Alert rule */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            rule?: components["schemas"]["AlertRule"];
+                        };
+                    };
+                };
+                /** @description Rule not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        /** Update alert rule */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    ruleId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AlertRule"];
+                };
+            };
+            responses: {
+                /** @description Alert rule updated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            rule?: components["schemas"]["AlertRule"];
+                        };
+                    };
+                };
+            };
+        };
+        post?: never;
+        /** Delete alert rule */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    ruleId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Alert rule deleted */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MessageResponse"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ha/alerts/active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Active alerts */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Currently firing alerts */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            alerts?: Record<string, never>[];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ha/alerts/{alertId}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resolve alert */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    alertId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Alert resolved */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MessageResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ha/notifiers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List notifiers */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Configured alert notifiers */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            notifiers?: components["schemas"]["Notifier"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Add notifier */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["NotifierRequest"];
+                };
+            };
+            responses: {
+                /** @description Notifier created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            notifier?: components["schemas"]["Notifier"];
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ha/notifiers/{notifierId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get notifier */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    notifierId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Notifier */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            notifier?: components["schemas"]["Notifier"];
+                        };
+                    };
+                };
+                /** @description Notifier not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        /** Delete notifier */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    notifierId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Notifier deleted */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MessageResponse"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List node agents */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description All registered node agents */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            agents?: components["schemas"]["NodeAgent"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get node agent */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Node agent ID */
+                    id: components["parameters"]["AgentIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Agent detail */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            agent?: components["schemas"]["NodeAgent"];
+                        };
+                    };
+                };
+                /** @description Agent not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        /**
+         * Update node agent
+         * @description Partial update — accepts any subset of agent fields (name, status, labels, etc.).
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Node agent ID */
+                    id: components["parameters"]["AgentIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            responses: {
+                /** @description Agent updated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            agent?: components["schemas"]["NodeAgent"];
+                        };
+                    };
+                };
+            };
+        };
+        post?: never;
+        /** Deregister node agent */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Node agent ID */
+                    id: components["parameters"]["AgentIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Agent removed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MessageResponse"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/{id}/containers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List agent containers */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Node agent ID */
+                    id: components["parameters"]["AgentIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Containers running on the agent */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            containers?: components["schemas"]["ContainerInstance"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Create container on agent */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Node agent ID */
+                    id: components["parameters"]["AgentIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreateContainerRequest"];
+                };
+            };
+            responses: {
+                /** @description Container created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            container?: components["schemas"]["ContainerInstance"];
+                        };
+                    };
+                };
+                /** @description Agent not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/{id}/containers/{containerId}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start container */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Node agent ID */
+                    id: components["parameters"]["AgentIdParam"];
+                    /** @description Container ID */
+                    containerId: components["parameters"]["ContainerIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Container start dispatched */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MessageResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/{id}/containers/{containerId}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stop container */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Node agent ID */
+                    id: components["parameters"]["AgentIdParam"];
+                    /** @description Container ID */
+                    containerId: components["parameters"]["ContainerIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Container stop dispatched */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MessageResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/{id}/containers/{containerId}/restart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restart container */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Node agent ID */
+                    id: components["parameters"]["AgentIdParam"];
+                    /** @description Container ID */
+                    containerId: components["parameters"]["ContainerIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Container restart dispatched */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MessageResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/{id}/containers/{containerId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove container */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Node agent ID */
+                    id: components["parameters"]["AgentIdParam"];
+                    /** @description Container ID */
+                    containerId: components["parameters"]["ContainerIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Container removal dispatched */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MessageResponse"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/{id}/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Agent metrics
+         * @description Resource telemetry reported by the node agent.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Node agent ID */
+                    id: components["parameters"]["AgentIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Agent metrics and heartbeat history */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": Record<string, never>;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/{id}/commands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List agent commands */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Node agent ID */
+                    id: components["parameters"]["AgentIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Command history for the agent */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            commands?: components["schemas"]["AgentCommand"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Execute command on agent
+         * @description Queue a command for the agent to pick up on its next poll.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Node agent ID */
+                    id: components["parameters"]["AgentIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ExecuteCommandRequest"];
+                };
+            };
+            responses: {
+                /** @description Command queued */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            command?: components["schemas"]["AgentCommand"];
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/{id}/commands/{commandId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get command status */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Node agent ID */
+                    id: components["parameters"]["AgentIdParam"];
+                    commandId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Command status and result */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            command?: components["schemas"]["AgentCommand"];
+                        };
+                    };
+                };
+                /** @description Command not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agents/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register node agent
+         * @description Agent self-registration. Requires the agent auth token (body or X-Agent-Token header).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["RegisterAgentRequest"];
+                };
+            };
+            responses: {
+                /** @description Agent registered */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            agent?: components["schemas"]["NodeAgent"];
+                        };
+                    };
+                };
+                /** @description Invalid auth token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agents/heartbeat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Agent heartbeat
+         * @description Periodic heartbeat carrying resource usage and container counts.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AgentHeartbeat"];
+                };
+            };
+            responses: {
+                /** @description Heartbeat recorded */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MessageResponse"];
+                    };
+                };
+                /** @description Invalid auth token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agents/{id}/commands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Poll pending commands
+         * @description Agent pulls its pending command queue.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Pending commands */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            commands?: components["schemas"]["AgentCommand"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agents/{id}/commands/{commandId}/result": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Report command result */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    commandId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        status: "completed" | "failed";
+                        result?: string;
+                        error?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Result recorded */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MessageResponse"];
+                    };
+                };
+                /** @description Invalid auth token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/preview-environments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List preview environments */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Project ID */
+                    id: components["parameters"]["ProjectIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Preview environments for the project */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            preview_environments?: components["schemas"]["PreviewEnvironment"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Create preview environment
+         * @description Spin up a preview deployment for a branch or PR.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Project ID */
+                    id: components["parameters"]["ProjectIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreatePreviewEnvironmentRequest"];
+                };
+            };
+            responses: {
+                /** @description Preview environment created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PreviewEnvironment"];
+                    };
+                };
+                /** @description Invalid input */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/preview-environments/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get preview environment */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Resource ID */
+                    id: components["parameters"]["IdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Preview environment */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PreviewEnvironment"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        /** Update preview environment */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Resource ID */
+                    id: components["parameters"]["IdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["UpdatePreviewEnvironmentRequest"];
+                };
+            };
+            responses: {
+                /** @description Preview environment updated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PreviewEnvironment"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        /** Delete preview environment */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Resource ID */
+                    id: components["parameters"]["IdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Preview environment deleted */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MessageResponse"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/preview-environments/{id}/promote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Promote preview to production */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Resource ID */
+                    id: components["parameters"]["IdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["PromotePreviewEnvironmentRequest"];
+                };
+            };
+            responses: {
+                /** @description Preview promoted; returns the target deployment */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": Record<string, never>;
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/preview-environments/cleanup-expired": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cleanup expired previews
+         * @description Tear down preview environments past their TTL. Normally run by the scheduler; exposed for manual runs.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Cleanup completed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            cleaned?: number;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/security/scans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start security scan */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["StartSecurityScanRequest"];
+                };
+            };
+            responses: {
+                /** @description Scan started */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SecurityScan"];
+                    };
+                };
+                /** @description Invalid input */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/security/scans/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get security scan */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Resource ID */
+                    id: components["parameters"]["IdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Scan status and results */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SecurityScan"];
+                    };
+                };
+                /** @description Scan not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/security/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Project scan history */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Project ID */
+                    id: components["parameters"]["ProjectIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Security scans for the project */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            scans?: components["schemas"]["SecurityScan"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/vulnerabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Project vulnerabilities */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Project ID */
+                    id: components["parameters"]["ProjectIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Vulnerability findings for the project */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            vulnerabilities?: components["schemas"]["Vulnerability"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vulnerabilities/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update vulnerability
+         * @description Mark a finding open/resolved/ignored with optional notes.
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Resource ID */
+                    id: components["parameters"]["IdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        status: "open" | "resolved" | "ignored";
+                        notes?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Vulnerability updated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status?: string;
+                        };
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/security/compliance/assess": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start compliance assessment */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["StartComplianceAssessmentRequest"];
+                };
+            };
+            responses: {
+                /** @description Assessment started */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": Record<string, never>;
+                    };
+                };
+                /** @description Invalid input */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/security/compliance/reports/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get compliance report */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Resource ID */
+                    id: components["parameters"]["IdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Compliance report with per-control results */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": Record<string, never>;
+                    };
+                };
+                /** @description Report not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/security/compliance/frameworks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List compliance frameworks */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Available compliance frameworks (SOC2, GDPR, ...) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            frameworks?: Record<string, never>[];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/security/compliance/gdpr/init": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Initialize GDPR framework
+         * @description Seed the GDPR control set for compliance assessments.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description GDPR framework initialized */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MessageResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/security/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Project security metrics
+         * @description Aggregate score: open findings by severity, latest scan, compliance status.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Project ID */
+                    id: components["parameters"]["ProjectIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Security metrics */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": Record<string, never>;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/security/audit-logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Security audit logs
+         * @description Audit events scoped to a project (security-relevant actions).
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Project ID */
+                    id: components["parameters"]["ProjectIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Audit events */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            audit_logs?: components["schemas"]["AuditLog"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cron-jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List cron jobs */
+        get: {
+            parameters: {
+                query?: {
+                    project_id?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Cron jobs */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            cron_jobs?: components["schemas"]["CronJob"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Create cron job */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreateCronJobRequest"];
+                };
+            };
+            responses: {
+                /** @description Cron job created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CronJob"];
+                    };
+                };
+                /** @description Invalid input */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cron-jobs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get cron job */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Resource ID */
+                    id: components["parameters"]["IdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Cron job */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CronJob"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        /** Update cron job */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Resource ID */
+                    id: components["parameters"]["IdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["UpdateCronJobRequest"];
+                };
+            };
+            responses: {
+                /** @description Cron job updated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CronJob"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        /** Delete cron job */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Resource ID */
+                    id: components["parameters"]["IdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Cron job deleted */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MessageResponse"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cron-jobs/{id}/executions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Cron execution history */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Resource ID */
+                    id: components["parameters"]["IdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Executions for the cron job */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            executions?: components["schemas"]["CronExecution"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cron-jobs/{id}/trigger": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Trigger cron job now */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Resource ID */
+                    id: components["parameters"]["IdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Execution started */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CronExecution"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/gateway/services": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List gateway services
+         * @description Upstream services registered for key-gated proxying.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Gateway services */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GatewayResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Register gateway service */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["GatewayServiceRequest"];
+                };
+            };
+            responses: {
+                /** @description Service registered */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GatewayResponse"];
+                    };
+                };
+                /** @description Invalid input */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Name or route prefix already registered */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/gateway/services/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Enable/disable gateway service */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Resource ID */
+                    id: components["parameters"]["IdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        enabled?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Service updated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GatewayResponse"];
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/gateway/services/{id}/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Validate upstream reachability
+         * @description Probes the service's upstream health path and records the result.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Resource ID */
+                    id: components["parameters"]["IdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Validation result (reachable flag + status) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GatewayResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/gateway/keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List API keys */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description API keys (hashes never returned) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GatewayResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Issue API key
+         * @description The plaintext key is returned exactly once in this response.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["GatewayAPIKeyRequest"];
+                };
+            };
+            responses: {
+                /** @description Key issued — `key` field holds the plaintext token */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GatewayResponse"];
+                    };
+                };
+                /** @description Invalid input or unknown plan */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/gateway/keys/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Enable/disable API key */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Resource ID */
+                    id: components["parameters"]["IdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        enabled?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Key updated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GatewayResponse"];
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/gateway/analytics/ops": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Operations analytics
+         * @description Error rates, incident counts, and uptime per gateway service.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Ops analytics */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GatewayResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/gateway/analytics/traffic": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Traffic analytics
+         * @description Request volume timeseries per gateway service.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Traffic analytics */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GatewayResponse"];
                     };
                 };
             };
@@ -1604,8 +6276,14 @@ export interface components {
              * @description Last update timestamp
              */
             updated_at?: string;
-            /** @description Number of services in the project */
-            services_count?: number;
+            stats?: components["schemas"]["ProjectStats"];
+        };
+        ProjectStats: {
+            service_count: number;
+            deployment_count: number;
+            running_services: number;
+            /** @description Timestamp of the most recent deployment */
+            last_deployment: string | null;
         };
         CreateProjectRequest: {
             /** @description Project name */
@@ -1634,9 +6312,15 @@ export interface components {
             total_pages?: number;
         };
         Service: {
-            /** @description Service ID */
+            /**
+             * Format: uuid
+             * @description Service ID
+             */
             id?: string;
-            /** @description Project ID */
+            /**
+             * Format: uuid
+             * @description Project ID
+             */
             project_id?: string;
             /** @description Service name */
             name?: string;
@@ -1650,9 +6334,25 @@ export interface components {
              * @enum {string}
              */
             status?: "running" | "stopped" | "building" | "failed";
-            source?: components["schemas"]["ServiceSource"];
-            build_config?: components["schemas"]["BuildConfig"];
-            resources?: components["schemas"]["ResourceConfig"];
+            /** @description Container image */
+            image?: string;
+            /** @description Start command */
+            command?: string;
+            /**
+             * @description Deployment environment
+             * @enum {string}
+             */
+            environment?: "production" | "preview" | "development";
+            /** @description Connected git repository */
+            git_repo?: string;
+            /** @description Connected git branch */
+            git_branch?: string;
+            /** @description Build context path */
+            build_path?: string;
+            /** @description CPU allocation */
+            cpu?: string;
+            /** @description Memory allocation */
+            memory?: string;
             /**
              * Format: date-time
              * @description Service creation timestamp
@@ -1665,6 +6365,11 @@ export interface components {
             updated_at?: string;
         };
         CreateServiceRequest: {
+            /**
+             * Format: uuid
+             * @description Defaults to the project in the URL; must match when set
+             */
+            project_id?: string;
             /** @description Service name */
             name: string;
             /**
@@ -1672,55 +6377,53 @@ export interface components {
              * @enum {string}
              */
             type: "web" | "worker" | "database" | "cron";
-            source?: components["schemas"]["ServiceSource"];
-            build_config?: components["schemas"]["BuildConfig"];
-            resources?: components["schemas"]["ResourceConfig"];
-        };
-        UpdateServiceRequest: {
-            /** @description Service name */
-            name?: string;
-            build_config?: components["schemas"]["BuildConfig"];
-            resources?: components["schemas"]["ResourceConfig"];
-        };
-        ServiceSource: {
-            /**
-             * @description Source type
-             * @enum {string}
-             */
-            type?: "git" | "dockerfile" | "image";
-            /** @description Git repository URL */
-            repository?: string;
-            /** @description Git branch */
-            branch?: string;
-            /** @description Root directory for build */
-            root_directory?: string;
-            /** @description Dockerfile path */
-            dockerfile?: string;
-            /** @description Docker image name */
+            /** @description Container image */
             image?: string;
-        };
-        BuildConfig: {
+            /** @description Start command */
+            command?: string;
             /**
-             * @description Build system type
+             * @description Deployment environment
              * @enum {string}
              */
-            builder_type?: "nixpacks" | "dockerfile" | "image";
-            /** @description Custom build command */
-            build_command?: string;
-            /** @description Custom start command */
-            start_command?: string;
-            /** @description Build environment variables */
-            environment_variables?: {
-                [key: string]: string;
-            };
-        };
-        ResourceConfig: {
+            environment: "production" | "preview" | "development";
+            /** @description Git repository URL */
+            git_repo?: string;
+            /** @description Git branch */
+            git_branch?: string;
+            /** @description Build context path */
+            build_path?: string;
             /** @description CPU allocation */
             cpu?: string;
             /** @description Memory allocation */
             memory?: string;
-            /** @description Storage allocation */
-            storage?: string;
+        };
+        UpdateServiceRequest: {
+            /** @description Service name */
+            name?: string;
+            /**
+             * @description Service type
+             * @enum {string}
+             */
+            type?: "web" | "worker" | "database" | "cron";
+            /** @description Container image */
+            image?: string;
+            /** @description Start command */
+            command?: string;
+            /**
+             * @description Deployment environment
+             * @enum {string}
+             */
+            environment?: "production" | "preview" | "development";
+            /** @description Git repository URL */
+            git_repo?: string;
+            /** @description Git branch */
+            git_branch?: string;
+            /** @description Build context path */
+            build_path?: string;
+            /** @description CPU allocation */
+            cpu?: string;
+            /** @description Memory allocation */
+            memory?: string;
         };
         Deployment: {
             /** @description Deployment ID */
@@ -2006,14 +6709,28 @@ export interface components {
             project_id: string;
             /** @description Name for the created service */
             name: string;
+            /**
+             * @description Optional managed database plan for database templates
+             * @enum {string}
+             */
+            plan?: "hobby" | "starter" | "standard" | "business";
+            /** @description Optional managed database region for database templates */
+            region?: string;
             /** @description Variable overrides for template deployment */
             variables?: {
                 [key: string]: string;
             };
         };
         DeployTemplateResponse: {
-            /** @description Newly created service ID */
+            /**
+             * @description Type of resource created by template deployment
+             * @enum {string}
+             */
+            resource?: "service" | "database";
+            /** @description Newly created service ID (set for non-database templates) */
             service_id?: string;
+            /** @description Newly created managed database ID (set for database templates) */
+            database_id?: string;
             /** @description Deployment result message */
             message?: string;
         };
@@ -2048,8 +6765,6 @@ export interface components {
         Database: {
             /** @description Database ID */
             id?: string;
-            /** @description Project ID */
-            project_id?: string;
             /** @description Database name */
             name?: string;
             /**
@@ -2061,13 +6776,21 @@ export interface components {
              * @description Database status
              * @enum {string}
              */
-            status?: "running" | "stopped" | "building" | "error" | "failed";
+            status?: "running" | "stopped" | "building" | "error";
             /** @description Database connection URL */
             connection_url?: string;
             /** @description Database version */
             version?: string;
-            /** @description Database size */
-            size?: string;
+            /**
+             * @description Provisioning plan
+             * @enum {string}
+             */
+            plan?: "hobby" | "starter" | "standard" | "business";
+            /** @description Provisioning region */
+            region?: string;
+            metrics?: components["schemas"]["DatabaseMetrics"];
+            backups?: components["schemas"]["DatabaseBackupConfig"];
+            settings?: components["schemas"]["DatabaseSettings"];
             /**
              * Format: date-time
              * @description Database creation timestamp
@@ -2087,61 +6810,777 @@ export interface components {
              * @enum {string}
              */
             type: "postgresql" | "redis" | "mysql" | "mariadb" | "mongodb" | "clickhouse" | "dragonfly";
-            /** @description Database version */
-            version?: string;
-            /** @description Database size */
-            size?: string;
-        };
-        GitProvider: {
-            /** @description Provider ID */
-            id?: string;
             /**
-             * @description Provider type
+             * @description Database plan
              * @enum {string}
              */
-            type?: "github" | "gitlab" | "bitbucket";
-            /** @description Provider display name */
+            plan: "hobby" | "starter" | "standard" | "business";
+            /** @description Database region */
+            region: string;
+        };
+        UpdateDatabaseRequest: {
+            /** @description Updated database name */
             name?: string;
-            /** @description Encrypted access token */
-            access_token?: string;
             /**
-             * Format: date-time
-             * @description Provider creation timestamp
+             * @description Updated database plan
+             * @enum {string}
              */
+            plan?: "hobby" | "starter" | "standard" | "business";
+        };
+        DatabaseActionRequest: {
+            /**
+             * @description Action to execute
+             * @enum {string}
+             */
+            action: "start" | "stop" | "restart";
+        };
+        DatabaseRestoreRequest: {
+            /** @description Backup identifier to restore */
+            backup_id: string;
+        };
+        DatabaseCreateResponse: {
+            /** @description Database ID */
+            id?: string;
+            message?: string;
+            /** @enum {string} */
+            status?: "building";
+        };
+        DatabaseActionResponse: {
+            message?: string;
+            /** @enum {string} */
+            status?: "running" | "stopped" | "building" | "error";
+        };
+        DatabaseBackupCreateResponse: {
+            backup_id?: string;
+            message?: string;
+            /** @enum {string} */
+            status?: "in_progress";
+        };
+        DatabaseListResponse: {
+            databases?: components["schemas"]["Database"][];
+        };
+        DatabaseMetrics: {
+            cpu?: number;
+            memory?: number;
+            storage?: number;
+            connections?: number;
+            read_iops?: number;
+            write_iops?: number;
+            network_in?: number;
+            network_out?: number;
+        };
+        DatabaseBackup: {
+            id?: string;
+            /** Format: date-time */
             created_at?: string;
+            size?: string;
+            /** @enum {string} */
+            status?: "completed" | "failed" | "in_progress";
+        };
+        DatabaseBackupConfig: {
+            enabled?: boolean;
+            /** Format: date-time */
+            last_backup?: string;
+            retention?: number;
+            /** Format: date-time */
+            next_backup?: string;
+            backups?: components["schemas"]["DatabaseBackup"][];
+        };
+        DatabaseSettings: {
+            max_connections?: number;
+            timeout?: number;
+            ssl?: boolean;
+            logging?: boolean;
+        };
+        MessageResponse: {
+            message?: string;
+        };
+        /** @description Access tokens are never serialized in responses. */
+        GitProvider: {
+            /** @description Provider ID */
+            id: string;
+            /**
+             * @description Provider type identifier
+             * @enum {string}
+             */
+            name: "github" | "gitlab" | "bitbucket" | "gitea" | "github_app";
+            /** @description Provider display name */
+            display_name: string;
+            /** @description Custom API base URL (self-hosted providers) */
+            api_url: string;
+            /** @description Webhook callback URL registered on the provider */
+            webhook_url: string;
+            user_id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
         };
         CreateGitProviderRequest: {
             /**
-             * @description Provider type
+             * @description Provider type identifier
              * @enum {string}
              */
-            type: "github" | "gitlab" | "bitbucket";
+            name: "github" | "gitlab" | "bitbucket" | "gitea" | "github_app";
             /** @description Provider display name */
-            name?: string;
-            /** @description Access token */
+            display_name: string;
+            /** @description Personal access token (stored encrypted, never returned) */
             access_token: string;
+            /** @description Custom API base URL for self-hosted providers */
+            api_url?: string;
+        };
+        GitBranch: {
+            name: string;
+            protected: boolean;
         };
         GitRepository: {
             /** @description Repository ID */
-            id?: string;
+            id: string;
+            provider_id: string;
             /** @description Repository name */
-            name?: string;
-            /** @description Repository full name */
-            full_name?: string;
+            name: string;
+            /** @description Repository full name (owner/repo) */
+            full_name: string;
             /** @description Repository description */
-            description?: string;
-            /** @description Whether repository is private */
-            private?: boolean;
-            /** @description Default branch */
-            default_branch?: string;
+            description: string;
             /** @description Clone URL */
-            clone_url?: string;
-            /** @description Web URL */
-            web_url?: string;
+            clone_url: string;
+            webhook_url: string;
+            /** @description Default branch */
+            default_branch: string;
+            /** @description Whether repository is private */
+            is_private: boolean;
+            user_id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        ManualUserCreateRequest: {
+            /** Format: email */
+            email: string;
+            /** Format: password */
+            password: string;
+            name: string;
+        };
+        ServiceVariable: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            service_id?: string;
+            key?: string;
+            /** @description Masked as ******** when is_secret is true */
+            value?: string;
+            is_secret?: boolean;
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        VariableInput: {
+            key: string;
+            value?: string;
+            is_secret?: boolean;
+        };
+        UpdateVariablesRequest: {
+            variables: components["schemas"]["VariableInput"][];
+        };
+        ConnectGitHubAppRequest: {
+            /**
+             * Format: int64
+             * @description GitHub App installation ID from the install callback
+             */
+            installation_id: number;
+            display_name?: string;
+        };
+        ConnectGitRepoRequest: {
+            provider_id: string;
+            /** @description owner/repo */
+            repo_full_name: string;
+        };
+        CreateWebhookRequest: {
+            repo_id: string;
+            /**
+             * @example [
+             *       "push",
+             *       "pull_request"
+             *     ]
+             */
+            events: string[];
+            branch?: string;
+        };
+        /** @description Webhook secrets are never serialized in responses. */
+        GitWebhook: {
+            id?: string;
+            repo_id?: string;
+            provider_id?: string;
+            /** @description JSON-encoded array of subscribed events */
+            events?: string;
+            active?: boolean;
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        BuildRequest: {
+            /** @description dockerfile | railpack | prebuilt — auto-detected when empty */
+            build_type?: string;
+            source_path?: string;
+            prebuilt_image?: string;
+            image_name: string;
+            image_tag: string;
+            registry_url?: string;
+            build_command?: string;
+            start_command?: string;
+            environment?: {
+                [key: string]: string;
+            };
+            build_args?: {
+                [key: string]: string;
+            };
+            labels?: {
+                [key: string]: string;
+            };
+            project_id?: string;
+            service_id?: string;
+            branch?: string;
+            commit?: string;
+        };
+        UpgradeStatus: {
+            image_ref?: string;
+            registry?: string;
+            docker_available?: boolean;
+            installed?: boolean;
+            digest?: string;
+            /** Format: int64 */
+            size?: number;
+            auth_configured?: boolean;
+            message?: string;
+        };
+        HostMonitoring: {
+            hostname?: string;
+            os?: string;
+            architecture?: string;
+            cpu?: {
+                cores?: number;
+            };
+            memory?: {
+                /** Format: int64 */
+                total?: number;
+                /** Format: int64 */
+                used?: number;
+                /** Format: int64 */
+                available?: number;
+                usage_percent?: number;
+            };
+            storage?: {
+                path?: string;
+                /** Format: int64 */
+                total?: number;
+                /** Format: int64 */
+                used?: number;
+                /** Format: int64 */
+                available?: number;
+                usage_percent?: number;
+            };
+            load?: {
+                load_1m?: number;
+                load_5m?: number;
+                load_15m?: number;
+            };
+            /** Format: int64 */
+            uptime_seconds?: number;
+            docker_available?: boolean;
+            /** @description Docker daemon details when available */
+            docker?: {
+                containers?: number;
+                images?: number;
+                driver?: string;
+                server?: string;
+            };
+            /** Format: date-time */
+            collected_at?: string;
+        };
+        ServiceInstanceMetrics: {
+            container_id: string;
+            name: string;
+            state: string;
+            cpu_percent: number;
+            /** Format: int64 */
+            memory_usage_bytes: number;
+            /** Format: int64 */
+            memory_limit_bytes: number;
+            /** Format: int64 */
+            network_rx_bytes: number;
+            /** Format: int64 */
+            network_tx_bytes: number;
+            /** Format: date-time */
+            started_at: string;
+        };
+        ServiceMetrics: {
+            service_id: string;
+            /** @enum {string} */
+            status: "ok" | "no_containers" | "docker_unavailable";
+            instances: components["schemas"]["ServiceInstanceMetrics"][];
+            cpu_percent: number;
+            /** Format: int64 */
+            memory_usage_bytes: number;
+            /** Format: int64 */
+            memory_limit_bytes: number;
+            /** Format: int64 */
+            network_rx_bytes: number;
+            /** Format: int64 */
+            network_tx_bytes: number;
+            /** Format: date-time */
+            collected_at: string;
+        };
+        ScalingPolicy: {
+            service_id: string;
+            min_replicas: number;
+            max_replicas: number;
+            /** @description Target CPU utilization percent */
+            target_cpu?: number;
+            /** @description Target memory utilization percent */
+            target_memory?: number;
+            /** @description Nanoseconds (Go duration serialized as integer) */
+            scale_up_cooldown?: number;
+            scale_down_cooldown?: number;
+            scale_up_step?: number;
+            scale_down_step?: number;
+            metrics?: string[];
+            thresholds?: {
+                [key: string]: number;
+            };
+            enabled?: boolean;
+            cost_optimization?: Record<string, never>;
+        };
+        ScalingEvent: {
+            id?: string;
+            service_id?: string;
+            from_replicas?: number;
+            to_replicas?: number;
+            reason?: string;
+            /** @description auto | manual */
+            trigger?: string;
+            /** Format: date-time */
+            created_at?: string;
+        };
+        FailoverPolicy: {
+            service_id: string;
+            enabled?: boolean;
+            min_healthy_nodes?: number;
+            max_failures?: number;
+            /** @description Nanoseconds */
+            failover_timeout?: number;
+            /** @description Nanoseconds */
+            recovery_timeout?: number;
+            failover_strategy?: string;
+            backup_nodes?: string[];
+            health_check_config?: Record<string, never>;
+        };
+        HealthCheck: {
+            id?: string;
+            service_id?: string;
+            node_id?: string;
+            /** @description http | tcp | exec */
+            type?: string;
+            config?: Record<string, never>;
+            /** Format: date-time */
+            last_check?: string;
+            status?: string;
+        };
+        AlertRule: {
+            id?: string;
+            name?: string;
+            description?: string;
+            enabled?: boolean;
+            /** @description metric, operator, threshold, duration */
+            condition?: Record<string, never>;
+            /** @enum {string} */
+            severity?: "info" | "warning" | "critical";
+            labels?: {
+                [key: string]: string;
+            };
+            annotations?: {
+                [key: string]: string;
+            };
+            notifiers?: string[];
+            /** @description Nanoseconds */
+            cooldown?: number;
+        };
+        Notifier: {
+            id?: string;
+            /** @description webhook | slack | email | discord */
+            type?: string;
+            config?: Record<string, never>;
+        };
+        NotifierRequest: {
+            id?: string;
+            type: string;
+            config: Record<string, never>;
+        };
+        NodeAgent: {
+            id?: string;
+            name?: string;
+            hostname?: string;
+            ip_address?: string;
+            port?: number;
+            /** @description online | offline | connecting | error */
+            status?: string;
+            version?: string;
+            capabilities?: components["schemas"]["AgentCapabilities"];
+            resources?: components["schemas"]["NodeResources"];
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            last_heartbeat?: string;
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        AgentCapabilities: {
+            container_runtimes?: string[];
+            supported_architectures?: string[];
+            max_containers?: number;
+            storage_driver?: string;
+            network_plugins?: string[];
+            features?: string[];
+        };
+        NodeResources: {
+            cpu?: {
+                cores?: number;
+                /** @description Allocated CPU percentage */
+                allocation?: number;
+                /** @description Current usage percentage */
+                usage?: number;
+            };
+            memory?: {
+                /** Format: int64 */
+                total?: number;
+                /** Format: int64 */
+                allocated?: number;
+                /** Format: int64 */
+                used?: number;
+                /** Format: int64 */
+                available?: number;
+            };
+            storage?: {
+                /** Format: int64 */
+                total?: number;
+                /** Format: int64 */
+                allocated?: number;
+                /** Format: int64 */
+                used?: number;
+                /** Format: int64 */
+                available?: number;
+            };
+            network?: {
+                interfaces?: {
+                    name?: string;
+                    ip_address?: string;
+                    mac_address?: string;
+                    speed?: number;
+                    status?: string;
+                }[];
+                bandwidth?: {
+                    /**
+                     * Format: int64
+                     * @description Bytes per second
+                     */
+                    inbound?: number;
+                    /**
+                     * Format: int64
+                     * @description Bytes per second
+                     */
+                    outbound?: number;
+                };
+            };
+        };
+        RegisterAgentRequest: {
+            name: string;
+            hostname: string;
+            ip_address: string;
+            port: number;
+            capabilities: components["schemas"]["AgentCapabilities"];
+            /** @description May also be sent via the X-Agent-Token header */
+            auth_token?: string;
+        };
+        AgentHeartbeat: {
+            agent_id?: string;
+            status?: string;
+            resources?: components["schemas"]["NodeResources"];
+            container_count?: number;
+            system_load?: Record<string, never>;
+            uptime?: number;
+            version?: string;
+        };
+        AgentCommand: {
+            id?: string;
+            node_agent_id?: string;
+            type?: string;
+            payload?: Record<string, never>;
+            /** @description pending | running | completed | failed */
+            status?: string;
+            result?: string;
+            error?: string;
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            completed_at?: string;
+        };
+        ExecuteCommandRequest: {
+            type: string;
+            payload?: Record<string, never>;
+        };
+        ContainerInstance: {
+            id?: string;
+            agent_id?: string;
+            project_id?: string;
+            service_id?: string;
+            name?: string;
+            image?: string;
+            status?: string;
+            resources?: Record<string, never>;
+            ports?: Record<string, never>[];
+            /** Format: date-time */
+            created_at?: string;
+        };
+        CreateContainerRequest: {
+            name: string;
+            image: string;
+            project_id: string;
+            service_id: string;
+            /** @description cpu/memory limits */
+            resources: Record<string, never>;
+            ports?: {
+                host_port?: number;
+                container_port?: number;
+                protocol?: string;
+            }[];
+            environment?: {
+                [key: string]: string;
+            };
+            volumes?: Record<string, never>[];
+            networks?: string[];
+            restart_policy?: Record<string, never>;
+            health_check?: Record<string, never>;
+        };
+        PreviewEnvironment: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            project_id?: string;
+            /** Format: uuid */
+            service_id?: string;
+            branch_name?: string;
+            pr_number?: number;
+            /** @description Generated name, e.g. preview-{branch}-{ts} */
+            environment?: string;
+            /** @enum {string} */
+            status?: "building" | "running" | "failed" | "stopped" | "expired";
+            url?: string;
+            /** Format: date-time */
+            expires_at?: string;
+            /** Format: uuid */
+            deployment_id?: string;
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        CreatePreviewEnvironmentRequest: {
+            /** Format: uuid */
+            project_id?: string;
+            /** Format: uuid */
+            service_id: string;
+            branch_name: string;
+            pr_number?: number;
+            ttl_hours?: number;
+        };
+        UpdatePreviewEnvironmentRequest: {
+            /** @enum {string} */
+            status?: "building" | "running" | "failed" | "stopped" | "expired";
+            url?: string;
+            /** Format: date-time */
+            expires_at?: string;
+            ttl_hours?: number;
+        };
+        PromotePreviewEnvironmentRequest: {
+            /** @enum {string} */
+            target_environment: "production" | "development";
+            create_backup?: boolean;
+        };
+        StartSecurityScanRequest: {
+            project_id: string;
+            service_id?: string;
+            /** @enum {string} */
+            scan_type: "dependency" | "configuration" | "comprehensive";
+        };
+        SecurityScan: {
+            id?: string;
+            project_id?: string;
+            service_id?: string;
+            scan_type?: string;
+            /** @description pending | running | completed | failed */
+            status?: string;
+            findings_count?: number;
+            /** Format: date-time */
+            started_at?: string;
+            /** Format: date-time */
+            completed_at?: string;
+        };
+        Vulnerability: {
+            id?: string;
+            type?: string;
+            /** @enum {string} */
+            severity?: "low" | "medium" | "high" | "critical";
+            title?: string;
+            description?: string;
+            service_id?: string;
+            project_id?: string;
+            /** @enum {string} */
+            status?: "open" | "resolved" | "ignored";
+            /** Format: date-time */
+            found_at?: string;
+            /** Format: date-time */
+            resolved_at?: string;
+        };
+        StartComplianceAssessmentRequest: {
+            project_id: string;
+            framework_id: string;
+        };
+        CronJob: {
+            id?: string;
+            project_id?: string;
+            service_id?: string;
+            name?: string;
+            /** @description Cron expression */
+            schedule?: string;
+            command?: string;
+            timezone?: string;
+            enabled?: boolean;
+            /** Format: date-time */
+            last_run_at?: string;
+            /** Format: date-time */
+            next_run_at?: string;
+            last_status?: string;
+            last_output?: string;
+            retention?: number;
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        CronExecution: {
+            id?: string;
+            cron_job_id?: string;
+            /** Format: date-time */
+            started_at?: string;
+            /** Format: date-time */
+            finished_at?: string;
+            status?: string;
+            output?: string;
+            error?: string;
+        };
+        CreateCronJobRequest: {
+            project_id: string;
+            service_id: string;
+            name: string;
+            schedule: string;
+            command: string;
+            timezone?: string;
+            enabled?: boolean;
+            retention?: number;
+        };
+        UpdateCronJobRequest: {
+            name?: string;
+            schedule?: string;
+            command?: string;
+            timezone?: string;
+            enabled?: boolean;
+            retention?: number;
+        };
+        GatewayService: {
+            /** Format: uuid */
+            id?: string;
+            name?: string;
+            upstream_url?: string;
+            route_prefix?: string;
+            enabled?: boolean;
+            rpm_limit?: number;
+            monthly_quota?: number;
+            health_path?: string;
+            /** Format: date-time */
+            last_validated_at?: string;
+            last_validation_status?: string;
+            /** Format: date-time */
+            created_at?: string;
+        };
+        GatewayServiceRequest: {
+            name: string;
+            /** Format: uri */
+            upstreamUrl: string;
+            routePrefix: string;
+            enabled?: boolean;
+            rpmLimit?: number;
+            monthlyQuota?: number;
+        };
+        GatewayAPIKeyRequest: {
+            name: string;
+            /**
+             * @default free
+             * @enum {string}
+             */
+            plan: "free" | "pro" | "business" | "enterprise";
+            enabled?: boolean;
+            rpmLimit?: number;
+            monthlyQuota?: number;
+        };
+        GatewayAPIKey: {
+            /** Format: uuid */
+            id?: string;
+            name?: string;
+            plan?: string;
+            enabled?: boolean;
+            rpm_limit?: number;
+            monthly_quota?: number;
+            key_prefix?: string;
+            /** Format: date-time */
+            created_at?: string;
+        };
+        /** @description Standard gateway management envelope — `data` carries the payload, `error` carries {code, message, details}, `meta` carries pagination. */
+        GatewayResponse: {
+            success?: boolean;
+            /** @description Endpoint-specific payload (GatewayService, GatewayAPIKey, arrays, or analytics objects) */
+            data?: unknown;
+            error?: {
+                code?: string;
+                message?: string;
+                details?: unknown;
+            };
+            meta?: {
+                page?: number;
+                per_page?: number;
+                total?: number;
+                total_pages?: number;
+            };
         };
     };
     responses: never;
-    parameters: never;
+    parameters: {
+        /** @description Resource ID */
+        IdParam: string;
+        /** @description Project ID */
+        ProjectIdParam: string;
+        /** @description Service ID */
+        ServiceIdParam: string;
+        /** @description Node agent ID */
+        AgentIdParam: string;
+        /** @description Container ID */
+        ContainerIdParam: string;
+    };
     requestBodies: never;
     headers: never;
     pathItems: never;

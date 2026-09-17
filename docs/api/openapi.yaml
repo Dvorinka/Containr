@@ -34,11 +34,13 @@ servers:
 paths:
   # Health Check
   /health:
+    servers:
+      - url: http://localhost:8080
     get:
       tags:
         - Health
       summary: Health check endpoint
-      description: Returns the current status of the API service
+      description: 'Served at the root, outside /api/v1. Returns dependency status: {"checks":{"database":"ok","redis":"ok"},"service":"containr-api","status":"ok"}'
       responses:
         '200':
           description: Service is healthy
@@ -300,7 +302,7 @@ paths:
                 $ref: '#/components/schemas/Error'
 
   # Services
-  /projects/{project_id}/services:
+  /projects/{id}/services:
     get:
       tags:
         - Services
@@ -309,7 +311,7 @@ paths:
       security:
         - bearerAuth: []
       parameters:
-        - name: project_id
+        - name: id
           in: path
           required: true
           description: Project ID
@@ -333,7 +335,7 @@ paths:
       security:
         - bearerAuth: []
       parameters:
-        - name: project_id
+        - name: id
           in: path
           required: true
           description: Project ID
@@ -1150,6 +1152,2571 @@ paths:
                 items:
                   $ref: '#/components/schemas/GitRepository'
 
+  # Top-level probes (served outside /api/v1)
+  /live:
+    servers:
+      - url: http://localhost:8080
+    get:
+      tags:
+        - Health
+      summary: Liveness probe
+      description: Process liveness check served at the root, outside /api/v1.
+      responses:
+        '200':
+          description: Process is alive
+
+  /ready:
+    servers:
+      - url: http://localhost:8080
+    get:
+      tags:
+        - Health
+      summary: Readiness probe
+      description: Same handler as /health — reports database and Redis status.
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  # Authentication
+  /auth/bootstrap:
+    get:
+      tags:
+        - Authentication
+      summary: Bootstrap status
+      description: Reports whether the instance already has a registered user. Drives the first-run setup gate.
+      responses:
+        '200':
+          description: Bootstrap state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  needs_setup:
+                    type: boolean
+                    description: True when no user exists yet
+                  user_count:
+                    type: integer
+
+  # User Management
+  /users:
+    post:
+      tags:
+        - User
+      summary: Create user (manual)
+      description: Manually create a user account. Used for internal/admin user creation outside the bootstrap flow.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ManualUserCreateRequest'
+      responses:
+        '201':
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # Services
+  /services/{id}/metrics:
+    get:
+      tags:
+        - Services
+      summary: Service metrics
+      description: Live resource usage for the service's containers (CPU, memory, network, block I/O via Docker stats).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Current service metrics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  metrics:
+                    $ref: '#/components/schemas/ServiceMetrics'
+        '404':
+          description: Service not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /services/{id}/variables:
+    get:
+      tags:
+        - Services
+      summary: List service variables
+      description: Environment variables for a service. Secret values are masked.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Variables retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  variables:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ServiceVariable'
+        '404':
+          description: Service not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      tags:
+        - Services
+      summary: Replace service variables
+      description: Replace the full variable set for a service.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateVariablesRequest'
+      responses:
+        '200':
+          description: Variables updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  variables:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ServiceVariable'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # Git integration
+  /git/github-app/install-url:
+    get:
+      tags:
+        - Git
+      summary: GitHub App install URL
+      description: Returns the URL to install the Containr GitHub App, or 404 when no app is configured.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Install URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  install_url:
+                    type: string
+                    format: uri
+        '404':
+          description: GitHub App not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /git/github-app/connect:
+    post:
+      tags:
+        - Git
+      summary: Connect GitHub App installation
+      description: Register a completed GitHub App installation as a git provider.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConnectGitHubAppRequest'
+      responses:
+        '201':
+          description: Provider created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitProvider'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /git/providers/{providerId}:
+    delete:
+      tags:
+        - Git
+      summary: Delete git provider
+      description: Remove a git provider and its stored credentials.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: providerId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Provider deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '404':
+          description: Provider not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /git/providers/{providerId}/repositories/{owner}/{repo}/branches:
+    get:
+      tags:
+        - Git
+      summary: List repository branches
+      description: List branches for a repository through the provider API.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: providerId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Branches retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  branches:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/GitBranch'
+        '502':
+          description: Provider API error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /git/repositories/connect:
+    post:
+      tags:
+        - Git
+      summary: Connect repository
+      description: Connect a provider repository so it can back services and webhooks.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConnectGitRepoRequest'
+      responses:
+        '201':
+          description: Repository connected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitRepository'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /git/repositories:
+    get:
+      tags:
+        - Git
+      summary: List connected repositories
+      description: Repositories connected to Containr across all providers.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Connected repositories
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  repositories:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/GitRepository'
+
+  /git/webhooks:
+    post:
+      tags:
+        - Git
+      summary: Create webhook
+      description: Register a webhook on a connected repository to trigger deployments on push.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWebhookRequest'
+      responses:
+        '201':
+          description: Webhook created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitWebhook'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # Builds
+  /builds/plan:
+    post:
+      tags:
+        - Builds
+      summary: Preview build plan
+      description: Resolve how a build would run (detected build type, commands) without executing it.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuildRequest'
+      responses:
+        '200':
+          description: Resolved build plan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plan:
+                    type: object
+                    description: Detected build type, commands, and resolved options
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /builds/detect:
+    get:
+      tags:
+        - Builds
+      summary: Detect build type
+      description: Auto-detect the build strategy (Dockerfile, Railpack, etc.) for a source path.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: source_path
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Detected build type
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  build_type:
+                    type: string
+                  detected:
+                    type: boolean
+
+  # System
+  /system/upgrade/status:
+    get:
+      tags:
+        - System
+      summary: Upgrade status
+      description: Current version, latest available image, and whether an upgrade is in progress.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Upgrade status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpgradeStatus'
+
+  /system/upgrade/pull:
+    post:
+      tags:
+        - System
+      summary: Pull upgrade image
+      description: Pull the latest Containr image and restart the stack to self-upgrade.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Upgrade started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  /system/host:
+    get:
+      tags:
+        - System
+      summary: Host monitoring
+      description: 'Host-level telemetry: CPU, memory, disk, network, uptime, and container counts.'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Host metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HostMonitoring'
+
+  # WebSocket
+  /ws:
+    get:
+      tags:
+        - Realtime
+      summary: WebSocket stream
+      description: Upgrades to WebSocket. Streams build status, deployment events, and container log output.
+      security:
+        - bearerAuth: []
+      responses:
+        '101':
+          description: WebSocket upgrade
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # Autoscaling
+  /scaling/policies:
+    get:
+      tags:
+        - Scaling
+      summary: List scaling policies
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: All scaling policies
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  policies:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ScalingPolicy'
+                  count:
+                    type: integer
+    post:
+      tags:
+        - Scaling
+      summary: Create or replace scaling policy
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScalingPolicy'
+      responses:
+        '201':
+          description: Policy stored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  policy:
+                    $ref: '#/components/schemas/ScalingPolicy'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /scaling/policies/{serviceId}:
+    get:
+      tags:
+        - Scaling
+      summary: Get scaling policy
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ServiceIdParam'
+      responses:
+        '200':
+          description: Scaling policy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  policy:
+                    $ref: '#/components/schemas/ScalingPolicy'
+        '404':
+          description: Policy not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      tags:
+        - Scaling
+      summary: Update scaling policy
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ServiceIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScalingPolicy'
+      responses:
+        '200':
+          description: Policy updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  policy:
+                    $ref: '#/components/schemas/ScalingPolicy'
+    delete:
+      tags:
+        - Scaling
+      summary: Delete scaling policy
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ServiceIdParam'
+      responses:
+        '200':
+          description: Policy deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  /scaling/services:
+    get:
+      tags:
+        - Scaling
+      summary: List service scaling states
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Per-service scaling state (replicas, last scale, cooldowns)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  services:
+                    type: array
+                    items:
+                      type: object
+
+  /scaling/services/{serviceId}:
+    get:
+      tags:
+        - Scaling
+      summary: Get service scaling state
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ServiceIdParam'
+      responses:
+        '200':
+          description: Scaling state for one service
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /scaling/services/{serviceId}/history:
+    get:
+      tags:
+        - Scaling
+      summary: Scaling history
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ServiceIdParam'
+      responses:
+        '200':
+          description: Scaling events for the service
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  history:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ScalingEvent'
+
+  /scaling/services/{serviceId}/scale:
+    post:
+      tags:
+        - Scaling
+      summary: Manual scale
+      description: Immediately scale a service to a replica count.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ServiceIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - replicas
+              properties:
+                replicas:
+                  type: integer
+                  minimum: 1
+                  maximum: 20
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: Scale event recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScalingEvent'
+        '400':
+          description: Invalid replica count or cooldown active
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /scaling/status:
+    get:
+      tags:
+        - Scaling
+      summary: Autoscaler status
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Whether the autoscaler is enabled plus counts
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /scaling/enable:
+    post:
+      tags:
+        - Scaling
+      summary: Enable autoscaler
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Autoscaler enabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  /scaling/disable:
+    post:
+      tags:
+        - Scaling
+      summary: Disable autoscaler
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Autoscaler disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  /scaling/metrics:
+    get:
+      tags:
+        - Scaling
+      summary: Scaling engine metrics
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Internal autoscaler metrics
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /scaling/events:
+    get:
+      tags:
+        - Scaling
+      summary: Recent scaling events
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: All recent scale up/down events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ScalingEvent'
+
+  # High availability
+  /ha/status:
+    get:
+      tags:
+        - HA
+      summary: HA status
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Overall HA status (enabled, policies, active alerts)
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /ha/enable:
+    post:
+      tags:
+        - HA
+      summary: Enable HA management
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: HA enabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  /ha/disable:
+    post:
+      tags:
+        - HA
+      summary: Disable HA management
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: HA disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  /ha/failover:
+    post:
+      tags:
+        - HA
+      summary: Trigger failover
+      description: Manually trigger a failover evaluation across services with failover policies.
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: Failover triggered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  /ha/failover/policies:
+    get:
+      tags:
+        - HA
+      summary: List failover policies
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: All failover policies
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  policies:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FailoverPolicy'
+    post:
+      tags:
+        - HA
+      summary: Create or replace failover policy
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FailoverPolicy'
+      responses:
+        '201':
+          description: Policy stored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  policy:
+                    $ref: '#/components/schemas/FailoverPolicy'
+
+  /ha/failover/policies/{serviceId}:
+    get:
+      tags:
+        - HA
+      summary: Get failover policy
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ServiceIdParam'
+      responses:
+        '200':
+          description: Failover policy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  policy:
+                    $ref: '#/components/schemas/FailoverPolicy'
+        '404':
+          description: Policy not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      tags:
+        - HA
+      summary: Update failover policy
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ServiceIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FailoverPolicy'
+      responses:
+        '200':
+          description: Policy updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  policy:
+                    $ref: '#/components/schemas/FailoverPolicy'
+    delete:
+      tags:
+        - HA
+      summary: Delete failover policy
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ServiceIdParam'
+      responses:
+        '200':
+          description: Policy deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  /ha/health/checks:
+    get:
+      tags:
+        - HA
+      summary: List health checks
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Configured health checks
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  checks:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/HealthCheck'
+    post:
+      tags:
+        - HA
+      summary: Add health check
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HealthCheck'
+      responses:
+        '201':
+          description: Health check created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  check:
+                    $ref: '#/components/schemas/HealthCheck'
+
+  /ha/health/checks/{checkId}:
+    get:
+      tags:
+        - HA
+      summary: Get health check
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: checkId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Health check
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  check:
+                    $ref: '#/components/schemas/HealthCheck'
+        '404':
+          description: Check not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      tags:
+        - HA
+      summary: Update health check
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: checkId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HealthCheck'
+      responses:
+        '200':
+          description: Health check updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  check:
+                    $ref: '#/components/schemas/HealthCheck'
+    delete:
+      tags:
+        - HA
+      summary: Delete health check
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: checkId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Health check deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  /ha/health/results:
+    get:
+      tags:
+        - HA
+      summary: Health check results
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Latest result per health check
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /ha/alerts/rules:
+    get:
+      tags:
+        - HA
+      summary: List alert rules
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: All alert rules
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rules:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AlertRule'
+    post:
+      tags:
+        - HA
+      summary: Add alert rule
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AlertRule'
+      responses:
+        '201':
+          description: Alert rule created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rule:
+                    $ref: '#/components/schemas/AlertRule'
+
+  /ha/alerts/rules/{ruleId}:
+    get:
+      tags:
+        - HA
+      summary: Get alert rule
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: ruleId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Alert rule
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rule:
+                    $ref: '#/components/schemas/AlertRule'
+        '404':
+          description: Rule not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      tags:
+        - HA
+      summary: Update alert rule
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: ruleId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AlertRule'
+      responses:
+        '200':
+          description: Alert rule updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rule:
+                    $ref: '#/components/schemas/AlertRule'
+    delete:
+      tags:
+        - HA
+      summary: Delete alert rule
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: ruleId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Alert rule deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  /ha/alerts/active:
+    get:
+      tags:
+        - HA
+      summary: Active alerts
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Currently firing alerts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  alerts:
+                    type: array
+                    items:
+                      type: object
+
+  /ha/alerts/{alertId}/resolve:
+    post:
+      tags:
+        - HA
+      summary: Resolve alert
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: alertId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Alert resolved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  /ha/notifiers:
+    get:
+      tags:
+        - HA
+      summary: List notifiers
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Configured alert notifiers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notifiers:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Notifier'
+    post:
+      tags:
+        - HA
+      summary: Add notifier
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotifierRequest'
+      responses:
+        '201':
+          description: Notifier created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notifier:
+                    $ref: '#/components/schemas/Notifier'
+
+  /ha/notifiers/{notifierId}:
+    get:
+      tags:
+        - HA
+      summary: Get notifier
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: notifierId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Notifier
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notifier:
+                    $ref: '#/components/schemas/Notifier'
+        '404':
+          description: Notifier not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags:
+        - HA
+      summary: Delete notifier
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: notifierId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Notifier deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  # Node agents — management (JWT-authenticated)
+  /agents:
+    get:
+      tags:
+        - Agents
+      summary: List node agents
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: All registered node agents
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agents:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/NodeAgent'
+
+  /agents/{id}:
+    get:
+      tags:
+        - Agents
+      summary: Get node agent
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AgentIdParam'
+      responses:
+        '200':
+          description: Agent detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agent:
+                    $ref: '#/components/schemas/NodeAgent'
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      tags:
+        - Agents
+      summary: Update node agent
+      description: Partial update — accepts any subset of agent fields (name, status, labels, etc.).
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AgentIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Subset of NodeAgent fields to update
+      responses:
+        '200':
+          description: Agent updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agent:
+                    $ref: '#/components/schemas/NodeAgent'
+    delete:
+      tags:
+        - Agents
+      summary: Deregister node agent
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AgentIdParam'
+      responses:
+        '200':
+          description: Agent removed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  /agents/{id}/containers:
+    get:
+      tags:
+        - Agents
+      summary: List agent containers
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AgentIdParam'
+      responses:
+        '200':
+          description: Containers running on the agent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  containers:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ContainerInstance'
+    post:
+      tags:
+        - Agents
+      summary: Create container on agent
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AgentIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateContainerRequest'
+      responses:
+        '201':
+          description: Container created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  container:
+                    $ref: '#/components/schemas/ContainerInstance'
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /agents/{id}/containers/{containerId}/start:
+    post:
+      tags:
+        - Agents
+      summary: Start container
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AgentIdParam'
+        - $ref: '#/components/parameters/ContainerIdParam'
+      responses:
+        '200':
+          description: Container start dispatched
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  /agents/{id}/containers/{containerId}/stop:
+    post:
+      tags:
+        - Agents
+      summary: Stop container
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AgentIdParam'
+        - $ref: '#/components/parameters/ContainerIdParam'
+      responses:
+        '200':
+          description: Container stop dispatched
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  /agents/{id}/containers/{containerId}/restart:
+    post:
+      tags:
+        - Agents
+      summary: Restart container
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AgentIdParam'
+        - $ref: '#/components/parameters/ContainerIdParam'
+      responses:
+        '200':
+          description: Container restart dispatched
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  /agents/{id}/containers/{containerId}:
+    delete:
+      tags:
+        - Agents
+      summary: Remove container
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AgentIdParam'
+        - $ref: '#/components/parameters/ContainerIdParam'
+      responses:
+        '200':
+          description: Container removal dispatched
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  /agents/{id}/metrics:
+    get:
+      tags:
+        - Agents
+      summary: Agent metrics
+      description: Resource telemetry reported by the node agent.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AgentIdParam'
+      responses:
+        '200':
+          description: Agent metrics and heartbeat history
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /agents/{id}/commands:
+    get:
+      tags:
+        - Agents
+      summary: List agent commands
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AgentIdParam'
+      responses:
+        '200':
+          description: Command history for the agent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  commands:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AgentCommand'
+    post:
+      tags:
+        - Agents
+      summary: Execute command on agent
+      description: Queue a command for the agent to pick up on its next poll.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AgentIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExecuteCommandRequest'
+      responses:
+        '201':
+          description: Command queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  command:
+                    $ref: '#/components/schemas/AgentCommand'
+
+  /agents/{id}/commands/{commandId}:
+    get:
+      tags:
+        - Agents
+      summary: Get command status
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AgentIdParam'
+        - name: commandId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Command status and result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  command:
+                    $ref: '#/components/schemas/AgentCommand'
+        '404':
+          description: Command not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # Node agents — ingestion (token-authenticated, served under /api not /api/v1)
+  /api/agents/register:
+    servers:
+      - url: http://localhost:8080
+    post:
+      tags:
+        - Agents
+      summary: Register node agent
+      description: Agent self-registration. Requires the agent auth token (body or X-Agent-Token header).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterAgentRequest'
+      responses:
+        '201':
+          description: Agent registered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agent:
+                    $ref: '#/components/schemas/NodeAgent'
+        '401':
+          description: Invalid auth token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/agents/heartbeat:
+    servers:
+      - url: http://localhost:8080
+    post:
+      tags:
+        - Agents
+      summary: Agent heartbeat
+      description: Periodic heartbeat carrying resource usage and container counts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentHeartbeat'
+      responses:
+        '200':
+          description: Heartbeat recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '401':
+          description: Invalid auth token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/agents/{id}/commands:
+    servers:
+      - url: http://localhost:8080
+    get:
+      tags:
+        - Agents
+      summary: Poll pending commands
+      description: Agent pulls its pending command queue.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Pending commands
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  commands:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AgentCommand'
+
+  /api/agents/{id}/commands/{commandId}/result:
+    servers:
+      - url: http://localhost:8080
+    post:
+      tags:
+        - Agents
+      summary: Report command result
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: commandId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum: [completed, failed]
+                result:
+                  type: string
+                error:
+                  type: string
+      responses:
+        '200':
+          description: Result recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '401':
+          description: Invalid auth token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # Preview environments
+  /projects/{id}/preview-environments:
+    get:
+      tags:
+        - Preview Environments
+      summary: List preview environments
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProjectIdParam'
+      responses:
+        '200':
+          description: Preview environments for the project
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  preview_environments:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PreviewEnvironment'
+    post:
+      tags:
+        - Preview Environments
+      summary: Create preview environment
+      description: Spin up a preview deployment for a branch or PR.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProjectIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePreviewEnvironmentRequest'
+      responses:
+        '201':
+          description: Preview environment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreviewEnvironment'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /preview-environments/{id}:
+    get:
+      tags:
+        - Preview Environments
+      summary: Get preview environment
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Preview environment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreviewEnvironment'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      tags:
+        - Preview Environments
+      summary: Update preview environment
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePreviewEnvironmentRequest'
+      responses:
+        '200':
+          description: Preview environment updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreviewEnvironment'
+    delete:
+      tags:
+        - Preview Environments
+      summary: Delete preview environment
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Preview environment deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  /preview-environments/{id}/promote:
+    post:
+      tags:
+        - Preview Environments
+      summary: Promote preview to production
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PromotePreviewEnvironmentRequest'
+      responses:
+        '200':
+          description: Preview promoted; returns the target deployment
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /preview-environments/cleanup-expired:
+    post:
+      tags:
+        - Preview Environments
+      summary: Cleanup expired previews
+      description: Tear down preview environments past their TTL. Normally run by the scheduler; exposed for manual runs.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Cleanup completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cleaned:
+                    type: integer
+
+  # Security
+  /security/scans:
+    post:
+      tags:
+        - Security
+      summary: Start security scan
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartSecurityScanRequest'
+      responses:
+        '201':
+          description: Scan started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecurityScan'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /security/scans/{id}:
+    get:
+      tags:
+        - Security
+      summary: Get security scan
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Scan status and results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecurityScan'
+        '404':
+          description: Scan not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /projects/{id}/security/history:
+    get:
+      tags:
+        - Security
+      summary: Project scan history
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProjectIdParam'
+      responses:
+        '200':
+          description: Security scans for the project
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  scans:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SecurityScan'
+
+  /projects/{id}/vulnerabilities:
+    get:
+      tags:
+        - Security
+      summary: Project vulnerabilities
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProjectIdParam'
+      responses:
+        '200':
+          description: Vulnerability findings for the project
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  vulnerabilities:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Vulnerability'
+
+  /vulnerabilities/{id}:
+    put:
+      tags:
+        - Security
+      summary: Update vulnerability
+      description: Mark a finding open/resolved/ignored with optional notes.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum: [open, resolved, ignored]
+                notes:
+                  type: string
+      responses:
+        '200':
+          description: Vulnerability updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+
+  /security/compliance/assess:
+    post:
+      tags:
+        - Security
+      summary: Start compliance assessment
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartComplianceAssessmentRequest'
+      responses:
+        '201':
+          description: Assessment started
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /security/compliance/reports/{id}:
+    get:
+      tags:
+        - Security
+      summary: Get compliance report
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Compliance report with per-control results
+          content:
+            application/json:
+              schema:
+                type: object
+        '404':
+          description: Report not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /security/compliance/frameworks:
+    get:
+      tags:
+        - Security
+      summary: List compliance frameworks
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Available compliance frameworks (SOC2, GDPR, ...)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  frameworks:
+                    type: array
+                    items:
+                      type: object
+
+  /security/compliance/gdpr/init:
+    post:
+      tags:
+        - Security
+      summary: Initialize GDPR framework
+      description: Seed the GDPR control set for compliance assessments.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: GDPR framework initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  /projects/{id}/security/metrics:
+    get:
+      tags:
+        - Security
+      summary: Project security metrics
+      description: 'Aggregate score: open findings by severity, latest scan, compliance status.'
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProjectIdParam'
+      responses:
+        '200':
+          description: Security metrics
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /projects/{id}/security/audit-logs:
+    get:
+      tags:
+        - Security
+      summary: Security audit logs
+      description: Audit events scoped to a project (security-relevant actions).
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProjectIdParam'
+      responses:
+        '200':
+          description: Audit events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  audit_logs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AuditLog'
+
+  # Cron jobs
+  /cron-jobs:
+    get:
+      tags:
+        - Cron
+      summary: List cron jobs
+      parameters:
+        - name: project_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Cron jobs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cron_jobs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CronJob'
+    post:
+      tags:
+        - Cron
+      summary: Create cron job
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCronJobRequest'
+      responses:
+        '201':
+          description: Cron job created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CronJob'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /cron-jobs/{id}:
+    get:
+      tags:
+        - Cron
+      summary: Get cron job
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Cron job
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CronJob'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      tags:
+        - Cron
+      summary: Update cron job
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCronJobRequest'
+      responses:
+        '200':
+          description: Cron job updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CronJob'
+    delete:
+      tags:
+        - Cron
+      summary: Delete cron job
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Cron job deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  /cron-jobs/{id}/executions:
+    get:
+      tags:
+        - Cron
+      summary: Cron execution history
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Executions for the cron job
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  executions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CronExecution'
+
+  /cron-jobs/{id}/trigger:
+    post:
+      tags:
+        - Cron
+      summary: Trigger cron job now
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Execution started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CronExecution'
+
+  # API Gateway (merged APwhy management surface)
+  /gateway/services:
+    get:
+      tags:
+        - Gateway
+      summary: List gateway services
+      description: Upstream services registered for key-gated proxying.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Gateway services
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatewayResponse'
+    post:
+      tags:
+        - Gateway
+      summary: Register gateway service
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GatewayServiceRequest'
+      responses:
+        '201':
+          description: Service registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatewayResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Name or route prefix already registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /gateway/services/{id}:
+    patch:
+      tags:
+        - Gateway
+      summary: Enable/disable gateway service
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+      responses:
+        '200':
+          description: Service updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatewayResponse'
+
+  /gateway/services/{id}/validate:
+    get:
+      tags:
+        - Gateway
+      summary: Validate upstream reachability
+      description: Probes the service's upstream health path and records the result.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Validation result (reachable flag + status)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatewayResponse'
+
+  /gateway/keys:
+    get:
+      tags:
+        - Gateway
+      summary: List API keys
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: API keys (hashes never returned)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatewayResponse'
+    post:
+      tags:
+        - Gateway
+      summary: Issue API key
+      description: The plaintext key is returned exactly once in this response.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GatewayAPIKeyRequest'
+      responses:
+        '201':
+          description: Key issued — `key` field holds the plaintext token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatewayResponse'
+        '400':
+          description: Invalid input or unknown plan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /gateway/keys/{id}:
+    patch:
+      tags:
+        - Gateway
+      summary: Enable/disable API key
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+      responses:
+        '200':
+          description: Key updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatewayResponse'
+
+  /gateway/analytics/ops:
+    get:
+      tags:
+        - Gateway
+      summary: Operations analytics
+      description: Error rates, incident counts, and uptime per gateway service.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Ops analytics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatewayResponse'
+
+  /gateway/analytics/traffic:
+    get:
+      tags:
+        - Gateway
+      summary: Traffic analytics
+      description: Request volume timeseries per gateway service.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Traffic analytics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatewayResponse'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1289,9 +3856,27 @@ components:
           type: string
           format: date-time
           description: Last update timestamp
-        services_count:
+        stats:
+          $ref: '#/components/schemas/ProjectStats'
+
+    ProjectStats:
+      type: object
+      required:
+        - service_count
+        - deployment_count
+        - running_services
+        - last_deployment
+      properties:
+        service_count:
           type: integer
-          description: Number of services in the project
+        deployment_count:
+          type: integer
+        running_services:
+          type: integer
+        last_deployment:
+          type: string
+          nullable: true
+          description: Timestamp of the most recent deployment
 
     CreateProjectRequest:
       type: object
@@ -1346,9 +3931,11 @@ components:
       properties:
         id:
           type: string
+          format: uuid
           description: Service ID
         project_id:
           type: string
+          format: uuid
           description: Project ID
         name:
           type: string
@@ -1361,12 +3948,31 @@ components:
           type: string
           enum: [running, stopped, building, failed]
           description: Service status
-        source:
-          $ref: '#/components/schemas/ServiceSource'
-        build_config:
-          $ref: '#/components/schemas/BuildConfig'
-        resources:
-          $ref: '#/components/schemas/ResourceConfig'
+        image:
+          type: string
+          description: Container image
+        command:
+          type: string
+          description: Start command
+        environment:
+          type: string
+          enum: [production, preview, development]
+          description: Deployment environment
+        git_repo:
+          type: string
+          description: Connected git repository
+        git_branch:
+          type: string
+          description: Connected git branch
+        build_path:
+          type: string
+          description: Build context path
+        cpu:
+          type: string
+          description: CPU allocation
+        memory:
+          type: string
+          description: Memory allocation
         created_at:
           type: string
           format: date-time
@@ -1381,6 +3987,47 @@ components:
       required:
         - name
         - type
+        - environment
+      properties:
+        project_id:
+          type: string
+          format: uuid
+          description: Defaults to the project in the URL; must match when set
+        name:
+          type: string
+          description: Service name
+        type:
+          type: string
+          enum: [web, worker, database, cron]
+          description: Service type
+        image:
+          type: string
+          description: Container image
+        command:
+          type: string
+          description: Start command
+        environment:
+          type: string
+          enum: [production, preview, development]
+          description: Deployment environment
+        git_repo:
+          type: string
+          description: Git repository URL
+        git_branch:
+          type: string
+          description: Git branch
+        build_path:
+          type: string
+          description: Build context path
+        cpu:
+          type: string
+          description: CPU allocation
+        memory:
+          type: string
+          description: Memory allocation
+
+    UpdateServiceRequest:
+      type: object
       properties:
         name:
           type: string
@@ -1389,78 +4036,31 @@ components:
           type: string
           enum: [web, worker, database, cron]
           description: Service type
-        source:
-          $ref: '#/components/schemas/ServiceSource'
-        build_config:
-          $ref: '#/components/schemas/BuildConfig'
-        resources:
-          $ref: '#/components/schemas/ResourceConfig'
-
-    UpdateServiceRequest:
-      type: object
-      properties:
-        name:
-          type: string
-          description: Service name
-        build_config:
-          $ref: '#/components/schemas/BuildConfig'
-        resources:
-          $ref: '#/components/schemas/ResourceConfig'
-
-    ServiceSource:
-      type: object
-      properties:
-        type:
-          type: string
-          enum: [git, dockerfile, image]
-          description: Source type
-        repository:
-          type: string
-          description: Git repository URL
-        branch:
-          type: string
-          description: Git branch
-        root_directory:
-          type: string
-          description: Root directory for build
-        dockerfile:
-          type: string
-          description: Dockerfile path
         image:
           type: string
-          description: Docker image name
-
-    BuildConfig:
-      type: object
-      properties:
-        builder_type:
+          description: Container image
+        command:
           type: string
-          enum: [nixpacks, dockerfile, image]
-          description: Build system type
-        build_command:
+          description: Start command
+        environment:
           type: string
-          description: Custom build command
-        start_command:
+          enum: [production, preview, development]
+          description: Deployment environment
+        git_repo:
           type: string
-          description: Custom start command
-        environment_variables:
-          type: object
-          additionalProperties:
-            type: string
-          description: Build environment variables
-
-    ResourceConfig:
-      type: object
-      properties:
+          description: Git repository URL
+        git_branch:
+          type: string
+          description: Git branch
+        build_path:
+          type: string
+          description: Build context path
         cpu:
           type: string
           description: CPU allocation
         memory:
           type: string
           description: Memory allocation
-        storage:
-          type: string
-          description: Storage allocation
 
     Deployment:
       type: object
@@ -2151,69 +4751,1347 @@ components:
 
     GitProvider:
       type: object
+      required:
+        - id
+        - name
+        - display_name
+        - api_url
+        - webhook_url
+        - user_id
+        - created_at
+        - updated_at
       properties:
         id:
           type: string
           description: Provider ID
-        type:
-          type: string
-          enum: [github, gitlab, bitbucket]
-          description: Provider type
         name:
           type: string
-          description: Provider display name
-        access_token:
+          enum: [github, gitlab, bitbucket, gitea, github_app]
+          description: Provider type identifier
+        display_name:
           type: string
-          description: Encrypted access token
+          description: Provider display name
+        api_url:
+          type: string
+          description: Custom API base URL (self-hosted providers)
+        webhook_url:
+          type: string
+          description: Webhook callback URL registered on the provider
+        user_id:
+          type: string
         created_at:
           type: string
           format: date-time
-          description: Provider creation timestamp
+        updated_at:
+          type: string
+          format: date-time
+      description: Access tokens are never serialized in responses.
 
     CreateGitProviderRequest:
       type: object
       required:
-        - type
+        - name
+        - display_name
         - access_token
       properties:
-        type:
-          type: string
-          enum: [github, gitlab, bitbucket]
-          description: Provider type
         name:
+          type: string
+          enum: [github, gitlab, bitbucket, gitea, github_app]
+          description: Provider type identifier
+        display_name:
           type: string
           description: Provider display name
         access_token:
           type: string
-          description: Access token
+          description: Personal access token (stored encrypted, never returned)
+        api_url:
+          type: string
+          description: Custom API base URL for self-hosted providers
+
+    GitBranch:
+      type: object
+      required:
+        - name
+        - protected
+      properties:
+        name:
+          type: string
+        protected:
+          type: boolean
 
     GitRepository:
       type: object
+      required:
+        - id
+        - provider_id
+        - name
+        - full_name
+        - description
+        - clone_url
+        - webhook_url
+        - default_branch
+        - is_private
+        - user_id
+        - created_at
+        - updated_at
       properties:
         id:
           type: string
           description: Repository ID
+        provider_id:
+          type: string
         name:
           type: string
           description: Repository name
         full_name:
           type: string
-          description: Repository full name
+          description: Repository full name (owner/repo)
         description:
           type: string
           description: Repository description
-        private:
-          type: boolean
-          description: Whether repository is private
-        default_branch:
-          type: string
-          description: Default branch
         clone_url:
           type: string
           description: Clone URL
-        web_url:
+        webhook_url:
           type: string
-          description: Web URL
+        default_branch:
+          type: string
+          description: Default branch
+        is_private:
+          type: boolean
+          description: Whether repository is private
+        user_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ManualUserCreateRequest:
+      type: object
+      required:
+        - email
+        - password
+        - name
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 128
+        name:
+          type: string
+          minLength: 2
+          maxLength: 255
+
+    ServiceVariable:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        service_id:
+          type: string
+          format: uuid
+        key:
+          type: string
+        value:
+          type: string
+          description: Masked as ******** when is_secret is true
+        is_secret:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    VariableInput:
+      type: object
+      required:
+        - key
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+        is_secret:
+          type: boolean
+
+    UpdateVariablesRequest:
+      type: object
+      required:
+        - variables
+      properties:
+        variables:
+          type: array
+          items:
+            $ref: '#/components/schemas/VariableInput'
+
+    ConnectGitHubAppRequest:
+      type: object
+      required:
+        - installation_id
+      properties:
+        installation_id:
+          type: integer
+          format: int64
+          description: GitHub App installation ID from the install callback
+        display_name:
+          type: string
+
+    ConnectGitRepoRequest:
+      type: object
+      required:
+        - provider_id
+        - repo_full_name
+      properties:
+        provider_id:
+          type: string
+        repo_full_name:
+          type: string
+          description: owner/repo
+
+    CreateWebhookRequest:
+      type: object
+      required:
+        - repo_id
+        - events
+      properties:
+        repo_id:
+          type: string
+        events:
+          type: array
+          items:
+            type: string
+          example: [push, pull_request]
+        branch:
+          type: string
+
+    GitWebhook:
+      type: object
+      properties:
+        id:
+          type: string
+        repo_id:
+          type: string
+        provider_id:
+          type: string
+        events:
+          type: string
+          description: JSON-encoded array of subscribed events
+        active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      description: Webhook secrets are never serialized in responses.
+
+    BuildRequest:
+      type: object
+      required:
+        - image_name
+        - image_tag
+      properties:
+        build_type:
+          type: string
+          description: dockerfile | railpack | prebuilt — auto-detected when empty
+        source_path:
+          type: string
+        prebuilt_image:
+          type: string
+        image_name:
+          type: string
+        image_tag:
+          type: string
+        registry_url:
+          type: string
+        build_command:
+          type: string
+        start_command:
+          type: string
+        environment:
+          type: object
+          additionalProperties:
+            type: string
+        build_args:
+          type: object
+          additionalProperties:
+            type: string
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+        project_id:
+          type: string
+        service_id:
+          type: string
+        branch:
+          type: string
+        commit:
+          type: string
+
+    UpgradeStatus:
+      type: object
+      properties:
+        image_ref:
+          type: string
+        registry:
+          type: string
+        docker_available:
+          type: boolean
+        installed:
+          type: boolean
+        digest:
+          type: string
+        size:
+          type: integer
+          format: int64
+        auth_configured:
+          type: boolean
+        message:
+          type: string
+
+    HostMonitoring:
+      type: object
+      properties:
+        hostname:
+          type: string
+        os:
+          type: string
+        architecture:
+          type: string
+        cpu:
+          type: object
+          properties:
+            cores:
+              type: integer
+        memory:
+          type: object
+          properties:
+            total:
+              type: integer
+              format: int64
+            used:
+              type: integer
+              format: int64
+            available:
+              type: integer
+              format: int64
+            usage_percent:
+              type: number
+        storage:
+          type: object
+          properties:
+            path:
+              type: string
+            total:
+              type: integer
+              format: int64
+            used:
+              type: integer
+              format: int64
+            available:
+              type: integer
+              format: int64
+            usage_percent:
+              type: number
+        load:
+          type: object
+          properties:
+            load_1m:
+              type: number
+            load_5m:
+              type: number
+            load_15m:
+              type: number
+        uptime_seconds:
+          type: integer
+          format: int64
+        docker_available:
+          type: boolean
+        docker:
+          type: object
+          description: Docker daemon details when available
+          properties:
+            containers:
+              type: integer
+            images:
+              type: integer
+            driver:
+              type: string
+            server:
+              type: string
+        collected_at:
+          type: string
+          format: date-time
+
+    ServiceInstanceMetrics:
+      type: object
+      required:
+        - container_id
+        - name
+        - state
+        - cpu_percent
+        - memory_usage_bytes
+        - memory_limit_bytes
+        - network_rx_bytes
+        - network_tx_bytes
+        - started_at
+      properties:
+        container_id:
+          type: string
+        name:
+          type: string
+        state:
+          type: string
+        cpu_percent:
+          type: number
+        memory_usage_bytes:
+          type: integer
+          format: int64
+        memory_limit_bytes:
+          type: integer
+          format: int64
+        network_rx_bytes:
+          type: integer
+          format: int64
+        network_tx_bytes:
+          type: integer
+          format: int64
+        started_at:
+          type: string
+          format: date-time
+
+    ServiceMetrics:
+      type: object
+      required:
+        - service_id
+        - status
+        - instances
+        - cpu_percent
+        - memory_usage_bytes
+        - memory_limit_bytes
+        - network_rx_bytes
+        - network_tx_bytes
+        - collected_at
+      properties:
+        service_id:
+          type: string
+        status:
+          type: string
+          enum: [ok, no_containers, docker_unavailable]
+        instances:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceInstanceMetrics'
+        cpu_percent:
+          type: number
+        memory_usage_bytes:
+          type: integer
+          format: int64
+        memory_limit_bytes:
+          type: integer
+          format: int64
+        network_rx_bytes:
+          type: integer
+          format: int64
+        network_tx_bytes:
+          type: integer
+          format: int64
+        collected_at:
+          type: string
+          format: date-time
+
+    ScalingPolicy:
+      type: object
+      required:
+        - service_id
+        - min_replicas
+        - max_replicas
+      properties:
+        service_id:
+          type: string
+        min_replicas:
+          type: integer
+          minimum: 1
+        max_replicas:
+          type: integer
+          minimum: 1
+        target_cpu:
+          type: number
+          description: Target CPU utilization percent
+        target_memory:
+          type: number
+          description: Target memory utilization percent
+        scale_up_cooldown:
+          type: integer
+          description: Nanoseconds (Go duration serialized as integer)
+        scale_down_cooldown:
+          type: integer
+        scale_up_step:
+          type: integer
+        scale_down_step:
+          type: integer
+        metrics:
+          type: array
+          items:
+            type: string
+        thresholds:
+          type: object
+          additionalProperties:
+            type: number
+        enabled:
+          type: boolean
+        cost_optimization:
+          type: object
+
+    ScalingEvent:
+      type: object
+      properties:
+        id:
+          type: string
+        service_id:
+          type: string
+        from_replicas:
+          type: integer
+        to_replicas:
+          type: integer
+        reason:
+          type: string
+        trigger:
+          type: string
+          description: auto | manual
+        created_at:
+          type: string
+          format: date-time
+
+    FailoverPolicy:
+      type: object
+      required:
+        - service_id
+      properties:
+        service_id:
+          type: string
+        enabled:
+          type: boolean
+        min_healthy_nodes:
+          type: integer
+        max_failures:
+          type: integer
+        failover_timeout:
+          type: integer
+          description: Nanoseconds
+        recovery_timeout:
+          type: integer
+          description: Nanoseconds
+        failover_strategy:
+          type: string
+        backup_nodes:
+          type: array
+          items:
+            type: string
+        health_check_config:
+          type: object
+
+    HealthCheck:
+      type: object
+      properties:
+        id:
+          type: string
+        service_id:
+          type: string
+        node_id:
+          type: string
+        type:
+          type: string
+          description: http | tcp | exec
+        config:
+          type: object
+        last_check:
+          type: string
+          format: date-time
+        status:
+          type: string
+
+    AlertRule:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        enabled:
+          type: boolean
+        condition:
+          type: object
+          description: metric, operator, threshold, duration
+        severity:
+          type: string
+          enum: [info, warning, critical]
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+        annotations:
+          type: object
+          additionalProperties:
+            type: string
+        notifiers:
+          type: array
+          items:
+            type: string
+        cooldown:
+          type: integer
+          description: Nanoseconds
+
+    Notifier:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          description: webhook | slack | email | discord
+        config:
+          type: object
+
+    NotifierRequest:
+      type: object
+      required:
+        - type
+        - config
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        config:
+          type: object
+
+    NodeAgent:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        hostname:
+          type: string
+        ip_address:
+          type: string
+        port:
+          type: integer
+        status:
+          type: string
+          description: online | offline | connecting | error
+        version:
+          type: string
+        capabilities:
+          $ref: '#/components/schemas/AgentCapabilities'
+        resources:
+          $ref: '#/components/schemas/NodeResources'
+        metadata:
+          type: object
+          additionalProperties: true
+        last_heartbeat:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    AgentCapabilities:
+      type: object
+      properties:
+        container_runtimes:
+          type: array
+          items:
+            type: string
+        supported_architectures:
+          type: array
+          items:
+            type: string
+        max_containers:
+          type: integer
+        storage_driver:
+          type: string
+        network_plugins:
+          type: array
+          items:
+            type: string
+        features:
+          type: array
+          items:
+            type: string
+
+    NodeResources:
+      type: object
+      properties:
+        cpu:
+          type: object
+          properties:
+            cores:
+              type: integer
+            allocation:
+              type: number
+              description: Allocated CPU percentage
+            usage:
+              type: number
+              description: Current usage percentage
+        memory:
+          type: object
+          properties:
+            total:
+              type: integer
+              format: int64
+            allocated:
+              type: integer
+              format: int64
+            used:
+              type: integer
+              format: int64
+            available:
+              type: integer
+              format: int64
+        storage:
+          type: object
+          properties:
+            total:
+              type: integer
+              format: int64
+            allocated:
+              type: integer
+              format: int64
+            used:
+              type: integer
+              format: int64
+            available:
+              type: integer
+              format: int64
+        network:
+          type: object
+          properties:
+            interfaces:
+              type: array
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  ip_address:
+                    type: string
+                  mac_address:
+                    type: string
+                  speed:
+                    type: integer
+                  status:
+                    type: string
+            bandwidth:
+              type: object
+              properties:
+                inbound:
+                  type: integer
+                  format: int64
+                  description: Bytes per second
+                outbound:
+                  type: integer
+                  format: int64
+                  description: Bytes per second
+
+    RegisterAgentRequest:
+      type: object
+      required:
+        - name
+        - hostname
+        - ip_address
+        - port
+        - capabilities
+      properties:
+        name:
+          type: string
+        hostname:
+          type: string
+        ip_address:
+          type: string
+        port:
+          type: integer
+        capabilities:
+          $ref: '#/components/schemas/AgentCapabilities'
+        auth_token:
+          type: string
+          description: May also be sent via the X-Agent-Token header
+
+    AgentHeartbeat:
+      type: object
+      properties:
+        agent_id:
+          type: string
+        status:
+          type: string
+        resources:
+          $ref: '#/components/schemas/NodeResources'
+        container_count:
+          type: integer
+        system_load:
+          type: object
+        uptime:
+          type: integer
+        version:
+          type: string
+
+    AgentCommand:
+      type: object
+      properties:
+        id:
+          type: string
+        node_agent_id:
+          type: string
+        type:
+          type: string
+        payload:
+          type: object
+        status:
+          type: string
+          description: pending | running | completed | failed
+        result:
+          type: string
+        error:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+
+    ExecuteCommandRequest:
+      type: object
+      required:
+        - type
+      properties:
+        type:
+          type: string
+        payload:
+          type: object
+
+    ContainerInstance:
+      type: object
+      properties:
+        id:
+          type: string
+        agent_id:
+          type: string
+        project_id:
+          type: string
+        service_id:
+          type: string
+        name:
+          type: string
+        image:
+          type: string
+        status:
+          type: string
+        resources:
+          type: object
+        ports:
+          type: array
+          items:
+            type: object
+        created_at:
+          type: string
+          format: date-time
+
+    CreateContainerRequest:
+      type: object
+      required:
+        - name
+        - image
+        - project_id
+        - service_id
+        - resources
+      properties:
+        name:
+          type: string
+        image:
+          type: string
+        project_id:
+          type: string
+        service_id:
+          type: string
+        resources:
+          type: object
+          description: cpu/memory limits
+        ports:
+          type: array
+          items:
+            type: object
+            properties:
+              host_port:
+                type: integer
+              container_port:
+                type: integer
+              protocol:
+                type: string
+        environment:
+          type: object
+          additionalProperties:
+            type: string
+        volumes:
+          type: array
+          items:
+            type: object
+        networks:
+          type: array
+          items:
+            type: string
+        restart_policy:
+          type: object
+        health_check:
+          type: object
+
+    PreviewEnvironment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        service_id:
+          type: string
+          format: uuid
+        branch_name:
+          type: string
+        pr_number:
+          type: integer
+        environment:
+          type: string
+          description: Generated name, e.g. preview-{branch}-{ts}
+        status:
+          type: string
+          enum: [building, running, failed, stopped, expired]
+        url:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        deployment_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreatePreviewEnvironmentRequest:
+      type: object
+      required:
+        - service_id
+        - branch_name
+      properties:
+        project_id:
+          type: string
+          format: uuid
+        service_id:
+          type: string
+          format: uuid
+        branch_name:
+          type: string
+        pr_number:
+          type: integer
+        ttl_hours:
+          type: integer
+          minimum: 1
+          maximum: 168
+
+    UpdatePreviewEnvironmentRequest:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [building, running, failed, stopped, expired]
+        url:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        ttl_hours:
+          type: integer
+          minimum: 1
+          maximum: 168
+
+    PromotePreviewEnvironmentRequest:
+      type: object
+      required:
+        - target_environment
+      properties:
+        target_environment:
+          type: string
+          enum: [production, development]
+        create_backup:
+          type: boolean
+
+    StartSecurityScanRequest:
+      type: object
+      required:
+        - project_id
+        - scan_type
+      properties:
+        project_id:
+          type: string
+        service_id:
+          type: string
+        scan_type:
+          type: string
+          enum: [dependency, configuration, comprehensive]
+
+    SecurityScan:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        service_id:
+          type: string
+        scan_type:
+          type: string
+        status:
+          type: string
+          description: pending | running | completed | failed
+        findings_count:
+          type: integer
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+
+    Vulnerability:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        severity:
+          type: string
+          enum: [low, medium, high, critical]
+        title:
+          type: string
+        description:
+          type: string
+        service_id:
+          type: string
+        project_id:
+          type: string
+        status:
+          type: string
+          enum: [open, resolved, ignored]
+        found_at:
+          type: string
+          format: date-time
+        resolved_at:
+          type: string
+          format: date-time
+
+    StartComplianceAssessmentRequest:
+      type: object
+      required:
+        - project_id
+        - framework_id
+      properties:
+        project_id:
+          type: string
+        framework_id:
+          type: string
+
+    CronJob:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        service_id:
+          type: string
+        name:
+          type: string
+        schedule:
+          type: string
+          description: Cron expression
+        command:
+          type: string
+        timezone:
+          type: string
+        enabled:
+          type: boolean
+        last_run_at:
+          type: string
+          format: date-time
+        next_run_at:
+          type: string
+          format: date-time
+        last_status:
+          type: string
+        last_output:
+          type: string
+        retention:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CronExecution:
+      type: object
+      properties:
+        id:
+          type: string
+        cron_job_id:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+        output:
+          type: string
+        error:
+          type: string
+
+    CreateCronJobRequest:
+      type: object
+      required:
+        - project_id
+        - service_id
+        - name
+        - schedule
+        - command
+      properties:
+        project_id:
+          type: string
+        service_id:
+          type: string
+        name:
+          type: string
+        schedule:
+          type: string
+        command:
+          type: string
+        timezone:
+          type: string
+        enabled:
+          type: boolean
+        retention:
+          type: integer
+
+    UpdateCronJobRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        schedule:
+          type: string
+        command:
+          type: string
+        timezone:
+          type: string
+        enabled:
+          type: boolean
+        retention:
+          type: integer
+
+    GatewayService:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        upstream_url:
+          type: string
+        route_prefix:
+          type: string
+        enabled:
+          type: boolean
+        rpm_limit:
+          type: integer
+        monthly_quota:
+          type: integer
+        health_path:
+          type: string
+        last_validated_at:
+          type: string
+          format: date-time
+        last_validation_status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    GatewayServiceRequest:
+      type: object
+      required:
+        - name
+        - upstreamUrl
+        - routePrefix
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        upstreamUrl:
+          type: string
+          format: uri
+          maxLength: 500
+        routePrefix:
+          type: string
+          maxLength: 200
+        enabled:
+          type: boolean
+        rpmLimit:
+          type: integer
+          minimum: 1
+          maximum: 10000
+        monthlyQuota:
+          type: integer
+          minimum: 1
+          maximum: 10000000
+
+    GatewayAPIKeyRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        plan:
+          type: string
+          enum: [free, pro, business, enterprise]
+          default: free
+        enabled:
+          type: boolean
+        rpmLimit:
+          type: integer
+          minimum: 1
+          maximum: 10000
+        monthlyQuota:
+          type: integer
+          minimum: 1
+          maximum: 10000000
+
+    GatewayAPIKey:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        plan:
+          type: string
+        enabled:
+          type: boolean
+        rpm_limit:
+          type: integer
+        monthly_quota:
+          type: integer
+        key_prefix:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    GatewayResponse:
+      type: object
+      description: Standard gateway management envelope — `data` carries the payload, `error` carries {code, message, details}, `meta` carries pagination.
+      properties:
+        success:
+          type: boolean
+        data:
+          description: Endpoint-specific payload (GatewayService, GatewayAPIKey, arrays, or analytics objects)
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details: {}
+        meta:
+          type: object
+          properties:
+            page:
+              type: integer
+            per_page:
+              type: integer
+            total:
+              type: integer
+            total_pages:
+              type: integer
+
+  parameters:
+    IdParam:
+      name: id
+      in: path
+      required: true
+      description: Resource ID
+      schema:
+        type: string
+    ProjectIdParam:
+      name: id
+      in: path
+      required: true
+      description: Project ID
+      schema:
+        type: string
+    ServiceIdParam:
+      name: serviceId
+      in: path
+      required: true
+      description: Service ID
+      schema:
+        type: string
+    AgentIdParam:
+      name: id
+      in: path
+      required: true
+      description: Node agent ID
+      schema:
+        type: string
+    ContainerIdParam:
+      name: containerId
+      in: path
+      required: true
+      description: Container ID
+      schema:
+        type: string
 
 tags:
   - name: Health
@@ -2240,3 +6118,21 @@ tags:
     description: Database management
   - name: Git
     description: Git integration
+  - name: System
+    description: System upgrade and host monitoring
+  - name: Realtime
+    description: WebSocket event stream
+  - name: Agents
+    description: Node agent management and agent ingestion
+  - name: Scaling
+    description: Autoscaling policies and controls
+  - name: HA
+    description: High availability, failover, health checks, alerts
+  - name: Preview Environments
+    description: Per-branch/PR preview deployments
+  - name: Security
+    description: Vulnerability scans and compliance reporting
+  - name: Cron
+    description: Scheduled jobs
+  - name: Gateway
+    description: API gateway — upstream services, keys, analytics

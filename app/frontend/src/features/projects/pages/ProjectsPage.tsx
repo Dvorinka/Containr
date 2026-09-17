@@ -22,7 +22,7 @@ const demoProjects: ProjectEntity[] = [
     description: 'Sample project with mock services for UI preview.',
     createdAt: new Date(Date.now() - 14 * 86_400_000).toISOString(),
     updatedAt: new Date().toISOString(),
-    stats: { service_count: 5, deployment_count: 12, running_services: 5 },
+    stats: { service_count: 5, deployment_count: 12, running_services: 5, last_deployment: null },
   },
   {
     id: 'project-staging',
@@ -30,7 +30,7 @@ const demoProjects: ProjectEntity[] = [
     description: 'Pre-production environment for testing new releases.',
     createdAt: new Date(Date.now() - 7 * 86_400_000).toISOString(),
     updatedAt: new Date(Date.now() - 2 * 86_400_000).toISOString(),
-    stats: { service_count: 2, deployment_count: 5, running_services: 1 },
+    stats: { service_count: 2, deployment_count: 5, running_services: 1, last_deployment: null },
   },
 ];
 

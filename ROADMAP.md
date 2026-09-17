@@ -68,10 +68,12 @@ The backend exposes **~90 route registrations**; the frontend consumes roughly
 - ~~**React Flow edge warnings**~~ — **fixed**: `ServiceNode` now renders
   invisible `Handle` components (target left, source right), so inferred
   auto-connections attach without `#008` warnings.
-- **OpenAPI drift**: `docs/api/openapi.yaml` documents 29 paths; the router
-  registers ~90. The generated `api-types.ts` therefore covers a fraction of
-  the real surface, and `api-client.ts` hand-duplicates entity types on top —
-  a direct violation of the "never duplicate API types" rule.
+- ~~**OpenAPI drift**~~ — **resolved**: spec now covers all 153 mounted
+  operations (114 path items, 154 operations incl. root probes). Schemas
+  were corrected against the real Go structs (Service, Git*, NodeAgent,
+  HostMonitoring, UpgradeStatus, metrics); stale `source`/`build_config`
+  contract removed. `api-types.ts` regenerated; `api-client.ts` raw types
+  now alias generated schemas — camelCase normalizers stay by design.
 - **Two DB access patterns remain**: GORM is gone (agents handler ported to
   sqlc), but most handlers still hand-write `database/sql` — ~140 call sites
   across ~14 files. Porting them to `sqlc/queries/` is mechanical but large;
@@ -168,9 +170,12 @@ Everything else builds on a truthful API contract and a clean tree.
       dependency dropped, agent queries in `sqlc/queries/agents.sql`.
       Remaining hand-written `database/sql` in other handlers (~140 sites)
       is tracked as a follow-up pass — sqlc is the target for all new code.
-- [ ] Bring `docs/api/openapi.yaml` to parity with `routes.go` (all ~90
-      paths), then regenerate `api-types.ts` and delete the hand-written
-      entity types in `api-client.ts`.
+- [x] Bring `docs/api/openapi.yaml` to parity with `routes.go`: 114 paths /
+      154 operations cover every mounted route (incl. `/live`, `/health`,
+      `/ready`, `/api/agents/*` token routes with server overrides; Proxmox
+      handlers are registered nowhere, intentionally undocumented).
+      `api-types.ts` regenerated; `api-client.ts` contract types deduped to
+      generated schemas — normalized view models kept.
 - [x] Fix auto-connection edges — `ServiceNode` lacked `Handle` components;
       invisible target/source handles added in `nodes.tsx`.
 - [x] Rerun desloppify; record score. 2026-09-17 scan (`ref/` excluded):
