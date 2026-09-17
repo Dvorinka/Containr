@@ -57,6 +57,9 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 	// Initialize agent handler (sqlc-backed)
 	agentHandler := NewNodeAgentHandler(db)
 
+	// Start the cron scheduler — executes due cron_jobs via docker exec.
+	StartCronScheduler(context.Background(), db, dockerClient)
+
 	// Initialize database handler
 	databaseHandler := NewDatabaseHandler(db.DB, dockerClient)
 

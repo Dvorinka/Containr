@@ -262,8 +262,17 @@ All of these have working APIs and no UI. Cheapest feature wins in the repo.
       detail page section for connection info, actions (start/stop/restart),
       backup create/list/restore. Verify against real Postgres/Redis/MySQL
       images.
-- [ ] **Cron jobs** (`/cron-jobs/*`): list/create/edit per project, execution
-      history with logs, manual trigger. Add "Cron" to Add Service.
+- [x] **Cron jobs** (`/cron-jobs/*`): real engine + UI. Backend was a stub
+      (`calculateNextRun` returned now+1h, `executeCronJob` slept 2s and wrote
+      "success" without running anything). Now: `robfig/cron` parses the
+      schedule (validated on create → 400), a 60s scheduler goroutine executes
+      due enabled jobs, and commands run via `docker exec sh -c` inside the
+      service's `containr-<serviceID>-*` container with stdout+stderr captured
+      into `cron_executions` — verified e2e (trigger + scheduler tick, real
+      alpine output). UI: "Cron" tab on the service detail page — list/create/
+      edit/enable-toggle, manual Run, execution history with logs. (Not added
+      to Add Service: jobs exec into an existing service's container, so they
+      live on the service, not as a standalone type.)
 - [ ] **Preview environments** (`/preview-environments/*`): per-PR/per-branch
       preview creation, promote-to-production action, expiry + cleanup job.
       Decide first whether this stays Phase 2 or moves with env support (§2.4).

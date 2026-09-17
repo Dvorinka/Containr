@@ -1323,3 +1323,50 @@ export async function createGitWebhook(input: CreateGitWebhookInput): Promise<Gi
   }
   return payload.webhook;
 }
+
+// --- Cron jobs ---
+
+export type CronJobEntity = components['schemas']['CronJob'];
+export type CronExecutionEntity = components['schemas']['CronExecution'];
+export type CreateCronJobInput = components['schemas']['CreateCronJobRequest'];
+export type UpdateCronJobInput = components['schemas']['UpdateCronJobRequest'];
+
+export async function listCronJobs(serviceId: string): Promise<CronJobEntity[]> {
+  const payload = await requestJson<{ cron_jobs?: CronJobEntity[] }>(
+    `/cron-jobs?service_id=${encodeURIComponent(serviceId)}`,
+  );
+  return payload.cron_jobs ?? [];
+}
+
+export async function createCronJob(input: CreateCronJobInput): Promise<CronJobEntity> {
+  const payload = await requestJson<{ cron_job?: CronJobEntity }>('/cron-jobs', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  if (!payload.cron_job?.id) {
+    throw new ApiError('Create cron job response is invalid', 500);
+  }
+  return payload.cron_job;
+}
+
+export async function updateCronJob(id: string, input: UpdateCronJobInput): Promise<void> {
+  await requestJson(`/cron-jobs/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteCronJob(id: string): Promise<void> {
+  await requestJson(`/cron-jobs/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export async function listCronExecutions(id: string): Promise<CronExecutionEntity[]> {
+  const payload = await requestJson<{ executions?: CronExecutionEntity[] }>(
+    `/cron-jobs/${encodeURIComponent(id)}/executions`,
+  );
+  return payload.executions ?? [];
+}
+
+export async function triggerCronJob(id: string): Promise<void> {
+  await requestJson(`/cron-jobs/${encodeURIComponent(id)}/trigger`, { method: 'POST' });
+}

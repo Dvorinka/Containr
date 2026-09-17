@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -15,6 +16,7 @@ import (
 	"github.com/docker/docker/api/types/system"
 	"github.com/docker/docker/api/types/volume"
 	"github.com/docker/docker/client"
+	"github.com/docker/docker/pkg/stdcopy"
 )
 
 // Client wraps the Docker client with additional functionality
@@ -311,6 +313,36 @@ func (c *Client) ExecStart(ctx context.Context, execID string, config ExecStartC
 // ExecInspect returns information about an exec instance
 func (c *Client) ExecInspect(ctx context.Context, execID string) (container.ExecInspect, error) {
 	return c.cli.ContainerExecInspect(ctx, execID)
+}
+
+// ExecRun runs a command in a container and returns its combined
+// stdout/stderr output and exit code.
+func (c *Client) ExecRun(ctx context.Context, containerID string, cmd []string) (string, int, error) {
+	exec, err := c.cli.ContainerExecCreate(ctx, containerID, container.ExecOptions{
+		Cmd:          cmd,
+		AttachStdout: true,
+		AttachStderr: true,
+	})
+	if err != nil {
+		return "", -1, err
+	}
+
+	resp, err := c.cli.ContainerExecAttach(ctx, exec.ID, container.ExecAttachOptions{})
+	if err != nil {
+		return "", -1, err
+	}
+	defer resp.Close()
+
+	var buf bytes.Buffer
+	if _, err := stdcopy.StdCopy(&buf, &buf, resp.Reader); err != nil {
+		return "", -1, err
+	}
+
+	inspect, err := c.cli.ContainerExecInspect(ctx, exec.ID)
+	if err != nil {
+		return buf.String(), -1, err
+	}
+	return buf.String(), inspect.ExitCode, nil
 }
 
 // GetImageInfo returns information about a Docker image

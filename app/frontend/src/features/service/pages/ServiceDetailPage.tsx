@@ -11,8 +11,15 @@ import {
   listDeployments,
   listServiceLogs,
   listServiceVariables,
+  listCronJobs,
+  createCronJob,
+  updateCronJob,
+  deleteCronJob,
+  listCronExecutions,
+  triggerCronJob,
   rollbackDeployment,
   updateServiceVariables,
+  type CronJobEntity,
 } from '@/lib/api-client';
 import { getDemoProjectById, getDemoServiceById } from '@/lib/demo-data';
 import { parseDotenv, validateVariableRows, type VariableDraft } from '../variable-utils';
@@ -40,15 +47,18 @@ import {
   Sparkles,
   RefreshCw,
   Box,
+  Play,
+  ChevronDown,
 } from 'lucide-react';
 
-type ServiceSection = 'metrics' | 'logs' | 'config' | 'variables' | 'settings';
+type ServiceSection = 'metrics' | 'logs' | 'config' | 'variables' | 'cron' | 'settings';
 
 const sectionItems: Array<{ key: ServiceSection; label: string; icon: typeof Activity }> = [
   { key: 'metrics', label: 'Metrics', icon: Activity },
   { key: 'logs', label: 'Logs', icon: FileText },
   { key: 'config', label: 'Config', icon: Sliders },
   { key: 'variables', label: 'Variables', icon: KeyRound },
+  { key: 'cron', label: 'Cron', icon: Clock },
   { key: 'settings', label: 'Settings', icon: Settings },
 ];
 
@@ -132,6 +142,66 @@ export function ServiceDetailPage() {
     onSuccess: (data) => {
       queryClient.setQueryData(['service-variables', serviceId], data);
       setVarDrafts(null);
+    },
+  });
+
+  // --- Cron jobs ---
+  const [cronForm, setCronForm] = useState<{
+    name: string; schedule: string; command: string; timezone: string; enabled: boolean; retention: number;
+  } | null>(null);
+  const [editingCronId, setEditingCronId] = useState<string | null>(null);
+  const [historyCronId, setHistoryCronId] = useState<string | null>(null);
+
+  const cronJobsQuery = useQuery({
+    queryKey: ['service-cron-jobs', serviceId],
+    queryFn: () => listCronJobs(serviceId),
+    enabled: Boolean(serviceId) && !isDemoMode && activeSection === 'cron',
+  });
+  const cronExecutionsQuery = useQuery({
+    queryKey: ['cron-executions', historyCronId],
+    queryFn: () => listCronExecutions(historyCronId as string),
+    enabled: Boolean(historyCronId) && !isDemoMode && activeSection === 'cron',
+  });
+  const invalidateCron = () => queryClient.invalidateQueries({ queryKey: ['service-cron-jobs', serviceId] });
+
+  const saveCronMutation = useMutation({
+    mutationFn: async () => {
+      if (!cronForm) return;
+      const payload = {
+        name: cronForm.name.trim(),
+        schedule: cronForm.schedule.trim(),
+        command: cronForm.command.trim(),
+        timezone: cronForm.timezone.trim() || 'UTC',
+        enabled: cronForm.enabled,
+        retention: cronForm.retention,
+      };
+      if (editingCronId) {
+        await updateCronJob(editingCronId, payload);
+      } else {
+        await createCronJob({ project_id: projectId, service_id: serviceId, ...payload });
+      }
+    },
+    onSuccess: () => {
+      setCronForm(null);
+      setEditingCronId(null);
+      invalidateCron();
+    },
+  });
+  const deleteCronMutation = useMutation({
+    mutationFn: (id: string) => deleteCronJob(id),
+    onSuccess: invalidateCron,
+  });
+  const toggleCronMutation = useMutation({
+    mutationFn: (job: CronJobEntity) => updateCronJob(job.id as string, { enabled: !job.enabled }),
+    onSuccess: invalidateCron,
+  });
+  const triggerCronMutation = useMutation({
+    mutationFn: (id: string) => triggerCronJob(id),
+    onSuccess: () => {
+      window.setTimeout(() => {
+        invalidateCron();
+        if (historyCronId) queryClient.invalidateQueries({ queryKey: ['cron-executions', historyCronId] });
+      }, 2500);
     },
   });
 
@@ -1037,6 +1107,180 @@ export function ServiceDetailPage() {
                   ? saveVariablesMutation.error.message
                   : 'Failed to save variables'}
               </p>
+            )}
+          </div>
+        )}
+
+        {activeSection === 'cron' && (
+          <div className="panel p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
+                  <Clock size={20} className="text-[var(--accent-primary)]" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-[var(--text-primary)]">Cron Jobs</h2>
+                  <p className="text-sm text-[var(--text-secondary)]">Scheduled commands executed inside the service container</p>
+                </div>
+              </div>
+              <button
+                onClick={() => { setEditingCronId(null); setCronForm({ name: '', schedule: '', command: '', timezone: 'UTC', enabled: true, retention: 30 }); }}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-secondary)] hover:border-[var(--border-default)] transition-colors"
+              >
+                <Plus size={12} />
+                New job
+              </button>
+            </div>
+
+            {cronForm && (
+              <div className="mb-4 panel-soft p-4 space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <input
+                    value={cronForm.name}
+                    onChange={(e) => setCronForm({ ...cronForm, name: e.target.value })}
+                    placeholder="Name (e.g. Nightly backup)"
+                    className="px-3 py-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all"
+                  />
+                  <input
+                    value={cronForm.schedule}
+                    onChange={(e) => setCronForm({ ...cronForm, schedule: e.target.value })}
+                    placeholder="Schedule (e.g. 0 3 * * * or @daily)"
+                    className="px-3 py-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] mono text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all"
+                  />
+                </div>
+                <input
+                  value={cronForm.command}
+                  onChange={(e) => setCronForm({ ...cronForm, command: e.target.value })}
+                  placeholder="Command (runs via sh -c inside the container)"
+                  className="w-full px-3 py-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] mono text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all"
+                />
+                <div className="flex flex-wrap items-center gap-3">
+                  <input
+                    value={cronForm.timezone}
+                    onChange={(e) => setCronForm({ ...cronForm, timezone: e.target.value })}
+                    placeholder="Timezone"
+                    className="w-32 px-3 py-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] transition-all"
+                  />
+                  <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
+                    <input type="number" min={1} value={cronForm.retention}
+                      onChange={(e) => setCronForm({ ...cronForm, retention: Number(e.target.value) || 30 })}
+                      className="w-16 px-2 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-xs text-[var(--text-primary)]" />
+                    runs kept
+                  </label>
+                  <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
+                    <input type="checkbox" checked={cronForm.enabled}
+                      onChange={(e) => setCronForm({ ...cronForm, enabled: e.target.checked })} />
+                    Enabled
+                  </label>
+                  <div className="ml-auto flex gap-2">
+                    <button
+                      onClick={() => { setCronForm(null); setEditingCronId(null); }}
+                      className="px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-secondary)] hover:border-[var(--border-default)] transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => saveCronMutation.mutate()}
+                      disabled={!cronForm.name.trim() || !cronForm.schedule.trim() || !cronForm.command.trim() || saveCronMutation.isPending}
+                      className="flex items-center gap-2 px-4 py-1.5 rounded-[var(--radius-md)] text-xs font-medium text-[var(--accent-on)] transition-all disabled:opacity-50"
+                      style={{ background: 'var(--accent-primary)' }}
+                    >
+                      {saveCronMutation.isPending ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                      {editingCronId ? 'Save job' : 'Create job'}
+                    </button>
+                  </div>
+                </div>
+                {saveCronMutation.isError && (
+                  <p className="text-xs text-[var(--error)]">
+                    {saveCronMutation.error instanceof Error ? saveCronMutation.error.message : 'Failed to save job'}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {cronJobsQuery.isLoading ? (
+              <div className="flex items-center justify-center py-12 text-[var(--text-muted)]">
+                <Loader2 size={20} className="animate-spin" />
+              </div>
+            ) : (cronJobsQuery.data ?? []).length === 0 ? (
+              <div className="panel-soft p-8 text-center">
+                <p className="text-sm text-[var(--text-secondary)]">No cron jobs configured.</p>
+                <p className="mt-1 text-xs text-[var(--text-muted)]">Create a job to run commands on a schedule inside this service's container.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {(cronJobsQuery.data ?? []).map((job) => (
+                  <div key={job.id} className="panel-soft p-3">
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => toggleCronMutation.mutate(job)}
+                        title={job.enabled ? 'Disable' : 'Enable'}
+                        className={`w-8 h-5 rounded-full relative transition-colors shrink-0 ${job.enabled ? 'bg-[var(--accent-primary)]' : 'bg-[var(--border-default)]'}`}
+                      >
+                        <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${job.enabled ? 'left-3.5' : 'left-0.5'}`} />
+                      </button>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-[var(--text-primary)] truncate">{job.name}</span>
+                          <span className="mono text-xs text-[var(--text-muted)]">{job.schedule}</span>
+                        </div>
+                        <p className="mono text-xs text-[var(--text-tertiary)] truncate">{job.command}</p>
+                        <p className="text-xs text-[var(--text-muted)]">
+                          {job.next_run_at ? `next ${formatRelative(job.next_run_at)}` : 'not scheduled'}
+                          {job.last_status ? ` · last ${job.last_status}` : ''}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button onClick={() => triggerCronMutation.mutate(job.id as string)} title="Run now"
+                          disabled={triggerCronMutation.isPending}
+                          className="p-1.5 rounded-[var(--radius-md)] text-[var(--text-secondary)] hover:text-[var(--accent-primary)] hover:bg-[var(--accent-primary-soft)] transition-colors disabled:opacity-50">
+                          <Play size={13} />
+                        </button>
+                        <button onClick={() => setHistoryCronId(historyCronId === job.id ? null : (job.id as string))} title="History"
+                          className="p-1.5 rounded-[var(--radius-md)] text-[var(--text-secondary)] hover:text-[var(--accent-primary)] hover:bg-[var(--accent-primary-soft)] transition-colors">
+                          <ChevronDown size={13} className={historyCronId === job.id ? 'rotate-180 transition-transform' : 'transition-transform'} />
+                        </button>
+                        <button
+                          onClick={() => { setEditingCronId(job.id as string); setCronForm({ name: job.name ?? '', schedule: job.schedule ?? '', command: job.command ?? '', timezone: job.timezone ?? 'UTC', enabled: job.enabled ?? true, retention: job.retention ?? 30 }); }}
+                          title="Edit"
+                          className="p-1.5 rounded-[var(--radius-md)] text-[var(--text-secondary)] hover:text-[var(--accent-primary)] hover:bg-[var(--accent-primary-soft)] transition-colors">
+                          <Sliders size={13} />
+                        </button>
+                        <button
+                          onClick={() => { if (window.confirm(`Delete cron job "${job.name}"?`)) deleteCronMutation.mutate(job.id as string); }}
+                          title="Delete"
+                          className="p-1.5 rounded-[var(--radius-md)] text-[var(--text-secondary)] hover:text-[var(--error)] hover:bg-[var(--error-soft)] transition-colors">
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+                    {historyCronId === job.id && (
+                      <div className="mt-3 border-t border-[var(--border-subtle)] pt-3">
+                        {cronExecutionsQuery.isLoading ? (
+                          <p className="text-xs text-[var(--text-muted)]">Loading history…</p>
+                        ) : (cronExecutionsQuery.data ?? []).length === 0 ? (
+                          <p className="text-xs text-[var(--text-muted)]">No executions yet.</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {(cronExecutionsQuery.data ?? []).slice(0, 10).map((ex) => (
+                              <div key={ex.id} className="text-xs">
+                                <div className="flex items-center gap-2">
+                                  <span className={`inline-block w-1.5 h-1.5 rounded-full ${ex.status === 'success' ? 'bg-[var(--success)]' : ex.status === 'running' ? 'bg-[var(--warning)]' : 'bg-[var(--error)]'}`} />
+                                  <span className="text-[var(--text-secondary)]">{formatRelative(ex.started_at)}</span>
+                                  <span className="text-[var(--text-muted)]">{ex.status}</span>
+                                </div>
+                                {(ex.output || ex.error) && (
+                                  <pre className="mono mt-1 ml-3.5 whitespace-pre-wrap break-all text-[var(--text-tertiary)]">{ex.output || ex.error}</pre>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         )}

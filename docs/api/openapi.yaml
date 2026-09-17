@@ -3551,6 +3551,11 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: service_id
+          in: query
+          schema:
+            type: string
+            format: uuid
       security:
         - bearerAuth: []
       responses:
