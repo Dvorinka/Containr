@@ -1277,6 +1277,37 @@ export async function listGitBranches(
 
 export type CreateDatabaseInput = components['schemas']['CreateDatabaseRequest'];
 export type DatabaseEntity = components['schemas']['Database'];
+export type DatabaseBackupEntity = components['schemas']['DatabaseBackup'];
+
+export async function listDatabases(): Promise<DatabaseEntity[]> {
+  const payload = await requestJson<{ databases?: DatabaseEntity[] }>('/databases');
+  return payload.databases ?? [];
+}
+
+export async function getDatabase(id: string): Promise<DatabaseEntity> {
+  return requestJson<DatabaseEntity>(`/databases/${encodeURIComponent(id)}`);
+}
+
+export async function databaseAction(id: string, action: 'start' | 'stop' | 'restart'): Promise<void> {
+  await requestJson(`/databases/${encodeURIComponent(id)}/action`, {
+    method: 'POST',
+    body: JSON.stringify({ action }),
+  });
+}
+
+export async function createDatabaseBackup(id: string): Promise<void> {
+  await requestJson(`/databases/${encodeURIComponent(id)}/backup`, {
+    method: 'POST',
+    body: JSON.stringify({ database_id: id }),
+  });
+}
+
+export async function restoreDatabaseBackup(id: string, backupId: string): Promise<void> {
+  await requestJson(`/databases/${encodeURIComponent(id)}/restore`, {
+    method: 'POST',
+    body: JSON.stringify({ database_id: id, backup_id: backupId }),
+  });
+}
 
 export async function createManagedDatabase(
   input: CreateDatabaseInput,

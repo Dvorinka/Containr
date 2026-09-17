@@ -1,6 +1,6 @@
 # Containr — Project Roadmap
 
-Last verified: **2026-09-17** against `main` (`9e3aa3a`).
+Last verified: **2026-09-17** against `main` (`a1e4352`).
 
 Goal: bring Containr from "working core + large headless backend" to a
 finished, installable, documented v1.0 self-hosted platform.
@@ -27,8 +27,8 @@ Everything below was run, not assumed.
 
 ### Feature inventory — backend vs frontend
 
-The backend exposes **~90 route registrations**; the frontend consumes roughly
-**25** of them. The gap below is the real roadmap.
+The backend exposes **~95 route registrations**; the frontend consumes
+**52** of them via `api-client.ts`. The gap below is the real roadmap.
 
 | Feature | Backend | Frontend | Docs |
 |---|---|---|---|
@@ -44,10 +44,10 @@ The backend exposes **~90 route registrations**; the frontend consumes roughly
 | Templates — list/detail/deploy | done | done (catalog page) | done |
 | Templates — **Compose catalog** (GitHub import, paste YAML, `x-containr` metadata, community source) | **missing** | **missing** | spec written, not built |
 | Git providers (PAT add/remove, repo list, branches) | done | done (Settings → Git Providers) | done |
-| Git repo connect + webhook auto-deploy | done (`/git/repositories/connect`, `/git/webhooks`) | **missing** — no connect flow, no webhook status | guides claim it works |
-| GitHub App install flow | done | partial — install-url/connect not surfaced | partial |
-| Cron jobs (CRUD, trigger, executions) | done | **missing** | not documented |
-| Managed databases (CRUD, actions, backup/restore) | done | **missing** | mentioned in README |
+| Git repo connect + webhook auto-deploy | done (`/git/repositories/connect`, `/git/webhooks`, `/api/git/webhooks/:id` receiver) | done — provider→repo→branch in Add Service, connect+webhook on create | guides claim it works |
+| GitHub App install flow | done (`install_url` returned) | partial — install URL not surfaced in UI | partial |
+| Cron jobs (CRUD, trigger, executions) | done — real scheduler + `docker exec` capture | done — Cron tab on service detail | not documented |
+| Managed databases (CRUD, actions, backup/restore) | done | done — `/databases` page (conn info, actions, backups) | mentioned in README |
 | Preview environments (CRUD, promote, cleanup) | done | **missing** | not documented |
 | Security scans, vulnerabilities, compliance/GDPR reports | done | **missing** | README lists it |
 | Audit logs | done | done — `/settings/audit-logs` filterable page | done |
@@ -98,10 +98,10 @@ The backend exposes **~90 route registrations**; the frontend consumes roughly
   harnesses, `migrations/0001_init.sql` + `.bak`. Correction to the earlier
   audit: `feature_response.go` is *live* (`respondDependencyUnavailable` is
   used by `logs.go`) and stays.
-- **Stale health data**: `.desloppify/state-*.json` is from February — rerun.
-- **Test coverage**: frontend has one smoke test; backend coverage
-  concentrated in `internal/api` and infra packages; deployment engine,
-  docker client, metrics, scaling, agents have no tests.
+- **Test coverage**: frontend has focused tests (`variable-utils`) but no
+  canvas/flow coverage; backend coverage concentrated in `internal/api` and
+  infra packages; deployment engine, docker client, metrics, scaling,
+  agents have no tests.
 
 ---
 
@@ -258,10 +258,12 @@ calls. Template install from pasted Compose works the same way.
 
 All of these have working APIs and no UI. Cheapest feature wins in the repo.
 
-- [ ] **Databases** (`/databases/*` + backup/restore): service type on canvas,
-      detail page section for connection info, actions (start/stop/restart),
-      backup create/list/restore. Verify against real Postgres/Redis/MySQL
-      images.
+- [x] **Databases** (`/databases/*` + backup/restore): `/databases` page
+      (nav item) — expandable cards with connection URL + copy, start/stop/
+      restart actions, metrics summary, backup list + New backup + Restore
+      (with confirm). Verified e2e against a real `postgres:16` image:
+      provision → `psql` connect → stop/start → seed → backup (6.4MB
+      archive) → drop table → restore → data recovered.
 - [x] **Cron jobs** (`/cron-jobs/*`): real engine + UI. Backend was a stub
       (`calculateNextRun` returned now+1h, `executeCronJob` slept 2s and wrote
       "success" without running anything). Now: `robfig/cron` parses the
@@ -315,6 +317,19 @@ All of these have working APIs and no UI. Cheapest feature wins in the repo.
         databases natively.
 - [ ] **Notifications depth**: notification center persistence (read/unread),
       not just a transient bell feed.
+- [ ] **GitHub App install surfacing**: backend returns `install_url` for
+      `github_app` providers — the UI never shows it. Surface an "Install app"
+      action on GitHub-App providers in Settings → Git Providers.
+- [ ] **Database → service binding**: creating a managed DB does not wire it
+      into a service. Add a bind action that injects the resolved
+      `connection_url` as an env var (e.g. `DATABASE_URL`) on a chosen
+      service, so apps can actually consume provisioned databases.
+- [ ] **Backup export**: `database_backups.backup_path` is server-local only —
+      no download endpoint. Add `GET /databases/:id/backups/:bid/download`
+      streaming the archive, plus a Download action in the backups list.
+- [ ] **Scheduled database backups**: backups are manual-only despite a
+      `retention` field. Add a `schedule` column + fold due database backups
+      into the cron scheduler tick.
 
 **Gate**: every registered route is reachable from the UI or has an explicit
 "API-only" note in the spec. A request to `/g/{service}` with a valid key
@@ -353,6 +368,9 @@ reaches the upstream container and appears in the analytics tables.
         with provider badge, VM/LXC lifecycle actions.
 - [ ] **Environments** (per §2.4): env switcher, per-env variables/domains,
       promote flow — ships with preview environments.
+- [ ] **Service exec console**: `docker exec` machinery now exists
+      (`Client.ExecRun` for cron) — expose a per-service web terminal or
+      one-off command runner on the service detail page.
 
 **Gate**: scaling and failover demonstrably work against a two-node lab;
 security scans produce real reports, not empty tables.
@@ -374,6 +392,17 @@ security scans produce real reports, not empty tables.
       install wizard, git connect); backend table-driven tests for
       deployments, templates import, webhooks; Playwright e2e suite for the
       Phase-1 golden path.
+- [ ] **OAuth e2e with real credentials**: GitHub/Google providers are
+      env-gated and config-verified only — run the happy path once real
+      provider apps exist (bootstrap gate already proven: OAuth cannot bypass
+      it via `disableImplicitSignUp`).
+- [ ] **sqlc port — remaining raw SQL**: ~140 hand-written `database/sql`
+      call sites across ~14 handler files remain (agents + tokens are sqlc).
+      Mechanical port to `sqlc/queries/`; the consolidated baseline schema is
+      now the codegen source of truth.
+- [ ] **Demo-data parity for new pages**: `demo-data.ts` covers Projects/
+      Templates but the new Databases page and service Cron tab have no demo
+      fixtures — add them so `?demo=1` doesn't show empty sections.
 - [ ] **CI**: GitHub Actions — build, lint, typecheck, tests, compose boot
       smoke; publish container images to GHCR with semver tags.
 - [ ] **Release**: `v1.0.0` tag, changelog, release notes, screenshots refresh

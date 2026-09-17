@@ -7,6 +7,7 @@ import {
   ChartBar,
   CheckCircle2,
   Container,
+  Database,
   FolderKanban,
   LayoutTemplate,
   LogOut,
@@ -31,6 +32,7 @@ import { useToast } from '@/shared/components';
 const navItems = [
   { label: 'Projects', href: '/projects', icon: FolderKanban },
   { label: 'Templates', href: '/templates', icon: LayoutTemplate },
+  { label: 'Databases', href: '/databases', icon: Database },
   { label: 'Usage', href: '/usage', icon: ChartBar },
   { label: 'People', href: '/people', icon: Users },
   { label: 'Settings', href: '/settings', icon: Settings },

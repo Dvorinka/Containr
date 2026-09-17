@@ -18,8 +18,13 @@ import {
   createAgentToken,
   listAgentTokens,
   revokeAgentToken,
+  listDatabases,
+  databaseAction,
+  createDatabaseBackup,
+  restoreDatabaseBackup,
   updateCurrentUserProfile,
   type AgentAuthTokenCreated,
+  type DatabaseEntity,
 } from '@/lib/api-client';
 import { formatRelative } from '@/lib/time';
 import { getAuthBaseUrl, signOutAuthSession } from '@/lib/auth-client';
@@ -57,7 +62,11 @@ import {
   MemoryStick,
   ScrollText,
   ChevronRight,
+  ChevronDown,
   Copy,
+  Play,
+  Square,
+  Archive,
 } from 'lucide-react';
 
 function SecondaryPageHeader({ title, description }: { title: string; description: string }) {
@@ -1434,3 +1443,200 @@ cd app/backend && go build -o bin/containr-agent ./cmd/agent`}
 
 
 export { ComponentShowcase } from './pages/ComponentShowcase';
+
+const dbStatusClass: Record<string, string> = {
+  running: 'bg-[var(--success-soft)] text-[var(--success)]',
+  stopped: 'bg-[var(--surface-muted)] text-[var(--text-muted)]',
+  building: 'bg-[var(--warning-soft)] text-[var(--warning)]',
+  error: 'bg-[var(--error-soft)] text-[var(--error)]',
+};
+
+export function DatabasesPage() {
+  const queryClient = useQueryClient();
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const databasesQuery = useQuery({
+    queryKey: ['databases'],
+    queryFn: listDatabases,
+    refetchInterval: 15_000,
+  });
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['databases'] });
+  const actionMutation = useMutation({
+    mutationFn: ({ id, action }: { id: string; action: 'start' | 'stop' | 'restart' }) =>
+      databaseAction(id, action),
+    onSuccess: invalidate,
+  });
+  const backupMutation = useMutation({
+    mutationFn: (id: string) => createDatabaseBackup(id),
+    onSuccess: () => window.setTimeout(invalidate, 3000),
+  });
+  const restoreMutation = useMutation({
+    mutationFn: ({ id, backupId }: { id: string; backupId: string }) =>
+      restoreDatabaseBackup(id, backupId),
+    onSuccess: () => window.setTimeout(invalidate, 3000),
+  });
+
+  const databases = databasesQuery.data ?? [];
+
+  return (
+    <div>
+      <SecondaryPageHeader
+        title="Databases"
+        description="Managed database services — connection info, runtime actions and backups"
+      />
+      <div className="w-full px-8 py-6">
+        {databasesQuery.isLoading ? (
+          <div className="flex items-center justify-center py-16 text-[var(--text-muted)]">
+            <Loader2 size={20} className="animate-spin" />
+          </div>
+        ) : databases.length === 0 ? (
+          <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] p-10 text-center">
+            <Database size={28} className="mx-auto text-[var(--text-muted)]" />
+            <p className="mt-3 text-sm text-[var(--text-secondary)]">No managed databases yet.</p>
+            <p className="mt-1 text-xs text-[var(--text-muted)]">
+              Create one via Add Service &rarr; Database in a project workspace.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {databases.map((db: DatabaseEntity) => {
+              const expanded = expandedId === db.id;
+              const running = db.status === 'running';
+              const backups = db.backups?.backups ?? [];
+              return (
+                <div key={db.id} className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-void)]">
+                  <button
+                    onClick={() => setExpandedId(expanded ? null : (db.id ?? null))}
+                    className="flex w-full items-center gap-3 p-4 text-left"
+                  >
+                    <div className="w-9 h-9 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center shrink-0">
+                      <Database size={17} className="text-[var(--accent-primary)]" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-[var(--text-primary)]">{db.name}</span>
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-[var(--surface-muted)] text-[var(--text-secondary)] mono">{db.type}{db.version ? ` ${db.version}` : ''}</span>
+                        <span className={`text-xs px-1.5 py-0.5 rounded ${dbStatusClass[db.status ?? ''] ?? 'bg-[var(--surface-muted)] text-[var(--text-muted)]'}`}>{db.status}</span>
+                      </div>
+                      <p className="mt-0.5 text-xs text-[var(--text-muted)]">{db.plan} · {db.region}</p>
+                    </div>
+                    <ChevronDown size={15} className={`shrink-0 text-[var(--text-muted)] transition-transform ${expanded ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {expanded && (
+                    <div className="border-t border-[var(--border-subtle)] p-4 space-y-4">
+                      <div>
+                        <p className="mb-1.5 text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Connection URL</p>
+                        <div className="flex items-center gap-2">
+                          <code className="mono flex-1 truncate rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 py-2 text-xs text-[var(--text-primary)]">
+                            {db.connection_url || '—'}
+                          </code>
+                          {db.connection_url && (
+                            <button
+                              onClick={() => void navigator.clipboard.writeText(db.connection_url ?? '')}
+                              className="flex items-center gap-1 text-xs text-[var(--accent-primary)] hover:underline shrink-0"
+                            >
+                              <Copy size={11} /> Copy
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)] mr-1">Actions</span>
+                        <button
+                          onClick={() => actionMutation.mutate({ id: db.id ?? '', action: 'start' })}
+                          disabled={running || actionMutation.isPending}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-secondary)] hover:border-[var(--border-default)] disabled:opacity-40 transition-colors"
+                        >
+                          <Play size={11} /> Start
+                        </button>
+                        <button
+                          onClick={() => actionMutation.mutate({ id: db.id ?? '', action: 'stop' })}
+                          disabled={!running || actionMutation.isPending}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-secondary)] hover:border-[var(--border-default)] disabled:opacity-40 transition-colors"
+                        >
+                          <Square size={11} /> Stop
+                        </button>
+                        <button
+                          onClick={() => actionMutation.mutate({ id: db.id ?? '', action: 'restart' })}
+                          disabled={!running || actionMutation.isPending}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-secondary)] hover:border-[var(--border-default)] disabled:opacity-40 transition-colors"
+                        >
+                          <RefreshCw size={11} /> Restart
+                        </button>
+                        {actionMutation.isError && (
+                          <span className="text-xs text-[var(--error)]">
+                            {actionMutation.error instanceof Error ? actionMutation.error.message : 'Action failed'}
+                          </span>
+                        )}
+                      </div>
+
+                      {db.metrics && (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                          {([
+                            ['CPU', `${db.metrics.cpu ?? 0}%`],
+                            ['Memory', `${db.metrics.memory ?? 0}%`],
+                            ['Storage', `${db.metrics.storage ?? 0}%`],
+                            ['Connections', `${db.metrics.connections ?? 0}`],
+                          ] as const).map(([label, value]) => (
+                            <div key={label} className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 py-2">
+                              <p className="text-xs text-[var(--text-muted)]">{label}</p>
+                              <p className="mono text-sm text-[var(--text-primary)]">{value}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <div>
+                        <div className="mb-2 flex items-center justify-between">
+                          <p className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Backups</p>
+                          <button
+                            onClick={() => backupMutation.mutate(db.id ?? '')}
+                            disabled={!running || backupMutation.isPending}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-md)] text-xs font-medium text-[var(--accent-on)] disabled:opacity-40 transition-all"
+                            style={{ background: 'var(--accent-primary)' }}
+                          >
+                            <Archive size={11} />
+                            {backupMutation.isPending ? 'Starting…' : 'New backup'}
+                          </button>
+                        </div>
+                        {backups.length === 0 ? (
+                          <p className="text-xs text-[var(--text-muted)]">No backups yet.</p>
+                        ) : (
+                          <div className="space-y-1.5">
+                            {backups.map((b) => (
+                              <div key={b.id} className="flex items-center gap-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 py-2 text-xs">
+                                <span className="text-[var(--text-secondary)]">{formatRelative(b.created_at)}</span>
+                                <span className="mono text-[var(--text-muted)]">{b.size}</span>
+                                <span className={`${b.status === 'completed' ? 'text-[var(--success)]' : b.status === 'in_progress' ? 'text-[var(--warning)]' : 'text-[var(--error)]'}`}>{b.status}</span>
+                                {b.status === 'completed' && (
+                                  <button
+                                    onClick={() => { if (window.confirm(`Restore ${db.name} from this backup? Current data will be overwritten.`)) restoreMutation.mutate({ id: db.id ?? '', backupId: b.id ?? '' }); }}
+                                    disabled={restoreMutation.isPending}
+                                    className="ml-auto text-[var(--accent-primary)] hover:underline disabled:opacity-40"
+                                  >
+                                    Restore
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {restoreMutation.isError && (
+                          <p className="mt-2 text-xs text-[var(--error)]">
+                            {restoreMutation.error instanceof Error ? restoreMutation.error.message : 'Restore failed'}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
