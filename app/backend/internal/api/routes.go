@@ -250,6 +250,7 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			protected.POST("/databases/:id/action", databaseHandler.PerformDatabaseAction)
 			protected.POST("/databases/:id/backup", databaseHandler.CreateBackup)
 			protected.POST("/databases/:id/restore", databaseHandler.RestoreBackup)
+			protected.GET("/databases/:id/backups/:bid/download", databaseHandler.DownloadBackup)
 
 			// Node Agent routes
 			agentHandler.SetupRoutes(protected)

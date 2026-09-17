@@ -145,6 +145,13 @@ func (c *Client) GetContainerLogs(ctx context.Context, containerID string, optio
 	})
 }
 
+// CopyFromContainer streams a tar archive of srcPath out of a container.
+// The container only needs to exist — it does not have to be running.
+func (c *Client) CopyFromContainer(ctx context.Context, containerID, srcPath string) (io.ReadCloser, error) {
+	reader, _, err := c.cli.CopyFromContainer(ctx, containerID, srcPath)
+	return reader, err
+}
+
 // GetContainerStats returns real-time resource usage statistics for a container
 func (c *Client) GetContainerStats(ctx context.Context, containerID string, stream bool) (*container.StatsResponseReader, error) {
 	resp, err := c.cli.ContainerStats(ctx, containerID, stream)

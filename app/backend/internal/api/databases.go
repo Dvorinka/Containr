@@ -1,6 +1,7 @@
 package api
 
 import (
+	"archive/tar"
 	"containr/internal/database/sqlcdb"
 	"containr/internal/docker"
 	"context"
@@ -11,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"net"
 	"net/http"
@@ -641,6 +643,87 @@ func (h *DatabaseHandler) RestoreBackup(c *gin.Context) {
 		"message": "Database restore started",
 		"status":  "in_progress",
 	})
+}
+
+// DownloadBackup streams a completed backup archive out of the backups volume.
+// Archives live inside the containr-db-backups docker volume, so a one-shot
+// utility container cats the file and its stdout is demuxed to the response.
+func (h *DatabaseHandler) DownloadBackup(c *gin.Context) {
+	userID, ok := requireAuthenticatedUserID(c)
+	if !ok {
+		return
+	}
+	databaseID := c.Param("id")
+	backupID := c.Param("bid")
+
+	backup, err := h.queries.GetDatabaseBackupByIDAndDatabaseAndUser(c.Request.Context(), sqlcdb.GetDatabaseBackupByIDAndDatabaseAndUserParams{
+		ID:         backupID,
+		DatabaseID: databaseID,
+		UserID:     userID,
+	})
+	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Backup not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check backup"})
+		return
+	}
+	if backup.Status != "completed" {
+		c.JSON(http.StatusConflict, gin.H{"error": "Backup is not completed"})
+		return
+	}
+	if h.dockerClient == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Docker unavailable"})
+		return
+	}
+
+	archive := managedDatabaseBackupArchivePath(backupID)
+	if backup.BackupPath.Valid && strings.TrimSpace(backup.BackupPath.String) != "" {
+		archive = sanitizeBackupArchivePath(backup.BackupPath.String)
+	}
+
+	// Container logs cannot carry binary data (the daemon sanitizes non-UTF-8),
+	// so the archive is copied out of a stopped utility container instead.
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Minute)
+	defer cancel()
+	containerID, err := h.dockerClient.CreateContainer(ctx, docker.ContainerConfig{
+		Name:          h.generateUtilityContainerName("backup-dl", "shared"),
+		Image:         managedDatabaseBackupImage,
+		Cmd:           []string{"true"},
+		RestartPolicy: "no",
+		Mounts:        []mount.Mount{{Type: mount.TypeVolume, Source: managedDatabaseBackupVolume, Target: "/backup", ReadOnly: true}},
+		Labels: map[string]string{
+			"containr.managed": "true",
+			"containr.utility": "backup-dl",
+		},
+		NetworkMode: "none",
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read backup archive"})
+		return
+	}
+	defer func() { _ = h.dockerClient.RemoveContainer(context.Background(), containerID, true) }()
+
+	tarStream, err := h.dockerClient.CopyFromContainer(ctx, containerID, "/backup/"+archive)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Backup archive not found"})
+		return
+	}
+	defer tarStream.Close()
+
+	tarReader := tar.NewReader(tarStream)
+	if _, err := tarReader.Next(); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Backup archive not found"})
+		return
+	}
+
+	c.Header("Content-Type", "application/gzip")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", archive))
+	c.Status(http.StatusOK)
+	if _, err := io.Copy(c.Writer, tarReader); err != nil {
+		log.Printf("backup download %s: stream error: %v", backupID, err)
+	}
 }
 
 func (h *DatabaseHandler) resolveDatabaseMetrics(ctx context.Context, db DatabaseService) DatabaseMetrics {

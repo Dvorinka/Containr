@@ -1710,6 +1710,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/databases/{id}/backups/{bid}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download a completed backup archive */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    bid: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Backup archive stream */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/gzip": string;
+                    };
+                };
+                /** @description Backup not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Backup not completed */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/git/providers": {
         parameters: {
             query?: never;
@@ -5783,6 +5840,7 @@ export interface paths {
             parameters: {
                 query?: {
                     project_id?: string;
+                    service_id?: string;
                 };
                 header?: never;
                 path?: never;

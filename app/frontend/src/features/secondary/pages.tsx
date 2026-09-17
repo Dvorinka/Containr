@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   getApiBaseUrl,
   getAgentPublicBaseUrl,
@@ -22,6 +22,8 @@ import {
   databaseAction,
   createDatabaseBackup,
   restoreDatabaseBackup,
+  getGitHubAppInstallUrl,
+  connectGitHubApp,
   updateCurrentUserProfile,
   type AgentAuthTokenCreated,
   type DatabaseEntity,
@@ -813,10 +815,43 @@ const gitProviderTypes = [
 
 function GitProvidersSection() {
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const providersQuery = useQuery({
     queryKey: ['git-providers'],
     queryFn: listGitProviders,
   });
+
+  // GitHub redirects back here with ?installation_id=<id> after app install.
+  const installIdParam = searchParams.get('installation_id');
+  const connectAppMutation = useMutation({
+    mutationFn: (installationId: number) => connectGitHubApp(installationId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['git-providers'] });
+      const next = new URLSearchParams(searchParams);
+      next.delete('installation_id');
+      next.delete('setup_action');
+      setSearchParams(next, { replace: true });
+    },
+  });
+  const connectFiredFor = useRef<number | null>(null);
+  useEffect(() => {
+    const id = Number(installIdParam);
+    if (id > 0 && connectFiredFor.current !== id) {
+      connectFiredFor.current = id;
+      connectAppMutation.mutate(id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fire once per installation id
+  }, [installIdParam]);
+
+  const [installUrlError, setInstallUrlError] = useState<string | null>(null);
+  const installApp = async () => {
+    setInstallUrlError(null);
+    try {
+      window.open(await getGitHubAppInstallUrl(), '_blank', 'noopener');
+    } catch (err) {
+      setInstallUrlError(err instanceof Error ? err.message : 'GitHub App is not configured');
+    }
+  };
 
   const [form, setForm] = useState({
     name: 'github' as (typeof gitProviderTypes)[number]['value'],
@@ -863,15 +898,40 @@ function GitProvidersSection() {
             <p className="text-xs text-[var(--text-tertiary)]">Connect accounts to deploy services from repositories</p>
           </div>
         </div>
-        <button
-          onClick={() => setFormOpen((open) => !open)}
-          className="flex items-center gap-2 h-9 px-4 rounded-[var(--radius-md)] text-[var(--accent-on)] text-sm font-medium shadow-lg transition-all"
-          style={{ background: 'var(--accent-primary)' }}
-        >
-          <Link2 size={14} />
-          {formOpen ? 'Close' : 'Connect'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => void installApp()}
+            className="flex items-center gap-2 h-9 px-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-sm font-medium text-[var(--text-secondary)] hover:border-[var(--border-default)] transition-colors"
+          >
+            <GitBranch size={14} />
+            Install GitHub App
+          </button>
+          <button
+            onClick={() => setFormOpen((open) => !open)}
+            className="flex items-center gap-2 h-9 px-4 rounded-[var(--radius-md)] text-[var(--accent-on)] text-sm font-medium shadow-lg transition-all"
+            style={{ background: 'var(--accent-primary)' }}
+          >
+            <Link2 size={14} />
+            {formOpen ? 'Close' : 'Connect'}
+          </button>
+        </div>
       </div>
+
+      {installUrlError && (
+        <div className="mb-4 px-4 py-3 rounded-[var(--radius-md)] bg-[var(--error-soft)] text-sm text-[var(--error)]">
+          {installUrlError}
+        </div>
+      )}
+      {connectAppMutation.isPending && (
+        <div className="mb-4 px-4 py-3 rounded-[var(--radius-md)] bg-[var(--surface-muted)] text-sm text-[var(--text-secondary)]">
+          Completing GitHub App installation…
+        </div>
+      )}
+      {connectAppMutation.isError && (
+        <div className="mb-4 px-4 py-3 rounded-[var(--radius-md)] bg-[var(--error-soft)] text-sm text-[var(--error)]">
+          {connectAppMutation.error instanceof Error ? connectAppMutation.error.message : 'Failed to connect GitHub App'}
+        </div>
+      )}
 
       {providersQuery.isLoading ? (
         <div className="py-6 text-center">
@@ -1611,13 +1671,21 @@ export function DatabasesPage() {
                                 <span className="mono text-[var(--text-muted)]">{b.size}</span>
                                 <span className={`${b.status === 'completed' ? 'text-[var(--success)]' : b.status === 'in_progress' ? 'text-[var(--warning)]' : 'text-[var(--error)]'}`}>{b.status}</span>
                                 {b.status === 'completed' && (
-                                  <button
-                                    onClick={() => { if (window.confirm(`Restore ${db.name} from this backup? Current data will be overwritten.`)) restoreMutation.mutate({ id: db.id ?? '', backupId: b.id ?? '' }); }}
-                                    disabled={restoreMutation.isPending}
-                                    className="ml-auto text-[var(--accent-primary)] hover:underline disabled:opacity-40"
-                                  >
-                                    Restore
-                                  </button>
+                                  <span className="ml-auto flex items-center gap-3">
+                                    <a
+                                      href={`${getApiBaseUrl()}/databases/${encodeURIComponent(db.id ?? '')}/backups/${encodeURIComponent(b.id ?? '')}/download`}
+                                      className="text-[var(--accent-primary)] hover:underline"
+                                    >
+                                      Download
+                                    </a>
+                                    <button
+                                      onClick={() => { if (window.confirm(`Restore ${db.name} from this backup? Current data will be overwritten.`)) restoreMutation.mutate({ id: db.id ?? '', backupId: b.id ?? '' }); }}
+                                      disabled={restoreMutation.isPending}
+                                      className="text-[var(--accent-primary)] hover:underline disabled:opacity-40"
+                                    >
+                                      Restore
+                                    </button>
+                                  </span>
                                 )}
                               </div>
                             ))}

@@ -1326,6 +1326,25 @@ export type ConnectGitRepositoryInput = components['schemas']['ConnectGitRepoReq
 export type CreateGitWebhookInput = components['schemas']['CreateWebhookRequest'];
 export type GitWebhookEntity = components['schemas']['GitWebhook'];
 
+export async function getGitHubAppInstallUrl(): Promise<string> {
+  const payload = await requestJson<{ install_url?: string }>('/git/github-app/install-url');
+  if (!payload.install_url) {
+    throw new ApiError('GitHub App install URL unavailable', 500);
+  }
+  return payload.install_url;
+}
+
+export async function connectGitHubApp(installationId: number, displayName?: string): Promise<GitProviderEntity> {
+  const payload = await requestJson<{ provider?: GitProviderEntity }>('/git/github-app/connect', {
+    method: 'POST',
+    body: JSON.stringify({ installation_id: installationId, display_name: displayName }),
+  });
+  if (!payload.provider?.id) {
+    throw new ApiError('GitHub App connect response is invalid', 500);
+  }
+  return payload.provider;
+}
+
 export async function connectGitRepository(
   input: ConnectGitRepositoryInput,
 ): Promise<GitRepositoryEntity> {

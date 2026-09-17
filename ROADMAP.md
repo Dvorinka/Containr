@@ -45,7 +45,7 @@ The backend exposes **~95 route registrations**; the frontend consumes
 | Templates — **Compose catalog** (GitHub import, paste YAML, `x-containr` metadata, community source) | **missing** | **missing** | spec written, not built |
 | Git providers (PAT add/remove, repo list, branches) | done | done (Settings → Git Providers) | done |
 | Git repo connect + webhook auto-deploy | done (`/git/repositories/connect`, `/git/webhooks`, `/api/git/webhooks/:id` receiver) | done — provider→repo→branch in Add Service, connect+webhook on create | guides claim it works |
-| GitHub App install flow | done (`install_url` returned) | partial — install URL not surfaced in UI | partial |
+| GitHub App install flow | done (`install_url` + connect endpoint) | done — Install button + `installation_id` return handling | done (real-provider e2e pending credentials) |
 | Cron jobs (CRUD, trigger, executions) | done — real scheduler + `docker exec` capture | done — Cron tab on service detail | not documented |
 | Managed databases (CRUD, actions, backup/restore) | done | done — `/databases` page (conn info, actions, backups) | mentioned in README |
 | Preview environments (CRUD, promote, cleanup) | done | **missing** | not documented |
@@ -317,16 +317,21 @@ All of these have working APIs and no UI. Cheapest feature wins in the repo.
         databases natively.
 - [ ] **Notifications depth**: notification center persistence (read/unread),
       not just a transient bell feed.
-- [ ] **GitHub App install surfacing**: backend returns `install_url` for
-      `github_app` providers — the UI never shows it. Surface an "Install app"
-      action on GitHub-App providers in Settings → Git Providers.
+- [x] **GitHub App install surfacing**: Settings → Git Providers shows an
+      "Install GitHub App" action that opens `install_url`, and handles the
+      `?installation_id=` return by calling `POST /git/github-app/connect`.
+      (Verified at typecheck/lint level; real GitHub App redirect e2e tracked
+      under the OAuth/provider-credentials item in Phase 4.)
 - [ ] **Database → service binding**: creating a managed DB does not wire it
       into a service. Add a bind action that injects the resolved
       `connection_url` as an env var (e.g. `DATABASE_URL`) on a chosen
       service, so apps can actually consume provisioned databases.
-- [ ] **Backup export**: `database_backups.backup_path` is server-local only —
-      no download endpoint. Add `GET /databases/:id/backups/:bid/download`
-      streaming the archive, plus a Download action in the backups list.
+- [x] **Backup export**: `GET /databases/:id/backups/:bid/download` streams
+      the archive out of the `containr-db-backups` volume via a stopped utility
+      container + `CopyFromContainer` (daemon logs mangle non-UTF-8, so `cat`
+      through logs was not viable). Download action in the `/databases` backups
+      list. Verified e2e: byte-identical archive, 404 missing/cross-user,
+      401 unauthenticated.
 - [ ] **Scheduled database backups**: backups are manual-only despite a
       `retention` field. Add a `schedule` column + fold due database backups
       into the cron scheduler tick.
