@@ -86,6 +86,8 @@ jobs:
 
       - name: Boot stack
         run: |
+          export BETTER_AUTH_SECRET=$(openssl rand -hex 32)
+          export BETTER_AUTH_INTERNAL_TOKEN=$(openssl rand -hex 32)
           docker compose -f infra/docker-compose.yml up -d --build postgres redis backend frontend traefik
 
       - name: Wait for backend health
