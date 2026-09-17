@@ -118,3 +118,6 @@ bin
 # Tool session dirs
 .jj/
 .playwright-cli/
+
+# Local reference checkouts (not project code)
+ref/
