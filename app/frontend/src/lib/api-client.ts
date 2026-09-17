@@ -1602,3 +1602,59 @@ export async function listHealthResults(): Promise<HAHealthResult[]> {
   const payload = await requestJson<{ results?: HAHealthResult[] }>('/ha/health/results');
   return payload.results ?? [];
 }
+
+export type SecurityScan = components['schemas']['SecurityScan'];
+export type Vulnerability = components['schemas']['Vulnerability'];
+
+export type SecurityMetrics = {
+  vulnerabilities?: {
+    total?: number; critical?: number; high?: number; medium?: number;
+    low?: number; open?: number; resolved?: number;
+  };
+  latest_scan?: { id?: string; score?: number; scanned_at?: string; status?: string };
+  compliance?: { overall_status?: string; score?: number; last_assessed?: string };
+  security_score?: number;
+};
+
+export async function startSecurityScan(input: {
+  project_id: string;
+  service_id?: string;
+  scan_type: 'dependency' | 'configuration' | 'comprehensive';
+}): Promise<SecurityScan> {
+  return requestJson<SecurityScan>('/security/scans', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function getSecurityScan(scanId: string): Promise<SecurityScan> {
+  const payload = await requestJson<{ scan?: SecurityScan } | SecurityScan>(
+    `/security/scans/${encodeURIComponent(scanId)}`,
+  );
+  return 'scan' in payload && payload.scan ? payload.scan : (payload as SecurityScan);
+}
+
+export async function getSecurityHistory(projectId: string): Promise<SecurityScan[]> {
+  const payload = await requestJson<{ scans?: SecurityScan[] }>(
+    `/projects/${encodeURIComponent(projectId)}/security/history`,
+  );
+  return payload.scans ?? [];
+}
+
+export async function listVulnerabilities(projectId: string): Promise<Vulnerability[]> {
+  const payload = await requestJson<{ vulnerabilities?: Vulnerability[] }>(
+    `/projects/${encodeURIComponent(projectId)}/vulnerabilities`,
+  );
+  return payload.vulnerabilities ?? [];
+}
+
+export async function updateVulnerability(id: string, status: 'open' | 'resolved' | 'ignored'): Promise<void> {
+  await requestJson(`/vulnerabilities/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ status }),
+  });
+}
+
+export async function getSecurityMetrics(projectId: string): Promise<SecurityMetrics> {
+  return requestJson<SecurityMetrics>(`/projects/${encodeURIComponent(projectId)}/security/metrics`);
+}

@@ -38,6 +38,11 @@ import {
   listActiveAlerts,
   resolveAlert,
   listHealthResults,
+  startSecurityScan,
+  getSecurityHistory,
+  listVulnerabilities,
+  updateVulnerability,
+  getSecurityMetrics,
   type AgentAuthTokenCreated,
   type DatabaseEntity,
   type FailoverPolicy,
@@ -2299,6 +2304,271 @@ export function HighAvailabilityPage() {
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+const scanTypes = [
+  { value: 'dependency', label: 'Dependency' },
+  { value: 'configuration', label: 'Configuration' },
+  { value: 'comprehensive', label: 'Comprehensive' },
+] as const;
+
+const severityColor: Record<string, string> = {
+  critical: 'text-[var(--error)]',
+  high: 'text-[var(--error)]',
+  medium: 'text-[var(--warning)]',
+  low: 'text-[var(--text-tertiary)]',
+};
+
+export function SecurityPage() {
+  const queryClient = useQueryClient();
+  const [projectId, setProjectId] = useState('');
+  const [scanType, setScanType] = useState<string>('comprehensive');
+  const [scanServiceId, setScanServiceId] = useState('');
+
+  const projectsQuery = useQuery({ queryKey: ['projects'], queryFn: listProjects });
+  const servicesQuery = useQuery({
+    queryKey: ['services', projectId],
+    queryFn: () => listServicesByProject(projectId),
+    enabled: Boolean(projectId),
+  });
+  const metricsQuery = useQuery({
+    queryKey: ['security-metrics', projectId],
+    queryFn: () => getSecurityMetrics(projectId),
+    enabled: Boolean(projectId),
+    refetchInterval: 15_000,
+  });
+  const historyQuery = useQuery({
+    queryKey: ['security-history', projectId],
+    queryFn: () => getSecurityHistory(projectId),
+    enabled: Boolean(projectId),
+    refetchInterval: 15_000,
+  });
+  const vulnsQuery = useQuery({
+    queryKey: ['security-vulns', projectId],
+    queryFn: () => listVulnerabilities(projectId),
+    enabled: Boolean(projectId),
+  });
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['security-metrics', projectId] });
+    queryClient.invalidateQueries({ queryKey: ['security-history', projectId] });
+    queryClient.invalidateQueries({ queryKey: ['security-vulns', projectId] });
+  };
+
+  const scanMutation = useMutation({
+    mutationFn: () => startSecurityScan({
+      project_id: projectId,
+      service_id: scanServiceId || undefined,
+      scan_type: scanType as 'dependency' | 'configuration' | 'comprehensive',
+    }),
+    onSuccess: invalidate,
+  });
+  const vulnMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: 'open' | 'resolved' | 'ignored' }) =>
+      updateVulnerability(id, status),
+    onSuccess: invalidate,
+  });
+
+  const metrics = metricsQuery.data;
+  const vulns = (vulnsQuery.data ?? []).filter((v) => v.status !== 'resolved');
+  const pageError =
+    projectsQuery.error ?? metricsQuery.error ?? historyQuery.error ?? vulnsQuery.error ??
+    scanMutation.error ?? vulnMutation.error;
+
+  return (
+    <div className="flex flex-col min-h-full">
+      <SecondaryPageHeader
+        title="Security"
+        description="Scan findings, security posture, and compliance status"
+      />
+      <div className="p-8 space-y-8">
+        {pageError && (
+          <div className="rounded-[var(--radius-md)] border border-[var(--error)] bg-[var(--error)]/10 px-4 py-3 text-sm text-[var(--error)]">
+            {pageError instanceof Error ? pageError.message : 'Request failed'}
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="block text-xs text-[var(--text-tertiary)] mb-1">Project</label>
+            <select
+              value={projectId}
+              onChange={(e) => { setProjectId(e.target.value); setScanServiceId(''); }}
+              className="px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)] w-56"
+            >
+              <option value="">Select project…</option>
+              {(projectsQuery.data ?? []).map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </div>
+          {projectId && (
+            <>
+              <div>
+                <label className="block text-xs text-[var(--text-tertiary)] mb-1">Scan type</label>
+                <select
+                  value={scanType}
+                  onChange={(e) => setScanType(e.target.value)}
+                  className="px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)]"
+                >
+                  {scanTypes.map((t) => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-[var(--text-tertiary)] mb-1">Service (optional)</label>
+                <select
+                  value={scanServiceId}
+                  onChange={(e) => setScanServiceId(e.target.value)}
+                  className="px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)]"
+                >
+                  <option value="">All services</option>
+                  {(servicesQuery.data ?? []).map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+              <button
+                type="button"
+                disabled={scanMutation.isPending}
+                onClick={() => scanMutation.mutate()}
+                className="px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-contrast)] text-sm font-medium disabled:opacity-50"
+              >
+                {scanMutation.isPending ? 'Starting…' : 'Run scan'}
+              </button>
+            </>
+          )}
+        </div>
+
+        {projectId && metrics && (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard
+              title="Security score"
+              value={String(metrics.security_score ?? '—')}
+              description={metrics.latest_scan?.status === 'never_scanned' ? 'Never scanned' : `Latest scan: ${metrics.latest_scan?.status ?? '—'}`}
+              icon={Shield}
+              color={(metrics.security_score ?? 100) < 70 ? 'error' : (metrics.security_score ?? 100) < 90 ? 'warning' : 'success'}
+            />
+            <StatCard
+              title="Open findings"
+              value={String(metrics.vulnerabilities?.open ?? 0)}
+              description={`${metrics.vulnerabilities?.critical ?? 0} critical · ${metrics.vulnerabilities?.high ?? 0} high`}
+              icon={AlertCircle}
+              color={metrics.vulnerabilities?.critical ? 'error' : metrics.vulnerabilities?.open ? 'warning' : 'default'}
+            />
+            <StatCard
+              title="Resolved"
+              value={String(metrics.vulnerabilities?.resolved ?? 0)}
+              description="Closed findings"
+              icon={Check}
+            />
+            <StatCard
+              title="Compliance"
+              value={metrics.compliance?.overall_status === 'not_assessed' ? '—' : `${metrics.compliance?.score ?? 0}%`}
+              description={metrics.compliance?.overall_status ?? 'not assessed'}
+              icon={FileText}
+            />
+          </div>
+        )}
+
+        {projectId && (
+          <div className="panel p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <Shield size={18} className="text-[var(--accent-primary)]" />
+              <h2 className="text-base font-semibold text-[var(--text-primary)]">Findings</h2>
+            </div>
+            {vulnsQuery.isLoading ? (
+              <p className="text-sm text-[var(--text-secondary)]">Loading…</p>
+            ) : vulns.length === 0 ? (
+              <p className="text-sm text-[var(--text-tertiary)]">No open findings.</p>
+            ) : (
+              <div className="space-y-2">
+                {vulns.map((v) => (
+                  <div
+                    key={v.id}
+                    className="flex items-start justify-between rounded-[var(--radius-md)] border border-[var(--border-primary)] px-4 py-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs font-semibold uppercase ${severityColor[v.severity ?? ''] ?? 'text-[var(--text-tertiary)]'}`}>
+                          {v.severity}
+                        </span>
+                        <p className="text-sm font-medium text-[var(--text-primary)] truncate">{v.title}</p>
+                      </div>
+                      <p className="text-xs text-[var(--text-tertiary)] mt-0.5">{v.description}</p>
+                      <p className="text-xs text-[var(--text-muted)] mt-1">
+                        {v.type} · {v.status} · found {v.found_at ? formatRelative(v.found_at) : '—'}
+                      </p>
+                    </div>
+                    {v.status === 'open' && v.id && (
+                      <div className="ml-4 flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          disabled={vulnMutation.isPending}
+                          onClick={() => vulnMutation.mutate({ id: v.id!, status: 'resolved' })}
+                          className="px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--success)] text-xs text-[var(--success)] disabled:opacity-50"
+                        >
+                          Resolve
+                        </button>
+                        <button
+                          type="button"
+                          disabled={vulnMutation.isPending}
+                          onClick={() => vulnMutation.mutate({ id: v.id!, status: 'ignored' })}
+                          className="px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-primary)] text-xs text-[var(--text-secondary)] disabled:opacity-50"
+                        >
+                          Ignore
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {projectId && (
+          <div className="panel p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <Clock size={18} className="text-[var(--accent-primary)]" />
+              <h2 className="text-base font-semibold text-[var(--text-primary)]">Scan history</h2>
+            </div>
+            {historyQuery.isLoading ? (
+              <p className="text-sm text-[var(--text-secondary)]">Loading…</p>
+            ) : (historyQuery.data ?? []).length === 0 ? (
+              <p className="text-sm text-[var(--text-tertiary)]">No scans yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {(historyQuery.data ?? []).map((scan) => (
+                  <div
+                    key={scan.id}
+                    className="flex items-center justify-between rounded-[var(--radius-md)] border border-[var(--border-primary)] px-4 py-3"
+                  >
+                    <div>
+                      <p className="text-sm text-[var(--text-primary)]">
+                        {scan.scan_type} · {scan.findings_count ?? 0} findings
+                      </p>
+                      <p className="text-xs text-[var(--text-tertiary)]">
+                        {scan.started_at ? formatRelative(scan.started_at) : '—'}
+                      </p>
+                    </div>
+                    <span className={`text-xs font-medium ${
+                      scan.status === 'completed' ? 'text-[var(--success)]'
+                      : scan.status === 'failed' ? 'text-[var(--error)]'
+                      : 'text-[var(--warning)]'
+                    }`}>
+                      {scan.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

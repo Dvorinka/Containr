@@ -394,10 +394,10 @@ func (sh *SecurityHandler) GetSecurityMetrics(c *gin.Context) {
 	}
 
 	err = sh.db.QueryRow(`
-		SELECT id, score, started_at as scanned_at, status
-		FROM security_scans 
-		WHERE project_id = $1 
-		ORDER BY started_at DESC 
+		SELECT id, COALESCE((summary->>'score')::int, 0), started_at as scanned_at, status
+		FROM security_scans
+		WHERE project_id = $1
+		ORDER BY started_at DESC
 		LIMIT 1
 	`, projectID).Scan(&latestScan.ID, &latestScan.Score, &latestScan.ScannedAt, &latestScan.Status)
 

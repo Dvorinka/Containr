@@ -14,6 +14,7 @@ import {
   UsagePage,
   DatabasesPage,
   HighAvailabilityPage,
+  SecurityPage,
   ComponentShowcase,
 } from '@/features/secondary/pages';
 import { SignInPage, SignUpPage } from '@/features/auth/pages';
@@ -65,6 +66,7 @@ export default function App() {
             <Route path="/usage" element={<UsagePage />} />
             <Route path="/databases" element={<DatabasesPage />} />
             <Route path="/ha" element={<HighAvailabilityPage />} />
+            <Route path="/security" element={<SecurityPage />} />
             <Route path="/people" element={<PeoplePage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/settings/audit-logs" element={<AuditLogsPage />} />

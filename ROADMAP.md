@@ -49,7 +49,7 @@ The backend exposes **~95 route registrations**; the frontend consumes
 | Cron jobs (CRUD, trigger, executions) | done — real scheduler + `docker exec` capture | done — Cron tab on service detail | not documented |
 | Managed databases (CRUD, actions, backup/restore) | done | done — `/databases` page (conn info, actions, backups) | mentioned in README |
 | Preview environments (CRUD, promote, cleanup) | done (bookkeeping only — no real container deploy; URL is a placeholder) | done — Previews section on service detail | not documented |
-| Security scans, vulnerabilities, compliance/GDPR reports | done | **missing** | README lists it |
+| Security scans, vulnerabilities, compliance/GDPR reports | done (heuristic scanner — image tags, insecure URLs, build-command smells; no Trivy/Grype binary scanning) | done — `/security` page (scan trigger, findings, metrics, history) | README lists it |
 | Audit logs | done | done — `/settings/audit-logs` filterable page | done |
 | Autoscaling policies + manual scale | done | done (beta) | per-service Scaling section on service detail; policies in-memory, lost on restart |
 | HA / failover policies | done | done (beta) | `/ha` page: manager toggle, failover policies, alerts, health results; state is in-memory |
@@ -372,10 +372,16 @@ reaches the upstream container and appears in the analytics tables.
       picker), active alerts with resolve, health check results. Verified
       live. Beta: policies/alerts are in-memory, lost on restart.
       Health-check and notifier CRUD endpoints remain unexposed.
-- [ ] **Security center** (`/security/*`): scan trigger per project, finding
-      list with severity, compliance report viewer, audit correlation.
-      Verify the scanner actually runs Trivy/Grype or document the real
-      mechanism.
+- [x] **Security center** (`/security/*`): `/security` page with project
+      picker, scan trigger (type + optional service), security score and
+      vuln metrics cards, findings list with resolve/ignore, scan history.
+      Fixed latent bug: `security/metrics` queried a non-existent `score`
+      column (score lives in `summary` jsonb) — was 500 on every project.
+      Verified live: comprehensive scan produced 4 findings (3 high, 1
+      medium), resolve flow, metrics aggregation. Real mechanism
+      documented: heuristic config analysis, NOT Trivy/Grype.
+      Remaining: compliance assessment/report viewer UI, security audit
+      correlation view.
 - [ ] **Multi-node scheduling**: service → node placement rules using agent
       telemetry; health-based rescheduling. Depends on Phase 2 agents.
 - [ ] **Infrastructure providers over Terraform** (per §2.2):
