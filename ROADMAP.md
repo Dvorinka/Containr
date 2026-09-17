@@ -46,13 +46,13 @@ The backend exposes **~95 route registrations**; the frontend consumes
 | Git providers (PAT add/remove, repo list, branches) | done | done (Settings → Git Providers) | done |
 | Git repo connect + webhook auto-deploy | done (`/git/repositories/connect`, `/git/webhooks`, `/api/git/webhooks/:id` receiver) | done — provider→repo→branch in Add Service, connect+webhook on create | guides claim it works |
 | GitHub App install flow | done (`install_url` + connect endpoint) | done — Install button + `installation_id` return handling | done (real-provider e2e pending credentials) |
-| Cron jobs (CRUD, trigger, executions) | done — real scheduler + `docker exec` capture | done — Cron tab on service detail | not documented |
-| Managed databases (CRUD, actions, backup/restore) | done | done — `/databases` page (conn info, actions, backups) | mentioned in README |
-| Preview environments (CRUD, promote, cleanup) | done (bookkeeping only — no real container deploy; URL is a placeholder) | done — Previews section on service detail | not documented |
-| Security scans, vulnerabilities, compliance/GDPR reports | done (heuristic scanner — image tags, insecure URLs, build-command smells; no Trivy/Grype binary scanning) | done — `/security` page (scan trigger, findings, metrics, history) | README lists it |
+| Cron jobs (CRUD, trigger, executions) | done — real scheduler + `docker exec` capture | done — Cron tab on service detail | OPERATIONS.md |
+| Managed databases (CRUD, actions, backup/restore) | done | done — `/databases` page (conn info, actions, backups) | OPERATIONS.md |
+| Preview environments (CRUD, promote, cleanup) | done (bookkeeping only — no real container deploy; URL is a placeholder) | done — Previews section on service detail | OPERATIONS.md |
+| Security scans, vulnerabilities, compliance/GDPR reports | done (heuristic scanner — image tags, insecure URLs, build-command smells; no Trivy/Grype binary scanning) | done — `/security` page (scan trigger, findings, metrics, history) | OPERATIONS.md |
 | Audit logs | done | done — `/settings/audit-logs` filterable page | done |
-| Autoscaling policies + manual scale | done | done (beta) | per-service Scaling section on service detail; policies in-memory, lost on restart |
-| HA / failover policies | done | done (beta) | `/ha` page: manager toggle, failover policies, alerts, health results; state is in-memory |
+| Autoscaling policies + manual scale | done | done (beta) — per-service Scaling section; policies in-memory, lost on restart | AUTOSCALING.md |
+| HA / failover policies | done | done (beta) | OPERATIONS.md |
 | Node agents (register additional VPS/LXC/VM hosts, heartbeats) | done | done — token issue/revoke + install command on Usage page | done |
 | API gateway (merged APwhy): upstream services, API keys, rate limits, ops/traffic analytics | management API done — native handlers under `/api/v1/gateway/*`, schema-corrected; **traffic proxy path still not mounted** (Phase 2) | **missing** | not documented |
 | Proxmox provider (cluster/nodes/VM/LXC CRUD) | written, **routes never registered** — unreachable | none | not documented |
@@ -422,10 +422,13 @@ security scans produce real reports, not empty tables.
       `.env`, pulls images, runs compose; verify on a clean VPS.
 - [ ] **Self-upgrade loop**: verify `/system/upgrade/pull` actually swaps the
       running image; document rollback.
-- [ ] **Docs pass**: sync all guides to reality (AUTOSCALING currently
-      describes a non-existent UI); rewrite getting-started to the canvas
-      flow; publish OpenAPI at `/docs` inside the app (Docs page exists —
-      render the spec there).
+- [x] **Docs pass (partial)**: `AUTOSCALING.md` rewritten to document the
+      real `/scaling` API + Scaling section (was generic Cloudflare/Swarm
+      advice); new `docs/guides/OPERATIONS.md` covers cron, exec console,
+      managed databases, preview environments, security scans, HA, and
+      node-agent onboarding — all synced to verified behavior. Remaining:
+      rewrite getting-started to the canvas flow; publish OpenAPI at
+      `/docs` inside the app (Docs page exists — render the spec there).
 - [ ] **Tests**: raise frontend beyond smoke (canvas interactions, template
       install wizard, git connect); backend table-driven tests for
       deployments, templates import, webhooks; Playwright e2e suite for the
