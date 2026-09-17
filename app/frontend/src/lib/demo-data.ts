@@ -1,4 +1,4 @@
-import type { ProjectEntity, ServiceEntity } from '@/lib/api-client';
+import type { CronJobEntity, DatabaseEntity, ProjectEntity, ServiceEntity } from '@/lib/api-client';
 import type { ServiceVariable } from '@/features/workspace/auto-connections';
 
 export const demoProjects: ProjectEntity[] = [
@@ -230,4 +230,102 @@ export function getDemoServiceById(serviceId: string): ServiceEntity | undefined
 
 export function getDemoVariablesByProject(projectId: string): Record<string, ServiceVariable[]> {
   return demoVariablesByProject[projectId] ?? {};
+}
+
+export const demoDatabases: DatabaseEntity[] = [
+  {
+    id: 'demo-db-postgres',
+    name: 'core-postgres',
+    type: 'postgresql',
+    status: 'running',
+    connection_url: 'postgres://demo:***@core-postgres.internal:5432/app',
+    version: '16.4',
+    plan: 'standard',
+    region: 'local',
+    backup_schedule: '0 3 * * *',
+    next_backup_at: '2026-04-01T03:00:00Z',
+    created_at: '2026-03-12T10:05:00Z',
+  },
+  {
+    id: 'demo-db-redis',
+    name: 'cache-redis',
+    type: 'redis',
+    status: 'running',
+    connection_url: 'redis://:***@cache-redis.internal:6379',
+    version: '7.4',
+    plan: 'hobby',
+    region: 'local',
+    created_at: '2026-03-12T10:12:00Z',
+  },
+  {
+    id: 'demo-db-analytics',
+    name: 'analytics-clickhouse',
+    type: 'clickhouse',
+    status: 'stopped',
+    connection_url: 'clickhouse://analytics.internal:9000/default',
+    version: '25.3',
+    plan: 'business',
+    region: 'local',
+    created_at: '2026-02-18T08:00:00Z',
+  },
+];
+
+export const demoCronJobsByService: Record<string, CronJobEntity[]> = {
+  'demo-svc-worker': [
+    {
+      id: 'demo-cron-cleanup',
+      project_id: 'demo-project-core',
+      service_id: 'demo-svc-worker',
+      name: 'Nightly cleanup',
+      schedule: '0 2 * * *',
+      command: 'npm run cleanup:expired',
+      timezone: 'UTC',
+      enabled: true,
+      last_run_at: '2026-03-31T02:00:00Z',
+      next_run_at: '2026-04-01T02:00:00Z',
+      last_status: 'success',
+      retention: 50,
+      created_at: '2026-03-12T10:20:00Z',
+      updated_at: '2026-03-31T02:00:00Z',
+    },
+    {
+      id: 'demo-cron-report',
+      project_id: 'demo-project-core',
+      service_id: 'demo-svc-worker',
+      name: 'Hourly metrics rollup',
+      schedule: '15 * * * *',
+      command: 'npm run metrics:rollup',
+      timezone: 'UTC',
+      enabled: true,
+      last_run_at: '2026-03-31T09:15:00Z',
+      next_run_at: '2026-03-31T10:15:00Z',
+      last_status: 'success',
+      retention: 50,
+      created_at: '2026-03-12T10:21:00Z',
+      updated_at: '2026-03-31T09:15:00Z',
+    },
+  ],
+  'demo-svc-api': [
+    {
+      id: 'demo-cron-warmup',
+      project_id: 'demo-project-core',
+      service_id: 'demo-svc-api',
+      name: 'Cache warmup',
+      schedule: '*/10 * * * *',
+      command: 'curl -sf http://localhost:8080/warm',
+      timezone: 'UTC',
+      enabled: false,
+      last_run_at: '2026-03-30T22:10:00Z',
+      next_run_at: '2026-03-30T22:20:00Z',
+      last_status: 'failed',
+      last_output: 'curl: (7) Failed to connect to localhost port 8080',
+      retention: 50,
+      created_at: '2026-03-12T10:22:00Z',
+      updated_at: '2026-03-30T22:10:00Z',
+    },
+  ],
+};
+
+export function getDemoCronJobsByService(serviceId: string): CronJobEntity[] {
+  return demoCronJobsByService[serviceId] ?? [];
 }

@@ -47,6 +47,7 @@ import {
   type DatabaseEntity,
   type FailoverPolicy,
 } from '@/lib/api-client';
+import { demoDatabases } from '@/lib/demo-data';
 import { formatRelative } from '@/lib/time';
 import { getAuthBaseUrl, signOutAuthSession } from '@/lib/auth-client';
 import { useBuildUpdates } from '@/lib/use-build-updates';
@@ -1535,12 +1536,15 @@ const dbStatusClass: Record<string, string> = {
 
 export function DatabasesPage() {
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
+  const isDemoMode = searchParams.get('demo') === '1';
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [bindDb, setBindDb] = useState<DatabaseEntity | null>(null);
   const databasesQuery = useQuery({
     queryKey: ['databases'],
     queryFn: listDatabases,
     refetchInterval: 15_000,
+    enabled: !isDemoMode,
   });
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['databases'] });
@@ -1559,7 +1563,7 @@ export function DatabasesPage() {
     onSuccess: () => window.setTimeout(invalidate, 3000),
   });
 
-  const databases = databasesQuery.data ?? [];
+  const databases = isDemoMode ? demoDatabases : databasesQuery.data ?? [];
 
   return (
     <div>

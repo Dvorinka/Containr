@@ -440,9 +440,11 @@ security scans produce real reports, not empty tables.
       events live in process memory — a backend restart wipes them and
       reverts replicas to policy minimums on next registration. Persist
       to Postgres before leaving beta.
-- [ ] **Demo-data parity for new pages**: `demo-data.ts` covers Projects/
-      Templates but the new Databases page and service Cron tab have no demo
-      fixtures — add them so `?demo=1` doesn't show empty sections.
+- [x] **Demo-data parity for new pages**: `demoDatabases` fixture wired
+      into `/databases?demo=1`; `demoCronJobsByService` fixtures wired into
+      the service Cron tab (worker + api demo services). Scaling, Previews,
+      HA and Security sections still show empty in demo mode — acceptable:
+      those are interaction surfaces, not dashboards.
 - [ ] **CI**: GitHub Actions — build, lint, typecheck, tests, compose boot
       smoke; publish container images to GHCR with semver tags.
 - [ ] **Release**: `v1.0.0` tag, changelog, release notes, screenshots refresh

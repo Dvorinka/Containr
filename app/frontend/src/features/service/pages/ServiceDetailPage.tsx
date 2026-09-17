@@ -30,7 +30,7 @@ import {
   updateServiceVariables,
   type CronJobEntity,
 } from '@/lib/api-client';
-import { getDemoProjectById, getDemoServiceById } from '@/lib/demo-data';
+import { getDemoProjectById, getDemoServiceById, getDemoCronJobsByService } from '@/lib/demo-data';
 import { parseDotenv, validateVariableRows, type VariableDraft } from '../variable-utils';
 import { formatBytes, formatDate, formatRelative, seededMetric } from '@/lib/time';
 import { EnhancedMetricCard, LineAreaChart, DonutChart } from '@/shared/components';
@@ -1290,14 +1290,14 @@ export function ServiceDetailPage() {
               <div className="flex items-center justify-center py-12 text-[var(--text-muted)]">
                 <Loader2 size={20} className="animate-spin" />
               </div>
-            ) : (cronJobsQuery.data ?? []).length === 0 ? (
+            ) : (isDemoMode ? getDemoCronJobsByService(serviceId) : cronJobsQuery.data ?? []).length === 0 ? (
               <div className="panel-soft p-8 text-center">
                 <p className="text-sm text-[var(--text-secondary)]">No cron jobs configured.</p>
                 <p className="mt-1 text-xs text-[var(--text-muted)]">Create a job to run commands on a schedule inside this service's container.</p>
               </div>
             ) : (
               <div className="space-y-2">
-                {(cronJobsQuery.data ?? []).map((job) => (
+                {(isDemoMode ? getDemoCronJobsByService(serviceId) : cronJobsQuery.data ?? []).map((job) => (
                   <div key={job.id} className="panel-soft p-3">
                     <div className="flex items-center gap-3">
                       <button
