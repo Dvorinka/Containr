@@ -15,12 +15,14 @@ type Querier interface {
 	CountDatabaseServicesByUserAndName(ctx context.Context, arg CountDatabaseServicesByUserAndNameParams) (int64, error)
 	CountProjectsByUser(ctx context.Context, arg CountProjectsByUserParams) (int64, error)
 	CountServicesByProjectAndName(ctx context.Context, arg CountServicesByProjectAndNameParams) (int64, error)
+	CountUnreadNotificationsByUser(ctx context.Context, userID uuid.UUID) (int64, error)
 	CreateAgent(ctx context.Context, arg CreateAgentParams) (NodeAgent, error)
 	CreateAgentAuthToken(ctx context.Context, arg CreateAgentAuthTokenParams) (AgentAuthToken, error)
 	CreateCommand(ctx context.Context, arg CreateCommandParams) (AgentCommand, error)
 	CreateContainer(ctx context.Context, arg CreateContainerParams) (ContainerInstance, error)
 	CreateDatabaseBackup(ctx context.Context, arg CreateDatabaseBackupParams) error
 	CreateDatabaseService(ctx context.Context, arg CreateDatabaseServiceParams) error
+	CreateNotification(ctx context.Context, arg CreateNotificationParams) error
 	CreateProject(ctx context.Context, arg CreateProjectParams) (Project, error)
 	CreateServiceFromTemplate(ctx context.Context, arg CreateServiceFromTemplateParams) error
 	DatabaseServiceExistsByIDAndUser(ctx context.Context, arg DatabaseServiceExistsByIDAndUserParams) (bool, error)
@@ -50,10 +52,13 @@ type Querier interface {
 	ListDatabaseBackupsByDatabaseAndUser(ctx context.Context, arg ListDatabaseBackupsByDatabaseAndUserParams) ([]DatabaseBackup, error)
 	ListDatabaseServicesByUser(ctx context.Context, userID string) ([]ListDatabaseServicesByUserRow, error)
 	ListDueDatabaseBackups(ctx context.Context) ([]ListDueDatabaseBackupsRow, error)
+	ListNotificationsByUser(ctx context.Context, arg ListNotificationsByUserParams) ([]Notification, error)
 	ListPendingCommands(ctx context.Context, nodeAgentID string) ([]AgentCommand, error)
 	ListProjectsWithStatsByUser(ctx context.Context, arg ListProjectsWithStatsByUserParams) ([]ListProjectsWithStatsByUserRow, error)
 	ListServiceTemplates(ctx context.Context) ([]ServiceTemplate, error)
 	ListServiceTemplatesByCategory(ctx context.Context, category string) ([]ServiceTemplate, error)
+	MarkAllNotificationsReadByUser(ctx context.Context, arg MarkAllNotificationsReadByUserParams) error
+	MarkNotificationReadByIDAndUser(ctx context.Context, arg MarkNotificationReadByIDAndUserParams) error
 	RevokeAgentAuthToken(ctx context.Context, id uuid.UUID) (AgentAuthToken, error)
 	SetDatabaseBackupScheduleByIDAndUser(ctx context.Context, arg SetDatabaseBackupScheduleByIDAndUserParams) error
 	SetDatabaseBackupStatusByID(ctx context.Context, arg SetDatabaseBackupStatusByIDParams) error

@@ -1427,3 +1427,25 @@ export async function listCronExecutions(id: string): Promise<CronExecutionEntit
 export async function triggerCronJob(id: string): Promise<void> {
   await requestJson(`/cron-jobs/${encodeURIComponent(id)}/trigger`, { method: 'POST' });
 }
+
+export type NotificationEntity = components['schemas']['Notification'];
+
+export type NotificationList = {
+  notifications: NotificationEntity[];
+  unread: number;
+};
+
+export async function listNotifications(limit = 20): Promise<NotificationList> {
+  const payload = await requestJson<{ notifications?: NotificationEntity[]; unread?: number }>(
+    `/notifications?limit=${limit}`,
+  );
+  return { notifications: payload.notifications ?? [], unread: payload.unread ?? 0 };
+}
+
+export async function markNotificationRead(id: string): Promise<void> {
+  await requestJson(`/notifications/${encodeURIComponent(id)}/read`, { method: 'POST' });
+}
+
+export async function markAllNotificationsRead(): Promise<void> {
+  await requestJson('/notifications/read-all', { method: 'POST' });
+}

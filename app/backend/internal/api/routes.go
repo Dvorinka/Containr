@@ -252,6 +252,11 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			protected.POST("/databases/:id/restore", databaseHandler.RestoreBackup)
 			protected.GET("/databases/:id/backups/:bid/download", databaseHandler.DownloadBackup)
 
+			// Notification routes
+			protected.GET("/notifications", handleListNotifications)
+			protected.POST("/notifications/:id/read", handleMarkNotificationRead)
+			protected.POST("/notifications/read-all", handleMarkAllNotificationsRead)
+
 			// Node Agent routes
 			agentHandler.SetupRoutes(protected)
 

@@ -137,6 +137,18 @@ type NodeAgent struct {
 	Metadata      pqtype.NullRawMessage `json:"metadata"`
 }
 
+type Notification struct {
+	ID           uuid.UUID      `json:"id"`
+	UserID       uuid.UUID      `json:"user_id"`
+	Kind         string         `json:"kind"`
+	Title        string         `json:"title"`
+	Body         sql.NullString `json:"body"`
+	ResourceType sql.NullString `json:"resource_type"`
+	ResourceID   sql.NullString `json:"resource_id"`
+	ReadAt       sql.NullTime   `json:"read_at"`
+	CreatedAt    sql.NullTime   `json:"created_at"`
+}
+
 type Project struct {
 	ID          uuid.UUID      `json:"id"`
 	Name        string         `json:"name"`

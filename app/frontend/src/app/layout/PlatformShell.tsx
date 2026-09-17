@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Bell,
@@ -21,8 +21,9 @@ import {
 } from 'lucide-react';
 import {
   getUpgradeStatus,
-  listAuditLogs,
-  listBuilds,
+  listNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
   pullUpgradeImage,
 } from '@/lib/api-client';
 import { signOutAuthSession } from '@/lib/auth-client';
@@ -64,15 +65,19 @@ export function PlatformShell() {
     queryFn: getUpgradeStatus,
     enabled: !isDemoMode,
   });
-  const buildsQuery = useQuery({
-    queryKey: ['shell-build-notifications'],
-    queryFn: () => listBuilds({ page: 1, limit: 5 }),
+  const notificationsQuery = useQuery({
+    queryKey: ['shell-notifications'],
+    queryFn: () => listNotifications(20),
     enabled: !isDemoMode,
+    refetchInterval: 30_000,
   });
-  const auditQuery = useQuery({
-    queryKey: ['shell-audit-notifications'],
-    queryFn: () => listAuditLogs({ page: 1, limit: 5 }),
-    enabled: !isDemoMode,
+  const markReadMutation = useMutation({
+    mutationFn: (id: string) => markNotificationRead(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['shell-notifications'] }),
+  });
+  const markAllReadMutation = useMutation({
+    mutationFn: markAllNotificationsRead,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['shell-notifications'] }),
   });
 
   useEffect(() => {
@@ -91,19 +96,8 @@ export function PlatformShell() {
     },
   });
 
-  const notifications = useMemo(() => {
-    const builds = (buildsQuery.data?.builds ?? []).map((build) => ({
-      id: `build-${build.id}`,
-      title: `${build.status} build`,
-      body: build.imageName || build.serviceId || build.id,
-    }));
-    const audits = (auditQuery.data ?? []).map((log) => ({
-      id: `audit-${log.id}`,
-      title: log.action,
-      body: `${log.resource}${log.resourceId ? ` / ${log.resourceId}` : ''}`,
-    }));
-    return [...builds, ...audits].slice(0, 6);
-  }, [auditQuery.data, buildsQuery.data?.builds]);
+  const notifications = notificationsQuery.data?.notifications ?? [];
+  const unreadCount = notificationsQuery.data?.unread ?? 0;
 
   const signOut = async () => {
     try {
@@ -248,8 +242,10 @@ export function PlatformShell() {
                   aria-label="Notifications"
                 >
                   <Bell size={15} />
-                  {notifications.length > 0 ? (
-                    <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-[var(--accent-primary)]" />
+                  {unreadCount > 0 ? (
+                    <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--accent-primary)] px-1 text-[10px] font-semibold text-[var(--accent-on)]">
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </span>
                   ) : null}
                 </button>
 
@@ -258,32 +254,54 @@ export function PlatformShell() {
                     <div className="mb-2 flex items-center justify-between">
                       <div>
                         <p className="text-sm font-semibold text-[var(--text-primary)]">Notifications</p>
-                        <p className="text-xs text-[var(--text-tertiary)]">Build and audit activity</p>
+                        <p className="text-xs text-[var(--text-tertiary)]">
+                          {unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'}
+                        </p>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          queryClient.invalidateQueries({ queryKey: ['shell-build-notifications'] });
-                          queryClient.invalidateQueries({ queryKey: ['shell-audit-notifications'] });
-                        }}
-                        className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-tertiary)] hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)]"
-                        aria-label="Refresh notifications"
-                      >
-                        <RefreshCw size={13} />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        {unreadCount > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => markAllReadMutation.mutate()}
+                            className="rounded-[var(--radius-sm)] px-2 py-1 text-xs text-[var(--text-tertiary)] hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)]"
+                          >
+                            Mark all read
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => queryClient.invalidateQueries({ queryKey: ['shell-notifications'] })}
+                          className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-tertiary)] hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)]"
+                          aria-label="Refresh notifications"
+                        >
+                          <RefreshCw size={13} />
+                        </button>
+                      </div>
                     </div>
-                    <div className="space-y-2">
+                    <div className="max-h-80 space-y-2 overflow-y-auto">
                       {notifications.length > 0 ? (
                         notifications.map((item) => (
-                          <div key={item.id} className="rounded-[var(--radius-md)] bg-[var(--surface-muted)] p-3">
-                            <p className="text-sm font-medium text-[var(--text-primary)]">{item.title}</p>
-                            <p className="mt-1 truncate text-xs text-[var(--text-tertiary)]">{item.body}</p>
-                          </div>
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => { if (!item.read_at) markReadMutation.mutate(item.id ?? ''); }}
+                            className="w-full rounded-[var(--radius-md)] bg-[var(--surface-muted)] p-3 text-left hover:bg-[var(--surface-raised)]"
+                          >
+                            <div className="flex items-start gap-2">
+                              {!item.read_at ? (
+                                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent-primary)]" />
+                              ) : null}
+                              <div className="min-w-0">
+                                <p className={`text-sm ${item.read_at ? 'text-[var(--text-secondary)]' : 'font-medium text-[var(--text-primary)]'}`}>{item.title}</p>
+                                <p className="mt-1 truncate text-xs text-[var(--text-tertiary)]">{item.body}</p>
+                              </div>
+                            </div>
+                          </button>
                         ))
                       ) : (
                         <div className="flex items-center gap-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] p-3 text-sm text-[var(--text-secondary)]">
                           <CheckCircle2 size={15} className="text-[var(--success)]" />
-                          No recent events
+                          No notifications yet
                         </div>
                       )}
                     </div>

@@ -315,8 +315,13 @@ All of these have working APIs and no UI. Cheapest feature wins in the repo.
   - [ ] Note: APwhy's own auth/RBAC/deploy/database endpoints are *not*
         ported — Better Auth owns identity, Containr owns deployments and
         databases natively.
-- [ ] **Notifications depth**: notification center persistence (read/unread),
-      not just a transient bell feed.
+- [x] **Notifications depth**: `notifications` table + `GET /notifications`,
+      `POST /notifications/:id/read`, `POST /notifications/read-all`. Bell
+      feed now reads real persisted rows with unread badge + mark-read.
+      Producer wired: deployment success/failure writes a notification.
+      Verified e2e: list, unread count, mark-one, mark-all. Further producers
+      (backup completion, agent offline, upgrade available) can reuse
+      `insertUserNotification`.
 - [x] **GitHub App install surfacing**: Settings → Git Providers shows an
       "Install GitHub App" action that opens `install_url`, and handles the
       `?installation_id=` return by calling `POST /git/github-app/connect`.

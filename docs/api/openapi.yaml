@@ -897,6 +897,65 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  # Notifications
+  /notifications:
+    get:
+      tags:
+        - Notifications
+      summary: List notifications for the current user
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Notifications and unread count
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationListResponse'
+
+  /notifications/{id}/read:
+    post:
+      tags:
+        - Notifications
+      summary: Mark a notification as read
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Marked read
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  /notifications/read-all:
+    post:
+      tags:
+        - Notifications
+      summary: Mark all notifications as read
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: All marked read
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
   # Audit Logs
   /audit-logs:
     get:
@@ -4740,6 +4799,40 @@ components:
           format: date-time
           description: Timestamp when the audit log entry was created
 
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+        title:
+          type: string
+        body:
+          type: string
+        resource_type:
+          type: string
+        resource_id:
+          type: string
+        read_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    NotificationListResponse:
+      type: object
+      properties:
+        notifications:
+          type: array
+          items:
+            $ref: '#/components/schemas/Notification'
+        unread:
+          type: integer
+
     AuditLogListResponse:
       type: object
       properties:
@@ -6380,6 +6473,8 @@ tags:
     description: Service template catalog and deployment
   - name: Audit
     description: Audit event history and resource-level trails
+  - name: Notifications
+    description: Persistent user notifications with read state
   - name: Databases
     description: Database management
   - name: Git

@@ -183,3 +183,15 @@ CREATE TABLE agent_heartbeats (
     version VARCHAR(50) NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE notifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    kind VARCHAR(50) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    body TEXT,
+    resource_type VARCHAR(50),
+    resource_id VARCHAR(255),
+    read_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
