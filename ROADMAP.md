@@ -230,8 +230,13 @@ pieces exist; this phase closes the gaps that block real usage.
       transitional state so build → deploy propagates to nodes, deployment
       history rows link straight into that deployment's log tail, and rollback
       asks for confirmation before firing.
-- [ ] **Node/port collision handling**: two services claiming the same host
-      port must produce a clear error, not a silent failure.
+- [x] **Node/port collision handling**: verified structurally impossible in the
+      current model — services never claim host ports (`PortMappings` is never
+      populated; traffic routes via container IPs + Traefik discovery), and
+      managed databases bind `127.0.0.1` with ephemeral host ports. If a claim
+      ever conflicts, Docker's bind error lands in `deployments.error` and shows
+      in the failed-deploy log tail — not silent. Revisit if a service-level
+      host-port config is ever added.
 - [ ] Auth hardening: e2e verify bootstrap gate (first user registers, second
       is refused, manual creation works), OAuth happy paths for GitHub +
       Google, session expiry redirect.
