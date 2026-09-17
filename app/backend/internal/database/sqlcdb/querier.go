@@ -49,12 +49,15 @@ type Querier interface {
 	ListContainersForAgent(ctx context.Context, nodeAgentID string) ([]ContainerInstance, error)
 	ListDatabaseBackupsByDatabaseAndUser(ctx context.Context, arg ListDatabaseBackupsByDatabaseAndUserParams) ([]DatabaseBackup, error)
 	ListDatabaseServicesByUser(ctx context.Context, userID string) ([]ListDatabaseServicesByUserRow, error)
+	ListDueDatabaseBackups(ctx context.Context) ([]ListDueDatabaseBackupsRow, error)
 	ListPendingCommands(ctx context.Context, nodeAgentID string) ([]AgentCommand, error)
 	ListProjectsWithStatsByUser(ctx context.Context, arg ListProjectsWithStatsByUserParams) ([]ListProjectsWithStatsByUserRow, error)
 	ListServiceTemplates(ctx context.Context) ([]ServiceTemplate, error)
 	ListServiceTemplatesByCategory(ctx context.Context, category string) ([]ServiceTemplate, error)
 	RevokeAgentAuthToken(ctx context.Context, id uuid.UUID) (AgentAuthToken, error)
+	SetDatabaseBackupScheduleByIDAndUser(ctx context.Context, arg SetDatabaseBackupScheduleByIDAndUserParams) error
 	SetDatabaseBackupStatusByID(ctx context.Context, arg SetDatabaseBackupStatusByIDParams) error
+	SetDatabaseNextBackupAt(ctx context.Context, arg SetDatabaseNextBackupAtParams) error
 	SetDatabaseServiceStatusAndConnectionByID(ctx context.Context, arg SetDatabaseServiceStatusAndConnectionByIDParams) error
 	SetDatabaseServiceStatusByID(ctx context.Context, arg SetDatabaseServiceStatusByIDParams) error
 	SetDatabaseServiceStatusByIDAndUser(ctx context.Context, arg SetDatabaseServiceStatusByIDAndUserParams) error

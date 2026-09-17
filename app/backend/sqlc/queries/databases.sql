@@ -1,11 +1,11 @@
 -- name: ListDatabaseServicesByUser :many
-SELECT id, name, type, status, version, plan, region, connection_url, created_at, updated_at
+SELECT id, name, type, status, version, plan, region, connection_url, backup_schedule, next_backup_at, created_at, updated_at
 FROM database_services
 WHERE user_id = $1
 ORDER BY created_at DESC;
 
 -- name: GetDatabaseServiceByIDAndUser :one
-SELECT id, name, type, status, version, plan, region, connection_url, created_at, updated_at
+SELECT id, name, type, status, version, plan, region, connection_url, backup_schedule, next_backup_at, created_at, updated_at
 FROM database_services
 WHERE id = $1 AND user_id = $2;
 
@@ -79,3 +79,19 @@ VALUES ($1, $2, $3, $4, $5, $6);
 UPDATE database_backups
 SET status = $1, size = $2, completed_at = $3
 WHERE id = $4;
+
+-- name: SetDatabaseBackupScheduleByIDAndUser :exec
+UPDATE database_services
+SET backup_schedule = $1, next_backup_at = $2, updated_at = $3
+WHERE id = $4 AND user_id = $5;
+
+-- name: ListDueDatabaseBackups :many
+SELECT id, backup_schedule
+FROM database_services
+WHERE backup_schedule IS NOT NULL AND backup_schedule <> ''
+  AND next_backup_at IS NOT NULL AND next_backup_at <= NOW();
+
+-- name: SetDatabaseNextBackupAt :exec
+UPDATE database_services
+SET next_backup_at = $1
+WHERE id = $2;

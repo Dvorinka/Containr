@@ -2,8 +2,10 @@ package api
 
 import (
 	"containr/internal/database"
+	"containr/internal/database/sqlcdb"
 	"containr/internal/docker"
 	"context"
+	"database/sql"
 	"fmt"
 	"log"
 	"net/http"
@@ -436,6 +438,7 @@ func StartCronScheduler(ctx context.Context, db *database.DB, dockerClient *dock
 				return
 			case <-ticker.C:
 				runDueCronJobs(db, dockerClient)
+				runDueDatabaseBackups(db, dockerClient)
 			}
 		}
 	}()
@@ -475,6 +478,51 @@ func runDueCronJobs(db *database.DB, dockerClient *docker.Client) {
 			continue
 		}
 		go executeCronJob(db, dockerClient, j.ID, j.ServiceID, execID, j.Command, j.Schedule, j.Timezone, j.Retention)
+	}
+}
+
+// runDueDatabaseBackups snapshots managed databases whose backup_schedule is
+// due, reusing the same archive pipeline as manual backups.
+func runDueDatabaseBackups(db *database.DB, dockerClient *docker.Client) {
+	if dockerClient == nil {
+		return
+	}
+	q := sqlcdb.New(db.DB)
+	due, err := q.ListDueDatabaseBackups(context.Background())
+	if err != nil {
+		log.Printf("cron scheduler: failed to list due database backups: %v", err)
+		return
+	}
+	handler := NewDatabaseHandler(db.DB, dockerClient)
+	for _, row := range due {
+		schedule := row.BackupSchedule.String
+		next, err := calculateNextRun(schedule, "UTC")
+		if err != nil {
+			log.Printf("cron scheduler: invalid backup schedule %q on %s: %v", schedule, row.ID, err)
+			continue
+		}
+		now := time.Now()
+		if err := q.SetDatabaseNextBackupAt(context.Background(), sqlcdb.SetDatabaseNextBackupAtParams{
+			NextBackupAt: sql.NullTime{Time: *next, Valid: true},
+			ID:           row.ID,
+		}); err != nil {
+			log.Printf("cron scheduler: failed to advance backup schedule on %s: %v", row.ID, err)
+			continue
+		}
+		backupID := generateDatabaseBackupID(row.ID)
+		archivePath := sanitizeBackupArchivePath(managedDatabaseBackupArchivePath(backupID))
+		if err := q.CreateDatabaseBackup(context.Background(), sqlcdb.CreateDatabaseBackupParams{
+			ID:         backupID,
+			DatabaseID: row.ID,
+			Size:       "pending",
+			Status:     "in_progress",
+			BackupPath: sql.NullString{String: archivePath, Valid: true},
+			CreatedAt:  sql.NullTime{Time: now, Valid: true},
+		}); err != nil {
+			log.Printf("cron scheduler: failed to record backup for %s: %v", row.ID, err)
+			continue
+		}
+		go handler.createBackupProcess(row.ID, backupID, archivePath)
 	}
 }
 

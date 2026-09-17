@@ -20,6 +20,7 @@ import {
   revokeAgentToken,
   listDatabases,
   databaseAction,
+  updateDatabaseBackupSchedule,
   createDatabaseBackup,
   restoreDatabaseBackup,
   listServicesByProject,
@@ -1680,6 +1681,11 @@ export function DatabasesPage() {
                             {backupMutation.isPending ? 'Starting…' : 'New backup'}
                           </button>
                         </div>
+                        <BackupScheduleRow
+                          databaseId={db.id ?? ''}
+                          schedule={db.backup_schedule ?? ''}
+                          nextBackupAt={db.next_backup_at}
+                        />
                         {backups.length === 0 ? (
                           <p className="text-xs text-[var(--text-muted)]">No backups yet.</p>
                         ) : (
@@ -1823,6 +1829,58 @@ function BindDatabasePanel({
         <p className="text-xs text-[var(--error)]">
           {bindMutation.error instanceof Error ? bindMutation.error.message : 'Bind failed'}
         </p>
+      )}
+    </div>
+  );
+}
+
+function BackupScheduleRow({
+  databaseId,
+  schedule,
+  nextBackupAt,
+}: {
+  databaseId: string;
+  schedule: string;
+  nextBackupAt?: string;
+}) {
+  const queryClient = useQueryClient();
+  const [value, setValue] = useState(schedule);
+  const mutation = useMutation({
+    mutationFn: (expr: string) => updateDatabaseBackupSchedule(databaseId, expr),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['databases'] }),
+  });
+
+  return (
+    <div className="mb-3 flex flex-wrap items-center gap-2">
+      <input
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder="cron schedule, e.g. 0 3 * * *"
+        className="w-44 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-2 py-1.5 text-xs mono text-[var(--text-primary)]"
+      />
+      <button
+        onClick={() => mutation.mutate(value.trim())}
+        disabled={mutation.isPending || value.trim() === schedule}
+        className="px-2.5 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs text-[var(--text-secondary)] hover:border-[var(--border-default)] disabled:opacity-40"
+      >
+        {mutation.isPending ? 'Saving…' : 'Save schedule'}
+      </button>
+      {schedule && (
+        <button
+          onClick={() => { setValue(''); mutation.mutate(''); }}
+          disabled={mutation.isPending}
+          className="px-2.5 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs text-[var(--text-secondary)] hover:border-[var(--border-default)] disabled:opacity-40"
+        >
+          Disable
+        </button>
+      )}
+      <span className="text-xs text-[var(--text-muted)]">
+        {schedule ? `auto-backup ${schedule}${nextBackupAt ? ` — next ${formatRelative(nextBackupAt)}` : ''}` : 'manual only'}
+      </span>
+      {mutation.isError && (
+        <span className="text-xs text-[var(--error)]">
+          {mutation.error instanceof Error ? mutation.error.message : 'Failed to save schedule'}
+        </span>
       )}
     </div>
   );

@@ -4778,6 +4778,13 @@ components:
         region:
           type: string
           description: Provisioning region
+        backup_schedule:
+          type: string
+          description: Cron expression for automatic backups, empty when unset
+        next_backup_at:
+          type: string
+          format: date-time
+          description: Next scheduled backup run
         metrics:
           $ref: '#/components/schemas/DatabaseMetrics'
         backups:
@@ -4826,6 +4833,10 @@ components:
           type: string
           enum: [hobby, starter, standard, business]
           description: Updated database plan
+        backup_schedule:
+          type: string
+          nullable: true
+          description: Cron expression for automatic backups; empty string clears the schedule
 
     DatabaseActionRequest:
       type: object

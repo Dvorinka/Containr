@@ -7059,6 +7059,13 @@ export interface components {
             plan?: "hobby" | "starter" | "standard" | "business";
             /** @description Provisioning region */
             region?: string;
+            /** @description Cron expression for automatic backups, empty when unset */
+            backup_schedule?: string;
+            /**
+             * Format: date-time
+             * @description Next scheduled backup run
+             */
+            next_backup_at?: string;
             metrics?: components["schemas"]["DatabaseMetrics"];
             backups?: components["schemas"]["DatabaseBackupConfig"];
             settings?: components["schemas"]["DatabaseSettings"];
@@ -7097,6 +7104,8 @@ export interface components {
              * @enum {string}
              */
             plan?: "hobby" | "starter" | "standard" | "business";
+            /** @description Cron expression for automatic backups; empty string clears the schedule */
+            backup_schedule?: string | null;
         };
         DatabaseActionRequest: {
             /**

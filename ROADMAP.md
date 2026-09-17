@@ -332,9 +332,12 @@ All of these have working APIs and no UI. Cheapest feature wins in the repo.
       through logs was not viable). Download action in the `/databases` backups
       list. Verified e2e: byte-identical archive, 404 missing/cross-user,
       401 unauthenticated.
-- [ ] **Scheduled database backups**: backups are manual-only despite a
-      `retention` field. Add a `schedule` column + fold due database backups
-      into the cron scheduler tick.
+- [x] **Scheduled database backups**: `database_services.backup_schedule`
+      (cron expr) + `next_backup_at`; `PUT /databases/:id` accepts
+      `backup_schedule` (validated, empty string disables). The cron tick folds
+      due databases into `createBackupProcess`. Schedule row in the
+      `/databases` backups section. Verified e2e: `* * * * *` produced three
+      consecutive completed archives with real volume data.
 
 **Gate**: every registered route is reachable from the UI or has an explicit
 "API-only" note in the spec. A request to `/g/{service}` with a valid key

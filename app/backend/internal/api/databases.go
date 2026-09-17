@@ -47,6 +47,8 @@ type DatabaseService struct {
 	Version       string               `json:"version" db:"version"`
 	Plan          string               `json:"plan" db:"plan"` // hobby, starter, standard, business
 	Region        string               `json:"region" db:"region"`
+	BackupSchedule string              `json:"backup_schedule,omitempty"`
+	NextBackupAt  *time.Time           `json:"next_backup_at,omitempty"`
 	CreatedAt     time.Time            `json:"created_at" db:"created_at"`
 	UpdatedAt     time.Time            `json:"updated_at" db:"updated_at"`
 	ConnectionURL string               `json:"connection_url"`
@@ -102,8 +104,9 @@ type DatabaseCreateRequest struct {
 
 // DatabaseUpdateRequest represents a request to update a database
 type DatabaseUpdateRequest struct {
-	Name string `json:"name,omitempty"`
-	Plan string `json:"plan,omitempty"`
+	Name           string  `json:"name,omitempty"`
+	Plan           string  `json:"plan,omitempty"`
+	BackupSchedule *string `json:"backup_schedule,omitempty"`
 }
 
 // DatabaseActionRequest represents a request to perform database actions
@@ -183,7 +186,7 @@ func (h *DatabaseHandler) GetDatabases(c *gin.Context) {
 		db = h.reconcileManagedDatabaseState(c.Request.Context(), db)
 
 		db.Metrics = h.resolveDatabaseMetrics(c.Request.Context(), db)
-		if backupConfig, err := h.resolveBackupConfig(c.Request.Context(), userID, db.ID); err == nil {
+		if backupConfig, err := h.resolveBackupConfig(c.Request.Context(), userID, db); err == nil {
 			db.Backups = backupConfig
 		} else {
 			db.Backups = h.generateMockBackupConfig()
@@ -220,7 +223,7 @@ func (h *DatabaseHandler) GetDatabase(c *gin.Context) {
 	db = h.reconcileManagedDatabaseState(c.Request.Context(), db)
 
 	db.Metrics = h.resolveDatabaseMetrics(c.Request.Context(), db)
-	if backupConfig, err := h.resolveBackupConfig(c.Request.Context(), userID, db.ID); err == nil {
+	if backupConfig, err := h.resolveBackupConfig(c.Request.Context(), userID, db); err == nil {
 		db.Backups = backupConfig
 	} else {
 		db.Backups = h.generateMockBackupConfig()
@@ -364,40 +367,67 @@ func (h *DatabaseHandler) UpdateDatabase(c *gin.Context) {
 	req.Name = strings.TrimSpace(req.Name)
 	req.Plan = strings.TrimSpace(req.Plan)
 
-	if req.Name == "" && req.Plan == "" {
+	if req.Name == "" && req.Plan == "" && req.BackupSchedule == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "No fields to update"})
 		return
 	}
 
-	now := sql.NullTime{Time: time.Now(), Valid: true}
-	var err error
-	switch {
-	case req.Name != "" && req.Plan != "":
-		err = h.queries.UpdateDatabaseServiceNameAndPlanByIDAndUser(c.Request.Context(), sqlcdb.UpdateDatabaseServiceNameAndPlanByIDAndUserParams{
-			Name:      req.Name,
-			Plan:      req.Plan,
-			UpdatedAt: now,
-			ID:        databaseID,
-			UserID:    userID,
+	if req.BackupSchedule != nil {
+		var schedule sql.NullString
+		var nextBackup sql.NullTime
+		if expr := strings.TrimSpace(*req.BackupSchedule); expr != "" {
+			next, err := calculateNextRun(expr, "UTC")
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid cron schedule"})
+				return
+			}
+			schedule = sql.NullString{String: expr, Valid: true}
+			nextBackup = sql.NullTime{Time: *next, Valid: true}
+		}
+		err := h.queries.SetDatabaseBackupScheduleByIDAndUser(c.Request.Context(), sqlcdb.SetDatabaseBackupScheduleByIDAndUserParams{
+			BackupSchedule: schedule,
+			NextBackupAt:   nextBackup,
+			UpdatedAt:      sql.NullTime{Time: time.Now(), Valid: true},
+			ID:             databaseID,
+			UserID:         userID,
 		})
-	case req.Name != "":
-		err = h.queries.UpdateDatabaseServiceNameByIDAndUser(c.Request.Context(), sqlcdb.UpdateDatabaseServiceNameByIDAndUserParams{
-			Name:      req.Name,
-			UpdatedAt: now,
-			ID:        databaseID,
-			UserID:    userID,
-		})
-	default:
-		err = h.queries.UpdateDatabaseServicePlanByIDAndUser(c.Request.Context(), sqlcdb.UpdateDatabaseServicePlanByIDAndUserParams{
-			Plan:      req.Plan,
-			UpdatedAt: now,
-			ID:        databaseID,
-			UserID:    userID,
-		})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update backup schedule"})
+			return
+		}
 	}
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update database"})
-		return
+
+	if req.Name != "" || req.Plan != "" {
+		now := sql.NullTime{Time: time.Now(), Valid: true}
+		var err error
+		switch {
+		case req.Name != "" && req.Plan != "":
+			err = h.queries.UpdateDatabaseServiceNameAndPlanByIDAndUser(c.Request.Context(), sqlcdb.UpdateDatabaseServiceNameAndPlanByIDAndUserParams{
+				Name:      req.Name,
+				Plan:      req.Plan,
+				UpdatedAt: now,
+				ID:        databaseID,
+				UserID:    userID,
+			})
+		case req.Name != "":
+			err = h.queries.UpdateDatabaseServiceNameByIDAndUser(c.Request.Context(), sqlcdb.UpdateDatabaseServiceNameByIDAndUserParams{
+				Name:      req.Name,
+				UpdatedAt: now,
+				ID:        databaseID,
+				UserID:    userID,
+			})
+		default:
+			err = h.queries.UpdateDatabaseServicePlanByIDAndUser(c.Request.Context(), sqlcdb.UpdateDatabaseServicePlanByIDAndUserParams{
+				Plan:      req.Plan,
+				UpdatedAt: now,
+				ID:        databaseID,
+				UserID:    userID,
+			})
+		}
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update database"})
+			return
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Database updated successfully"})
@@ -839,9 +869,9 @@ func roundFloat(value float64, places int) float64 {
 	return math.Round(value*pow) / pow
 }
 
-func (h *DatabaseHandler) resolveBackupConfig(ctx context.Context, userID, databaseID string) (DatabaseBackupConfig, error) {
+func (h *DatabaseHandler) resolveBackupConfig(ctx context.Context, userID string, db DatabaseService) (DatabaseBackupConfig, error) {
 	rows, err := h.queries.ListDatabaseBackupsByDatabaseAndUser(ctx, sqlcdb.ListDatabaseBackupsByDatabaseAndUserParams{
-		DatabaseID: databaseID,
+		DatabaseID: db.ID,
 		UserID:     userID,
 		Limit:      20,
 	})
@@ -865,17 +895,11 @@ func (h *DatabaseHandler) resolveBackupConfig(ctx context.Context, userID, datab
 		}
 	}
 
-	var nextBackup *time.Time
-	if lastBackup != nil {
-		t := lastBackup.Add(24 * time.Hour)
-		nextBackup = &t
-	}
-
 	return DatabaseBackupConfig{
-		Enabled:    true,
+		Enabled:    db.BackupSchedule != "",
 		LastBackup: lastBackup,
 		Retention:  30,
-		NextBackup: nextBackup,
+		NextBackup: db.NextBackupAt,
 		Backups:    backups,
 	}, nil
 }
@@ -1017,30 +1041,34 @@ func (h *DatabaseHandler) resolveManagedRuntimeStatus(ctx context.Context, db Da
 func mapDatabaseServiceListRow(row sqlcdb.ListDatabaseServicesByUserRow) DatabaseService {
 	return DatabaseService{
 		ID:            row.ID,
-		Name:          row.Name,
-		Type:          row.Type,
-		Status:        row.Status,
-		Version:       row.Version,
-		Plan:          row.Plan,
-		Region:        row.Region,
-		ConnectionURL: databaseNullString(row.ConnectionUrl),
-		CreatedAt:     databaseNullTime(row.CreatedAt),
-		UpdatedAt:     databaseNullTime(row.UpdatedAt),
+		Name:           row.Name,
+		Type:           row.Type,
+		Status:         row.Status,
+		Version:        row.Version,
+		Plan:           row.Plan,
+		Region:         row.Region,
+		BackupSchedule: databaseNullString(row.BackupSchedule),
+		NextBackupAt:   databaseNullTimePtr(row.NextBackupAt),
+		ConnectionURL:  databaseNullString(row.ConnectionUrl),
+		CreatedAt:      databaseNullTime(row.CreatedAt),
+		UpdatedAt:      databaseNullTime(row.UpdatedAt),
 	}
 }
 
 func mapDatabaseServiceGetRow(row sqlcdb.GetDatabaseServiceByIDAndUserRow) DatabaseService {
 	return DatabaseService{
-		ID:            row.ID,
-		Name:          row.Name,
-		Type:          row.Type,
-		Status:        row.Status,
-		Version:       row.Version,
-		Plan:          row.Plan,
-		Region:        row.Region,
-		ConnectionURL: databaseNullString(row.ConnectionUrl),
-		CreatedAt:     databaseNullTime(row.CreatedAt),
-		UpdatedAt:     databaseNullTime(row.UpdatedAt),
+		ID:             row.ID,
+		Name:           row.Name,
+		Type:           row.Type,
+		Status:         row.Status,
+		Version:        row.Version,
+		Plan:           row.Plan,
+		Region:         row.Region,
+		BackupSchedule: databaseNullString(row.BackupSchedule),
+		NextBackupAt:   databaseNullTimePtr(row.NextBackupAt),
+		ConnectionURL:  databaseNullString(row.ConnectionUrl),
+		CreatedAt:      databaseNullTime(row.CreatedAt),
+		UpdatedAt:      databaseNullTime(row.UpdatedAt),
 	}
 }
 
@@ -1049,6 +1077,14 @@ func databaseNullTime(value sql.NullTime) time.Time {
 		return value.Time
 	}
 	return time.Time{}
+}
+
+func databaseNullTimePtr(value sql.NullTime) *time.Time {
+	if value.Valid {
+		t := value.Time
+		return &t
+	}
+	return nil
 }
 
 func databaseNullString(value sql.NullString) string {

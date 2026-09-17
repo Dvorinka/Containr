@@ -80,17 +80,19 @@ type DatabaseBackup struct {
 }
 
 type DatabaseService struct {
-	ID            string         `json:"id"`
-	UserID        string         `json:"user_id"`
-	Name          string         `json:"name"`
-	Type          string         `json:"type"`
-	Status        string         `json:"status"`
-	Version       string         `json:"version"`
-	Plan          string         `json:"plan"`
-	Region        string         `json:"region"`
-	ConnectionUrl sql.NullString `json:"connection_url"`
-	CreatedAt     sql.NullTime   `json:"created_at"`
-	UpdatedAt     sql.NullTime   `json:"updated_at"`
+	ID             string         `json:"id"`
+	UserID         string         `json:"user_id"`
+	Name           string         `json:"name"`
+	Type           string         `json:"type"`
+	Status         string         `json:"status"`
+	Version        string         `json:"version"`
+	Plan           string         `json:"plan"`
+	Region         string         `json:"region"`
+	ConnectionUrl  sql.NullString `json:"connection_url"`
+	BackupSchedule sql.NullString `json:"backup_schedule"`
+	NextBackupAt   sql.NullTime   `json:"next_backup_at"`
+	CreatedAt      sql.NullTime   `json:"created_at"`
+	UpdatedAt      sql.NullTime   `json:"updated_at"`
 }
 
 type Deployment struct {

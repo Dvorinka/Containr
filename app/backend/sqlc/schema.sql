@@ -96,6 +96,8 @@ CREATE TABLE database_services (
     plan VARCHAR(50) NOT NULL,
     region VARCHAR(50) NOT NULL,
     connection_url TEXT,
+    backup_schedule VARCHAR(100),
+    next_backup_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

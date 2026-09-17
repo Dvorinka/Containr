@@ -1295,6 +1295,13 @@ export async function databaseAction(id: string, action: 'start' | 'stop' | 'res
   });
 }
 
+export async function updateDatabaseBackupSchedule(id: string, schedule: string): Promise<void> {
+  await requestJson(`/databases/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ backup_schedule: schedule }),
+  });
+}
+
 export async function createDatabaseBackup(id: string): Promise<void> {
   await requestJson(`/databases/${encodeURIComponent(id)}/backup`, {
     method: 'POST',
