@@ -936,16 +936,12 @@ export async function deleteService(serviceId: string): Promise<void> {
   });
 }
 
-export async function listServiceVariables(serviceId: string): Promise<ServiceVariable[]> {
-  const payload = await requestJson<{ variables?: RawServiceVariable[] }>(`/services/${serviceId}/variables`);
-  const rows = payload.variables ?? [];
+function normalizeServiceVariables(rows: RawServiceVariable[] | undefined): ServiceVariable[] {
   const result: ServiceVariable[] = [];
-
-  for (const row of rows) {
+  for (const row of rows ?? []) {
     if (!row.id || !row.service_id || !row.key) {
       continue;
     }
-
     result.push({
       id: row.id,
       serviceId: row.service_id,
@@ -956,8 +952,25 @@ export async function listServiceVariables(serviceId: string): Promise<ServiceVa
       updatedAt: row.updated_at,
     });
   }
-
   return result;
+}
+
+export async function listServiceVariables(serviceId: string): Promise<ServiceVariable[]> {
+  const payload = await requestJson<{ variables?: RawServiceVariable[] }>(`/services/${serviceId}/variables`);
+  return normalizeServiceVariables(payload.variables);
+}
+
+export type UpdateServiceVariableInput = components['schemas']['VariableInput'];
+
+export async function updateServiceVariables(
+  serviceId: string,
+  variables: UpdateServiceVariableInput[],
+): Promise<ServiceVariable[]> {
+  const payload = await requestJson<{ variables?: RawServiceVariable[] }>(
+    `/services/${serviceId}/variables`,
+    { method: 'PUT', body: JSON.stringify({ variables }) },
+  );
+  return normalizeServiceVariables(payload.variables);
 }
 
 export async function listAuditLogs(input: ListAuditLogsInput = {}): Promise<AuditLogEntity[]> {

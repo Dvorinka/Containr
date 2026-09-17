@@ -10,9 +10,12 @@ import {
   getServiceMetrics,
   listDeployments,
   listServiceLogs,
+  listServiceVariables,
   rollbackDeployment,
+  updateServiceVariables,
 } from '@/lib/api-client';
 import { getDemoProjectById, getDemoServiceById } from '@/lib/demo-data';
+import { parseDotenv, validateVariableRows, type VariableDraft } from '../variable-utils';
 import { formatBytes, formatDate, formatRelative, seededMetric } from '@/lib/time';
 import { EnhancedMetricCard, LineAreaChart, DonutChart } from '@/shared/components';
 import {
@@ -20,6 +23,11 @@ import {
   FileText,
   Settings,
   Sliders,
+  KeyRound,
+  Plus,
+  Trash2,
+  ClipboardPaste,
+  Save,
   Check,
   X,
   Loader2,
@@ -34,12 +42,13 @@ import {
   Box,
 } from 'lucide-react';
 
-type ServiceSection = 'metrics' | 'logs' | 'config' | 'settings';
+type ServiceSection = 'metrics' | 'logs' | 'config' | 'variables' | 'settings';
 
 const sectionItems: Array<{ key: ServiceSection; label: string; icon: typeof Activity }> = [
   { key: 'metrics', label: 'Metrics', icon: Activity },
   { key: 'logs', label: 'Logs', icon: FileText },
   { key: 'config', label: 'Config', icon: Sliders },
+  { key: 'variables', label: 'Variables', icon: KeyRound },
   { key: 'settings', label: 'Settings', icon: Settings },
 ];
 
@@ -84,6 +93,9 @@ export function ServiceDetailPage() {
 
   const [activeSection, setActiveSection] = useState<ServiceSection>('metrics');
   const [logTail, setLogTail] = useState('100');
+  const [varDrafts, setVarDrafts] = useState<VariableDraft[] | null>(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkText, setBulkText] = useState('');
 
   const projectQuery = useQuery({
     queryKey: ['project', projectId],
@@ -102,6 +114,24 @@ export function ServiceDetailPage() {
     queryFn: () => listDeployments(serviceId),
     enabled: Boolean(serviceId) && !isDemoMode,
     refetchInterval: 4000,
+  });
+
+  const variablesQuery = useQuery({
+    queryKey: ['service-variables', serviceId],
+    queryFn: () => listServiceVariables(serviceId),
+    enabled: Boolean(serviceId) && !isDemoMode && activeSection === 'variables',
+  });
+
+  const saveVariablesMutation = useMutation({
+    mutationFn: (rows: VariableDraft[]) =>
+      updateServiceVariables(
+        serviceId,
+        rows.map((row) => ({ key: row.key.trim(), value: row.value, is_secret: row.isSecret })),
+      ),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['service-variables', serviceId], data);
+      setVarDrafts(null);
+    },
   });
 
   const serviceLogsQuery = useQuery({
@@ -156,6 +186,34 @@ export function ServiceDetailPage() {
 
   const project = isDemoMode ? getDemoProjectById(projectId) : projectQuery.data;
   const service = isDemoMode ? getDemoServiceById(serviceId) : serviceQuery.data;
+
+  const varRows: VariableDraft[] = useMemo(
+    () =>
+      varDrafts ??
+      (variablesQuery.data ?? []).map((v) => ({ key: v.key, value: v.value, isSecret: v.isSecret })),
+    [varDrafts, variablesQuery.data],
+  );
+  const varErrors = useMemo(() => validateVariableRows(varRows), [varRows]);
+  const varDirty = varDrafts !== null;
+  const updateVarRow = (index: number, patch: Partial<VariableDraft>) =>
+    setVarDrafts(varRows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  const removeVarRow = (index: number) => setVarDrafts(varRows.filter((_, i) => i !== index));
+  const applyBulkPaste = () => {
+    const parsed = parseDotenv(bulkText);
+    if (parsed.length === 0) return;
+    const merged = [...varRows];
+    for (const row of parsed) {
+      const existing = merged.findIndex((r) => r.key === row.key);
+      if (existing >= 0) {
+        merged[existing] = { ...merged[existing], value: row.value };
+      } else {
+        merged.push(row);
+      }
+    }
+    setVarDrafts(merged);
+    setBulkText('');
+    setBulkOpen(false);
+  };
 
   const metricsQuery = useQuery({
     queryKey: ['service-metrics', serviceId],
@@ -815,6 +873,155 @@ export function ServiceDetailPage() {
                 <p className="mono mt-2 text-sm text-[var(--text-primary)]">{service.gitBranch ?? 'not configured'}</p>
               </div>
             </div>
+          </div>
+        )}
+
+        {activeSection === 'variables' && (
+          <div className="panel p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
+                  <KeyRound size={20} className="text-[var(--accent-primary)]" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-[var(--text-primary)]">Environment Variables</h2>
+                  <p className="text-sm text-[var(--text-secondary)]">Runtime values injected into the service container</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setBulkOpen((open) => !open)}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-secondary)] hover:border-[var(--border-default)] transition-colors"
+                >
+                  <ClipboardPaste size={12} />
+                  Paste .env
+                </button>
+                <button
+                  onClick={() => setVarDrafts([...varRows, { key: '', value: '', isSecret: false }])}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-secondary)] hover:border-[var(--border-default)] transition-colors"
+                >
+                  <Plus size={12} />
+                  Add variable
+                </button>
+                <button
+                  onClick={() => saveVariablesMutation.mutate(varRows)}
+                  disabled={!varDirty || Object.keys(varErrors).length > 0 || saveVariablesMutation.isPending}
+                  className="flex items-center gap-2 px-4 py-1.5 rounded-[var(--radius-md)] text-xs font-medium text-[var(--accent-on)] shadow transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ background: 'var(--accent-primary)' }}
+                >
+                  {saveVariablesMutation.isPending ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                  Save
+                </button>
+              </div>
+            </div>
+
+            {bulkOpen && (
+              <div className="mb-4 panel-soft p-4">
+                <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)] mb-2">
+                  Paste .env contents
+                </label>
+                <textarea
+                  value={bulkText}
+                  onChange={(e) => setBulkText(e.target.value)}
+                  rows={6}
+                  placeholder={'DATABASE_URL=postgres://...\nAPI_KEY=secret\n# comments are ignored'}
+                  className="w-full px-3 py-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] mono text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all"
+                />
+                <div className="mt-3 flex justify-end gap-2">
+                  <button
+                    onClick={() => { setBulkOpen(false); setBulkText(''); }}
+                    className="px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-secondary)] hover:border-[var(--border-default)] transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={applyBulkPaste}
+                    className="px-3 py-1.5 rounded-[var(--radius-md)] text-xs font-medium text-[var(--accent-on)] transition-all"
+                    style={{ background: 'var(--accent-primary)' }}
+                  >
+                    Import {parseDotenv(bulkText).length > 0 ? `${parseDotenv(bulkText).length} variables` : ''}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {variablesQuery.isLoading ? (
+              <div className="flex items-center justify-center py-12 text-[var(--text-muted)]">
+                <Loader2 size={20} className="animate-spin" />
+              </div>
+            ) : varRows.length === 0 ? (
+              <div className="panel-soft p-8 text-center">
+                <p className="text-sm text-[var(--text-secondary)]">No variables configured.</p>
+                <p className="mt-1 text-xs text-[var(--text-muted)]">Add rows or paste a .env file to get started.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="grid grid-cols-[1fr_1fr_auto_auto] gap-2 px-1">
+                  <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Key</span>
+                  <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Value</span>
+                  <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Secret</span>
+                  <span />
+                </div>
+                {varRows.map((row, i) => (
+                  <div key={i}>
+                    <div className="grid grid-cols-[1fr_1fr_auto_auto] gap-2 items-center">
+                      <input
+                        value={row.key}
+                        onChange={(e) => updateVarRow(i, { key: e.target.value })}
+                        placeholder="KEY"
+                        className={`h-10 px-3 rounded-[var(--radius-md)] border bg-[var(--surface-muted)] mono text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:ring-1 transition-all ${
+                          varErrors[i]
+                            ? 'border-[var(--error)] focus:border-[var(--error)] focus:ring-[var(--error)]'
+                            : 'border-[var(--border-subtle)] focus:border-[var(--accent-primary)] focus:ring-[var(--accent-primary)]'
+                        }`}
+                      />
+                      <input
+                        value={row.value}
+                        onChange={(e) => updateVarRow(i, { value: e.target.value })}
+                        type={row.isSecret ? 'password' : 'text'}
+                        placeholder="value"
+                        autoComplete="off"
+                        className="h-10 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] mono text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all"
+                      />
+                      <button
+                        type="button"
+                        title={row.isSecret ? 'Secret — value masked on save' : 'Mark as secret'}
+                        onClick={() => updateVarRow(i, { isSecret: !row.isSecret })}
+                        className={`w-10 h-10 rounded-[var(--radius-md)] border flex items-center justify-center transition-colors ${
+                          row.isSecret
+                            ? 'border-[var(--accent-primary)] bg-[var(--accent-primary-soft)] text-[var(--accent-primary)]'
+                            : 'border-[var(--border-subtle)] text-[var(--text-muted)] hover:border-[var(--border-default)]'
+                        }`}
+                      >
+                        <KeyRound size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeVarRow(i)}
+                        className="w-10 h-10 rounded-[var(--radius-md)] border border-[var(--border-subtle)] flex items-center justify-center text-[var(--text-muted)] hover:border-[var(--error)] hover:text-[var(--error)] transition-colors"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                    {varErrors[i] && (
+                      <p className="mt-1 px-1 text-xs text-[var(--error)]">{varErrors[i]}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <p className="mt-4 text-xs text-[var(--text-muted)]">
+              Secret values are stored encrypted and masked as ******** in responses. Leaving a masked
+              value unchanged keeps the stored secret; editing replaces it. Saving replaces the full set.
+            </p>
+            {saveVariablesMutation.isError && (
+              <p className="mt-2 text-xs text-[var(--error)]">
+                {saveVariablesMutation.error instanceof Error
+                  ? saveVariablesMutation.error.message
+                  : 'Failed to save variables'}
+              </p>
+            )}
           </div>
         )}
 

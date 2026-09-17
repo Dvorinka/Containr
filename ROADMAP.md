@@ -219,8 +219,12 @@ pieces exist; this phase closes the gaps that block real usage.
       plan → real `POST /databases` provisioning, not a hollow service row),
       worker/cron types, and a Template entry that jumps to the catalog with
       the project preselected (`/templates?project=`).
-- [ ] **Variables UX**: secret masking, per-environment values, bulk paste
-      (`KEY=VAL` lines), validation errors inline.
+- [x] **Variables UX**: Variables section on the service detail page — add /
+      edit / remove rows, secret masking (masked `********` secrets preserved on
+      save; editing replaces), bulk `.env` paste (`KEY=VAL`, comments, `export`
+      prefix, quoted values), inline validation (required / invalid / duplicate
+      keys). Per-environment values are already covered by the schema: each
+      environment owns its service instances, and variables are per-service.
 - [ ] **Deploy lifecycle polish**: build → deploy status propagation to canvas
       node, failed-deploy surfacing with log tail link, rollback confirmation.
 - [ ] **Node/port collision handling**: two services claiming the same host
