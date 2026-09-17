@@ -2,9 +2,13 @@ package api
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -331,7 +335,7 @@ func (h *NodeAgentHandler) RegisterAgent(c *gin.Context) {
 	}
 
 	authToken := firstNonEmpty(req.AuthToken, agentAuthTokenFromRequest(c))
-	if !isValidAgentAuthToken(authToken) {
+	if !h.isValidAgentAuthToken(c.Request.Context(), authToken) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid auth token"})
 		return
 	}
@@ -532,7 +536,7 @@ func (h *NodeAgentHandler) SendHeartbeat(c *gin.Context) {
 		return
 	}
 	authToken := firstNonEmpty(heartbeat.AuthToken, agentAuthTokenFromRequest(c))
-	if !isValidAgentAuthToken(authToken) {
+	if !h.isValidAgentAuthToken(c.Request.Context(), authToken) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid auth token"})
 		return
 	}
@@ -582,7 +586,7 @@ func (h *NodeAgentHandler) SendHeartbeat(c *gin.Context) {
 
 // GetPendingCommandsForAgent exposes queued commands to token-authenticated node agents.
 func (h *NodeAgentHandler) GetPendingCommandsForAgent(c *gin.Context) {
-	if !isValidAgentAuthToken(agentAuthTokenFromRequest(c)) {
+	if !h.isValidAgentAuthToken(c.Request.Context(), agentAuthTokenFromRequest(c)) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid auth token"})
 		return
 	}
@@ -603,7 +607,7 @@ func (h *NodeAgentHandler) GetPendingCommandsForAgent(c *gin.Context) {
 
 // CompleteCommand lets a node agent report command completion or failure.
 func (h *NodeAgentHandler) CompleteCommand(c *gin.Context) {
-	if !isValidAgentAuthToken(agentAuthTokenFromRequest(c)) {
+	if !h.isValidAgentAuthToken(c.Request.Context(), agentAuthTokenFromRequest(c)) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid auth token"})
 		return
 	}
@@ -1013,22 +1017,47 @@ func buildMetricPoint(ts time.Time, resources NodeResources, load SystemLoad, co
 }
 
 func isValidAgentAuthToken(token string) bool {
-	candidates := configuredAgentAuthTokens()
-	if len(candidates) == 0 {
+	token = strings.TrimSpace(token)
+	if token == "" {
 		return false
+	}
+
+	for _, candidate := range configuredAgentAuthTokens() {
+		if subtle.ConstantTimeCompare([]byte(token), []byte(candidate)) == 1 {
+			return true
+		}
+	}
+	return false
+}
+
+// isValidAgentAuthTokenDB accepts env-configured shared tokens or a
+// DB-issued onboarding token (matched by sha256 hash, never stored raw).
+func (h *NodeAgentHandler) isValidAgentAuthToken(ctx context.Context, token string) bool {
+	if isValidAgentAuthToken(token) {
+		return true
 	}
 
 	token = strings.TrimSpace(token)
 	if token == "" {
 		return false
 	}
-
-	for _, candidate := range candidates {
-		if subtle.ConstantTimeCompare([]byte(token), []byte(candidate)) == 1 {
-			return true
-		}
+	sum := sha256.Sum256([]byte(token))
+	hash := hex.EncodeToString(sum[:])
+	if _, err := h.q.GetActiveAgentAuthTokenByHash(ctx, hash); err != nil {
+		return false
 	}
-	return false
+	_ = h.q.TouchAgentAuthToken(ctx, hash)
+	return true
+}
+
+func generateAgentAuthToken() (token string, hash string, err error) {
+	buf := make([]byte, 24)
+	if _, err = rand.Read(buf); err != nil {
+		return "", "", err
+	}
+	token = "cagt_" + hex.EncodeToString(buf)
+	sum := sha256.Sum256([]byte(token))
+	return token, hex.EncodeToString(sum[:]), nil
 }
 
 func agentAuthTokenFromRequest(c *gin.Context) string {
@@ -1093,6 +1122,90 @@ func maxInt(a, b int) int {
 	return b
 }
 
+// --- onboarding token management ---
+
+func agentAuthTokenJSON(t sqlcdb.AgentAuthToken) gin.H {
+	row := gin.H{
+		"id":      t.ID,
+		"label":   t.Label,
+		"revoked": t.RevokedAt.Valid,
+	}
+	if t.CreatedAt.Valid {
+		row["created_at"] = t.CreatedAt.Time
+	}
+	if t.LastUsedAt.Valid {
+		row["last_used_at"] = t.LastUsedAt.Time
+	}
+	if t.RevokedAt.Valid {
+		row["revoked_at"] = t.RevokedAt.Time
+	}
+	return row
+}
+
+// CreateAgentToken issues a new onboarding token. The raw token is returned
+// once and never stored — only its sha256 hash persists.
+func (h *NodeAgentHandler) CreateAgentToken(c *gin.Context) {
+	var req struct {
+		Label string `json:"label"`
+	}
+	_ = c.ShouldBindJSON(&req)
+
+	token, hash, err := generateAgentAuthToken()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
+		return
+	}
+
+	row, err := h.q.CreateAgentAuthToken(c.Request.Context(), sqlcdb.CreateAgentAuthTokenParams{
+		TokenHash: hash,
+		Label:     strings.TrimSpace(req.Label),
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to store token"})
+		return
+	}
+
+	payload := agentAuthTokenJSON(row)
+	payload["token"] = token
+	c.JSON(http.StatusCreated, payload)
+}
+
+// ListAgentTokens returns issued onboarding tokens (metadata only, never hashes).
+func (h *NodeAgentHandler) ListAgentTokens(c *gin.Context) {
+	rows, err := h.q.ListAgentAuthTokens(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch tokens"})
+		return
+	}
+
+	tokens := make([]gin.H, 0, len(rows))
+	for _, row := range rows {
+		tokens = append(tokens, agentAuthTokenJSON(row))
+	}
+	c.JSON(http.StatusOK, gin.H{"tokens": tokens})
+}
+
+// RevokeAgentToken marks an onboarding token as revoked; agents presenting it
+// are rejected from then on.
+func (h *NodeAgentHandler) RevokeAgentToken(c *gin.Context) {
+	id, err := uuid.Parse(strings.TrimSpace(c.Param("id")))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid token id"})
+		return
+	}
+
+	row, err := h.q.RevokeAgentAuthToken(c.Request.Context(), id)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, sql.ErrNoRows) {
+			status = http.StatusNotFound
+		}
+		c.JSON(status, gin.H{"error": "Token not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "revoked", "id": row.ID})
+}
+
 // SetupPublicRoutes registers token-authenticated agent ingestion routes.
 func (h *NodeAgentHandler) SetupPublicRoutes(router *gin.RouterGroup) {
 	agents := router.Group("/agents")
@@ -1106,6 +1219,13 @@ func (h *NodeAgentHandler) SetupPublicRoutes(router *gin.RouterGroup) {
 
 // SetupRoutes registers authenticated dashboard/control agent routes.
 func (h *NodeAgentHandler) SetupRoutes(router *gin.RouterGroup) {
+	tokens := router.Group("/agent-tokens")
+	{
+		tokens.POST("", h.CreateAgentToken)
+		tokens.GET("", h.ListAgentTokens)
+		tokens.DELETE("/:id", h.RevokeAgentToken)
+	}
+
 	agents := router.Group("/agents")
 	{
 		agents.GET("", h.GetAgents)

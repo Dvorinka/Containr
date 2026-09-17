@@ -16,6 +16,7 @@ type Querier interface {
 	CountProjectsByUser(ctx context.Context, arg CountProjectsByUserParams) (int64, error)
 	CountServicesByProjectAndName(ctx context.Context, arg CountServicesByProjectAndNameParams) (int64, error)
 	CreateAgent(ctx context.Context, arg CreateAgentParams) (NodeAgent, error)
+	CreateAgentAuthToken(ctx context.Context, arg CreateAgentAuthTokenParams) (AgentAuthToken, error)
 	CreateCommand(ctx context.Context, arg CreateCommandParams) (AgentCommand, error)
 	CreateContainer(ctx context.Context, arg CreateContainerParams) (ContainerInstance, error)
 	CreateDatabaseBackup(ctx context.Context, arg CreateDatabaseBackupParams) error
@@ -26,6 +27,7 @@ type Querier interface {
 	DeleteAgent(ctx context.Context, id string) error
 	DeleteDatabaseServiceByIDAndUser(ctx context.Context, arg DeleteDatabaseServiceByIDAndUserParams) error
 	DeleteProjectByID(ctx context.Context, projectID uuid.UUID) (int64, error)
+	GetActiveAgentAuthTokenByHash(ctx context.Context, tokenHash string) (AgentAuthToken, error)
 	GetAgent(ctx context.Context, id string) (NodeAgent, error)
 	GetAgentByHostAndIP(ctx context.Context, arg GetAgentByHostAndIPParams) (NodeAgent, error)
 	GetCommandForAgent(ctx context.Context, arg GetCommandForAgentParams) (AgentCommand, error)
@@ -40,6 +42,7 @@ type Querier interface {
 	GetServiceTemplateByID(ctx context.Context, id string) (ServiceTemplate, error)
 	InsertAgentHeartbeat(ctx context.Context, arg InsertAgentHeartbeatParams) error
 	InsertProjectEnvironment(ctx context.Context, arg InsertProjectEnvironmentParams) error
+	ListAgentAuthTokens(ctx context.Context) ([]AgentAuthToken, error)
 	ListAgentHeartbeatsSince(ctx context.Context, arg ListAgentHeartbeatsSinceParams) ([]AgentHeartbeat, error)
 	ListAgents(ctx context.Context) ([]NodeAgent, error)
 	ListCommandsForAgent(ctx context.Context, nodeAgentID string) ([]AgentCommand, error)
@@ -50,10 +53,12 @@ type Querier interface {
 	ListProjectsWithStatsByUser(ctx context.Context, arg ListProjectsWithStatsByUserParams) ([]ListProjectsWithStatsByUserRow, error)
 	ListServiceTemplates(ctx context.Context) ([]ServiceTemplate, error)
 	ListServiceTemplatesByCategory(ctx context.Context, category string) ([]ServiceTemplate, error)
+	RevokeAgentAuthToken(ctx context.Context, id uuid.UUID) (AgentAuthToken, error)
 	SetDatabaseBackupStatusByID(ctx context.Context, arg SetDatabaseBackupStatusByIDParams) error
 	SetDatabaseServiceStatusAndConnectionByID(ctx context.Context, arg SetDatabaseServiceStatusAndConnectionByIDParams) error
 	SetDatabaseServiceStatusByID(ctx context.Context, arg SetDatabaseServiceStatusByIDParams) error
 	SetDatabaseServiceStatusByIDAndUser(ctx context.Context, arg SetDatabaseServiceStatusByIDAndUserParams) error
+	TouchAgentAuthToken(ctx context.Context, tokenHash string) error
 	UpdateAgent(ctx context.Context, arg UpdateAgentParams) (NodeAgent, error)
 	UpdateAgentHeartbeat(ctx context.Context, arg UpdateAgentHeartbeatParams) error
 	UpdateContainerStatus(ctx context.Context, arg UpdateContainerStatusParams) error

@@ -50,10 +50,10 @@ The backend exposes **~90 route registrations**; the frontend consumes roughly
 | Managed databases (CRUD, actions, backup/restore) | done | **missing** | mentioned in README |
 | Preview environments (CRUD, promote, cleanup) | done | **missing** | not documented |
 | Security scans, vulnerabilities, compliance/GDPR reports | done | **missing** | README lists it |
-| Audit logs | done | partial (list call exists; thin UI) | — |
+| Audit logs | done | done — `/settings/audit-logs` filterable page | done |
 | Autoscaling policies + manual scale | done | **missing** | `docs/guides/AUTOSCALING.md` describes UI that does not exist |
 | HA / failover policies | done | **missing** | not documented |
-| Node agents (register additional VPS/LXC/VM hosts, heartbeats) | done | partial — agents list only, no onboard flow | spec Task 7 partially done |
+| Node agents (register additional VPS/LXC/VM hosts, heartbeats) | done | done — token issue/revoke + install command on Usage page | done |
 | API gateway (merged APwhy): upstream services, API keys, rate limits, ops/traffic analytics | management API done — native handlers under `/api/v1/gateway/*`, schema-corrected; **traffic proxy path still not mounted** (Phase 2) | **missing** | not documented |
 | Proxmox provider (cluster/nodes/VM/LXC CRUD) | written, **routes never registered** — unreachable | none | not documented |
 | Notifications (build/audit feed) | via existing APIs | done (shell bell menu) | — |
@@ -274,9 +274,14 @@ All of these have working APIs and no UI. Cheapest feature wins in the repo.
       and accepts `user_id`/`actor`/`since` filters. Widening is consistent
       with the platform's no-roles trust model (every authed user can already
       create users).
-- [ ] **Agents/nodes**: onboarding flow — generate token, show install command
-      for `cmd/agent`, node cards with heartbeat status + telemetry on Usage
-      page.
+- [x] **Agents/nodes**: onboarding flow on the Usage page — issue per-node
+      tokens (raw `cagt_…` shown once, only sha256 hash stored in
+      `agent_auth_tokens`), one-time copy + prefilled
+      `CONTAINR_API_URL`/`CONTAINR_AGENT_AUTH_TOKEN` install command, issued
+      tokens list with label/created/last-used and revoke (revoked tokens
+      rejected at register/heartbeat — verified e2e). Env-configured shared
+      tokens (`CONTAINR_AGENT_AUTH_TOKEN(S)`) still accepted. Node cards with
+      heartbeat status + telemetry were already on the Usage page.
 - [ ] **API Gateway (merged APwhy, full revival)** — new runtime work, not
       just UI. Target: every upstream service published through Containr is
       reachable, key-gated, rate-limited, and metered:

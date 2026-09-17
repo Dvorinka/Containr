@@ -15,8 +15,13 @@ import {
   listGitProviders,
   listProjects,
   listTemplates,
+  createAgentToken,
+  listAgentTokens,
+  revokeAgentToken,
   updateCurrentUserProfile,
+  type AgentAuthTokenCreated,
 } from '@/lib/api-client';
+import { formatRelative } from '@/lib/time';
 import { getAuthBaseUrl, signOutAuthSession } from '@/lib/auth-client';
 import { useBuildUpdates } from '@/lib/use-build-updates';
 import { EnhancedMetricCard, LineAreaChart, DonutChart, SegmentedBar, BarChart } from '@/shared/components';
@@ -52,6 +57,7 @@ import {
   MemoryStick,
   ScrollText,
   ChevronRight,
+  Copy,
 } from 'lucide-react';
 
 function SecondaryPageHeader({ title, description }: { title: string; description: string }) {
@@ -180,6 +186,24 @@ export function UsagePage() {
     queryFn: listAgents,
     refetchInterval: 15_000,
   });
+  const agentTokensQuery = useQuery({
+    queryKey: ['agent-tokens'],
+    queryFn: listAgentTokens,
+  });
+  const [tokenLabel, setTokenLabel] = useState('');
+  const [issuedToken, setIssuedToken] = useState<AgentAuthTokenCreated | null>(null);
+  const createTokenMutation = useMutation({
+    mutationFn: () => createAgentToken(tokenLabel.trim()),
+    onSuccess: (data) => {
+      setIssuedToken(data);
+      setTokenLabel('');
+      queryClient.invalidateQueries({ queryKey: ['agent-tokens'] });
+    },
+  });
+  const revokeTokenMutation = useMutation({
+    mutationFn: (id: string) => revokeAgentToken(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['agent-tokens'] }),
+  });
 
   const builds = buildsQuery.data?.builds ?? [];
   const liveStatus = useBuildUpdates(
@@ -263,7 +287,7 @@ export function UsagePage() {
   const availableAgentMemory = agents.reduce((sum, agent) => sum + agent.resources.memory.available, 0);
   const agentEndpoint = getAgentPublicBaseUrl();
   const connectCommand = `CONTAINR_API_URL=${getApiBaseUrl().replace(/\/api\/v1$/, '')} \\
-CONTAINR_AGENT_AUTH_TOKEN=<token> \\
+CONTAINR_AGENT_AUTH_TOKEN=${issuedToken?.token ?? '<token>'} \\
 containr-agent`;
 
   let buildActivityBody = 'Track deployment frequency and failed rollouts over time.';
@@ -506,12 +530,78 @@ containr-agent`;
                     <Terminal size={14} className="text-[var(--text-tertiary)]" />
                     <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Connect Node</span>
                   </div>
+
+                  <div className="mb-3 flex gap-2">
+                    <input
+                      value={tokenLabel}
+                      onChange={(e) => setTokenLabel(e.target.value)}
+                      placeholder="Token label (e.g. node name)"
+                      className="h-8 flex-1 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all"
+                    />
+                    <button
+                      onClick={() => createTokenMutation.mutate()}
+                      disabled={createTokenMutation.isPending}
+                      className="h-8 px-3 rounded-[var(--radius-md)] text-xs font-medium text-[var(--accent-on)] transition-all disabled:opacity-50"
+                      style={{ background: 'var(--accent-primary)' }}
+                    >
+                      {createTokenMutation.isPending ? 'Issuing…' : 'Issue token'}
+                    </button>
+                  </div>
+
+                  {issuedToken && (
+                    <div className="mb-3 rounded-[var(--radius-md)] border border-[var(--success)]/30 bg-[var(--success-soft)] p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="mono text-xs text-[var(--text-primary)] break-all">{issuedToken.token}</span>
+                        <button
+                          onClick={() => void navigator.clipboard.writeText(issuedToken.token ?? '')}
+                          className="flex items-center gap-1 text-xs text-[var(--accent-primary)] hover:underline shrink-0"
+                        >
+                          <Copy size={11} />
+                          Copy
+                        </button>
+                      </div>
+                      <p className="mt-1 text-xs text-[var(--text-tertiary)]">Shown once — store it now. Only the hash is kept server-side.</p>
+                    </div>
+                  )}
+                  {createTokenMutation.isError && (
+                    <p className="mb-3 text-xs text-[var(--error)]">
+                      {createTokenMutation.error instanceof Error ? createTokenMutation.error.message : 'Failed to issue token'}
+                    </p>
+                  )}
+
                   <pre className="mono text-xs text-[var(--text-secondary)] whitespace-pre-wrap">{connectCommand}</pre>
                   <div className="mt-4 space-y-2 text-xs text-[var(--text-tertiary)]">
                     <p>Agent endpoint: <span className="mono text-[var(--text-primary)]">{agentEndpoint}</span></p>
-                    <p>Set <span className="mono text-[var(--text-primary)]">CONTAINR_AGENT_AUTH_TOKEN</span> to a value accepted by the backend.</p>
+                    <p>Use an issued token above, or set <span className="mono text-[var(--text-primary)]">CONTAINR_AGENT_AUTH_TOKENS</span> on the backend.</p>
                     <p>Agent sends host resources, polls pending Docker commands, and reports command results.</p>
                   </div>
+
+                  {(agentTokensQuery.data ?? []).length > 0 && (
+                    <div className="mt-4 border-t border-[var(--border-subtle)] pt-3">
+                      <p className="mb-2 text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Issued tokens</p>
+                      <div className="space-y-1.5">
+                        {(agentTokensQuery.data ?? []).map((t) => (
+                          <div key={t.id} className="flex items-center justify-between gap-2 text-xs">
+                            <div className="min-w-0">
+                              <span className="text-[var(--text-primary)]">{t.label || t.id?.slice(0, 8)}</span>
+                              <span className="ml-2 text-[var(--text-muted)]">
+                                {t.revoked ? 'revoked' : t.last_used_at ? `used ${formatRelative(t.last_used_at)}` : 'unused'}
+                              </span>
+                            </div>
+                            {!t.revoked && (
+                              <button
+                                onClick={() => revokeTokenMutation.mutate(t.id ?? '')}
+                                disabled={revokeTokenMutation.isPending}
+                                className="text-[var(--error)] hover:underline disabled:opacity-50 shrink-0"
+                              >
+                                Revoke
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </section>

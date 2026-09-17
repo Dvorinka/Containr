@@ -160,6 +160,15 @@ CREATE TABLE agent_commands (
     completed_at TIMESTAMP WITH TIME ZONE
 );
 
+CREATE TABLE agent_auth_tokens (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    token_hash TEXT NOT NULL UNIQUE,
+    label VARCHAR(255) NOT NULL DEFAULT '',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    last_used_at TIMESTAMP WITH TIME ZONE,
+    revoked_at TIMESTAMP WITH TIME ZONE
+);
+
 CREATE TABLE agent_heartbeats (
     id VARCHAR(255) PRIMARY KEY,
     node_agent_id VARCHAR(255) NOT NULL REFERENCES node_agents(id) ON DELETE CASCADE,

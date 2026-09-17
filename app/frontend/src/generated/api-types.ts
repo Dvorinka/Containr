@@ -1193,6 +1193,127 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/agent-tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List agent onboarding tokens
+         * @description Returns issued onboarding token metadata (never token values or hashes).
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Token list */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            tokens?: components["schemas"]["AgentAuthToken"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Issue agent onboarding token
+         * @description Generates a new agent onboarding token. The raw token is returned once and never stored — only its SHA-256 hash persists.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["CreateAgentTokenRequest"];
+                };
+            };
+            responses: {
+                /** @description Token issued; raw value returned once */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AgentAuthTokenCreated"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agent-tokens/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke agent onboarding token
+         * @description Marks a token as revoked. Agents presenting it are rejected from then on.
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Token revoked */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status?: string;
+                            id?: string;
+                        };
+                    };
+                };
+                /** @description Token not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/audit-logs": {
         parameters: {
             query?: never;
@@ -7333,6 +7454,26 @@ export interface components {
             created_at?: string;
             /** Format: date-time */
             updated_at?: string;
+        };
+        AgentAuthToken: {
+            /** Format: uuid */
+            id: string;
+            label: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            last_used_at?: string;
+            revoked: boolean;
+            /** Format: date-time */
+            revoked_at?: string;
+        };
+        AgentAuthTokenCreated: components["schemas"]["AgentAuthToken"] & {
+            /** @description Raw token value, returned exactly once at creation */
+            token: string;
+        };
+        CreateAgentTokenRequest: {
+            /** @description Human-readable label for the token (e.g. node name) */
+            label?: string;
         };
         AgentCapabilities: {
             container_runtimes?: string[];

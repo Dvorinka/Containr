@@ -883,6 +883,25 @@ export async function listAgents(): Promise<NodeAgentEntity[]> {
   return normalizeAgentArray(payload.agents);
 }
 
+export type AgentAuthToken = components['schemas']['AgentAuthToken'];
+export type AgentAuthTokenCreated = components['schemas']['AgentAuthTokenCreated'];
+
+export async function createAgentToken(label?: string): Promise<AgentAuthTokenCreated> {
+  return requestJson<AgentAuthTokenCreated>(`/agent-tokens`, {
+    method: 'POST',
+    body: JSON.stringify({ label: label ?? '' }),
+  });
+}
+
+export async function listAgentTokens(): Promise<AgentAuthToken[]> {
+  const payload = await requestJson<{ tokens?: AgentAuthToken[] }>(`/agent-tokens`);
+  return payload.tokens ?? [];
+}
+
+export async function revokeAgentToken(id: string): Promise<void> {
+  await requestJson(`/agent-tokens/${id}`, { method: 'DELETE' });
+}
+
 export async function createProject(input: CreateProjectInput): Promise<ProjectEntity> {
   const payload = await requestJson<RawProject | { project?: RawProject }>(`/projects`, {
     method: 'POST',

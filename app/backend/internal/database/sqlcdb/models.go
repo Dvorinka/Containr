@@ -13,6 +13,15 @@ import (
 	"github.com/sqlc-dev/pqtype"
 )
 
+type AgentAuthToken struct {
+	ID         uuid.UUID    `json:"id"`
+	TokenHash  string       `json:"token_hash"`
+	Label      string       `json:"label"`
+	CreatedAt  sql.NullTime `json:"created_at"`
+	LastUsedAt sql.NullTime `json:"last_used_at"`
+	RevokedAt  sql.NullTime `json:"revoked_at"`
+}
+
 type AgentCommand struct {
 	ID          string                `json:"id"`
 	Type        string                `json:"type"`
