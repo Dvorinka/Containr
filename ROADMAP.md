@@ -52,7 +52,7 @@ The backend exposes **~95 route registrations**; the frontend consumes
 | Security scans, vulnerabilities, compliance/GDPR reports | done | **missing** | README lists it |
 | Audit logs | done | done — `/settings/audit-logs` filterable page | done |
 | Autoscaling policies + manual scale | done | done (beta) | per-service Scaling section on service detail; policies in-memory, lost on restart |
-| HA / failover policies | done | **missing** | not documented |
+| HA / failover policies | done | done (beta) | `/ha` page: manager toggle, failover policies, alerts, health results; state is in-memory |
 | Node agents (register additional VPS/LXC/VM hosts, heartbeats) | done | done — token issue/revoke + install command on Usage page | done |
 | API gateway (merged APwhy): upstream services, API keys, rate limits, ops/traffic analytics | management API done — native handlers under `/api/v1/gateway/*`, schema-corrected; **traffic proxy path still not mounted** (Phase 2) | **missing** | not documented |
 | Proxmox provider (cluster/nodes/VM/LXC CRUD) | written, **routes never registered** — unreachable | none | not documented |
@@ -366,8 +366,12 @@ reaches the upstream container and appears in the analytics tables.
       (fails "no ready nodes" without agents — error surfaces in UI).
       Scaling history timeline not surfaced. Beta: policies are
       in-memory — they do not survive a backend restart.
-- [ ] **HA / failover UI** (`/ha/*`): enable/disable per project, failover
-      policies, manual failover with confirmation, status banner. Beta.
+- [x] **HA / failover UI** (`/ha/*`): `/ha` page with manager enable/disable,
+      status cards (nodes/health checks/alerts), manual failover with
+      confirmation, per-service failover policy CRUD (project→service
+      picker), active alerts with resolve, health check results. Verified
+      live. Beta: policies/alerts are in-memory, lost on restart.
+      Health-check and notifier CRUD endpoints remain unexposed.
 - [ ] **Security center** (`/security/*`): scan trigger per project, finding
       list with severity, compliance report viewer, audit correlation.
       Verify the scanner actually runs Trivy/Grype or document the real

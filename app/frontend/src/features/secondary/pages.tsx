@@ -29,8 +29,18 @@ import {
   getGitHubAppInstallUrl,
   connectGitHubApp,
   updateCurrentUserProfile,
+  getHAStatus,
+  setHAEnabled,
+  triggerFailover,
+  listFailoverPolicies,
+  setFailoverPolicy,
+  deleteFailoverPolicy,
+  listActiveAlerts,
+  resolveAlert,
+  listHealthResults,
   type AgentAuthTokenCreated,
   type DatabaseEntity,
+  type FailoverPolicy,
 } from '@/lib/api-client';
 import { formatRelative } from '@/lib/time';
 import { getAuthBaseUrl, signOutAuthSession } from '@/lib/auth-client';
@@ -73,6 +83,9 @@ import {
   Play,
   Square,
   Archive,
+  ShieldCheck,
+  Zap,
+  HeartPulse,
 } from 'lucide-react';
 
 function SecondaryPageHeader({ title, description }: { title: string; description: string }) {
@@ -1882,6 +1895,411 @@ function BackupScheduleRow({
           {mutation.error instanceof Error ? mutation.error.message : 'Failed to save schedule'}
         </span>
       )}
+    </div>
+  );
+}
+
+const failoverStrategies = [
+  { value: 'active_passive', label: 'Active / passive' },
+  { value: 'active_active', label: 'Active / active' },
+  { value: 'graceful', label: 'Graceful' },
+] as const;
+
+export function HighAvailabilityPage() {
+  const queryClient = useQueryClient();
+  const [failoverReason, setFailoverReason] = useState('');
+  const [policyForm, setPolicyForm] = useState<{
+    serviceId: string;
+    strategy: string;
+    minHealthyNodes: string;
+    maxFailures: string;
+    enabled: boolean;
+    editing: boolean;
+  } | null>(null);
+  const [policyProjectId, setPolicyProjectId] = useState('');
+
+  const statusQuery = useQuery({ queryKey: ['ha-status'], queryFn: getHAStatus, refetchInterval: 15_000 });
+  const policiesQuery = useQuery({ queryKey: ['ha-policies'], queryFn: listFailoverPolicies });
+  const alertsQuery = useQuery({ queryKey: ['ha-alerts'], queryFn: listActiveAlerts, refetchInterval: 15_000 });
+  const healthQuery = useQuery({ queryKey: ['ha-health'], queryFn: listHealthResults, refetchInterval: 30_000 });
+  const projectsQuery = useQuery({ queryKey: ['projects'], queryFn: listProjects });
+  const servicesQuery = useQuery({
+    queryKey: ['services', policyProjectId],
+    queryFn: () => listServicesByProject(policyProjectId),
+    enabled: Boolean(policyProjectId),
+  });
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['ha-status'] });
+    queryClient.invalidateQueries({ queryKey: ['ha-policies'] });
+    queryClient.invalidateQueries({ queryKey: ['ha-alerts'] });
+  };
+
+  const toggleMutation = useMutation({
+    mutationFn: (enabled: boolean) => setHAEnabled(enabled),
+    onSuccess: invalidate,
+  });
+  const failoverMutation = useMutation({
+    mutationFn: () => triggerFailover(failoverReason.trim()),
+    onSuccess: () => { setFailoverReason(''); invalidate(); },
+  });
+  const savePolicyMutation = useMutation({
+    mutationFn: async () => {
+      if (!policyForm) return;
+      await setFailoverPolicy({
+        service_id: policyForm.serviceId,
+        enabled: policyForm.enabled,
+        failover_strategy: policyForm.strategy,
+        min_healthy_nodes: Number(policyForm.minHealthyNodes) || 1,
+        max_failures: Number(policyForm.maxFailures) || 3,
+        failover_timeout: 30e9,
+        recovery_timeout: 60e9,
+      });
+    },
+    onSuccess: () => { setPolicyForm(null); invalidate(); },
+  });
+  const deletePolicyMutation = useMutation({
+    mutationFn: (serviceId: string) => deleteFailoverPolicy(serviceId),
+    onSuccess: invalidate,
+  });
+  const resolveMutation = useMutation({
+    mutationFn: (alertId: string) => resolveAlert(alertId),
+    onSuccess: invalidate,
+  });
+
+  const status = statusQuery.data;
+  const pageError =
+    statusQuery.error ?? policiesQuery.error ?? alertsQuery.error ?? healthQuery.error ??
+    toggleMutation.error ?? failoverMutation.error ?? savePolicyMutation.error ??
+    deletePolicyMutation.error ?? resolveMutation.error;
+
+  return (
+    <div className="flex flex-col min-h-full">
+      <SecondaryPageHeader
+        title="High availability"
+        description="Failover manager, policies, and active alerts"
+      />
+      <div className="p-8 space-y-8">
+        {pageError && (
+          <div className="rounded-[var(--radius-md)] border border-[var(--error)] bg-[var(--error)]/10 px-4 py-3 text-sm text-[var(--error)]">
+            {pageError instanceof Error ? pageError.message : 'Request failed'}
+          </div>
+        )}
+
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            title="Manager"
+            value={status?.enabled ? 'Enabled' : 'Disabled'}
+            description="HA manager state"
+            icon={ShieldCheck}
+            color={status?.enabled ? 'success' : 'default'}
+          />
+          <StatCard
+            title="Nodes"
+            value={`${status?.nodes?.healthy ?? 0}/${status?.nodes?.total ?? 0}`}
+            description={`${status?.nodes?.unhealthy ?? 0} unhealthy`}
+            icon={Server}
+            color={status?.nodes?.unhealthy ? 'warning' : 'default'}
+          />
+          <StatCard
+            title="Health checks"
+            value={`${status?.health_checks?.healthy ?? 0}/${status?.health_checks?.total ?? 0}`}
+            description={`${status?.health_checks?.unhealthy ?? 0} unhealthy`}
+            icon={HeartPulse}
+            color={status?.health_checks?.unhealthy ? 'warning' : 'default'}
+          />
+          <StatCard
+            title="Active alerts"
+            value={String(status?.alerts?.active ?? 0)}
+            description="Firing right now"
+            icon={AlertCircle}
+            color={status?.alerts?.active ? 'error' : 'default'}
+          />
+        </div>
+
+        <div className="panel p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <Zap size={18} className="text-[var(--accent-primary)]" />
+            <h2 className="text-base font-semibold text-[var(--text-primary)]">Manager controls</h2>
+          </div>
+          <div className="flex flex-wrap items-end gap-3">
+            <button
+              type="button"
+              disabled={toggleMutation.isPending || statusQuery.isLoading}
+              onClick={() => toggleMutation.mutate(!status?.enabled)}
+              className="px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-contrast)] text-sm font-medium disabled:opacity-50"
+            >
+              {status?.enabled ? 'Disable HA manager' : 'Enable HA manager'}
+            </button>
+            <div className="flex items-end gap-2">
+              <div>
+                <label className="block text-xs text-[var(--text-tertiary)] mb-1">Failover reason</label>
+                <input
+                  value={failoverReason}
+                  onChange={(e) => setFailoverReason(e.target.value)}
+                  placeholder="Manual failover"
+                  className="px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)] w-56"
+                />
+              </div>
+              <button
+                type="button"
+                disabled={failoverMutation.isPending}
+                onClick={() => {
+                  if (window.confirm('Trigger a platform failover now? Services may be rescheduled.')) {
+                    failoverMutation.mutate();
+                  }
+                }}
+                className="px-4 py-2 rounded-[var(--radius-md)] border border-[var(--warning)] text-sm text-[var(--warning)] disabled:opacity-50"
+              >
+                {failoverMutation.isPending ? 'Triggering…' : 'Trigger failover'}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="panel p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <AlertCircle size={18} className="text-[var(--accent-primary)]" />
+            <h2 className="text-base font-semibold text-[var(--text-primary)]">Active alerts</h2>
+          </div>
+          {alertsQuery.isLoading ? (
+            <p className="text-sm text-[var(--text-secondary)]">Loading…</p>
+          ) : (alertsQuery.data ?? []).length === 0 ? (
+            <p className="text-sm text-[var(--text-tertiary)]">No active alerts.</p>
+          ) : (
+            <div className="space-y-2">
+              {(alertsQuery.data ?? []).map((alert) => (
+                <div
+                  key={alert.id}
+                  className="flex items-center justify-between rounded-[var(--radius-md)] border border-[var(--border-primary)] px-4 py-3"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm text-[var(--text-primary)] truncate">{alert.message ?? alert.id}</p>
+                    <p className="text-xs text-[var(--text-tertiary)]">
+                      {alert.severity ?? 'info'} · since {alert.starts_at ? formatRelative(alert.starts_at) : '—'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={resolveMutation.isPending}
+                    onClick={() => alert.id && resolveMutation.mutate(alert.id)}
+                    className="ml-4 shrink-0 px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-primary)] text-xs text-[var(--text-primary)] disabled:opacity-50"
+                  >
+                    Resolve
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="panel p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <ShieldCheck size={18} className="text-[var(--accent-primary)]" />
+              <h2 className="text-base font-semibold text-[var(--text-primary)]">Failover policies</h2>
+            </div>
+            {policyForm === null && (
+              <button
+                type="button"
+                onClick={() => setPolicyForm({ serviceId: '', strategy: 'active_passive', minHealthyNodes: '1', maxFailures: '3', enabled: true, editing: false })}
+                className="px-3 py-1.5 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-contrast)] text-xs font-medium"
+              >
+                New policy
+              </button>
+            )}
+          </div>
+
+          {policyForm !== null && (
+            <div className="rounded-[var(--radius-md)] border border-[var(--border-primary)] p-4 mb-4 space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                {policyForm.editing ? (
+                  <div>
+                    <label className="block text-xs text-[var(--text-tertiary)] mb-1">Service</label>
+                    <p className="px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)] font-mono">
+                      {policyForm.serviceId}
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <label className="block text-xs text-[var(--text-tertiary)] mb-1">Project</label>
+                      <select
+                        value={policyProjectId}
+                        onChange={(e) => { setPolicyProjectId(e.target.value); setPolicyForm({ ...policyForm, serviceId: '' }); }}
+                        className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)]"
+                      >
+                        <option value="">Select project…</option>
+                        {(projectsQuery.data ?? []).map((p) => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-[var(--text-tertiary)] mb-1">Service</label>
+                      <select
+                        value={policyForm.serviceId}
+                        onChange={(e) => setPolicyForm({ ...policyForm, serviceId: e.target.value })}
+                        disabled={!policyProjectId}
+                        className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)] disabled:opacity-50"
+                      >
+                        <option value="">Select service…</option>
+                        {(servicesQuery.data ?? []).map((s) => (
+                          <option key={s.id} value={s.id}>{s.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </>
+                )}
+                <div>
+                  <label className="block text-xs text-[var(--text-tertiary)] mb-1">Strategy</label>
+                  <select
+                    value={policyForm.strategy}
+                    onChange={(e) => setPolicyForm({ ...policyForm, strategy: e.target.value })}
+                    className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)]"
+                  >
+                    {failoverStrategies.map((s) => (
+                      <option key={s.value} value={s.value}>{s.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-[var(--text-tertiary)] mb-1">Min healthy nodes</label>
+                    <input
+                      type="number" min={1}
+                      value={policyForm.minHealthyNodes}
+                      onChange={(e) => setPolicyForm({ ...policyForm, minHealthyNodes: e.target.value })}
+                      className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-[var(--text-tertiary)] mb-1">Max failures</label>
+                    <input
+                      type="number" min={1}
+                      value={policyForm.maxFailures}
+                      onChange={(e) => setPolicyForm({ ...policyForm, maxFailures: e.target.value })}
+                      className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)]"
+                    />
+                  </div>
+                </div>
+              </div>
+              <label className="flex items-center gap-2 text-sm text-[var(--text-primary)]">
+                <input
+                  type="checkbox"
+                  checked={policyForm.enabled}
+                  onChange={(e) => setPolicyForm({ ...policyForm, enabled: e.target.checked })}
+                />
+                Enabled
+              </label>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  disabled={savePolicyMutation.isPending || !policyForm.serviceId}
+                  onClick={() => savePolicyMutation.mutate()}
+                  className="px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-contrast)] text-sm font-medium disabled:opacity-50"
+                >
+                  {savePolicyMutation.isPending ? 'Saving…' : 'Save policy'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPolicyForm(null)}
+                  className="px-4 py-2 rounded-[var(--radius-md)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)]"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {policiesQuery.isLoading ? (
+            <p className="text-sm text-[var(--text-secondary)]">Loading…</p>
+          ) : (policiesQuery.data ?? []).length === 0 ? (
+            <p className="text-sm text-[var(--text-tertiary)]">No failover policies configured.</p>
+          ) : (
+            <div className="space-y-2">
+              {(policiesQuery.data ?? []).map((policy: FailoverPolicy) => (
+                <div
+                  key={policy.service_id}
+                  className="flex items-center justify-between rounded-[var(--radius-md)] border border-[var(--border-primary)] px-4 py-3"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-[var(--text-primary)] font-mono truncate">{policy.service_id}</p>
+                    <p className="text-xs text-[var(--text-tertiary)]">
+                      {policy.enabled ? 'enabled' : 'disabled'} · {policy.failover_strategy ?? 'default'} ·
+                      min nodes {policy.min_healthy_nodes ?? '—'} · max failures {policy.max_failures ?? '—'}
+                    </p>
+                  </div>
+                  <div className="ml-4 flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setPolicyForm({
+                        serviceId: policy.service_id ?? '',
+                        strategy: policy.failover_strategy ?? 'active_passive',
+                        minHealthyNodes: String(policy.min_healthy_nodes ?? 1),
+                        maxFailures: String(policy.max_failures ?? 3),
+                        enabled: policy.enabled ?? true,
+                        editing: true,
+                      })}
+                      className="px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-primary)] text-xs text-[var(--text-primary)]"
+                    >
+                      Edit
+                    </button>
+                    {policy.enabled && (
+                      <button
+                        type="button"
+                        disabled={deletePolicyMutation.isPending}
+                        onClick={() => {
+                          if (window.confirm(`Disable failover for ${policy.service_id}?`)) {
+                            deletePolicyMutation.mutate(policy.service_id ?? '');
+                          }
+                        }}
+                        className="px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--error)] text-xs text-[var(--error)] disabled:opacity-50"
+                      >
+                        Disable
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="panel p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <HeartPulse size={18} className="text-[var(--accent-primary)]" />
+            <h2 className="text-base font-semibold text-[var(--text-primary)]">Health check results</h2>
+          </div>
+          {healthQuery.isLoading ? (
+            <p className="text-sm text-[var(--text-secondary)]">Loading…</p>
+          ) : (healthQuery.data ?? []).length === 0 ? (
+            <p className="text-sm text-[var(--text-tertiary)]">No health checks configured.</p>
+          ) : (
+            <div className="space-y-2">
+              {(healthQuery.data ?? []).slice(0, 20).map((result, i) => (
+                <div
+                  key={`${result.check_id}-${i}`}
+                  className="flex items-center justify-between rounded-[var(--radius-md)] border border-[var(--border-primary)] px-4 py-3"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm text-[var(--text-primary)] font-mono truncate">{result.check_id}</p>
+                    <p className="text-xs text-[var(--text-tertiary)]">{result.message || '—'}</p>
+                  </div>
+                  <div className="ml-4 text-right shrink-0">
+                    <p className={`text-xs font-medium ${result.status === 'healthy' ? 'text-[var(--success)]' : 'text-[var(--error)]'}`}>
+                      {result.status ?? 'unknown'}
+                    </p>
+                    <p className="text-xs text-[var(--text-tertiary)]">
+                      {result.timestamp ? formatRelative(result.timestamp) : ''}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

@@ -1535,3 +1535,70 @@ export async function manualScaleService(serviceId: string, replicas: number, re
     body: JSON.stringify({ replicas, reason }),
   });
 }
+
+export type FailoverPolicy = components['schemas']['FailoverPolicy'];
+
+export type HAStatus = {
+  enabled?: boolean;
+  nodes?: { total?: number; healthy?: number; unhealthy?: number };
+  health_checks?: { total?: number; healthy?: number; unhealthy?: number };
+  alerts?: { active?: number };
+};
+
+export type HAAlert = {
+  id?: string;
+  rule_id?: string;
+  status?: string;
+  severity?: string;
+  message?: string;
+  starts_at?: string;
+  ends_at?: string;
+};
+
+export type HAHealthResult = {
+  check_id?: string;
+  status?: string;
+  message?: string;
+  latency?: number;
+  timestamp?: string;
+};
+
+export async function getHAStatus(): Promise<HAStatus> {
+  const payload = await requestJson<{ status?: HAStatus }>('/ha/status');
+  return payload.status ?? {};
+}
+
+export async function setHAEnabled(enabled: boolean): Promise<void> {
+  await requestJson(enabled ? '/ha/enable' : '/ha/disable', { method: 'POST' });
+}
+
+export async function triggerFailover(reason: string): Promise<void> {
+  await requestJson('/ha/failover', { method: 'POST', body: JSON.stringify({ reason }) });
+}
+
+export async function listFailoverPolicies(): Promise<FailoverPolicy[]> {
+  const payload = await requestJson<{ policies?: FailoverPolicy[] }>('/ha/failover/policies');
+  return payload.policies ?? [];
+}
+
+export async function setFailoverPolicy(policy: FailoverPolicy): Promise<void> {
+  await requestJson('/ha/failover/policies', { method: 'POST', body: JSON.stringify(policy) });
+}
+
+export async function deleteFailoverPolicy(serviceId: string): Promise<void> {
+  await requestJson(`/ha/failover/policies/${encodeURIComponent(serviceId)}`, { method: 'DELETE' });
+}
+
+export async function listActiveAlerts(): Promise<HAAlert[]> {
+  const payload = await requestJson<{ alerts?: HAAlert[] }>('/ha/alerts/active');
+  return payload.alerts ?? [];
+}
+
+export async function resolveAlert(alertId: string): Promise<void> {
+  await requestJson(`/ha/alerts/${encodeURIComponent(alertId)}/resolve`, { method: 'POST' });
+}
+
+export async function listHealthResults(): Promise<HAHealthResult[]> {
+  const payload = await requestJson<{ results?: HAHealthResult[] }>('/ha/health/results');
+  return payload.results ?? [];
+}
