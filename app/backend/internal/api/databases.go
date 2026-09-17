@@ -40,21 +40,21 @@ const (
 
 // DatabaseService represents a managed database service
 type DatabaseService struct {
-	ID            string               `json:"id" db:"id"`
-	Name          string               `json:"name" db:"name"`
-	Type          string               `json:"type" db:"type"`     // postgresql, redis, mysql, mariadb, mongodb, clickhouse, dragonfly
-	Status        string               `json:"status" db:"status"` // running, stopped, building, error
-	Version       string               `json:"version" db:"version"`
-	Plan          string               `json:"plan" db:"plan"` // hobby, starter, standard, business
-	Region        string               `json:"region" db:"region"`
-	BackupSchedule string              `json:"backup_schedule,omitempty"`
-	NextBackupAt  *time.Time           `json:"next_backup_at,omitempty"`
-	CreatedAt     time.Time            `json:"created_at" db:"created_at"`
-	UpdatedAt     time.Time            `json:"updated_at" db:"updated_at"`
-	ConnectionURL string               `json:"connection_url"`
-	Metrics       DatabaseMetrics      `json:"metrics"`
-	Backups       DatabaseBackupConfig `json:"backups"`
-	Settings      DatabaseSettings     `json:"settings"`
+	ID             string               `json:"id" db:"id"`
+	Name           string               `json:"name" db:"name"`
+	Type           string               `json:"type" db:"type"`     // postgresql, redis, mysql, mariadb, mongodb, clickhouse, dragonfly
+	Status         string               `json:"status" db:"status"` // running, stopped, building, error
+	Version        string               `json:"version" db:"version"`
+	Plan           string               `json:"plan" db:"plan"` // hobby, starter, standard, business
+	Region         string               `json:"region" db:"region"`
+	BackupSchedule string               `json:"backup_schedule,omitempty"`
+	NextBackupAt   *time.Time           `json:"next_backup_at,omitempty"`
+	CreatedAt      time.Time            `json:"created_at" db:"created_at"`
+	UpdatedAt      time.Time            `json:"updated_at" db:"updated_at"`
+	ConnectionURL  string               `json:"connection_url"`
+	Metrics        DatabaseMetrics      `json:"metrics"`
+	Backups        DatabaseBackupConfig `json:"backups"`
+	Settings       DatabaseSettings     `json:"settings"`
 }
 
 // DatabaseMetrics represents database performance metrics
@@ -1040,7 +1040,7 @@ func (h *DatabaseHandler) resolveManagedRuntimeStatus(ctx context.Context, db Da
 
 func mapDatabaseServiceListRow(row sqlcdb.ListDatabaseServicesByUserRow) DatabaseService {
 	return DatabaseService{
-		ID:            row.ID,
+		ID:             row.ID,
 		Name:           row.Name,
 		Type:           row.Type,
 		Status:         row.Status,

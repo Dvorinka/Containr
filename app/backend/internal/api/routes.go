@@ -48,6 +48,12 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 	}
 	metricsCollector := metrics.NewMetricsCollector(scheduler, metricsStorage)
 	autoScaler := scaling.NewAutoScaler(scheduler, metricsCollector)
+	if db != nil && db.DB != nil {
+		autoScaler.WithPersistence(db.DB)
+		if err := autoScaler.LoadPolicies(context.Background()); err != nil {
+			log.Printf("Failed to restore scaling policies: %v", err)
+		}
+	}
 	haManager := ha.NewHighAvailabilityManager(scheduler, metricsCollector)
 	haAPIManager := NewHAManager(haManager)
 

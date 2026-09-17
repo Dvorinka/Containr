@@ -51,7 +51,7 @@ The backend exposes **~95 route registrations**; the frontend consumes
 | Preview environments (CRUD, promote, cleanup) | done (bookkeeping only — no real container deploy; URL is a placeholder) | done — Previews section on service detail | OPERATIONS.md |
 | Security scans, vulnerabilities, compliance/GDPR reports | done (heuristic scanner — image tags, insecure URLs, build-command smells; no Trivy/Grype binary scanning) | done — `/security` page (scan trigger, findings, metrics, history) | OPERATIONS.md |
 | Audit logs | done | done — `/settings/audit-logs` filterable page | done |
-| Autoscaling policies + manual scale | done | done (beta) — per-service Scaling section; policies in-memory, lost on restart | AUTOSCALING.md |
+| Autoscaling policies + manual scale | done | done — per-service Scaling section; policies persisted (scale events still in-memory) | AUTOSCALING.md |
 | HA / failover policies | done | done (beta) | OPERATIONS.md |
 | Node agents (register additional VPS/LXC/VM hosts, heartbeats) | done | done — token issue/revoke + install command on Usage page | done |
 | API gateway (merged APwhy): upstream services, API keys, rate limits, ops/traffic analytics | management API done — native handlers under `/api/v1/gateway/*`, schema-corrected; **traffic proxy path still not mounted** (Phase 2) | **missing** | not documented |
@@ -364,8 +364,8 @@ reaches the upstream container and appears in the analytics tables.
       on service detail Scaling section. Verified live: policy CRUD,
       state auto-registration, bounds rejection, scheduler dispatch
       (fails "no ready nodes" without agents — error surfaces in UI).
-      Scaling history timeline not surfaced. Beta: policies are
-      in-memory — they do not survive a backend restart.
+      Scaling history timeline not surfaced. Policies now persisted to
+      Postgres (survive restart); scale events remain in-memory.
 - [x] **HA / failover UI** (`/ha/*`): `/ha` page with manager enable/disable,
       status cards (nodes/health checks/alerts), manual failover with
       confirmation, per-service failover policy CRUD (project→service
@@ -441,10 +441,12 @@ security scans produce real reports, not empty tables.
       call sites across ~14 handler files remain (agents + tokens are sqlc).
       Mechanical port to `sqlc/queries/`; the consolidated baseline schema is
       now the codegen source of truth.
-- [ ] **Autoscaling persistence**: policies, service states, and scale
-      events live in process memory — a backend restart wipes them and
-      reverts replicas to policy minimums on next registration. Persist
-      to Postgres before leaving beta.
+- [x] **Autoscaling persistence**: `scaling_policies` table + autoscaler
+      `WithPersistence`/`LoadPolicies` — policies upsert on every set and
+      hydrate on boot, re-registering service state at `min_replicas`.
+      Verified: policy survives a backend restart. Scale event history and
+      placement maps remain in-memory (history resets on restart —
+      acceptable for beta).
 - [x] **Demo-data parity for new pages**: `demoDatabases` fixture wired
       into `/databases?demo=1`; `demoCronJobsByService` fixtures wired into
       the service Cron tab (worker + api demo services). Scaling, Previews,

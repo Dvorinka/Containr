@@ -2,6 +2,8 @@ package scaling
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math"
@@ -21,6 +23,7 @@ type AutoScaler struct {
 	servicePlacements map[string]map[string]string // service_id -> instance_id -> node_id
 	replicaSequence   map[string]int64
 	events            []ScaleEvent
+	persist           *sql.DB
 	mu                sync.RWMutex
 	checkInterval     time.Duration
 	cooldownPeriod    time.Duration
@@ -111,6 +114,119 @@ func NewAutoScaler(scheduler *deployment.Scheduler, metricsCollector *metrics.Me
 		cooldownPeriod:    5 * time.Minute,
 		maxStoredEvents:   200,
 		enabled:           true,
+	}
+}
+
+// WithPersistence attaches a Postgres handle so scaling policies survive
+// restarts. Call LoadPolicies once during startup to hydrate state.
+func (as *AutoScaler) WithPersistence(db *sql.DB) {
+	as.mu.Lock()
+	defer as.mu.Unlock()
+	as.persist = db
+}
+
+// LoadPolicies hydrates policies (and matching service states) from
+// scaling_policies. Missing/deleted services are skipped via the FK.
+func (as *AutoScaler) LoadPolicies(ctx context.Context) error {
+	as.mu.RLock()
+	db := as.persist
+	as.mu.RUnlock()
+	if db == nil {
+		return nil
+	}
+
+	rows, err := db.QueryContext(ctx, `
+		SELECT service_id, min_replicas, max_replicas, target_cpu, target_memory,
+		       scale_up_cooldown, scale_down_cooldown, scale_up_step, scale_down_step,
+		       metrics, thresholds, enabled, cost_optimization
+		FROM scaling_policies`)
+	if err != nil {
+		return fmt.Errorf("load scaling policies: %w", err)
+	}
+	defer rows.Close()
+
+	var loaded []*ScalingPolicy
+	for rows.Next() {
+		var (
+			p                         ScalingPolicy
+			metricsRaw, thresholdsRaw []byte
+			costRaw                   []byte
+		)
+		if err := rows.Scan(
+			&p.ServiceID, &p.MinReplicas, &p.MaxReplicas, &p.TargetCPU, &p.TargetMemory,
+			&p.ScaleUpCooldown, &p.ScaleDownCooldown, &p.ScaleUpStep, &p.ScaleDownStep,
+			&metricsRaw, &thresholdsRaw, &p.Enabled, &costRaw,
+		); err != nil {
+			return fmt.Errorf("scan scaling policy: %w", err)
+		}
+		if len(metricsRaw) > 0 {
+			_ = json.Unmarshal(metricsRaw, &p.Metrics)
+		}
+		if len(thresholdsRaw) > 0 {
+			_ = json.Unmarshal(thresholdsRaw, &p.Thresholds)
+		}
+		if len(costRaw) > 0 {
+			var cost CostOptimization
+			if json.Unmarshal(costRaw, &cost) == nil {
+				p.CostOptimization = &cost
+			}
+		}
+		loaded = append(loaded, &p)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	for _, policy := range loaded {
+		if err := as.SetScalingPolicy(policy); err != nil {
+			log.Printf("scaling: failed to restore policy for %s: %v", policy.ServiceID, err)
+		}
+	}
+	return nil
+}
+
+// persistPolicy upserts a policy row. Best-effort: the in-memory policy is
+// authoritative; a persistence failure is logged, not fatal.
+func (as *AutoScaler) persistPolicy(policy *ScalingPolicy) {
+	as.mu.RLock()
+	db := as.persist
+	as.mu.RUnlock()
+	if db == nil {
+		return
+	}
+
+	metricsRaw, _ := json.Marshal(policy.Metrics)
+	thresholdsRaw, _ := json.Marshal(policy.Thresholds)
+	costRaw, _ := json.Marshal(policy.CostOptimization)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, err := db.ExecContext(ctx, `
+		INSERT INTO scaling_policies (
+			service_id, min_replicas, max_replicas, target_cpu, target_memory,
+			scale_up_cooldown, scale_down_cooldown, scale_up_step, scale_down_step,
+			metrics, thresholds, enabled, cost_optimization, updated_at
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, now())
+		ON CONFLICT (service_id) DO UPDATE SET
+			min_replicas = EXCLUDED.min_replicas,
+			max_replicas = EXCLUDED.max_replicas,
+			target_cpu = EXCLUDED.target_cpu,
+			target_memory = EXCLUDED.target_memory,
+			scale_up_cooldown = EXCLUDED.scale_up_cooldown,
+			scale_down_cooldown = EXCLUDED.scale_down_cooldown,
+			scale_up_step = EXCLUDED.scale_up_step,
+			scale_down_step = EXCLUDED.scale_down_step,
+			metrics = EXCLUDED.metrics,
+			thresholds = EXCLUDED.thresholds,
+			enabled = EXCLUDED.enabled,
+			cost_optimization = EXCLUDED.cost_optimization,
+			updated_at = now()`,
+		policy.ServiceID, policy.MinReplicas, policy.MaxReplicas, policy.TargetCPU, policy.TargetMemory,
+		int64(policy.ScaleUpCooldown), int64(policy.ScaleDownCooldown), policy.ScaleUpStep, policy.ScaleDownStep,
+		metricsRaw, thresholdsRaw, policy.Enabled, costRaw,
+	)
+	if err != nil {
+		log.Printf("scaling: failed to persist policy for %s: %v", policy.ServiceID, err)
 	}
 }
 
@@ -782,6 +898,8 @@ func (as *AutoScaler) SetScalingPolicy(policy *ScalingPolicy) error {
 	} else {
 		as.services[policy.ServiceID].Policy = policy
 	}
+
+	go as.persistPolicy(policy)
 
 	return nil
 }
