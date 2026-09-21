@@ -2,6 +2,8 @@ package api
 
 import (
 	"containr/internal/database"
+	"containr/internal/deployment"
+	"context"
 	"net/http"
 	"time"
 
@@ -24,37 +26,54 @@ type Service struct {
 	BuildPath   string    `json:"build_path" db:"build_path"`
 	CPU         string    `json:"cpu" db:"cpu"`
 	Memory      string    `json:"memory" db:"memory"`
-	CreatedAt   time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at" db:"updated_at"`
+	// Runtime spec
+	Replicas        int       `json:"replicas" db:"replicas"`
+	Port            int       `json:"port" db:"port"`                         // container port to expose
+	Domain          string    `json:"domain" db:"domain"`                     // public hostname via Traefik
+	HealthCheckPath string    `json:"healthcheck_path" db:"healthcheck_path"` // probed on Port
+	RestartPolicy   string    `json:"restart_policy" db:"restart_policy"`
+	PublicURL       string    `json:"public_url,omitempty" db:"-"` // computed at read time
+	CreatedAt       time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at" db:"updated_at"`
 }
 
 // CreateServiceRequest represents a request to create a service
 type CreateServiceRequest struct {
-	ProjectID   uuid.UUID `json:"project_id"`
-	Name        string    `json:"name" binding:"required,min=1,max=255"`
-	Type        string    `json:"type" binding:"required,oneof=web worker database cron"`
-	Image       string    `json:"image"`
-	Command     string    `json:"command"`
-	Environment string    `json:"environment" binding:"required,oneof=production preview development"`
-	GitRepo     string    `json:"git_repo"`
-	GitBranch   string    `json:"git_branch"`
-	BuildPath   string    `json:"build_path"`
-	CPU         string    `json:"cpu"`
-	Memory      string    `json:"memory"`
+	ProjectID       uuid.UUID `json:"project_id"`
+	Name            string    `json:"name" binding:"required,min=1,max=255"`
+	Type            string    `json:"type" binding:"required,oneof=web worker database cron"`
+	Image           string    `json:"image"`
+	Command         string    `json:"command"`
+	Environment     string    `json:"environment" binding:"required,oneof=production preview development"`
+	GitRepo         string    `json:"git_repo"`
+	GitBranch       string    `json:"git_branch"`
+	BuildPath       string    `json:"build_path"`
+	CPU             string    `json:"cpu"`
+	Memory          string    `json:"memory"`
+	Replicas        int       `json:"replicas"`
+	Port            int       `json:"port"`
+	Domain          string    `json:"domain"`
+	HealthCheckPath string    `json:"healthcheck_path"`
+	RestartPolicy   string    `json:"restart_policy"`
 }
 
 // UpdateServiceRequest represents a request to update a service
 type UpdateServiceRequest struct {
-	Name        string `json:"name" binding:"omitempty,min=1,max=255"`
-	Type        string `json:"type" binding:"omitempty,oneof=web worker database cron"`
-	Image       string `json:"image"`
-	Command     string `json:"command"`
-	Environment string `json:"environment" binding:"omitempty,oneof=production preview development"`
-	GitRepo     string `json:"git_repo"`
-	GitBranch   string `json:"git_branch"`
-	BuildPath   string `json:"build_path"`
-	CPU         string `json:"cpu"`
-	Memory      string `json:"memory"`
+	Name            string  `json:"name" binding:"omitempty,min=1,max=255"`
+	Type            string  `json:"type" binding:"omitempty,oneof=web worker database cron"`
+	Image           string  `json:"image"`
+	Command         string  `json:"command"`
+	Environment     string  `json:"environment" binding:"omitempty,oneof=production preview development"`
+	GitRepo         string  `json:"git_repo"`
+	GitBranch       string  `json:"git_branch"`
+	BuildPath       string  `json:"build_path"`
+	CPU             string  `json:"cpu"`
+	Memory          string  `json:"memory"`
+	Replicas        *int    `json:"replicas"`
+	Port            *int    `json:"port"`
+	Domain          *string `json:"domain"`
+	HealthCheckPath *string `json:"healthcheck_path"`
+	RestartPolicy   string  `json:"restart_policy"`
 }
 
 // handleGetServices retrieves all services for a project
@@ -110,6 +129,9 @@ func handleGetServices(c *gin.Context) {
 				COALESCE(build_path, ''),
 				COALESCE(cpu, ''),
 				COALESCE(memory, ''),
+				COALESCE(replicas, 1), COALESCE(port, 0),
+				COALESCE(domain, ''), COALESCE(healthcheck_path, ''),
+				COALESCE(restart_policy, 'unless-stopped'),
 				created_at, updated_at 
 			FROM services 
 			WHERE project_id = $1 
@@ -129,13 +151,19 @@ func handleGetServices(c *gin.Context) {
 			&service.ID, &service.ProjectID, &service.Name, &service.Type, &service.Status,
 			&service.Image, &service.Command, &service.Environment, &service.GitRepo,
 			&service.GitBranch, &service.BuildPath, &service.CPU, &service.Memory,
-			&service.CreatedAt, &service.UpdatedAt,
+			&service.Replicas, &service.Port, &service.Domain, &service.HealthCheckPath,
+			&service.RestartPolicy, &service.CreatedAt, &service.UpdatedAt,
 		)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to scan service"})
 			return
 		}
 		services = append(services, service)
+	}
+
+	// Reconcile stored status with live container state (no-op without Docker).
+	for i := range services {
+		liveServiceStatus(c, db.(*database.DB), &services[i])
 	}
 
 	c.JSON(http.StatusOK, gin.H{"services": services})
@@ -213,21 +241,26 @@ func handleCreateService(c *gin.Context) {
 
 	// Create new service
 	service := Service{
-		ID:          uuid.New(),
-		ProjectID:   req.ProjectID,
-		Name:        req.Name,
-		Type:        req.Type,
-		Status:      "stopped", // Initial status
-		Image:       req.Image,
-		Command:     req.Command,
-		Environment: req.Environment,
-		GitRepo:     req.GitRepo,
-		GitBranch:   req.GitBranch,
-		BuildPath:   req.BuildPath,
-		CPU:         req.CPU,
-		Memory:      req.Memory,
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
+		ID:              uuid.New(),
+		ProjectID:       req.ProjectID,
+		Name:            req.Name,
+		Type:            req.Type,
+		Status:          "stopped", // Initial status
+		Image:           req.Image,
+		Command:         req.Command,
+		Environment:     req.Environment,
+		GitRepo:         req.GitRepo,
+		GitBranch:       req.GitBranch,
+		BuildPath:       req.BuildPath,
+		CPU:             req.CPU,
+		Memory:          req.Memory,
+		Replicas:        req.Replicas,
+		Port:            req.Port,
+		Domain:          req.Domain,
+		HealthCheckPath: req.HealthCheckPath,
+		RestartPolicy:   req.RestartPolicy,
+		CreatedAt:       time.Now(),
+		UpdatedAt:       time.Now(),
 	}
 
 	// Set default values if not provided
@@ -236,6 +269,12 @@ func handleCreateService(c *gin.Context) {
 	}
 	if service.Memory == "" {
 		service.Memory = "512Mi"
+	}
+	if service.Replicas < 1 {
+		service.Replicas = 1
+	}
+	if service.RestartPolicy == "" {
+		service.RestartPolicy = "unless-stopped"
 	}
 
 	environmentID, err := getProjectEnvironmentID(db.(*database.DB), service.ProjectID, service.Environment)
@@ -248,15 +287,17 @@ func handleCreateService(c *gin.Context) {
 
 	// Insert service into database
 	_, err = db.(*database.DB).Exec(
-		`INSERT INTO services 
+		`INSERT INTO services
 			(id, project_id, name, environment_id, service_type, source_type, source_url, image_name,
 				 build_command, start_command, type, status, image, command, environment,
-				 git_repo, git_branch, build_path, cpu, memory, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)`,
+				 git_repo, git_branch, build_path, cpu, memory, replicas, port, domain,
+				 healthcheck_path, restart_policy, created_at, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)`,
 		service.ID, service.ProjectID, service.Name, environmentID, service.Type,
 		sourceType, firstNonEmpty(service.GitRepo, service.Image), service.Image,
 		"", service.Command, service.Type, service.Status, service.Image, service.Command,
 		service.Environment, service.GitRepo, service.GitBranch, service.BuildPath, service.CPU, service.Memory,
+		service.Replicas, service.Port, service.Domain, service.HealthCheckPath, service.RestartPolicy,
 		service.CreatedAt, service.UpdatedAt,
 	)
 
@@ -324,6 +365,9 @@ func handleGetService(c *gin.Context) {
 				COALESCE(s.build_path, ''),
 				COALESCE(s.cpu, ''),
 				COALESCE(s.memory, ''),
+				COALESCE(s.replicas, 1), COALESCE(s.port, 0),
+				COALESCE(s.domain, ''), COALESCE(s.healthcheck_path, ''),
+				COALESCE(s.restart_policy, 'unless-stopped'),
 				s.created_at, s.updated_at
 			FROM services s
 			JOIN projects p ON s.project_id = p.id
@@ -333,7 +377,8 @@ func handleGetService(c *gin.Context) {
 		&service.ID, &service.ProjectID, &service.Name, &service.Type, &service.Status,
 		&service.Image, &service.Command, &service.Environment, &service.GitRepo,
 		&service.GitBranch, &service.BuildPath, &service.CPU, &service.Memory,
-		&service.CreatedAt, &service.UpdatedAt,
+		&service.Replicas, &service.Port, &service.Domain, &service.HealthCheckPath,
+		&service.RestartPolicy, &service.CreatedAt, &service.UpdatedAt,
 	)
 
 	if err != nil {
@@ -341,6 +386,7 @@ func handleGetService(c *gin.Context) {
 		return
 	}
 
+	liveServiceStatus(c, db.(*database.DB), &service)
 	c.JSON(http.StatusOK, gin.H{"service": service})
 }
 
@@ -386,6 +432,9 @@ func handleUpdateService(c *gin.Context) {
 				COALESCE(s.build_path, ''),
 				COALESCE(s.cpu, ''),
 				COALESCE(s.memory, ''),
+				COALESCE(s.replicas, 1), COALESCE(s.port, 0),
+				COALESCE(s.domain, ''), COALESCE(s.healthcheck_path, ''),
+				COALESCE(s.restart_policy, 'unless-stopped'),
 				s.created_at, s.updated_at
 			FROM services s
 			JOIN projects p ON s.project_id = p.id
@@ -396,6 +445,8 @@ func handleUpdateService(c *gin.Context) {
 		&existingService.Status, &existingService.Image, &existingService.Command,
 		&existingService.Environment, &existingService.GitRepo, &existingService.GitBranch,
 		&existingService.BuildPath, &existingService.CPU, &existingService.Memory,
+		&existingService.Replicas, &existingService.Port, &existingService.Domain,
+		&existingService.HealthCheckPath, &existingService.RestartPolicy,
 		&existingService.CreatedAt, &existingService.UpdatedAt,
 	)
 
@@ -435,24 +486,61 @@ func handleUpdateService(c *gin.Context) {
 	if req.Memory != "" {
 		existingService.Memory = req.Memory
 	}
+	if req.Replicas != nil {
+		existingService.Replicas = *req.Replicas
+	}
+	if req.Port != nil {
+		existingService.Port = *req.Port
+	}
+	if req.Domain != nil {
+		existingService.Domain = *req.Domain
+	}
+	if req.HealthCheckPath != nil {
+		existingService.HealthCheckPath = *req.HealthCheckPath
+	}
+	if req.RestartPolicy != "" {
+		existingService.RestartPolicy = req.RestartPolicy
+	}
 
 	existingService.UpdatedAt = time.Now()
 
 	// Update service in database
 	_, err = db.(*database.DB).Exec(
-		`UPDATE services 
+		`UPDATE services
 			SET name = $1, type = $2, image = $3, command = $4, environment = $5,
-				git_repo = $6, git_branch = $7, build_path = $8, cpu = $9, memory = $10, updated_at = $11
-			WHERE id = $12`,
+				git_repo = $6, git_branch = $7, build_path = $8, cpu = $9, memory = $10,
+				replicas = $11, port = $12, domain = $13, healthcheck_path = $14,
+				restart_policy = $15, updated_at = $16
+			WHERE id = $17`,
 		existingService.Name, existingService.Type, existingService.Image, existingService.Command,
 		existingService.Environment, existingService.GitRepo, existingService.GitBranch,
 		existingService.BuildPath, existingService.CPU, existingService.Memory,
+		existingService.Replicas, existingService.Port, existingService.Domain,
+		existingService.HealthCheckPath, existingService.RestartPolicy,
 		existingService.UpdatedAt, existingService.ID,
 	)
 
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update service"})
 		return
+	}
+
+	// A replica change applies immediately when the service has live
+	// containers; other spec fields take effect on the next deploy.
+	if req.Replicas != nil && existingService.Status == "running" {
+		if engineValue, exists := c.Get("deployment_engine"); exists && engineValue != nil {
+			engine := engineValue.(*deployment.DeploymentEngine)
+			serviceCopy := existingService
+			go func() {
+				spec, err := serviceRuntimeSpec(db.(*database.DB), serviceCopy)
+				if err != nil {
+					return
+				}
+				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+				defer cancel()
+				_, _ = engine.ReconcileService(ctx, spec)
+			}()
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"service": existingService})
@@ -496,9 +584,16 @@ func handleDeleteService(c *gin.Context) {
 	}
 
 	// Check if user owns the project
-	if projectOwnerID != userID.(string) {
+	if projectOwnerID != userID.(string) && !isAdminUser(db.(*database.DB), userID.(string)) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 		return
+	}
+
+	// Remove runtime containers before dropping the row.
+	if engineValue, exists := c.Get("deployment_engine"); exists && engineValue != nil {
+		if engine, ok := engineValue.(*deployment.DeploymentEngine); ok {
+			_ = engine.RemoveServiceContainers(c.Request.Context(), serviceID.String())
+		}
 	}
 
 	// Delete service (cascade will handle related records)

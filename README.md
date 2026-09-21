@@ -40,8 +40,10 @@ click away.
 
 ## Features
 
-- **Project canvas** — visual service topology, groups, drag/drop, auto-inferred connections
-- **Deployments & builds** — Docker deploys with history, logs, rollback, live build status
+- **Project canvas** — visual service topology, groups, drag/drop, auto-inferred connections, right-click lifecycle actions
+- **Private networking** — every project gets an isolated Docker network; services reach each other by name (`web:3000`) and share variables via `${{service.KEY}}` references
+- **Deployments & builds** — Docker deploys with history, logs, image rollback, live build status
+- **Runtime** — replicas, published ports, domains, health checks, restart policies; start/stop/restart/redeploy from canvas or service page
 - **Git integration** — GitHub, GitLab, Bitbucket, Gitea; webhooks, GitHub App
 - **Managed databases** — one-click provisioning with backup/restore
 - **Metrics** — per-service Docker stats plus host CPU/memory/disk telemetry

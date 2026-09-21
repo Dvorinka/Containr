@@ -209,6 +209,13 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			protected.DELETE("/services/:id", handleDeleteService)
 			protected.GET("/services/:id/metrics", handleGetServiceMetrics)
 
+			// Runtime lifecycle (Railway-style)
+			protected.GET("/services/:id/runtime", handleGetServiceRuntime)
+			protected.POST("/services/:id/start", handleServiceStart)
+			protected.POST("/services/:id/stop", handleServiceStop)
+			protected.POST("/services/:id/restart", handleServiceRestart)
+			protected.POST("/services/:id/redeploy", handleServiceRedeploy)
+
 			// Deployment routes
 			protected.GET("/services/:id/deployments", handleGetDeployments)
 			protected.POST("/services/:id/deployments", handleCreateDeployment)

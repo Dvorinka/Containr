@@ -153,8 +153,11 @@ func handleCreateDeployment(c *gin.Context) {
 	var service Service
 	var projectOwner string
 	err = db.(*database.DB).QueryRow(
-		`SELECT s.id, s.project_id, s.name, s.type, s.status, s.image, s.command, 
-		        s.environment, s.git_repo, s.git_branch, s.build_path, s.cpu, s.memory, 
+		`SELECT s.id, s.project_id, s.name, s.type, s.status, s.image, s.command,
+		        s.environment, s.git_repo, s.git_branch, s.build_path, s.cpu, s.memory,
+		        COALESCE(s.replicas, 1), COALESCE(s.port, 0),
+		        COALESCE(s.domain, ''), COALESCE(s.healthcheck_path, ''),
+		        COALESCE(s.restart_policy, 'unless-stopped'),
 		        s.created_at, s.updated_at, p.owner_id
 		 FROM services s
 		 JOIN projects p ON s.project_id = p.id
@@ -164,7 +167,8 @@ func handleCreateDeployment(c *gin.Context) {
 		&service.ID, &service.ProjectID, &service.Name, &service.Type, &service.Status,
 		&service.Image, &service.Command, &service.Environment, &service.GitRepo,
 		&service.GitBranch, &service.BuildPath, &service.CPU, &service.Memory,
-		&service.CreatedAt, &service.UpdatedAt, &projectOwner,
+		&service.Replicas, &service.Port, &service.Domain, &service.HealthCheckPath,
+		&service.RestartPolicy, &service.CreatedAt, &service.UpdatedAt, &projectOwner,
 	)
 
 	if err != nil {
@@ -257,6 +261,22 @@ func runDeploymentAndSync(
 	req CreateDeploymentRequest,
 	userID string,
 ) {
+	runDeploymentAndSyncWithImage(parentCtx, db, engine, dbDeployment, service, req, userID, "")
+}
+
+// runDeploymentAndSyncWithImage deploys imageOverride as a prebuilt image
+// (rollback / redeploy of an existing tag) when set; otherwise builds from
+// source or pulls the service image.
+func runDeploymentAndSyncWithImage(
+	parentCtx context.Context,
+	db *database.DB,
+	engine *deployment.DeploymentEngine,
+	dbDeployment *DeploymentModel,
+	service Service,
+	req CreateDeploymentRequest,
+	userID string,
+	imageOverride string,
+) {
 	ctx, cancel := context.WithTimeout(parentCtx, 30*time.Minute)
 	defer cancel()
 
@@ -265,21 +285,44 @@ func runDeploymentAndSync(
 		sourcePath = "."
 	}
 
+	// Resolve the runtime env: stored service variables (with ${{svc.KEY}}
+	// references expanded) plus any per-deployment overrides.
+	env, envErr := resolveServiceEnv(db, service)
+	if envErr != nil {
+		env = map[string]string{}
+	}
+	for k, v := range req.EnvVars {
+		env[k] = v
+	}
+
+	var command []string
+	if cmd := strings.TrimSpace(service.Command); cmd != "" {
+		command = strings.Fields(cmd)
+	}
+
+	replicas := service.Replicas
+	if replicas < 1 {
+		replicas = 1
+	}
+
 	deployReq := &deployment.DeploymentRequest{
 		ProjectID:   service.ProjectID.String(),
 		ServiceID:   service.ID.String(),
 		Environment: service.Environment,
 		Config: deployment.ServiceConfig{
-			Name:        service.Name,
-			Image:       service.Image,
-			Environment: req.EnvVars,
-			Replicas:    1,
-		},
-		BuildConfig: &deployment.BuildConfig{
-			BuildType:  "nixpacks",
-			SourcePath: sourcePath,
-			Branch:     req.Branch,
-			Commit:     req.CommitHash,
+			Name:          service.Name,
+			Image:         service.Image,
+			Command:       command,
+			Environment:   env,
+			Replicas:      replicas,
+			PublicPort:    int32(service.Port),
+			Domain:        service.Domain,
+			HealthPath:    service.HealthCheckPath,
+			RestartPolicy: service.RestartPolicy,
+			Resources: deployment.ResourceLimits{
+				MemoryBytes: parseMemoryLimit(service.Memory),
+				CPUQuota:    parseCPULimit(service.CPU),
+			},
 		},
 		Trigger: deployment.TriggerConfig{
 			Type:      req.Trigger,
@@ -287,6 +330,26 @@ func runDeploymentAndSync(
 			User:      userID,
 			Timestamp: time.Now(),
 		},
+	}
+
+	if imageOverride != "" {
+		deployReq.BuildConfig = &deployment.BuildConfig{
+			BuildType:     "prebuilt",
+			PrebuiltImage: imageOverride,
+		}
+	} else if service.GitRepo == "" {
+		// Image-sourced service: pull the image instead of building.
+		deployReq.BuildConfig = &deployment.BuildConfig{
+			BuildType:     "prebuilt",
+			PrebuiltImage: service.Image,
+		}
+	} else {
+		deployReq.BuildConfig = &deployment.BuildConfig{
+			BuildType:  "nixpacks",
+			SourcePath: sourcePath,
+			Branch:     req.Branch,
+			Commit:     req.CommitHash,
+		}
 	}
 
 	engineDeployment, err := engine.Deploy(ctx, deployReq)
@@ -550,17 +613,58 @@ func handleRollbackDeployment(c *gin.Context) {
 		time.Now(), serviceID,
 	)
 
-	go func() {
-		time.Sleep(2 * time.Second)
-		db.(*database.DB).Exec(
-			`UPDATE deployments SET status = 'deployed', completed_at = $1, updated_at = $1 WHERE id = $2`,
-			time.Now(), rollbackID,
+	// Real rollback: redeploy the target deployment's image.
+	engineValue, _ := c.Get("deployment_engine")
+	engine, _ := engineValue.(*deployment.DeploymentEngine)
+	targetImage := targetDeployment.ImageName
+	if targetDeployment.ImageTag != "" {
+		targetImage += ":" + targetDeployment.ImageTag
+	}
+
+	if engine == nil || targetImage == "" {
+		completedAt := time.Now()
+		reason := "Rollback image unavailable"
+		if engine == nil {
+			reason = "Deployment engine unavailable. Docker may not be configured on this server."
+		}
+		_, _ = db.(*database.DB).Exec(
+			`UPDATE deployments SET status = 'failed', error = $1, completed_at = $2, updated_at = $2 WHERE id = $3`,
+			reason, completedAt, rollbackID,
 		)
-		db.(*database.DB).Exec(
-			`UPDATE services SET status = 'running', updated_at = $1 WHERE id = $2`,
-			time.Now(), serviceID,
+		_, _ = db.(*database.DB).Exec(
+			`UPDATE services SET status = 'failed', updated_at = $1 WHERE id = $2`,
+			completedAt, serviceID,
 		)
-	}()
+	} else {
+		var service Service
+		_ = db.(*database.DB).QueryRow(
+			`SELECT s.id, s.project_id, s.name, s.type, s.status, s.image, s.command,
+			        s.environment, s.git_repo, s.git_branch, s.build_path, s.cpu, s.memory,
+			        COALESCE(s.replicas, 1), COALESCE(s.port, 0),
+			        COALESCE(s.domain, ''), COALESCE(s.healthcheck_path, ''),
+			        COALESCE(s.restart_policy, 'unless-stopped'),
+			        s.created_at, s.updated_at
+			 FROM services s WHERE s.id = $1`, serviceID,
+		).Scan(
+			&service.ID, &service.ProjectID, &service.Name, &service.Type, &service.Status,
+			&service.Image, &service.Command, &service.Environment, &service.GitRepo,
+			&service.GitBranch, &service.BuildPath, &service.CPU, &service.Memory,
+			&service.Replicas, &service.Port, &service.Domain, &service.HealthCheckPath,
+			&service.RestartPolicy, &service.CreatedAt, &service.UpdatedAt,
+		)
+
+		rollbackReq := CreateDeploymentRequest{
+			CommitHash: func() string {
+				if targetDeployment.CommitHash != nil {
+					return *targetDeployment.CommitHash
+				}
+				return ""
+			}(),
+			Trigger: "rollback",
+		}
+		// Reuse the stored image directly — no rebuild.
+		go runDeploymentAndSyncWithImage(context.Background(), db.(*database.DB), engine, &rollback, service, rollbackReq, userID.(string), targetImage)
+	}
 
 	c.JSON(http.StatusCreated, gin.H{
 		"deployment": DeploymentResponse{

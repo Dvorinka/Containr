@@ -93,10 +93,10 @@ func (bm *BuildManager) buildPrebuilt(ctx context.Context, req *types.BuildReque
 		return nil, fmt.Errorf("prebuilt image not specified")
 	}
 
-	// Pull the prebuilt image
+	// Pull the prebuilt image — must drain the pull stream or the daemon
+	// aborts it and the tag below races a missing image.
 	auth := registry.AuthConfig{}
-	_, err := bm.dockerClient.PullImage(ctx, req.PrebuiltImage, auth)
-	if err != nil {
+	if err := bm.dockerClient.PullImageWait(ctx, req.PrebuiltImage, auth); err != nil {
 		return nil, fmt.Errorf("failed to pull prebuilt image: %w", err)
 	}
 
@@ -104,7 +104,7 @@ func (bm *BuildManager) buildPrebuilt(ctx context.Context, req *types.BuildReque
 	if req.ImageName != "" && req.ImageTag != "" {
 		targetImage := fmt.Sprintf("%s:%s", req.ImageName, req.ImageTag)
 		if targetImage != req.PrebuiltImage {
-			err = bm.dockerClient.TagImage(ctx, req.PrebuiltImage, targetImage)
+			err := bm.dockerClient.TagImage(ctx, req.PrebuiltImage, targetImage)
 			if err != nil {
 				return nil, fmt.Errorf("failed to tag image: %w", err)
 			}
@@ -114,7 +114,7 @@ func (bm *BuildManager) buildPrebuilt(ctx context.Context, req *types.BuildReque
 
 	// Push to registry if specified
 	if req.RegistryURL != "" {
-		err = bm.dockerClient.PushImage(ctx, req.PrebuiltImage, req.RegistryURL)
+		err := bm.dockerClient.PushImage(ctx, req.PrebuiltImage, req.RegistryURL)
 		if err != nil {
 			return nil, fmt.Errorf("failed to push image: %w", err)
 		}

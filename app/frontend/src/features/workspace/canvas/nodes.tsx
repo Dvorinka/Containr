@@ -1,7 +1,7 @@
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import type { ServiceEntity } from '@/lib/api-client';
 import { serviceStatusClass } from '@/lib/api-client';
-import { Box, ArrowUpRight, Globe, Database, Terminal, MoreHorizontal, ExternalLink } from 'lucide-react';
+import { Box, Globe, Database, Terminal, ExternalLink, Copy, Layers } from 'lucide-react';
 import { useState } from 'react';
 
 export type ServiceNodeData = {
@@ -33,24 +33,38 @@ function serviceTypeIcon(type: string): typeof Box {
 function serviceTypeColor(type: string): string {
   switch (type) {
     case 'web':
-      return '#7ab8ff'; // Blue
+      return '#7ab8ff';
     case 'database':
-      return '#b4e34a'; // Purple
+      return '#b4e34a';
     case 'worker':
-      return 'var(--accent-primary)'; // Pink
+      return 'var(--accent-primary)';
     default:
-      return '#9295a4'; // Gray
+      return '#9295a4';
+  }
+}
+
+function statusLabel(status: string): string {
+  switch (status) {
+    case 'running':
+      return 'Online';
+    case 'building':
+      return 'Deploying';
+    case 'failed':
+      return 'Failed';
+    default:
+      return 'Stopped';
   }
 }
 
 export function ServiceNode({ data }: NodeProps<ServiceNodeType>) {
-  const { service, selected, onOpen } = data;
-  const iconType = serviceTypeIcon(service.type);
+  const { service, selected } = data;
+  const Icon = serviceTypeIcon(service.type);
   const typeColor = serviceTypeColor(service.type);
   const isRunning = service.status === 'running';
+  const replicas = service.replicas ?? 0;
 
-  // Generate a mock domain for display (in real app, this would come from service data)
-  const domain = `${service.name}.containr.local`;
+  const publicUrl = service.domain ? `https://${service.domain}` : service.publicUrl;
+  const internalAddr = service.port ? `${service.name}:${service.port}` : service.name;
 
   return (
     <div
@@ -61,80 +75,88 @@ export function ServiceNode({ data }: NodeProps<ServiceNodeType>) {
       }`}
       style={{ minWidth: 220, maxWidth: 280 }}
     >
-      {/* Ambient overlay */}
       <div
         className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
         style={{ background: `${typeColor}10` }}
       />
 
-      {/* Invisible connection points - required by React Flow for edge attachment */}
       <Handle type="target" position={Position.Left} className="!opacity-0 !w-2 !h-2 !border-0" />
       <Handle type="source" position={Position.Right} className="!opacity-0 !w-2 !h-2 !border-0" />
 
-      {/* Status indicator bar at top */}
-      <div 
+      <div
         className={`absolute top-0 left-0 right-0 h-0.5 transition-all duration-300 ${isRunning ? 'opacity-100' : 'opacity-40'}`}
         style={{ background: isRunning ? 'var(--success)' : 'var(--text-tertiary)' }}
       />
 
-      {/* Action menu on hover */}
-      <button className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-all duration-200 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] p-1.5 rounded-lg hover:bg-[var(--surface-muted)]">
-        <MoreHorizontal size={14} />
-      </button>
-
       <div className="relative p-4">
-        {/* Header with icon and name */}
         <div className="flex items-start gap-3 mb-3">
-          <div 
+          <div
             className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-all duration-200 ${
               selected ? 'ring-2 ring-white/20' : ''
             }`}
-            style={{ 
+            style={{
               background: selected ? typeColor : `${typeColor}20`,
-              color: selected ? 'white' : typeColor
+              color: selected ? 'white' : typeColor,
             }}
           >
-            {iconType === Globe && <Globe size={18} />}
-            {iconType === Database && <Database size={18} />}
-            {iconType === Terminal && <Terminal size={18} />}
-            {iconType === Box && <Box size={18} />}
+            <Icon size={18} />
           </div>
           <div className="min-w-0 flex-1 pt-0.5">
             <h4 className="font-semibold text-sm text-[var(--text-primary)] truncate tracking-tight">{service.name}</h4>
-            <p className="text-[11px] text-[var(--text-tertiary)] truncate mt-0.5">{service.type}</p>
+            <p className="text-[11px] text-[var(--text-tertiary)] truncate mt-0.5">
+              {service.type}
+              {service.environment && service.environment !== 'production' ? ` · ${service.environment}` : ''}
+            </p>
           </div>
+          {replicas > 1 && (
+            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-[var(--surface-muted)] text-[10px] font-semibold text-[var(--text-secondary)]">
+              <Layers size={9} />
+              {replicas}
+            </span>
+          )}
         </div>
 
-        {/* Domain display - Railway style */}
-        <div className="flex items-center gap-2 mb-3 px-2.5 py-1.5 rounded-lg bg-[var(--surface-muted)]/50 border border-[var(--border-subtle)]/50">
+        <div className="flex items-center gap-2 mb-3 px-2.5 py-1.5 rounded-lg bg-[var(--surface-muted)]/50 border border-[var(--border-subtle)]/50 group/addr">
           <ExternalLink size={10} className="text-[var(--text-tertiary)] flex-shrink-0" />
-          <span className="text-[10px] text-[var(--text-secondary)] truncate mono">{domain}</span>
+          {publicUrl ? (
+            <a
+              href={publicUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="text-[10px] text-[var(--accent-primary)] truncate mono hover:underline"
+            >
+              {publicUrl.replace(/^https?:\/\//, '')}
+            </a>
+          ) : (
+            <span className="text-[10px] text-[var(--text-secondary)] truncate mono" title="Internal network address">
+              {internalAddr}
+            </span>
+          )}
+          <button
+            type="button"
+            title="Copy internal address"
+            onClick={(e) => {
+              e.stopPropagation();
+              void navigator.clipboard?.writeText(internalAddr);
+            }}
+            className="ml-auto opacity-0 group-hover/addr:opacity-100 transition-opacity text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
+          >
+            <Copy size={10} />
+          </button>
         </div>
 
-        {/* Status and action row */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className={`status-dot ${serviceStatusClass(service.status)}`} />
-            <span 
-              className="text-[11px] font-semibold tracking-wide uppercase" 
+            <span
+              className="text-[11px] font-semibold tracking-wide uppercase"
               style={{ color: isRunning ? 'var(--success)' : 'var(--text-tertiary)' }}
             >
-              {isRunning ? 'Online' : service.status}
+              {statusLabel(service.status)}
             </span>
           </div>
-
-          <button
-            type="button"
-            onClick={() => onOpen(service.id)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all duration-200 ${
-              selected
-                ? 'bg-[var(--accent-primary)] text-[var(--accent-on)] shadow-lg shadow-[var(--accent-primary-glow)]'
-                : 'border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:border-[var(--accent-primary)] hover:text-[var(--accent-primary)]'
-            }`}
-          >
-            Open
-            <ArrowUpRight size={10} />
-          </button>
+          <span className="text-[10px] text-[var(--text-tertiary)]">Right-click for actions</span>
         </div>
       </div>
     </div>
@@ -147,46 +169,41 @@ export function GroupNode({ data }: NodeProps<GroupNodeType>) {
   return (
     <div
       className="h-full w-full rounded-[var(--radius-xl)] border-2 border-dashed transition-all duration-200 relative overflow-hidden"
-      style={{ 
+      style={{
         borderColor: isHovered ? 'var(--accent-primary)' : 'var(--border-default)',
-        background: isHovered ? 'rgba(232, 49, 106, 0.03)' : 'var(--surface-muted)/30'
+        background: isHovered ? 'rgba(232, 49, 106, 0.03)' : 'var(--surface-muted)/30',
       }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Ambient glow on hover */}
-      <div 
+      <div
         className="absolute inset-0 opacity-0 transition-opacity duration-300 pointer-events-none"
-        style={{ 
+        style={{
           background: 'rgba(232,49,106,0.03)',
-          opacity: isHovered ? 1 : 0
+          opacity: isHovered ? 1 : 0,
         }}
       />
 
-      {/* Header */}
       <div className="relative p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div 
+            <div
               className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors duration-200"
-              style={{ 
+              style={{
                 background: isHovered ? 'var(--accent-primary-soft)' : 'var(--surface-card)',
-                color: isHovered ? 'var(--accent-primary)' : 'var(--text-tertiary)'
+                color: isHovered ? 'var(--accent-primary)' : 'var(--text-tertiary)',
               }}
             >
               <Box size={14} />
             </div>
             <h3 className="text-sm font-semibold text-[var(--text-primary)] tracking-tight">{data.title}</h3>
           </div>
-          {isHovered && (
-            <button className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors p-1 rounded-lg hover:bg-[var(--surface-muted)]">
-              <MoreHorizontal size={14} />
-            </button>
-          )}
         </div>
 
-        {/* Helper text */}
-        <p className="text-[10px] text-[var(--text-tertiary)] mt-2 opacity-0 transition-opacity duration-200" style={{ opacity: isHovered ? 1 : 0 }}>
+        <p
+          className="text-[10px] text-[var(--text-tertiary)] mt-2 transition-opacity duration-200"
+          style={{ opacity: isHovered ? 1 : 0 }}
+        >
           Drag services here to group them
         </p>
       </div>

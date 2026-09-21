@@ -29,6 +29,10 @@ import {
   execInService,
   rollbackDeployment,
   updateServiceVariables,
+  updateService,
+  restartService,
+  stopService,
+  getServiceRuntime,
   type CronJobEntity,
 } from '@/lib/api-client';
 import { getDemoProjectById, getDemoServiceById, getDemoCronJobsByService } from '@/lib/demo-data';
@@ -365,6 +369,39 @@ export function ServiceDetailPage() {
     },
   });
 
+  const invalidateService = () => {
+    queryClient.invalidateQueries({ queryKey: ['service', serviceId] });
+    queryClient.invalidateQueries({ queryKey: ['service-runtime', serviceId] });
+    queryClient.invalidateQueries({ queryKey: ['project-services', projectId] });
+  };
+
+  const restartMutation = useMutation({
+    mutationFn: () => restartService(serviceId),
+    onSuccess: invalidateService,
+  });
+  const stopMutation = useMutation({
+    mutationFn: () => stopService(serviceId),
+    onSuccess: invalidateService,
+  });
+  const updateServiceMutation = useMutation({
+    mutationFn: (input: Parameters<typeof updateService>[1]) => updateService(serviceId, input),
+    onSuccess: () => {
+      setNetworkForm(null);
+      invalidateService();
+    },
+  });
+
+  const runtimeQuery = useQuery({
+    queryKey: ['service-runtime', serviceId],
+    queryFn: () => getServiceRuntime(serviceId),
+    enabled: Boolean(serviceId) && !isDemoMode,
+    refetchInterval: 10_000,
+  });
+
+  const [networkForm, setNetworkForm] = useState<{
+    port: string; domain: string; healthcheckPath: string; restartPolicy: string; replicas: string;
+  } | null>(null);
+
   const project = isDemoMode ? getDemoProjectById(projectId) : projectQuery.data;
   const service = isDemoMode ? getDemoServiceById(serviceId) : serviceQuery.data;
 
@@ -558,15 +595,15 @@ export function ServiceDetailPage() {
             </span>
           </div>
           <div className="flex items-center" style={{ gap: '16px', marginTop: '4px' }}>
-            {service.status === 'running' && (
-              <a 
-                href={`https://${service.name}.containr.dev`}
+            {(service.publicUrl || service.domain) && (
+              <a
+                href={service.publicUrl ?? `https://${service.domain}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center hover:text-[#9295a4] transition-colors"
                 style={{ color: '#6b6e7d', fontSize: '12.5px', textDecoration: 'none', gap: '4px' }}
               >
-                https://{service.name}.containr.dev
+                {service.publicUrl ?? `https://${service.domain}`}
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                   <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
                   <polyline points="15 3 21 3 21 9"/>
@@ -590,15 +627,26 @@ export function ServiceDetailPage() {
           {!isDemoMode && (
             <>
               <button
-                onClick={() => deployMutation.mutate('restart')}
-                disabled={deployMutation.isPending || service.status !== 'running'}
+                onClick={() => stopMutation.mutate()}
+                disabled={stopMutation.isPending || service.status !== 'running'}
                 className={`btn-stop ${service.status !== 'running' ? 'disabled' : ''}`}
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
                   <circle cx="12" cy="12" r="10"/>
                   <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/>
                 </svg>
-                STOP
+                {stopMutation.isPending ? 'STOPPING…' : 'STOP'}
+              </button>
+              <button
+                onClick={() => restartMutation.mutate()}
+                disabled={restartMutation.isPending || service.status !== 'running'}
+                className={`btn-restart ${service.status !== 'running' ? 'disabled' : ''}`}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                  <polyline points="1 4 1 10 7 10"/>
+                  <path d="M3.51 15a9 9 0 1 0 .49-4.5"/>
+                </svg>
+                {restartMutation.isPending ? 'RESTARTING…' : 'RESTART'}
               </button>
               <button
                 onClick={() => deployMutation.mutate('manual')}
@@ -606,10 +654,10 @@ export function ServiceDetailPage() {
                 className={`btn-restart ${deployMutation.isPending ? 'disabled' : ''}`}
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-                  <polyline points="1 4 1 10 7 10"/>
-                  <path d="M3.51 15a9 9 0 1 0 .49-4.5"/>
+                  <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/>
+                  <path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/>
                 </svg>
-                RESTART
+                {deployMutation.isPending ? 'DEPLOYING…' : 'DEPLOY'}
               </button>
             </>
           )}
@@ -1078,7 +1126,11 @@ export function ServiceDetailPage() {
                 </div>
                 <div>
                   <h2 className="text-lg font-semibold text-[var(--text-primary)]">Environment Variables</h2>
-                  <p className="text-sm text-[var(--text-secondary)]">Runtime values injected into the service container</p>
+                  <p className="text-sm text-[var(--text-secondary)]">
+                    Runtime values injected at deploy. Reference another service's variable with{' '}
+                    <code className="mono text-[var(--accent-primary)]">{'${{service.KEY}}'}</code> — e.g.{' '}
+                    <code className="mono text-[var(--accent-primary)]">{'${{postgres.POSTGRES_PASSWORD}}'}</code>
+                  </p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -1774,6 +1826,159 @@ export function ServiceDetailPage() {
                 <p className="mt-2 text-sm text-[var(--text-primary)]">{formatRelative(service.updatedAt)}</p>
               </div>
             </div>
+
+            {!isDemoMode && (
+              <div className="mt-6 pt-6 border-t border-[var(--border-subtle)]">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-medium text-[var(--text-primary)]">Networking</h3>
+                  {networkForm === null && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setNetworkForm({
+                          port: service.port ? String(service.port) : '',
+                          domain: service.domain ?? '',
+                          healthcheckPath: service.healthcheckPath ?? '',
+                          restartPolicy: service.restartPolicy ?? 'unless-stopped',
+                          replicas: String(service.replicas ?? 1),
+                        })
+                      }
+                      className="px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium hover:border-[var(--border-default)] transition-colors"
+                    >
+                      Edit
+                    </button>
+                  )}
+                </div>
+
+                {runtimeQuery.data && (
+                  <div className="mb-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)]/40 p-3">
+                    <div className="flex items-center gap-4 text-xs">
+                      <span className="text-[var(--text-tertiary)]">
+                        Live: <span className="text-[var(--text-primary)] font-medium">{runtimeQuery.data.containers.filter((c) => c.state === 'running').length}/{runtimeQuery.data.desired}</span> replicas
+                      </span>
+                      <span className="text-[var(--text-tertiary)]">
+                        Internal: <span className="mono text-[var(--text-primary)]">{service.name}{service.port ? `:${service.port}` : ''}</span>
+                      </span>
+                      {runtimeQuery.data.urls.map((url) => (
+                        <a key={url} href={url} target="_blank" rel="noopener noreferrer" className="mono text-[var(--accent-primary)] hover:underline">
+                          {url}
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {networkForm === null ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                    <div className="rounded-[var(--radius-md)] border border-[var(--border-primary)] p-3">
+                      <p className="text-[var(--text-tertiary)] uppercase tracking-wide">Port</p>
+                      <p className="mt-1 text-sm font-medium text-[var(--text-primary)]">{service.port || '—'}</p>
+                    </div>
+                    <div className="rounded-[var(--radius-md)] border border-[var(--border-primary)] p-3">
+                      <p className="text-[var(--text-tertiary)] uppercase tracking-wide">Domain</p>
+                      <p className="mt-1 text-sm font-medium text-[var(--text-primary)] truncate">{service.domain || '—'}</p>
+                    </div>
+                    <div className="rounded-[var(--radius-md)] border border-[var(--border-primary)] p-3">
+                      <p className="text-[var(--text-tertiary)] uppercase tracking-wide">Replicas</p>
+                      <p className="mt-1 text-sm font-medium text-[var(--text-primary)]">{service.replicas ?? 1}</p>
+                    </div>
+                    <div className="rounded-[var(--radius-md)] border border-[var(--border-primary)] p-3">
+                      <p className="text-[var(--text-tertiary)] uppercase tracking-wide">Restart</p>
+                      <p className="mt-1 text-sm font-medium text-[var(--text-primary)]">{service.restartPolicy || 'unless-stopped'}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-[var(--radius-md)] border border-[var(--border-primary)] p-4 space-y-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-xs text-[var(--text-tertiary)] mb-1">Container port</label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={65535}
+                          value={networkForm.port}
+                          onChange={(e) => setNetworkForm({ ...networkForm, port: e.target.value })}
+                          placeholder="e.g. 3000"
+                          className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)]"
+                        />
+                        <p className="mt-1 text-[10px] text-[var(--text-tertiary)]">Published on the host; routed via Traefik when a domain is set</p>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-[var(--text-tertiary)] mb-1">Domain</label>
+                        <input
+                          value={networkForm.domain}
+                          onChange={(e) => setNetworkForm({ ...networkForm, domain: e.target.value })}
+                          placeholder="app.example.com"
+                          className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-[var(--text-tertiary)] mb-1">Health check path</label>
+                        <input
+                          value={networkForm.healthcheckPath}
+                          onChange={(e) => setNetworkForm({ ...networkForm, healthcheckPath: e.target.value })}
+                          placeholder="/health"
+                          className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-[var(--text-tertiary)] mb-1">Replicas</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={20}
+                          value={networkForm.replicas}
+                          onChange={(e) => setNetworkForm({ ...networkForm, replicas: e.target.value })}
+                          className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-[var(--text-tertiary)] mb-1">Restart policy</label>
+                        <select
+                          value={networkForm.restartPolicy}
+                          onChange={(e) => setNetworkForm({ ...networkForm, restartPolicy: e.target.value })}
+                          className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)]"
+                        >
+                          <option value="unless-stopped">unless-stopped</option>
+                          <option value="always">always</option>
+                          <option value="on-failure">on-failure</option>
+                          <option value="no">no</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={updateServiceMutation.isPending}
+                        onClick={() =>
+                          updateServiceMutation.mutate({
+                            port: Number(networkForm.port) || 0,
+                            domain: networkForm.domain,
+                            healthcheck_path: networkForm.healthcheckPath,
+                            restart_policy: networkForm.restartPolicy,
+                            replicas: Math.max(1, Math.min(20, Number(networkForm.replicas) || 1)),
+                          })
+                        }
+                        className="px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-contrast)] text-sm font-medium disabled:opacity-50"
+                      >
+                        {updateServiceMutation.isPending ? 'Saving…' : 'Save'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setNetworkForm(null)}
+                        className="px-4 py-2 rounded-[var(--radius-md)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)]"
+                      >
+                        Cancel
+                      </button>
+                      <p className="text-[10px] text-[var(--text-tertiary)]">Takes effect on next deploy or redeploy</p>
+                    </div>
+                    {updateServiceMutation.isError && (
+                      <p className="text-xs text-[var(--error)]">{(updateServiceMutation.error as Error).message}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {!isDemoMode && (
               <div className="mt-6 pt-6 border-t border-[var(--border-subtle)]">

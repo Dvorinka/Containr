@@ -424,6 +424,126 @@ paths:
         '204':
           description: Service deleted successfully
 
+  /services/{id}/runtime:
+    get:
+      tags:
+        - Services
+      summary: Service runtime state
+      description: Live container state — replicas, URLs, aggregate status
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Runtime state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  runtime:
+                    type: object
+                    properties:
+                      desired:
+                        type: integer
+                      status:
+                        type: string
+                        enum: [running, degraded, stopped]
+                      urls:
+                        type: array
+                        items:
+                          type: string
+                      containers:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            name:
+                              type: string
+                            state:
+                              type: string
+                            replica:
+                              type: integer
+
+  /services/{id}/start:
+    post:
+      tags:
+        - Services
+      summary: Start service
+      description: Start all stopped replicas
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Service started
+
+  /services/{id}/stop:
+    post:
+      tags:
+        - Services
+      summary: Stop service
+      description: Stop all replicas without removing them
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Service stopped
+
+  /services/{id}/restart:
+    post:
+      tags:
+        - Services
+      summary: Restart service
+      description: Restart all replicas
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Service restarted
+
+  /services/{id}/redeploy:
+    post:
+      tags:
+        - Services
+      summary: Redeploy service
+      description: Re-apply the current spec — pulls the image for image-sourced services, reuses the last deployed image otherwise
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Reconciled runtime state
+
   /services/{id}/deployments:
     get:
       tags:
@@ -4372,6 +4492,24 @@ components:
         memory:
           type: string
           description: Memory allocation
+        replicas:
+          type: integer
+          description: Desired replica count
+        port:
+          type: integer
+          description: Container port to expose (published host port, or Traefik when domain set)
+        domain:
+          type: string
+          description: Public hostname routed via Traefik
+        healthcheck_path:
+          type: string
+          description: HTTP path probed on port for container health
+        restart_policy:
+          type: string
+          description: Docker restart policy (default unless-stopped)
+        public_url:
+          type: string
+          description: Computed public URL (published port or domain)
         created_at:
           type: string
           format: date-time
@@ -4424,6 +4562,21 @@ components:
         memory:
           type: string
           description: Memory allocation
+        replicas:
+          type: integer
+          description: Desired replica count
+        port:
+          type: integer
+          description: Container port to expose
+        domain:
+          type: string
+          description: Public hostname routed via Traefik
+        healthcheck_path:
+          type: string
+          description: HTTP path probed for container health
+        restart_policy:
+          type: string
+          description: Docker restart policy
 
     UpdateServiceRequest:
       type: object
@@ -4460,6 +4613,21 @@ components:
         memory:
           type: string
           description: Memory allocation
+        replicas:
+          type: integer
+          description: Desired replica count
+        port:
+          type: integer
+          description: Container port to expose
+        domain:
+          type: string
+          description: Public hostname routed via Traefik
+        healthcheck_path:
+          type: string
+          description: HTTP path probed for container health
+        restart_policy:
+          type: string
+          description: Docker restart policy
 
     Deployment:
       type: object

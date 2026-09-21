@@ -604,6 +604,216 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/services/{id}/runtime": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Service runtime state
+         * @description Live container state — replicas, URLs, aggregate status
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Runtime state */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            runtime?: {
+                                desired?: number;
+                                /** @enum {string} */
+                                status?: "running" | "degraded" | "stopped";
+                                urls?: string[];
+                                containers?: {
+                                    id?: string;
+                                    name?: string;
+                                    state?: string;
+                                    replica?: number;
+                                }[];
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/services/{id}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start service
+         * @description Start all stopped replicas
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Service started */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/services/{id}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop service
+         * @description Stop all replicas without removing them
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Service stopped */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/services/{id}/restart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restart service
+         * @description Restart all replicas
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Service restarted */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/services/{id}/redeploy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Redeploy service
+         * @description Re-apply the current spec — pulls the image for image-sourced services, reuses the last deployed image otherwise
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Reconciled runtime state */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/services/{id}/deployments": {
         parameters: {
             query?: never;
@@ -6928,6 +7138,18 @@ export interface components {
             cpu?: string;
             /** @description Memory allocation */
             memory?: string;
+            /** @description Desired replica count */
+            replicas?: number;
+            /** @description Container port to expose (published host port, or Traefik when domain set) */
+            port?: number;
+            /** @description Public hostname routed via Traefik */
+            domain?: string;
+            /** @description HTTP path probed on port for container health */
+            healthcheck_path?: string;
+            /** @description Docker restart policy (default unless-stopped) */
+            restart_policy?: string;
+            /** @description Computed public URL (published port or domain) */
+            public_url?: string;
             /**
              * Format: date-time
              * @description Service creation timestamp
@@ -6971,6 +7193,16 @@ export interface components {
             cpu?: string;
             /** @description Memory allocation */
             memory?: string;
+            /** @description Desired replica count */
+            replicas?: number;
+            /** @description Container port to expose */
+            port?: number;
+            /** @description Public hostname routed via Traefik */
+            domain?: string;
+            /** @description HTTP path probed for container health */
+            healthcheck_path?: string;
+            /** @description Docker restart policy */
+            restart_policy?: string;
         };
         UpdateServiceRequest: {
             /** @description Service name */
@@ -6999,6 +7231,16 @@ export interface components {
             cpu?: string;
             /** @description Memory allocation */
             memory?: string;
+            /** @description Desired replica count */
+            replicas?: number;
+            /** @description Container port to expose */
+            port?: number;
+            /** @description Public hostname routed via Traefik */
+            domain?: string;
+            /** @description HTTP path probed for container health */
+            healthcheck_path?: string;
+            /** @description Docker restart policy */
+            restart_policy?: string;
         };
         Deployment: {
             /** @description Deployment ID */

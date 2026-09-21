@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"database/sql"
-	"io"
 	"log"
 	"net/http"
 	"os"
@@ -241,10 +240,7 @@ func applyCloudflaredTunnel(client *docker.Client, token string) {
 		return
 	}
 
-	if reader, err := client.PullImage(ctx, cloudflaredImage, registry.AuthConfig{}); err == nil {
-		_, _ = io.Copy(io.Discard, reader)
-		_ = reader.Close()
-	} else {
+	if err := client.PullImageWait(ctx, cloudflaredImage, registry.AuthConfig{}); err != nil {
 		log.Printf("Failed to pull %s: %v", cloudflaredImage, err)
 	}
 
