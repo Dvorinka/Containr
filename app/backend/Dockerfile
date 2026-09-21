@@ -1,5 +1,5 @@
 # Build Go API binary
-FROM golang:1.24-alpine AS go-builder
+FROM golang:1.26-alpine AS go-builder
 
 RUN apk add --no-cache git ca-certificates tzdata
 
@@ -12,7 +12,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main cmd/server/main.go
 
 # Build embedded Better Auth runtime dependencies
-FROM node:20-alpine AS auth-builder
+FROM node:22-alpine AS auth-builder
 
 WORKDIR /auth
 
@@ -22,7 +22,7 @@ RUN npm ci --omit=dev
 COPY auth/src ./src
 
 # Final runtime image (Go API + Better Auth sidecar in one container)
-FROM node:20-alpine
+FROM node:22-alpine
 
 RUN apk --no-cache add ca-certificates tzdata wget
 
