@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Containr one-shot installer: creates .env with generated secrets, builds
-# images, boots the stack, and waits for the API to report healthy.
+# Containr one-shot installer: creates .env with generated secrets, pulls the
+# published images (or builds from source), boots the stack, and waits for
+# the API to report healthy.
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -45,9 +46,18 @@ fi
 HTTP_PORT="${HTTP_PORT:-3000}"
 API_PORT="${API_PORT:-8082}"
 
-# Build and boot
-info "Building images and starting the stack..."
-docker compose up -d --build
+# Boot: pull published :latest images by default (CONTAINR_VERSION pins a
+# release). Build from source instead with CONTAINR_BUILD=1, or as fallback
+# when the registry is unreachable.
+if [[ "${CONTAINR_BUILD:-}" == "1" ]]; then
+    info "CONTAINR_BUILD=1 - building images from source..."
+    docker compose build
+elif ! docker compose pull; then
+    info "Image pull failed - building from source instead..."
+    docker compose build
+fi
+info "Starting the stack..."
+docker compose up -d
 
 # Wait for the API
 info "Waiting for the API on http://localhost:${API_PORT}/health ..."
