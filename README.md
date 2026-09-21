@@ -61,7 +61,8 @@ Installs into `./containr`, generates secrets, pulls the published `:latest`
 images, and starts the stack — UI at `http://localhost:3000`, API at
 `http://localhost:8082`. Non-interactive; re-runs never overwrite `.env`.
 On first visit you create the owner account (email/password); registration
-then closes automatically.
+then closes automatically. The owner can reopen it and configure a Cloudflare
+Tunnel token under **Settings → Platform** — in-app values override env vars.
 
 Override with env vars:
 

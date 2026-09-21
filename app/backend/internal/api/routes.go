@@ -35,6 +35,8 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 		dockerClient = client
 		buildManager = build.NewBuildManager("/tmp/containr-builds", dockerClient)
 		deploymentEngine = deployment.NewDeploymentEngine(buildManager, dockerClient)
+		// Restore managed sidecars (e.g. cloudflared) from saved settings.
+		syncManagedContainers(dockerClient, db)
 	}
 
 	// Initialize build handler
@@ -183,6 +185,10 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			protected.GET("/user/profile", handleGetProfile)
 			protected.PUT("/user/profile", handleUpdateProfile)
 			protected.POST("/users", handleCreateUser)
+
+			// Platform settings (admin-gated inside handlers)
+			protected.GET("/settings", handleGetSettings)
+			protected.PUT("/settings", handleUpdateSettings)
 
 			// Project routes
 			protected.GET("/projects", handleGetProjects)

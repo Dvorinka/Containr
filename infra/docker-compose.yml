@@ -134,6 +134,10 @@ services:
       - BITBUCKET_API_URL=${BITBUCKET_API_URL:-https://api.bitbucket.org/2.0}
       - BITBUCKET_BASE_URL=${BITBUCKET_BASE_URL:-https://bitbucket.org}
       - GITEA_BASE_URL=${GITEA_BASE_URL:-https://gitea.example.com}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    group_add:
+      - "${DOCKER_GID:-0}"
     networks:
       - containr-network
     depends_on:

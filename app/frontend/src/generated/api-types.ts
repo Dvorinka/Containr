@@ -2153,7 +2153,7 @@ export interface paths {
         };
         /**
          * Bootstrap status
-         * @description Reports whether the instance already has a registered user. Drives the first-run setup gate.
+         * @description Reports whether the instance already has a registered user, which auth providers are configured, and whether public registration is open. Drives the first-run setup gate.
          */
         get: {
             parameters: {
@@ -2171,15 +2171,109 @@ export interface paths {
                     };
                     content: {
                         "application/json": {
-                            /** @description True when no user exists yet */
-                            needs_setup?: boolean;
+                            /** @description True when at least one account exists */
+                            has_users?: boolean;
                             user_count?: number;
+                            /**
+                             * @description register when the instance has no users, login otherwise
+                             * @enum {string}
+                             */
+                            mode?: "register" | "login";
+                            /** @description OAuth providers with real credentials configured (e.g. github, google). Empty on self-hosted installs. */
+                            providers?: string[];
+                            /** @description True when the owner re-opened public registration in Settings */
+                            signup_enabled?: boolean;
                         };
                     };
                 };
             };
         };
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read platform settings
+         * @description Admin only. Returns in-app settings that override environment variables.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Current platform settings */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PlatformSettings"];
+                    };
+                };
+                /** @description Admin access required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        /**
+         * Update platform settings
+         * @description Admin only. Provided keys are applied immediately; the Cloudflare tunnel token starts/stops the managed cloudflared sidecar.
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description Allow new public account registration after bootstrap */
+                        signup_enabled?: boolean;
+                        /** @description Cloudflare Tunnel token. Empty string clears the stored token and removes the cloudflared container. */
+                        cloudflare_tunnel_token?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Updated platform settings */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PlatformSettings"];
+                    };
+                };
+                /** @description Admin access required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         post?: never;
         delete?: never;
         options?: never;
@@ -6687,6 +6781,21 @@ export interface components {
             /** @description User display name */
             name: string;
         };
+        PlatformSettings: {
+            /** @description Whether public account registration is open after bootstrap */
+            signup_enabled?: boolean;
+            cloudflare_tunnel?: {
+                /** @description Whether a tunnel token is configured (value is never returned) */
+                token_set?: boolean;
+                /**
+                 * @description Where the active token comes from - in-app setting, env fallback, or unset
+                 * @enum {string}
+                 */
+                source?: "app" | "env" | "none";
+                /** @description cloudflared container state - running/exited/missing, or unavailable when Docker is unreachable */
+                container?: string;
+            };
+        };
         User: {
             /** @description User ID */
             id?: string;
@@ -6699,6 +6808,8 @@ export interface components {
             name?: string;
             /** @description Optional avatar image URL */
             avatar_url?: string;
+            /** @description True for the platform owner (first registered account) */
+            is_admin?: boolean;
             /**
              * Format: date-time
              * @description Account creation timestamp

@@ -21,6 +21,7 @@ export type AuthBootstrap = {
   userCount: number;
   mode: 'register' | 'login';
   providers: string[];
+  signupEnabled: boolean;
 };
 
 export class AuthError extends Error {
@@ -67,6 +68,7 @@ export async function getAuthBootstrap(): Promise<AuthBootstrap> {
     userCount: typeof payload?.user_count === 'number' ? payload.user_count : 0,
     mode: payload?.mode === 'register' ? 'register' : 'login',
     providers,
+    signupEnabled: Boolean(payload?.signup_enabled),
   };
 }
 

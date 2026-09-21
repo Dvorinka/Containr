@@ -279,7 +279,8 @@ export function SignUpPage() {
     return <Navigate to={redirectPath} replace />;
   }
 
-  if (bootstrapQuery.data?.mode === 'login') {
+  // Registration stays available when the owner reopened it in Settings.
+  if (bootstrapQuery.data?.mode === 'login' && !bootstrapQuery.data.signupEnabled) {
     return <Navigate to={`/auth/sign-in?redirect=${encodeURIComponent(redirectPath)}`} replace />;
   }
 
@@ -302,7 +303,12 @@ export function SignUpPage() {
 
   return (
     <AuthLayout>
-      <AuthCard title="Create Account" subtitle="Create first platform owner account. Registration closes after bootstrap.">
+      <AuthCard
+        title="Create Account"
+        subtitle={bootstrapQuery.data?.mode === 'register'
+          ? 'Create first platform owner account. Registration closes after bootstrap.'
+          : 'Create a new account.'}
+      >
         {error ? <AuthErrorNotice message={error} /> : null}
         {bootstrapQuery.isLoading ? <AuthInfoNotice message="Checking platform bootstrap state..." /> : null}
         {bootstrapQuery.isError ? <AuthErrorNotice message="Cannot reach the Containr API - check that the backend container is running." /> : null}

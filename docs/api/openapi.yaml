@@ -1432,7 +1432,7 @@ paths:
       tags:
         - Authentication
       summary: Bootstrap status
-      description: Reports whether the instance already has a registered user. Drives the first-run setup gate.
+      description: Reports whether the instance already has a registered user, which auth providers are configured, and whether public registration is open. Drives the first-run setup gate.
       responses:
         '200':
           description: Bootstrap state
@@ -1441,11 +1441,70 @@ paths:
               schema:
                 type: object
                 properties:
-                  needs_setup:
+                  has_users:
                     type: boolean
-                    description: True when no user exists yet
+                    description: True when at least one account exists
                   user_count:
                     type: integer
+                  mode:
+                    type: string
+                    enum: [register, login]
+                    description: register when the instance has no users, login otherwise
+                  providers:
+                    type: array
+                    items:
+                      type: string
+                    description: OAuth providers with real credentials configured (e.g. github, google). Empty on self-hosted installs.
+                  signup_enabled:
+                    type: boolean
+                    description: True when the owner re-opened public registration in Settings
+
+  /settings:
+    get:
+      tags:
+        - Settings
+      summary: Read platform settings
+      description: Admin only. Returns in-app settings that override environment variables.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current platform settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformSettings'
+        '403':
+          description: Admin access required
+    put:
+      tags:
+        - Settings
+      summary: Update platform settings
+      description: Admin only. Provided keys are applied immediately; the Cloudflare tunnel token starts/stops the managed cloudflared sidecar.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                signup_enabled:
+                  type: boolean
+                  description: Allow new public account registration after bootstrap
+                cloudflare_tunnel_token:
+                  type: string
+                  description: Cloudflare Tunnel token. Empty string clears the stored token and removes the cloudflared container.
+      responses:
+        '200':
+          description: Updated platform settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformSettings'
+        '403':
+          description: Admin access required
 
   # User Management
   /users:
@@ -4111,6 +4170,26 @@ components:
           type: string
           description: User display name
 
+    PlatformSettings:
+      type: object
+      properties:
+        signup_enabled:
+          type: boolean
+          description: Whether public account registration is open after bootstrap
+        cloudflare_tunnel:
+          type: object
+          properties:
+            token_set:
+              type: boolean
+              description: Whether a tunnel token is configured (value is never returned)
+            source:
+              type: string
+              enum: [app, env, none]
+              description: Where the active token comes from - in-app setting, env fallback, or unset
+            container:
+              type: string
+              description: cloudflared container state - running/exited/missing, or unavailable when Docker is unreachable
+
     User:
       type: object
       properties:
@@ -4127,6 +4206,9 @@ components:
         avatar_url:
           type: string
           description: Optional avatar image URL
+        is_admin:
+          type: boolean
+          description: True for the platform owner (first registered account)
         created_at:
           type: string
           format: date-time

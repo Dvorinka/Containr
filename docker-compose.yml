@@ -84,6 +84,13 @@ services:
       BITBUCKET_API_URL: ${BITBUCKET_API_URL:-https://api.bitbucket.org/2.0}
       BITBUCKET_BASE_URL: ${BITBUCKET_BASE_URL:-https://bitbucket.org}
       GITEA_BASE_URL: ${GITEA_BASE_URL:-https://gitea.example.com}
+    volumes:
+      # Required for service deployments and managed sidecars (e.g. cloudflared)
+      - /var/run/docker.sock:/var/run/docker.sock
+    # Grants the non-root backend user access to the Docker socket.
+    # install.sh writes the host's docker gid into DOCKER_GID.
+    group_add:
+      - "${DOCKER_GID:-0}"
     depends_on:
       postgres:
         condition: service_healthy

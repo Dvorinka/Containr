@@ -18,8 +18,18 @@ export type UserProfile = {
   email: string;
   name: string;
   avatarUrl?: string;
+  isAdmin: boolean;
   createdAt?: string;
   updatedAt?: string;
+};
+
+export type PlatformSettings = {
+  signupEnabled: boolean;
+  cloudflareTunnel: {
+    tokenSet: boolean;
+    source: 'app' | 'env' | 'none';
+    container: string;
+  };
 };
 
 export type ServiceEntity = {
@@ -442,9 +452,44 @@ function normalizeUserProfile(profile: RawUserProfile): UserProfile | null {
     email: profile.email,
     name: profile.name,
     avatarUrl: profile.avatar_url ?? undefined,
+    isAdmin: profile.is_admin ?? false,
     createdAt: profile.created_at ?? undefined,
     updatedAt: profile.updated_at ?? undefined,
   };
+}
+
+function normalizePlatformSettings(raw: components['schemas']['PlatformSettings']): PlatformSettings {
+  return {
+    signupEnabled: raw.signup_enabled ?? false,
+    cloudflareTunnel: {
+      tokenSet: raw.cloudflare_tunnel?.token_set ?? false,
+      source: raw.cloudflare_tunnel?.source ?? 'none',
+      container: raw.cloudflare_tunnel?.container ?? 'missing',
+    },
+  };
+}
+
+export async function getPlatformSettings(): Promise<PlatformSettings> {
+  const raw = await requestJson<components['schemas']['PlatformSettings']>('/settings');
+  return normalizePlatformSettings(raw);
+}
+
+export async function updatePlatformSettings(input: {
+  signupEnabled?: boolean;
+  cloudflareTunnelToken?: string;
+}): Promise<PlatformSettings> {
+  const body: Record<string, unknown> = {};
+  if (input.signupEnabled !== undefined) {
+    body.signup_enabled = input.signupEnabled;
+  }
+  if (input.cloudflareTunnelToken !== undefined) {
+    body.cloudflare_tunnel_token = input.cloudflareTunnelToken;
+  }
+  const raw = await requestJson<components['schemas']['PlatformSettings']>('/settings', {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  });
+  return normalizePlatformSettings(raw);
 }
 
 function normalizeService(service: RawService): ServiceEntity | null {

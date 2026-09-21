@@ -67,7 +67,9 @@ func shouldBlockPublicBetterAuthSignup(c *gin.Context, cfg *config.Config, db *d
 		return true
 	}
 
-	return count > 0
+	// Registration is closed once the first account exists unless the owner
+	// reopens it in Settings (signup_enabled).
+	return count > 0 && !signupEnabled(db)
 }
 
 func parseAuthProxyTarget(rawTarget string) (*url.URL, error) {

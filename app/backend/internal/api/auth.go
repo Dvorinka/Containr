@@ -46,6 +46,7 @@ type User struct {
 	Email     string `json:"email"`
 	Name      string `json:"name"`
 	AvatarURL string `json:"avatar_url,omitempty"`
+	IsAdmin   bool   `json:"is_admin"`
 	CreatedAt string `json:"created_at"`
 }
 
@@ -63,10 +64,10 @@ func handleLogin(c *gin.Context) {
 	var user User
 	var hashedPassword string
 	err := db.QueryRow(`
-		SELECT id, email, password_hash, name, COALESCE(avatar_url, ''), created_at 
-		FROM users 
+		SELECT id, email, password_hash, name, COALESCE(avatar_url, ''), is_admin, created_at
+		FROM users
 		WHERE email = $1
-	`, req.Email).Scan(&user.ID, &user.Email, &hashedPassword, &user.Name, &user.AvatarURL, &user.CreatedAt)
+	`, req.Email).Scan(&user.ID, &user.Email, &hashedPassword, &user.Name, &user.AvatarURL, &user.IsAdmin, &user.CreatedAt)
 
 	if err == sql.ErrNoRows {
 		authUser, ok := verifyBetterAuthCredentials(c, req.Email, req.Password)
@@ -128,10 +129,11 @@ func handleAuthBootstrap(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"has_users":  count > 0,
-		"user_count": count,
-		"mode":       mode,
-		"providers":  providers,
+		"has_users":      count > 0,
+		"user_count":     count,
+		"mode":           mode,
+		"providers":      providers,
+		"signup_enabled": signupEnabled(db),
 	})
 }
 
@@ -282,24 +284,26 @@ func handleRegister(c *gin.Context) {
 	db := c.MustGet("db").(*database.DB)
 	jwtSecret := c.MustGet("jwt_secret").(string)
 
-	count, err := countLocalUsers(db)
+	total, err := countLocalUsers(db)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
 	}
 
-	if count > 0 {
+	// Closed once the first account exists unless the owner reopens registration.
+	if total > 0 && !signupEnabled(db) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Public registration is disabled after bootstrap"})
 		return
 	}
 
-	err = db.QueryRow("SELECT COUNT(*) FROM users WHERE email = $1", strings.ToLower(strings.TrimSpace(req.Email))).Scan(&count)
+	var existing int
+	err = db.QueryRow("SELECT COUNT(*) FROM users WHERE email = $1", strings.ToLower(strings.TrimSpace(req.Email))).Scan(&existing)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
 	}
 
-	if count > 0 {
+	if existing > 0 {
 		c.JSON(http.StatusConflict, gin.H{"error": "User already exists"})
 		return
 	}
@@ -311,13 +315,13 @@ func handleRegister(c *gin.Context) {
 		return
 	}
 
-	// Create user
+	// First account owns the platform.
 	var user User
 	err = db.QueryRow(`
-		INSERT INTO users (email, password_hash, name) 
-		VALUES ($1, $2, $3) 
+		INSERT INTO users (email, password_hash, name, is_admin)
+		VALUES ($1, $2, $3, $4)
 		RETURNING id, email, name, COALESCE(avatar_url, ''), created_at
-	`, req.Email, string(hashedPassword), req.Name).Scan(&user.ID, &user.Email, &user.Name, &user.AvatarURL, &user.CreatedAt)
+	`, req.Email, string(hashedPassword), req.Name, total == 0).Scan(&user.ID, &user.Email, &user.Name, &user.AvatarURL, &user.CreatedAt)
 
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
@@ -338,13 +342,16 @@ func handleRegister(c *gin.Context) {
 }
 
 func handleCreateUser(c *gin.Context) {
+	db, ok := requireAdmin(c)
+	if !ok {
+		return
+	}
+
 	var req ManualUserCreateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-
-	db := c.MustGet("db").(*database.DB)
 	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
 	req.Name = strings.TrimSpace(req.Name)
 	if req.Email == "" || req.Name == "" {
@@ -477,10 +484,10 @@ func handleGetProfile(c *gin.Context) {
 
 	var user User
 	err := db.QueryRow(`
-		SELECT id, email, name, COALESCE(avatar_url, ''), created_at 
-		FROM users 
+		SELECT id, email, name, COALESCE(avatar_url, ''), is_admin, created_at
+		FROM users
 		WHERE id = $1
-	`, userID).Scan(&user.ID, &user.Email, &user.Name, &user.AvatarURL, &user.CreatedAt)
+	`, userID).Scan(&user.ID, &user.Email, &user.Name, &user.AvatarURL, &user.IsAdmin, &user.CreatedAt)
 
 	if err == sql.ErrNoRows {
 		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})

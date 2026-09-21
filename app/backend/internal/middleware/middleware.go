@@ -248,11 +248,18 @@ func ensureLocalUserRecord(c *gin.Context, user betterAuthSessionUser) (string, 
 		return "", hashErr
 	}
 
+	// The first mirrored account owns the platform.
+	var userCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&userCount); err != nil {
+		return "", err
+	}
+	isFirstUser := userCount == 0
+
 	if err := db.QueryRow(`
-		INSERT INTO users (email, password_hash, name, avatar_url)
-		VALUES ($1, $2, $3, NULLIF($4, ''))
+		INSERT INTO users (email, password_hash, name, avatar_url, is_admin)
+		VALUES ($1, $2, $3, NULLIF($4, ''), $5)
 		RETURNING id
-	`, email, string(hashedPassword), name, avatarURL).Scan(&localUserID); err != nil {
+	`, email, string(hashedPassword), name, avatarURL, isFirstUser).Scan(&localUserID); err != nil {
 		return "", err
 	}
 
