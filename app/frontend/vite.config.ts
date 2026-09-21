@@ -6,16 +6,6 @@ import path from 'path'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
-  server: {
-    proxy: {
-      // Same-origin API path for dev - matches the nginx proxy in the shipped image
-      '/api': {
-        target: 'http://localhost:8082',
-        changeOrigin: true,
-        ws: true,
-      },
-    },
-  },
   test: {
     globals: true,
     environment: 'happy-dom',
@@ -64,6 +54,14 @@ export default defineConfig({
     fs: {
       // Allow serving files from project root
       allow: ['..']
+    },
+    proxy: {
+      // Same-origin API path for dev - matches the nginx proxy in the shipped image
+      '/api': {
+        target: 'http://localhost:8082',
+        changeOrigin: true,
+        ws: true,
+      },
     }
   },
   // Preview server optimization
