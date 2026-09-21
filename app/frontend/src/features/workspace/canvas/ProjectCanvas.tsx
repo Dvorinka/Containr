@@ -17,6 +17,7 @@ import {
   createDeployment,
   deleteService,
   restartService,
+  startService,
   stopService,
 } from '@/lib/api-client';
 import { useToast } from '@/shared/hooks/use-toast';
@@ -118,27 +119,40 @@ function toFlowNodes(metadata: ProjectCanvasMetadata, services: ServiceEntity[],
   return [...groups, ...serviceNodes];
 }
 
-function toFlowEdges(links: ReturnType<typeof inferAutoConnections>): CanvasEdge[] {
-  return links.map((link) => ({
-    id: link.edge.id,
-    source: link.edge.sourceServiceId,
-    target: link.edge.targetServiceId,
-    animated: false,
-    data: {
-      reasons: link.reasons,
-    },
-    markerEnd: {
-      type: MarkerType.ArrowClosed,
-      color: 'var(--accent-secondary)',
-      width: 14,
-      height: 14,
-    },
-    style: {
-      stroke: 'var(--accent-primary)',
-      strokeWidth: 2,
-    },
-    className: 'edge-premium',
-  }));
+function toFlowEdges(
+  links: ReturnType<typeof inferAutoConnections>,
+  positionOf: (serviceId: string) => { x: number; y: number } | undefined,
+): CanvasEdge[] {
+  return links.map((link) => {
+    const source = positionOf(link.edge.sourceServiceId);
+    const target = positionOf(link.edge.targetServiceId);
+    // Choose handle sides by relative position so edges flow forward
+    // instead of looping back through the canvas.
+    const forward = !source || !target || source.x <= target.x;
+
+    return {
+      id: link.edge.id,
+      source: link.edge.sourceServiceId,
+      target: link.edge.targetServiceId,
+      sourceHandle: forward ? 's-r' : 's-l',
+      targetHandle: forward ? 't-l' : 't-r',
+      animated: false,
+      data: {
+        reasons: link.reasons,
+      },
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        color: 'var(--accent-secondary)',
+        width: 14,
+        height: 14,
+      },
+      style: {
+        stroke: 'var(--accent-primary)',
+        strokeWidth: 2,
+      },
+      className: 'edge-premium',
+    };
+  });
 }
 
 function buildMetadataFromFlow(nodes: CanvasNode[], viewport: { x: number; y: number; zoom: number }): ProjectCanvasMetadata {
@@ -210,10 +224,12 @@ function CanvasInner({ projectId, services, variablesByService, onAddService, on
     () => inferAutoConnections(services, variablesByService),
     [services, variablesByService],
   );
-  const edges = useMemo(
-    () => toFlowEdges(inferredLinks).filter((edge) => visibleIds.has(edge.source) && visibleIds.has(edge.target)),
-    [inferredLinks, visibleIds],
-  );
+  const edges = useMemo(() => {
+    const positionOf = (serviceId: string) => nodes.find((node) => node.id === serviceId)?.position;
+    return toFlowEdges(inferredLinks, positionOf).filter(
+      (edge) => visibleIds.has(edge.source) && visibleIds.has(edge.target),
+    );
+  }, [inferredLinks, visibleIds, nodes]);
 
   const invalidateServices = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ['project-services', projectId] });
@@ -227,6 +243,14 @@ function CanvasInner({ projectId, services, variablesByService, onAddService, on
     mutationFn: (serviceId: string) => createDeployment(serviceId, { trigger: 'manual' }),
     onSuccess: () => {
       toast.showToast('Deployment started', 'success');
+      invalidateServices();
+    },
+    onError: actionError,
+  });
+  const startMutation = useMutation({
+    mutationFn: (serviceId: string) => startService(serviceId),
+    onSuccess: () => {
+      toast.showToast('Service started', 'success');
       invalidateServices();
     },
     onError: actionError,
@@ -256,7 +280,11 @@ function CanvasInner({ projectId, services, variablesByService, onAddService, on
     onError: actionError,
   });
   const actionPending =
-    deployMutation.isPending || restartMutation.isPending || stopMutation.isPending || deleteMutation.isPending;
+    deployMutation.isPending ||
+    startMutation.isPending ||
+    restartMutation.isPending ||
+    stopMutation.isPending ||
+    deleteMutation.isPending;
 
   useEffect(() => {
     const hasStoredViewport = localStorage.getItem(canvasStorageKey(projectId)) !== null;
@@ -453,11 +481,11 @@ function CanvasInner({ projectId, services, variablesByService, onAddService, on
       event.preventDefault();
       const bounds = wrapperRef.current?.getBoundingClientRect();
       setSelectedServiceId(node.id);
-      setContextMenu({
-        serviceId: node.id,
-        x: event.clientX - (bounds?.left ?? 0),
-        y: event.clientY - (bounds?.top ?? 0),
-      });
+      const menuW = 190;
+      const menuH = 230;
+      const x = Math.min(event.clientX - (bounds?.left ?? 0), Math.max(0, (bounds?.width ?? 0) - menuW));
+      const y = Math.min(event.clientY - (bounds?.top ?? 0), Math.max(0, (bounds?.height ?? 0) - menuH));
+      setContextMenu({ serviceId: node.id, x, y });
     },
     [],
   );
@@ -635,15 +663,15 @@ function CanvasInner({ projectId, services, variablesByService, onAddService, on
               <ArrowUpRight size={13} />
               Open service
             </button>
-            {contextService.domain && (
+            {(contextService.domain || contextService.publicUrl) && (
               <a
-                href={`https://${contextService.domain}`}
+                href={contextService.domain ? `https://${contextService.domain}` : contextService.publicUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)] transition-colors"
               >
                 <Globe size={13} />
-                Visit {contextService.domain}
+                Visit {(contextService.domain ?? contextService.publicUrl ?? '').replace(/^https?:\/\//, '')}
               </a>
             )}
             <button
@@ -658,6 +686,20 @@ function CanvasInner({ projectId, services, variablesByService, onAddService, on
               <Rocket size={13} />
               Deploy
             </button>
+            {contextService.status !== 'running' && (
+              <button
+                type="button"
+                disabled={actionPending}
+                onClick={() => {
+                  setContextMenu(null);
+                  startMutation.mutate(contextService.id);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50"
+              >
+                <Play size={13} />
+                Start
+              </button>
+            )}
             <button
               type="button"
               disabled={actionPending || contextService.status !== 'running'}

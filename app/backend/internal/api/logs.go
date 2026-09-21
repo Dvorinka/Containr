@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
+	"github.com/docker/docker/api/types/filters"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -73,7 +75,21 @@ func handleGetLogs(c *gin.Context) {
 		respondEmptyServiceLogs(c, "Container log streaming is unavailable because Docker is not configured.")
 		return
 	}
-	containerName := fmt.Sprintf("containr-%s", serviceID)
+	// Replicas are named containr-<serviceID>-<n>; resolve them by label and
+	// merge logs across all of them.
+	ctx := context.Background()
+	containers, err := client.ListContainersFiltered(ctx, filters.NewArgs(
+		filters.Arg("label", "containr.service="+serviceID.String()),
+	), false)
+	if err != nil {
+		respondDependencyUnavailable(c, "docker", "Failed to fetch container logs. The container may be unavailable.")
+		return
+	}
+	if len(containers) == 0 {
+		respondEmptyServiceLogs(c, "No container logs are available for this service yet.")
+		return
+	}
+	sort.Slice(containers, func(i, j int) bool { return containers[i].Names[0] < containers[j].Names[0] })
 
 	logOpts := docker.LogOptions{
 		Stdout:     true,
@@ -83,17 +99,25 @@ func handleGetLogs(c *gin.Context) {
 		Timestamps: true,
 	}
 
-	ctx := context.Background()
-	logsReader, err := client.GetContainerLogs(ctx, containerName, logOpts)
-	if err != nil {
-		if isDockerNotFoundError(err) {
-			respondEmptyServiceLogs(c, "No container logs are available for this service yet.")
-			return
+	var readers []io.ReadCloser
+	var streams []io.Reader
+	for _, ctr := range containers {
+		r, rerr := client.GetContainerLogs(ctx, ctr.ID, logOpts)
+		if rerr == nil {
+			readers = append(readers, r)
+			streams = append(streams, r)
 		}
-		respondDependencyUnavailable(c, "docker", "Failed to fetch container logs. The container may be unavailable.")
+	}
+	if len(readers) == 0 {
+		respondEmptyServiceLogs(c, "No container logs are available for this service yet.")
 		return
 	}
-	defer logsReader.Close()
+	logsReader := io.MultiReader(streams...)
+	defer func() {
+		for _, r := range readers {
+			_ = r.Close()
+		}
+	}()
 
 	if follow {
 		c.Header("Content-Type", "text/event-stream")

@@ -121,3 +121,5 @@ bin
 
 # Local reference checkouts (not project code)
 ref/
+.playwright-mcp/
+canvas-*.png

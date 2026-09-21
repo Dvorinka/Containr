@@ -288,7 +288,11 @@ export function ServiceDetailPage() {
   });
   const manualScaleMutation = useMutation({
     mutationFn: (replicas: number) => manualScaleService(serviceId, replicas),
-    onSuccess: invalidateScaling,
+    onSuccess: () => {
+      invalidateScaling();
+      queryClient.invalidateQueries({ queryKey: ['service-runtime', serviceId] });
+      queryClient.invalidateQueries({ queryKey: ['project-services'] });
+    },
   });
 
   // --- Console ---
@@ -589,9 +593,11 @@ export function ServiceDetailPage() {
         <div>
           <div className="flex items-center" style={{ gap: '10px' }}>
             <span style={{ fontSize: '20px', fontWeight: 800, letterSpacing: '-0.5px', color: '#e8e9f0' }}>{service.name}</span>
-            <span className={`badge-${service.status === 'running' ? 'active' : 'stopped'}`}>
+            <span
+              className={`badge-${service.status === 'running' ? 'active' : service.status === 'degraded' ? 'degraded' : 'stopped'}`}
+            >
               {service.status === 'running' && <span className="live-dot" />}
-              {service.status === 'running' ? 'Active' : 'Stopped'}
+              {service.status === 'running' ? 'Active' : service.status === 'degraded' ? 'Degraded' : 'Stopped'}
             </span>
           </div>
           <div className="flex items-center" style={{ gap: '16px', marginTop: '4px' }}>
@@ -628,8 +634,8 @@ export function ServiceDetailPage() {
             <>
               <button
                 onClick={() => stopMutation.mutate()}
-                disabled={stopMutation.isPending || service.status !== 'running'}
-                className={`btn-stop ${service.status !== 'running' ? 'disabled' : ''}`}
+                disabled={stopMutation.isPending || (service.status !== 'running' && service.status !== 'degraded')}
+                className={`btn-stop ${service.status !== 'running' && service.status !== 'degraded' ? 'disabled' : ''}`}
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
                   <circle cx="12" cy="12" r="10"/>
@@ -639,8 +645,8 @@ export function ServiceDetailPage() {
               </button>
               <button
                 onClick={() => restartMutation.mutate()}
-                disabled={restartMutation.isPending || service.status !== 'running'}
-                className={`btn-restart ${service.status !== 'running' ? 'disabled' : ''}`}
+                disabled={restartMutation.isPending || (service.status !== 'running' && service.status !== 'degraded')}
+                className={`btn-restart ${service.status !== 'running' && service.status !== 'degraded' ? 'disabled' : ''}`}
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
                   <polyline points="1 4 1 10 7 10"/>
@@ -1595,9 +1601,11 @@ export function ServiceDetailPage() {
                   <div className="rounded-[var(--radius-md)] border border-[var(--border-primary)] p-3">
                     <p className="text-xs text-[var(--text-tertiary)] uppercase tracking-wide">Replicas</p>
                     <p className="text-xl font-semibold text-[var(--text-primary)]">
-                      {scalingStateQuery.data?.CurrentReplicas ?? '—'}
+                      {scalingStateQuery.data?.CurrentReplicas ??
+                        runtimeQuery.data?.containers.filter((c) => c.state === 'running').length ??
+                        '—'}
                       <span className="text-sm font-normal text-[var(--text-secondary)]">
-                        {' '}/ {scalingStateQuery.data?.DesiredReplicas ?? '—'} desired
+                        {' '}/ {scalingStateQuery.data?.DesiredReplicas ?? runtimeQuery.data?.desired ?? service?.replicas ?? '—'} desired
                       </span>
                     </p>
                   </div>
@@ -1637,7 +1645,7 @@ export function ServiceDetailPage() {
                     </div>
                     <button
                       type="button"
-                      disabled={manualScaleMutation.isPending || !scaleReplicas || !scalingStateQuery.data}
+                      disabled={manualScaleMutation.isPending || !scaleReplicas}
                       onClick={() => manualScaleMutation.mutate(Number(scaleReplicas))}
                       className="px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-contrast)] text-sm font-medium disabled:opacity-50"
                     >

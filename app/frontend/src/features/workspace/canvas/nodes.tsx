@@ -47,6 +47,8 @@ function statusLabel(status: string): string {
   switch (status) {
     case 'running':
       return 'Online';
+    case 'degraded':
+      return 'Degraded';
     case 'building':
       return 'Deploying';
     case 'failed':
@@ -56,11 +58,25 @@ function statusLabel(status: string): string {
   }
 }
 
+function statusColor(status: string): string {
+  switch (status) {
+    case 'running':
+      return 'var(--success)';
+    case 'degraded':
+    case 'building':
+      return 'var(--warning)';
+    case 'failed':
+      return 'var(--error)';
+    default:
+      return 'var(--text-tertiary)';
+  }
+}
+
 export function ServiceNode({ data }: NodeProps<ServiceNodeType>) {
   const { service, selected } = data;
   const typeColor = serviceTypeColor(service.type);
-  const isRunning = service.status === 'running';
   const replicas = service.replicas ?? 0;
+  const stateColor = statusColor(service.status);
 
   const publicUrl = service.domain ? `https://${service.domain}` : service.publicUrl;
   const internalAddr = service.port ? `${service.name}:${service.port}` : service.name;
@@ -79,12 +95,14 @@ export function ServiceNode({ data }: NodeProps<ServiceNodeType>) {
         style={{ background: `${typeColor}10` }}
       />
 
-      <Handle type="target" position={Position.Left} className="!opacity-0 !w-2 !h-2 !border-0" />
-      <Handle type="source" position={Position.Right} className="!opacity-0 !w-2 !h-2 !border-0" />
+      <Handle id="t-l" type="target" position={Position.Left} className="!opacity-0 !w-2 !h-2 !border-0" />
+      <Handle id="t-r" type="target" position={Position.Right} className="!opacity-0 !w-2 !h-2 !border-0" />
+      <Handle id="s-l" type="source" position={Position.Left} className="!opacity-0 !w-2 !h-2 !border-0" />
+      <Handle id="s-r" type="source" position={Position.Right} className="!opacity-0 !w-2 !h-2 !border-0" />
 
       <div
-        className={`absolute top-0 left-0 right-0 h-0.5 transition-all duration-300 ${isRunning ? 'opacity-100' : 'opacity-40'}`}
-        style={{ background: isRunning ? 'var(--success)' : 'var(--text-tertiary)' }}
+        className={`absolute top-0 left-0 right-0 h-0.5 transition-all duration-300 ${service.status === 'running' ? 'opacity-100' : 'opacity-40'}`}
+        style={{ background: stateColor }}
       />
 
       <div className="relative p-4">
@@ -148,14 +166,15 @@ export function ServiceNode({ data }: NodeProps<ServiceNodeType>) {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className={`status-dot ${serviceStatusClass(service.status)}`} />
-            <span
-              className="text-[11px] font-semibold tracking-wide uppercase"
-              style={{ color: isRunning ? 'var(--success)' : 'var(--text-tertiary)' }}
-            >
+            <span className="text-[11px] font-semibold tracking-wide uppercase" style={{ color: stateColor }}>
               {statusLabel(service.status)}
             </span>
           </div>
-          <span className="text-[10px] text-[var(--text-tertiary)]">Right-click for actions</span>
+          {service.image && (
+            <span className="text-[10px] text-[var(--text-tertiary)] truncate mono max-w-[120px]" title={service.image}>
+              {service.image}
+            </span>
+          )}
         </div>
       </div>
     </div>

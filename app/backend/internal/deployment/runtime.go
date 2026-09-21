@@ -97,6 +97,15 @@ func (de *DeploymentEngine) EnsureProjectNetwork(ctx context.Context, projectID 
 		},
 	})
 	if err != nil {
+		// Concurrent reconciles race on create; re-resolve before failing.
+		networks, lerr := de.dockerClient.ListNetworks(ctx)
+		if lerr == nil {
+			for _, n := range networks {
+				if n.Name == name {
+					return name, nil
+				}
+			}
+		}
 		return "", fmt.Errorf("create project network: %w", err)
 	}
 	return name, nil
@@ -231,10 +240,9 @@ func (de *DeploymentEngine) createReplica(ctx context.Context, spec RuntimeSpec,
 	if spec.Port > 0 {
 		port := nat.Port(fmt.Sprintf("%d/tcp", spec.Port))
 		cfg.ExposedPorts = nat.PortSet{port: struct{}{}}
-		if spec.Domain == "" {
-			// No edge router: publish an ephemeral host port for direct access.
-			cfg.PortBindings = nat.PortMap{port: []nat.PortBinding{{HostIP: "0.0.0.0", HostPort: ""}}}
-		}
+		// Always publish an ephemeral host port for direct access; a configured
+		// domain is additionally routed via Traefik when the edge network exists.
+		cfg.PortBindings = nat.PortMap{port: []nat.PortBinding{{HostIP: "0.0.0.0", HostPort: ""}}}
 		if spec.HealthPath != "" {
 			cfg.Healthcheck = &container.HealthConfig{
 				Test:        []string{"CMD-SHELL", fmt.Sprintf("wget -q -O /dev/null http://127.0.0.1:%d%s || exit 1", spec.Port, spec.HealthPath)},

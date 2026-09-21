@@ -372,7 +372,9 @@ func liveServiceStatus(c *gin.Context, db *database.DB, service *Service) {
 		service.Status = state.Status
 		_, _ = db.Exec(`UPDATE services SET status = $1, updated_at = $2 WHERE id = $3`, state.Status, time.Now(), service.ID)
 	}
-	if len(state.URLs) > 0 && service.Domain == "" {
+	if service.Domain != "" {
+		service.PublicURL = "https://" + service.Domain
+	} else if len(state.URLs) > 0 {
 		service.PublicURL = state.URLs[0]
 	}
 }
