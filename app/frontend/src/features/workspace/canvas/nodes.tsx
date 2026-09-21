@@ -17,16 +17,16 @@ export type GroupNodeData = {
 export type ServiceNodeType = Node<ServiceNodeData, 'serviceNode'>;
 export type GroupNodeType = Node<GroupNodeData, 'groupNode'>;
 
-function serviceTypeIcon(type: string): typeof Box {
+function renderServiceTypeIcon(type: string, size = 18) {
   switch (type) {
     case 'web':
-      return Globe;
+      return <Globe size={size} />;
     case 'database':
-      return Database;
+      return <Database size={size} />;
     case 'worker':
-      return Terminal;
+      return <Terminal size={size} />;
     default:
-      return Box;
+      return <Box size={size} />;
   }
 }
 
@@ -54,11 +54,6 @@ function statusLabel(status: string): string {
     default:
       return 'Stopped';
   }
-}
-
-function ServiceTypeIcon({ type, size = 18 }: { type: string; size?: number }) {
-  const Icon = serviceTypeIcon(type);
-  return <Icon size={size} />;
 }
 
 export function ServiceNode({ data }: NodeProps<ServiceNodeType>) {
@@ -103,7 +98,7 @@ export function ServiceNode({ data }: NodeProps<ServiceNodeType>) {
               color: selected ? 'white' : typeColor,
             }}
           >
-            <ServiceTypeIcon type={service.type} size={18} />
+            {renderServiceTypeIcon(service.type, 18)}
           </div>
           <div className="min-w-0 flex-1 pt-0.5">
             <h4 className="font-semibold text-sm text-[var(--text-primary)] truncate tracking-tight">{service.name}</h4>
