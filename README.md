@@ -86,19 +86,29 @@ docs/           Guides, OpenAPI spec, design documents
 
 ### Easy install (recommended)
 
-Requires Docker with the Compose plugin, `openssl`, and `curl`.
+Requires Docker with the Compose plugin, `openssl`, and `curl`. One-liner,
+no clone needed:
 
 ```bash
-git clone https://github.com/Dvorinka/Containr.git
-cd Containr
-./install.sh
+curl -fsSL https://raw.githubusercontent.com/Dvorinka/Containr/main/install.sh | bash
 ```
 
-The script creates `.env` from `.env.example`, fills in all required secrets
-with random values, pulls the published `:latest` images from GHCR, and
-starts the stack. It keeps an existing `.env` untouched, so it is safe to
-re-run. Set `CONTAINR_BUILD=1` to build from source instead, or
-`CONTAINR_VERSION` in `.env` to pin a release tag (e.g. `0.1.1`).
+Installs into `./containr`, generates secrets, pulls the published `:latest`
+images from GHCR, and starts the stack. Non-interactive — configure with
+env vars:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Dvorinka/Containr/main/install.sh | \
+  HTTP_PORT=8080 API_PORT=8082 CONTAINR_DIR=/opt/containr bash
+```
+
+`CONTAINR_VERSION` pins a release tag (e.g. `0.1.1`), `CONTAINR_REF` selects
+the git ref for downloaded files, and `CONTAINR_BUILD=1` skips the registry
+and builds from source — the installer downloads the source tarball when it
+needs to build. An existing `.env` is never overwritten, so it is safe to
+re-run.
+
+From a git checkout, `./install.sh` does the same thing in place.
 
 Frontend at `http://localhost:3000`, API at `http://localhost:8082`.
 

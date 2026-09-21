@@ -1,5 +1,3 @@
-name: containr
-
 services:
   postgres:
     image: postgres:15-alpine
