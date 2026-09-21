@@ -56,9 +56,13 @@ function statusLabel(status: string): string {
   }
 }
 
+function ServiceTypeIcon({ type, size = 18 }: { type: string; size?: number }) {
+  const Icon = serviceTypeIcon(type);
+  return <Icon size={size} />;
+}
+
 export function ServiceNode({ data }: NodeProps<ServiceNodeType>) {
   const { service, selected } = data;
-  const Icon = serviceTypeIcon(service.type);
   const typeColor = serviceTypeColor(service.type);
   const isRunning = service.status === 'running';
   const replicas = service.replicas ?? 0;
@@ -99,7 +103,7 @@ export function ServiceNode({ data }: NodeProps<ServiceNodeType>) {
               color: selected ? 'white' : typeColor,
             }}
           >
-            <Icon size={18} />
+            <ServiceTypeIcon type={service.type} size={18} />
           </div>
           <div className="min-w-0 flex-1 pt-0.5">
             <h4 className="font-semibold text-sm text-[var(--text-primary)] truncate tracking-tight">{service.name}</h4>
