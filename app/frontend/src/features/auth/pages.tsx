@@ -114,6 +114,7 @@ export function SignInPage() {
     queryKey: ['auth-bootstrap'],
     queryFn: getAuthBootstrap,
   });
+  const providers = bootstrapQuery.data?.providers ?? [];
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -168,10 +169,14 @@ export function SignInPage() {
 
   return (
     <AuthLayout>
-      <AuthCard title="Sign In" subtitle="Use email/password, GitHub, or Google.">
+      <AuthCard
+        title="Sign In"
+        subtitle={providers.length > 0 ? 'Use email/password or a connected provider.' : 'Use your email and password.'}
+      >
         {error ? <AuthErrorNotice message={error} /> : null}
         {info ? <AuthInfoNotice message={info} /> : null}
         {bootstrapQuery.isLoading ? <AuthInfoNotice message="Checking platform access mode..." /> : null}
+        {bootstrapQuery.isError ? <AuthErrorNotice message="Cannot reach the Containr API - check that the backend container is running." /> : null}
 
         <form className="space-y-3" onSubmit={submitEmailPassword}>
           <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
@@ -211,30 +216,38 @@ export function SignInPage() {
           </button>
         </form>
 
-        <div className="my-5 flex items-center gap-3">
-          <div className="h-px flex-1 bg-[var(--border-subtle)]" />
-          <span className="text-[11px] uppercase tracking-wider text-[var(--text-muted)]">or continue with</span>
-          <div className="h-px flex-1 bg-[var(--border-subtle)]" />
-        </div>
+        {providers.length > 0 ? (
+          <>
+            <div className="my-5 flex items-center gap-3">
+              <div className="h-px flex-1 bg-[var(--border-subtle)]" />
+              <span className="text-[11px] uppercase tracking-wider text-[var(--text-muted)]">or continue with</span>
+              <div className="h-px flex-1 bg-[var(--border-subtle)]" />
+            </div>
 
-        <div className="grid gap-2 sm:grid-cols-2">
-          <button
-            type="button"
-            onClick={() => void signInWithGitHubProvider()}
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--border-default)]"
-          >
-            <Github size={15} />
-            GitHub
-          </button>
-          <button
-            type="button"
-            onClick={() => void signInWithGoogleProvider()}
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--border-default)]"
-          >
-            <GoogleMark />
-            Google
-          </button>
-        </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {providers.includes('github') ? (
+                <button
+                  type="button"
+                  onClick={() => void signInWithGitHubProvider()}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--border-default)]"
+                >
+                  <Github size={15} />
+                  GitHub
+                </button>
+              ) : null}
+              {providers.includes('google') ? (
+                <button
+                  type="button"
+                  onClick={() => void signInWithGoogleProvider()}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--border-default)]"
+                >
+                  <GoogleMark />
+                  Google
+                </button>
+              ) : null}
+            </div>
+          </>
+        ) : null}
 
         <div className="mt-5 flex items-center justify-between text-xs text-[var(--text-secondary)]">
           <span>Need access?</span>
@@ -292,6 +305,7 @@ export function SignUpPage() {
       <AuthCard title="Create Account" subtitle="Create first platform owner account. Registration closes after bootstrap.">
         {error ? <AuthErrorNotice message={error} /> : null}
         {bootstrapQuery.isLoading ? <AuthInfoNotice message="Checking platform bootstrap state..." /> : null}
+        {bootstrapQuery.isError ? <AuthErrorNotice message="Cannot reach the Containr API - check that the backend container is running." /> : null}
 
         <form className="space-y-3" onSubmit={submitSignUp}>
           <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">

@@ -46,7 +46,7 @@ click away.
 - **Managed databases** — one-click provisioning with backup/restore
 - **Metrics** — per-service Docker stats plus host CPU/memory/disk telemetry
 - **Templates, cron, previews** — service catalog, scheduled jobs, preview deploys
-- **Auth & security** — Better Auth sessions (email + OAuth), audit logs, vuln scans
+- **Auth & security** — Better Auth sessions (email/password self-hosted), audit logs, vuln scans
 - **Networking** — Traefik reverse proxy, optional Cloudflare Tunnel
 
 ## Quick Start
@@ -60,6 +60,8 @@ curl -fsSL https://raw.githubusercontent.com/Dvorinka/Containr/main/install.sh |
 Installs into `./containr`, generates secrets, pulls the published `:latest`
 images, and starts the stack — UI at `http://localhost:3000`, API at
 `http://localhost:8082`. Non-interactive; re-runs never overwrite `.env`.
+On first visit you create the owner account (email/password); registration
+then closes automatically.
 
 Override with env vars:
 
@@ -80,7 +82,7 @@ see [docs/guides/](docs/guides/) and `infra/docker-compose.yml`.
 
 ```
 app/frontend/   React 19 + Vite + TypeScript + Tailwind + React Flow
-app/backend/    Go API (Gin) · PostgreSQL · Redis · Docker SDK · Better Auth sidecar
+app/backend/    Go API (Gin) · PostgreSQL · Dragonfly · Docker SDK · Better Auth sidecar
 infra/          Self-hosted compose: Traefik + Cloudflare Tunnel
 docs/           Guides, OpenAPI spec, design documents
 ```

@@ -14,15 +14,15 @@ services:
       retries: 10
     restart: unless-stopped
 
-  redis:
-    image: redis:7-alpine
+  dragonfly:
+    image: docker.dragonflydb.io/dragonflydb/dragonfly:latest
     env_file:
       - ../../.env.prod
-    command: ["sh", "-c", "redis-server --requirepass \"$$REDIS_PASSWORD\""]
+    command: ["sh", "-c", "exec dragonfly --requirepass \"$${REDIS_PASSWORD}\" --proactor_threads=1 --maxmemory=256mb --dir=/data"]
     ports:
       - "6379:6379"
     volumes:
-      - backend_redis_data:/data
+      - backend_dragonfly_data:/data
     healthcheck:
       test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping | grep PONG"]
       interval: 10s
@@ -41,7 +41,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
+      dragonfly:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
@@ -52,4 +52,4 @@ services:
 
 volumes:
   backend_postgres_data:
-  backend_redis_data:
+  backend_dragonfly_data:

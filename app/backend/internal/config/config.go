@@ -215,9 +215,8 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("SEED_DATA_ON_START must be false in production")
 		}
 
-		if !c.CookieSecure {
-			return fmt.Errorf("COOKIE_SECURE must be true in production")
-		}
+		// COOKIE_SECURE=false is legal for plain-HTTP self-hosted installs and is
+		// reported as a startup warning in main.go rather than a fatal error.
 
 		if c.BetterAuthEnabled {
 			if len(strings.TrimSpace(c.BetterAuthSecret)) < 32 ||

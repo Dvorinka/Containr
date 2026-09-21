@@ -5,7 +5,7 @@
 ### Prerequisites
 - Go 1.21+
 - PostgreSQL 12+
-- Redis (optional)
+- Dragonfly or Redis-compatible cache (optional)
 
 ### Environment Variables
 

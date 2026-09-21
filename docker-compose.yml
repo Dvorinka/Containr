@@ -16,13 +16,17 @@ services:
       retries: 10
     restart: unless-stopped
 
-  redis:
-    image: redis:7-alpine
-    command: redis-server --requirepass ${REDIS_PASSWORD:-dev_redis_123}
+  dragonfly:
+    image: docker.dragonflydb.io/dragonflydb/dragonfly:${DRAGONFLY_VERSION:-latest}
+    command:
+      - --requirepass=${REDIS_PASSWORD:-dev_redis_123}
+      - --proactor_threads=${DRAGONFLY_THREADS:-1}
+      - --maxmemory=${DRAGONFLY_MAXMEMORY:-256mb}
+      - --dir=/data
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
-      - redis_data:/data
+      - dragonfly_data:/data
     healthcheck:
       test: ["CMD-SHELL", "redis-cli -a ${REDIS_PASSWORD:-dev_redis_123} ping | grep PONG"]
       interval: 10s
@@ -40,7 +44,7 @@ services:
       - "${API_PORT:-8082}:8080"
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-containr_user}:${POSTGRES_PASSWORD:-dev_password_123}@postgres:5432/${POSTGRES_DB:-containr}?sslmode=disable
-      REDIS_URL: redis://:${REDIS_PASSWORD:-dev_redis_123}@redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD:-dev_redis_123}@dragonfly:6379/0
       PORT: 8080
       HOST: 0.0.0.0
       ENVIRONMENT: ${ENVIRONMENT:-development}
@@ -83,7 +87,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
+      dragonfly:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
@@ -100,8 +104,8 @@ services:
       context: ./app/frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_URL: ${VITE_API_URL:-http://localhost:8082}
-        VITE_AUTH_URL: ${VITE_AUTH_URL:-http://localhost:8082/api/auth}
+        VITE_API_URL: ${VITE_API_URL:-}
+        VITE_AUTH_URL: ${VITE_AUTH_URL:-}
     ports:
       - "${HTTP_PORT:-3000}:80"
     depends_on:
@@ -111,4 +115,4 @@ services:
 
 volumes:
   postgres_data:
-  redis_data:
+  dragonfly_data:

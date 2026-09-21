@@ -348,7 +348,8 @@ type ProjectsResponse200 = paths['/projects']['get']['responses'][200]['content'
 
 type JsonLike = Record<string, unknown>;
 
-const rawBase = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:8082';
+const configuredBase = ((import.meta.env.VITE_API_URL as string | undefined) ?? '').trim();
+const rawBase = configuredBase || window.location.origin;
 const normalizedBase = rawBase.replace(/\/$/, '');
 const API_ROOT = normalizedBase.replace(/\/api\/v1$/, '').replace(/\/api$/, '');
 const API_BASE = /\/api\/v1$/.test(normalizedBase) ? normalizedBase : `${normalizedBase}/api/v1`;

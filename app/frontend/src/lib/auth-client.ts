@@ -20,6 +20,7 @@ export type AuthBootstrap = {
   hasUsers: boolean;
   userCount: number;
   mode: 'register' | 'login';
+  providers: string[];
 };
 
 export class AuthError extends Error {
@@ -32,15 +33,16 @@ export class AuthError extends Error {
   }
 }
 
-const rawAuthBase = (import.meta.env.VITE_AUTH_URL as string | undefined) ?? 'http://localhost:8082/api/auth';
-const AUTH_BASE = rawAuthBase.replace(/\/$/, '');
+const configuredAuthBase = ((import.meta.env.VITE_AUTH_URL as string | undefined) ?? '').trim();
+const AUTH_BASE = (configuredAuthBase || `${window.location.origin}/api/auth`).replace(/\/$/, '');
 
 export function getAuthBaseUrl(): string {
   return AUTH_BASE;
 }
 
 export async function getAuthBootstrap(): Promise<AuthBootstrap> {
-  const apiBase = ((import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:8082').replace(/\/$/, '');
+  const configuredApiBase = ((import.meta.env.VITE_API_URL as string | undefined) ?? '').trim();
+  const apiBase = (configuredApiBase || window.location.origin).replace(/\/$/, '');
   const normalizedApiBase = /\/api\/v1$/.test(apiBase) ? apiBase : `${apiBase}/api/v1`;
   const response = await fetch(`${normalizedApiBase}/auth/bootstrap`, {
     method: 'GET',
@@ -56,10 +58,15 @@ export async function getAuthBootstrap(): Promise<AuthBootstrap> {
     throw new AuthError(message, response.status);
   }
 
+  const providers = Array.isArray(payload?.providers)
+    ? payload.providers.filter((provider): provider is string => typeof provider === 'string')
+    : [];
+
   return {
     hasUsers: Boolean(payload?.has_users),
     userCount: typeof payload?.user_count === 'number' ? payload.user_count : 0,
     mode: payload?.mode === 'register' ? 'register' : 'login',
+    providers,
   };
 }
 

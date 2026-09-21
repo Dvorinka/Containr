@@ -120,11 +120,29 @@ func handleAuthBootstrap(c *gin.Context) {
 		mode = "register"
 	}
 
+	providers := []string{}
+	for _, provider := range []string{"GITHUB", "GOOGLE"} {
+		if oauthProviderConfigured(provider) {
+			providers = append(providers, strings.ToLower(provider))
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"has_users":  count > 0,
 		"user_count": count,
 		"mode":       mode,
+		"providers":  providers,
 	})
+}
+
+// oauthProviderConfigured reports whether an OAuth provider has real
+// credentials. Placeholder values from .env.example do not count, so
+// self-hosted installs default to email/password only.
+func oauthProviderConfigured(provider string) bool {
+	id := strings.TrimSpace(os.Getenv(provider + "_CLIENT_ID"))
+	secret := strings.TrimSpace(os.Getenv(provider + "_CLIENT_SECRET"))
+	return id != "" && secret != "" &&
+		!strings.HasPrefix(id, "PLACEHOLDER_") && !strings.HasPrefix(secret, "PLACEHOLDER_")
 }
 
 type betterAuthLoginUser struct {
