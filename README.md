@@ -11,6 +11,7 @@
 
 <p align="center">
   <a href="#quick-start">Quick Start</a> •
+  <a href="#screenshots">Screenshots</a> •
   <a href="#features">Features</a> •
   <a href="#architecture">Architecture</a> •
   <a href="docs/guides/">Guides</a> •
@@ -33,6 +34,16 @@ your infrastructure.
 The UI is inspired by Railway's project canvas: services appear as nodes,
 connections are inferred automatically, and everything — logs, metrics,
 deployments, builds — is one click away.
+
+## Screenshots
+
+| Projects dashboard | Project canvas |
+| --- | --- |
+| ![Projects dashboard with host telemetry](docs/screenshots/dashboard.png) | ![Visual service canvas with two services](docs/screenshots/canvas.png) |
+
+| Service detail | Managed databases |
+| --- | --- |
+| ![Service view with metrics, logs and config tabs](docs/screenshots/service-detail.png) | ![Managed database list showing a running PostgreSQL](docs/screenshots/databases.png) |
 
 ## Features
 
@@ -84,8 +95,10 @@ cd Containr
 ```
 
 The script creates `.env` from `.env.example`, fills in all required secrets
-with random values, builds the images, and starts the stack. It keeps an
-existing `.env` untouched, so it is safe to re-run.
+with random values, pulls the published `:latest` images from GHCR, and
+starts the stack. It keeps an existing `.env` untouched, so it is safe to
+re-run. Set `CONTAINR_BUILD=1` to build from source instead, or
+`CONTAINR_VERSION` in `.env` to pin a release tag (e.g. `0.1.1`).
 
 Frontend at `http://localhost:3000`, API at `http://localhost:8082`.
 
@@ -93,11 +106,13 @@ Frontend at `http://localhost:3000`, API at `http://localhost:8082`.
 
 ```bash
 cp .env.example .env   # fill in secrets
-docker compose up -d --build
+docker compose up -d   # pulls ghcr.io/dvorinka/containr-*:latest
 ```
 
-Host ports can be remapped in `.env` (`HTTP_PORT`, `API_PORT`,
-`POSTGRES_PORT`, `REDIS_PORT`) if the defaults collide with other services.
+Compose pulls the published images by default; run `docker compose up -d
+--build` to build from source. Host ports can be remapped in `.env`
+(`HTTP_PORT`, `API_PORT`, `POSTGRES_PORT`, `REDIS_PORT`) if the defaults
+collide with other services.
 
 ### Local development
 
