@@ -17,6 +17,11 @@
   <a href="CONTRIBUTING.md">Contributing</a>
 </p>
 
+<p align="center">
+  <a href="https://github.com/Dvorinka/Containr/actions/workflows/ci.yml"><img src="https://github.com/Dvorinka/Containr/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+</p>
+
 ## What is Containr?
 
 Containr is an open-source control plane for Docker. It gives you a
@@ -68,14 +73,31 @@ docs/           Guides, OpenAPI spec, design documents
 
 ## Quick Start
 
-### Docker Compose (everything)
+### Easy install (recommended)
+
+Requires Docker with the Compose plugin, `openssl`, and `curl`.
+
+```bash
+git clone https://github.com/Dvorinka/Containr.git
+cd Containr
+./install.sh
+```
+
+The script creates `.env` from `.env.example`, fills in all required secrets
+with random values, builds the images, and starts the stack. It keeps an
+existing `.env` untouched, so it is safe to re-run.
+
+Frontend at `http://localhost:3000`, API at `http://localhost:8082`.
+
+### Docker Compose (manual)
 
 ```bash
 cp .env.example .env   # fill in secrets
-docker compose up -d
+docker compose up -d --build
 ```
 
-Frontend at `http://localhost:3000`, API at `http://localhost:8082`.
+Host ports can be remapped in `.env` (`HTTP_PORT`, `API_PORT`,
+`POSTGRES_PORT`, `REDIS_PORT`) if the defaults collide with other services.
 
 ### Local development
 
