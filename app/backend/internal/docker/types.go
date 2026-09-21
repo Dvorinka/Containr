@@ -3,6 +3,7 @@ package docker
 import (
 	"time"
 
+	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
@@ -24,6 +25,7 @@ type ContainerConfig struct {
 	NanoCPUs      int64
 	NetworkMode   string
 	Networks      map[string]*network.EndpointSettings
+	Healthcheck   *container.HealthConfig
 }
 
 // LogOptions represents options for retrieving container logs

@@ -35,6 +35,8 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 		dockerClient = client
 		buildManager = build.NewBuildManager("/tmp/containr-builds", dockerClient)
 		deploymentEngine = deployment.NewDeploymentEngine(buildManager, dockerClient)
+		// Restore managed sidecars (e.g. cloudflared) from saved settings.
+		syncManagedContainers(dockerClient, db)
 	}
 
 	// Initialize build handler
@@ -184,6 +186,10 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			protected.PUT("/user/profile", handleUpdateProfile)
 			protected.POST("/users", handleCreateUser)
 
+			// Platform settings (admin-gated inside handlers)
+			protected.GET("/settings", handleGetSettings)
+			protected.PUT("/settings", handleUpdateSettings)
+
 			// Project routes
 			protected.GET("/projects", handleGetProjects)
 			protected.POST("/projects", handleCreateProject)
@@ -203,9 +209,17 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			protected.DELETE("/services/:id", handleDeleteService)
 			protected.GET("/services/:id/metrics", handleGetServiceMetrics)
 
+			// Runtime lifecycle (Railway-style)
+			protected.GET("/services/:id/runtime", handleGetServiceRuntime)
+			protected.POST("/services/:id/start", handleServiceStart)
+			protected.POST("/services/:id/stop", handleServiceStop)
+			protected.POST("/services/:id/restart", handleServiceRestart)
+			protected.POST("/services/:id/redeploy", handleServiceRedeploy)
+
 			// Deployment routes
 			protected.GET("/services/:id/deployments", handleGetDeployments)
 			protected.POST("/services/:id/deployments", handleCreateDeployment)
+			protected.GET("/deployments", handleGetRecentDeployments)
 			protected.GET("/deployments/:id", handleGetDeployment)
 			protected.POST("/deployments/:id/rollback", handleRollbackDeployment)
 

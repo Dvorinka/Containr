@@ -29,6 +29,8 @@ import {
   getGitHubAppInstallUrl,
   connectGitHubApp,
   updateCurrentUserProfile,
+  getPlatformSettings,
+  updatePlatformSettings,
   getHAStatus,
   setHAEnabled,
   triggerFailover,
@@ -92,6 +94,8 @@ import {
   ShieldCheck,
   Zap,
   HeartPulse,
+  Cloud,
+  ExternalLink,
 } from 'lucide-react';
 
 function SecondaryPageHeader({ title, description }: { title: string; description: string }) {
@@ -1077,6 +1081,144 @@ function GitProvidersSection() {
   );
 }
 
+function PlatformSettingsSection() {
+  const queryClient = useQueryClient();
+  const settingsQuery = useQuery({
+    queryKey: ['platform-settings'],
+    queryFn: getPlatformSettings,
+  });
+
+  const [signupDraft, setSignupDraft] = useState<boolean | null>(null);
+  const [tokenDraft, setTokenDraft] = useState('');
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const signupEnabled = signupDraft ?? settingsQuery.data?.signupEnabled ?? false;
+  const tunnel = settingsQuery.data?.cloudflareTunnel;
+
+  const saveMutation = useMutation({
+    mutationFn: updatePlatformSettings,
+    onSuccess: (settings) => {
+      queryClient.setQueryData(['platform-settings'], settings);
+      setSignupDraft(null);
+      setTokenDraft('');
+      setFeedback('Settings saved.');
+      setError(null);
+    },
+    onError: (err) => {
+      setError(err instanceof Error ? err.message : 'Failed to save settings');
+      setFeedback(null);
+    },
+  });
+
+  const saveSignup = (enabled: boolean) => {
+    setSignupDraft(enabled);
+    saveMutation.mutate({ signupEnabled: enabled });
+  };
+
+  const saveToken = () => {
+    if (!tokenDraft.trim()) return;
+    saveMutation.mutate({ cloudflareTunnelToken: tokenDraft.trim() });
+  };
+
+  const clearToken = () => {
+    saveMutation.mutate({ cloudflareTunnelToken: '' });
+  };
+
+  return (
+    <section className="panel p-6">
+      <div className="flex items-center gap-3 mb-4">
+        <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
+          <Cloud size={18} className="text-[var(--accent-primary)]" />
+        </div>
+        <div>
+          <h2 className="text-lg font-semibold text-[var(--text-primary)]">Platform</h2>
+          <p className="text-xs text-[var(--text-tertiary)]">Owner only - values set here override environment variables</p>
+        </div>
+      </div>
+
+      {settingsQuery.isLoading ? (
+        <div className="py-6 text-center">
+          <Loader2 size={18} className="animate-spin mx-auto text-[var(--text-tertiary)]" />
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <label className="flex items-start gap-3 p-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] cursor-pointer">
+            <input
+              type="checkbox"
+              checked={signupEnabled}
+              onChange={(e) => saveSignup(e.target.checked)}
+              disabled={saveMutation.isPending}
+              className="mt-0.5 accent-[var(--accent-primary)]"
+            />
+            <div>
+              <span className="text-sm font-medium text-[var(--text-primary)]">Open registration</span>
+              <p className="text-xs text-[var(--text-tertiary)] mt-0.5">
+                Let anyone with the URL create an account. Off by default after the owner account is created.
+              </p>
+            </div>
+          </label>
+
+          <div className="p-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)]">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Cloudflare Tunnel</span>
+              <span className="text-xs text-[var(--text-tertiary)]">
+                {tunnel?.tokenSet
+                  ? `token saved (${tunnel.source}) - ${tunnel.container}`
+                  : tunnel?.container === 'unavailable'
+                    ? 'Docker socket unavailable'
+                    : 'not configured'}
+              </span>
+            </div>
+            <p className="text-xs text-[var(--text-secondary)] mb-3">
+              Expose this instance through a Cloudflare Tunnel. Create a tunnel in the dashboard,
+              copy the token, paste it here - the cloudflared sidecar is managed for you.
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="password"
+                value={tokenDraft}
+                onChange={(e) => setTokenDraft(e.target.value)}
+                className="flex-1 h-9 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-void)] text-sm focus:border-[var(--accent-primary)] transition-colors"
+                placeholder={tunnel?.tokenSet ? 'Token saved - paste a new one to rotate' : 'eyJhIjo... tunnel token'}
+              />
+              <button
+                onClick={saveToken}
+                disabled={saveMutation.isPending || !tokenDraft.trim()}
+                className="h-9 px-4 rounded-[var(--radius-md)] text-sm font-medium text-[var(--accent-on)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                style={{ background: 'var(--accent-primary)' }}
+              >
+                Save
+              </button>
+              {tunnel?.tokenSet && tunnel.source === 'app' ? (
+                <button
+                  onClick={clearToken}
+                  disabled={saveMutation.isPending}
+                  className="h-9 px-3 rounded-[var(--radius-md)] border border-[var(--error-soft)] text-[var(--error)] text-sm font-medium hover:bg-[var(--error-soft)] disabled:opacity-50 transition-colors"
+                >
+                  Remove
+                </button>
+              ) : null}
+            </div>
+            <a
+              href="https://one.dash.cloudflare.com/"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 mt-3 text-xs text-[var(--accent-primary)] hover:underline"
+            >
+              Open Cloudflare Zero Trust dashboard - Networks → Tunnels → Create
+              <ExternalLink size={12} />
+            </a>
+          </div>
+
+          {feedback ? <p className="text-xs text-[var(--success)]">{feedback}</p> : null}
+          {error ? <p className="text-xs text-[var(--error)]">{error}</p> : null}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function SettingsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -1237,6 +1379,9 @@ export function SettingsPage() {
               </div>
             )}
           </section>
+
+          {/* Platform Settings - owner only */}
+          {profileQuery.data?.isAdmin ? <PlatformSettingsSection /> : null}
 
           {/* Git Providers Section */}
           <GitProvidersSection />

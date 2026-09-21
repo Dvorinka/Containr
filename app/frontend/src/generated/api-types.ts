@@ -604,6 +604,216 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/services/{id}/runtime": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Service runtime state
+         * @description Live container state — replicas, URLs, aggregate status
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Runtime state */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            runtime?: {
+                                desired?: number;
+                                /** @enum {string} */
+                                status?: "running" | "degraded" | "stopped";
+                                urls?: string[];
+                                containers?: {
+                                    id?: string;
+                                    name?: string;
+                                    state?: string;
+                                    replica?: number;
+                                }[];
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/services/{id}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start service
+         * @description Start all stopped replicas
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Service started */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/services/{id}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop service
+         * @description Stop all replicas without removing them
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Service stopped */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/services/{id}/restart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restart service
+         * @description Restart all replicas
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Service restarted */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/services/{id}/redeploy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Redeploy service
+         * @description Re-apply the current spec — pulls the image for image-sourced services, reuses the last deployed image otherwise
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Reconciled runtime state */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/services/{id}/deployments": {
         parameters: {
             query?: never;
@@ -670,6 +880,59 @@ export interface paths {
                 };
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/deployments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List recent deployments
+         * @description Latest deployments across all services owned by the caller — feeds the dashboard deploy feed
+         */
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Recent deployments */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            deployments?: {
+                                id?: string;
+                                service_id?: string;
+                                service_name?: string;
+                                project_name?: string;
+                                status?: string;
+                                image_name?: string;
+                                started_at?: string | null;
+                                completed_at?: string | null;
+                                created_at?: string;
+                            }[];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2153,7 +2416,7 @@ export interface paths {
         };
         /**
          * Bootstrap status
-         * @description Reports whether the instance already has a registered user. Drives the first-run setup gate.
+         * @description Reports whether the instance already has a registered user, which auth providers are configured, and whether public registration is open. Drives the first-run setup gate.
          */
         get: {
             parameters: {
@@ -2171,15 +2434,109 @@ export interface paths {
                     };
                     content: {
                         "application/json": {
-                            /** @description True when no user exists yet */
-                            needs_setup?: boolean;
+                            /** @description True when at least one account exists */
+                            has_users?: boolean;
                             user_count?: number;
+                            /**
+                             * @description register when the instance has no users, login otherwise
+                             * @enum {string}
+                             */
+                            mode?: "register" | "login";
+                            /** @description OAuth providers with real credentials configured (e.g. github, google). Empty on self-hosted installs. */
+                            providers?: string[];
+                            /** @description True when the owner re-opened public registration in Settings */
+                            signup_enabled?: boolean;
                         };
                     };
                 };
             };
         };
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read platform settings
+         * @description Admin only. Returns in-app settings that override environment variables.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Current platform settings */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PlatformSettings"];
+                    };
+                };
+                /** @description Admin access required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        /**
+         * Update platform settings
+         * @description Admin only. Provided keys are applied immediately; the Cloudflare tunnel token starts/stops the managed cloudflared sidecar.
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description Allow new public account registration after bootstrap */
+                        signup_enabled?: boolean;
+                        /** @description Cloudflare Tunnel token. Empty string clears the stored token and removes the cloudflared container. */
+                        cloudflare_tunnel_token?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Updated platform settings */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PlatformSettings"];
+                    };
+                };
+                /** @description Admin access required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         post?: never;
         delete?: never;
         options?: never;
@@ -6687,6 +7044,21 @@ export interface components {
             /** @description User display name */
             name: string;
         };
+        PlatformSettings: {
+            /** @description Whether public account registration is open after bootstrap */
+            signup_enabled?: boolean;
+            cloudflare_tunnel?: {
+                /** @description Whether a tunnel token is configured (value is never returned) */
+                token_set?: boolean;
+                /**
+                 * @description Where the active token comes from - in-app setting, env fallback, or unset
+                 * @enum {string}
+                 */
+                source?: "app" | "env" | "none";
+                /** @description cloudflared container state - running/exited/missing, or unavailable when Docker is unreachable */
+                container?: string;
+            };
+        };
         User: {
             /** @description User ID */
             id?: string;
@@ -6699,6 +7071,8 @@ export interface components {
             name?: string;
             /** @description Optional avatar image URL */
             avatar_url?: string;
+            /** @description True for the platform owner (first registered account) */
+            is_admin?: boolean;
             /**
              * Format: date-time
              * @description Account creation timestamp
@@ -6817,6 +7191,18 @@ export interface components {
             cpu?: string;
             /** @description Memory allocation */
             memory?: string;
+            /** @description Desired replica count */
+            replicas?: number;
+            /** @description Container port to expose (published host port, or Traefik when domain set) */
+            port?: number;
+            /** @description Public hostname routed via Traefik */
+            domain?: string;
+            /** @description HTTP path probed on port for container health */
+            healthcheck_path?: string;
+            /** @description Docker restart policy (default unless-stopped) */
+            restart_policy?: string;
+            /** @description Computed public URL (published port or domain) */
+            public_url?: string;
             /**
              * Format: date-time
              * @description Service creation timestamp
@@ -6860,6 +7246,16 @@ export interface components {
             cpu?: string;
             /** @description Memory allocation */
             memory?: string;
+            /** @description Desired replica count */
+            replicas?: number;
+            /** @description Container port to expose */
+            port?: number;
+            /** @description Public hostname routed via Traefik */
+            domain?: string;
+            /** @description HTTP path probed for container health */
+            healthcheck_path?: string;
+            /** @description Docker restart policy */
+            restart_policy?: string;
         };
         UpdateServiceRequest: {
             /** @description Service name */
@@ -6888,6 +7284,16 @@ export interface components {
             cpu?: string;
             /** @description Memory allocation */
             memory?: string;
+            /** @description Desired replica count */
+            replicas?: number;
+            /** @description Container port to expose */
+            port?: number;
+            /** @description Public hostname routed via Traefik */
+            domain?: string;
+            /** @description HTTP path probed for container health */
+            healthcheck_path?: string;
+            /** @description Docker restart policy */
+            restart_policy?: string;
         };
         Deployment: {
             /** @description Deployment ID */

@@ -71,6 +71,7 @@ else
     }
 
     PG_PASS="$(gen)"; REDIS_PASS="$(gen)"
+    setvar ENVIRONMENT "production"
     setvar JWT_SECRET "$(gen)"
     setvar BETTER_AUTH_SECRET "$(gen)"
     setvar BETTER_AUTH_INTERNAL_TOKEN "$(gen)"
@@ -80,6 +81,16 @@ else
     # POSTGRES_PASSWORD, DATABASE_URL and DB_PASSWORD stay in sync.
     sed -i.bak "s|your_secure_postgres_password|$PG_PASS|g" .env
     sed -i.bak "s|your_secure_redis_password|$REDIS_PASS|g" .env
+
+    # Docker socket gid as seen INSIDE containers (modern Docker maps it to
+    # root). Probe a throwaway container; fall back to the host gid, then 0.
+    if [[ -z "${DOCKER_GID:-}" ]]; then
+        DOCKER_GID="$(docker run --rm -v /var/run/docker.sock:/var/run/docker.sock alpine:3 stat -c %g /var/run/docker.sock 2>/dev/null \
+            || stat -c %g /var/run/docker.sock 2>/dev/null \
+            || stat -f %g /var/run/docker.sock 2>/dev/null \
+            || echo 0)"
+    fi
+    setvar DOCKER_GID "$DOCKER_GID"
 
     # Persist any overrides passed via the environment.
     for v in HTTP_PORT API_PORT POSTGRES_PORT REDIS_PORT CONTAINR_VERSION; do

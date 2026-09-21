@@ -9,10 +9,6 @@ import (
 	"containr/internal/build"
 	"containr/internal/docker"
 	"containr/internal/types"
-
-	"github.com/docker/docker/api/types/mount"
-	"github.com/docker/docker/api/types/network"
-	"github.com/docker/go-connections/nat"
 )
 
 type DeploymentEngine struct {
@@ -56,6 +52,13 @@ type ServiceConfig struct {
 	Resources     ResourceLimits    `json:"resources,omitempty"`
 	HealthCheck   *HealthCheck      `json:"health_check,omitempty"`
 	Replicas      int               `json:"replicas"`
+	// PublicPort is the container port exposed to users (published host port,
+	// or Traefik routing when Domain is set). 0 = internal-only service.
+	PublicPort int32 `json:"public_port,omitempty"`
+	// Domain is a public hostname routed to PublicPort via Traefik.
+	Domain string `json:"domain,omitempty"`
+	// HealthPath is an HTTP path probed on PublicPort for container health.
+	HealthPath string `json:"health_path,omitempty"`
 }
 
 type PortMapping struct {
@@ -297,91 +300,53 @@ func (de *DeploymentEngine) buildImage(ctx context.Context, deployment *Deployme
 	return response.ImageName, nil
 }
 
-// deployService deploys the service using the built image
+// deployService deploys the service using the built image. Containers are
+// reconciled onto the project network with a DNS alias per service name —
+// other services reach it at http://<name>:<port>.
 func (de *DeploymentEngine) deployService(ctx context.Context, deployment *Deployment) error {
-	// Convert service config to Docker container config
-	containerConfig := &docker.ContainerConfig{
-		Name:     fmt.Sprintf("containr-%s-%s", deployment.ServiceID, deployment.ID),
-		Image:    deployment.ImageName,
-		Cmd:      deployment.Config.Command,
-		Labels:   deployment.Config.Labels,
-		Networks: make(map[string]*network.EndpointSettings),
+	cfg := deployment.Config
+
+	spec := RuntimeSpec{
+		ProjectID:     deployment.ProjectID,
+		ServiceID:     deployment.ServiceID,
+		Name:          cfg.Name,
+		Image:         deployment.ImageName,
+		Command:       cfg.Command,
+		Env:           cfg.Environment,
+		Replicas:      cfg.Replicas,
+		Port:          cfg.PublicPort,
+		Domain:        cfg.Domain,
+		HealthPath:    cfg.HealthPath,
+		RestartPolicy: cfg.RestartPolicy,
+		MemoryBytes:   cfg.Resources.MemoryBytes,
+		NanoCPUs:      cfg.Resources.CPUQuota,
 	}
-
-	// Set environment variables
-	for k, v := range deployment.Config.Environment {
-		containerConfig.Env = append(containerConfig.Env, fmt.Sprintf("%s=%s", k, v))
-	}
-
-	// Set restart policy
-	containerConfig.RestartPolicy = deployment.Config.RestartPolicy
-
-	// Configure port mappings
-	portBindings := make(nat.PortMap)
-	for _, pm := range deployment.Config.PortMappings {
-		port := nat.Port(fmt.Sprintf("%d/%s", pm.ContainerPort, pm.Protocol))
-		if pm.HostPort > 0 {
-			portBindings[port] = []nat.PortBinding{
-				{
-					HostIP:   pm.HostIP,
-					HostPort: fmt.Sprintf("%d", pm.HostPort),
-				},
-			}
+	for _, pm := range cfg.PortMappings {
+		if spec.Port == 0 {
+			spec.Port = pm.ContainerPort
 		}
 	}
-	containerConfig.PortBindings = portBindings
-
-	// Configure resource limits
-	if deployment.Config.Resources.MemoryBytes > 0 {
-		containerConfig.Memory = deployment.Config.Resources.MemoryBytes
-	}
-	if deployment.Config.Resources.CPUQuota > 0 {
-		containerConfig.NanoCPUs = deployment.Config.Resources.CPUQuota
+	if spec.RestartPolicy == "" {
+		spec.RestartPolicy = "unless-stopped"
 	}
 
-	// Configure volume mounts
-	for _, vm := range deployment.Config.VolumeMounts {
-		mount := mount.Mount{
-			Type:     mount.Type(vm.Type),
-			Source:   vm.Source,
-			Target:   vm.Destination,
-			ReadOnly: vm.ReadOnly,
-		}
-		containerConfig.Mounts = append(containerConfig.Mounts, mount)
+	// Volume mounts aren't reconciled replicas-aware yet; still applied on the
+	// container config of every replica via spec extension later if needed.
+	state, err := de.ReconcileService(ctx, spec)
+	if err != nil {
+		return err
 	}
 
-	// Create containers based on replica count
-	deployment.Containers = make([]ContainerInfo, deployment.Config.Replicas)
-	for i := 0; i < deployment.Config.Replicas; i++ {
-		containerName := fmt.Sprintf("%s-%d", containerConfig.Name, i)
-
-		// Create container
-		containerID, err := de.dockerClient.CreateContainer(ctx, *containerConfig)
-		if err != nil {
-			return fmt.Errorf("failed to create container %d: %w", i, err)
-		}
-
-		// Start container
-		err = de.dockerClient.StartContainer(ctx, containerID)
-		if err != nil {
-			return fmt.Errorf("failed to start container %d: %w", i, err)
-		}
-
-		// Get container info
-		_, err = de.dockerClient.GetContainer(ctx, containerID)
-		if err != nil {
-			log.Printf("Failed to get container info for %s: %v", containerID, err)
-		}
-
+	deployment.Containers = make([]ContainerInfo, len(state.Containers))
+	for i, c := range state.Containers {
 		deployment.Containers[i] = ContainerInfo{
-			ID:        containerID,
-			Name:      containerName,
-			Status:    "running",
+			ID:        c.ID,
+			Name:      c.Name,
+			Status:    c.State,
 			CreatedAt: time.Now(),
 			StartedAt: time.Now(),
 		}
 	}
-
 	return nil
 }
 

@@ -1,6 +1,6 @@
 import type { components, paths } from '@/generated/api-types';
 
-export type ServiceStatus = 'running' | 'stopped' | 'building' | 'failed' | 'unknown';
+export type ServiceStatus = 'running' | 'degraded' | 'stopped' | 'building' | 'failed' | 'unknown';
 
 export type ProjectStats = components['schemas']['ProjectStats'];
 
@@ -18,8 +18,18 @@ export type UserProfile = {
   email: string;
   name: string;
   avatarUrl?: string;
+  isAdmin: boolean;
   createdAt?: string;
   updatedAt?: string;
+};
+
+export type PlatformSettings = {
+  signupEnabled: boolean;
+  cloudflareTunnel: {
+    tokenSet: boolean;
+    source: 'app' | 'env' | 'none';
+    container: string;
+  };
 };
 
 export type ServiceEntity = {
@@ -38,6 +48,26 @@ export type ServiceEntity = {
   buildPath?: string;
   cpu?: string;
   memory?: string;
+  replicas?: number;
+  port?: number;
+  domain?: string;
+  healthcheckPath?: string;
+  restartPolicy?: string;
+  publicUrl?: string;
+};
+
+export type RuntimeContainer = {
+  id: string;
+  name: string;
+  state: string;
+  replica: number;
+};
+
+export type ServiceRuntime = {
+  desired: number;
+  status: 'running' | 'degraded' | 'stopped';
+  urls: string[];
+  containers: RuntimeContainer[];
 };
 
 export type ServiceVariable = {
@@ -333,6 +363,7 @@ type RawNodeAgent = components['schemas']['NodeAgent'];
 
 export type CreateProjectInput = components['schemas']['CreateProjectRequest'];
 export type CreateServiceInput = components['schemas']['CreateServiceRequest'];
+export type UpdateServiceInput = components['schemas']['UpdateServiceRequest'];
 
 export class ApiError extends Error {
   readonly status: number;
@@ -348,7 +379,8 @@ type ProjectsResponse200 = paths['/projects']['get']['responses'][200]['content'
 
 type JsonLike = Record<string, unknown>;
 
-const rawBase = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:8082';
+const configuredBase = ((import.meta.env.VITE_API_URL as string | undefined) ?? '').trim();
+const rawBase = configuredBase || window.location.origin;
 const normalizedBase = rawBase.replace(/\/$/, '');
 const API_ROOT = normalizedBase.replace(/\/api\/v1$/, '').replace(/\/api$/, '');
 const API_BASE = /\/api\/v1$/.test(normalizedBase) ? normalizedBase : `${normalizedBase}/api/v1`;
@@ -441,9 +473,44 @@ function normalizeUserProfile(profile: RawUserProfile): UserProfile | null {
     email: profile.email,
     name: profile.name,
     avatarUrl: profile.avatar_url ?? undefined,
+    isAdmin: profile.is_admin ?? false,
     createdAt: profile.created_at ?? undefined,
     updatedAt: profile.updated_at ?? undefined,
   };
+}
+
+function normalizePlatformSettings(raw: components['schemas']['PlatformSettings']): PlatformSettings {
+  return {
+    signupEnabled: raw.signup_enabled ?? false,
+    cloudflareTunnel: {
+      tokenSet: raw.cloudflare_tunnel?.token_set ?? false,
+      source: raw.cloudflare_tunnel?.source ?? 'none',
+      container: raw.cloudflare_tunnel?.container ?? 'missing',
+    },
+  };
+}
+
+export async function getPlatformSettings(): Promise<PlatformSettings> {
+  const raw = await requestJson<components['schemas']['PlatformSettings']>('/settings');
+  return normalizePlatformSettings(raw);
+}
+
+export async function updatePlatformSettings(input: {
+  signupEnabled?: boolean;
+  cloudflareTunnelToken?: string;
+}): Promise<PlatformSettings> {
+  const body: Record<string, unknown> = {};
+  if (input.signupEnabled !== undefined) {
+    body.signup_enabled = input.signupEnabled;
+  }
+  if (input.cloudflareTunnelToken !== undefined) {
+    body.cloudflare_tunnel_token = input.cloudflareTunnelToken;
+  }
+  const raw = await requestJson<components['schemas']['PlatformSettings']>('/settings', {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  });
+  return normalizePlatformSettings(raw);
 }
 
 function normalizeService(service: RawService): ServiceEntity | null {
@@ -469,6 +536,12 @@ function normalizeService(service: RawService): ServiceEntity | null {
     buildPath: service.build_path,
     cpu: service.cpu,
     memory: service.memory,
+    replicas: service.replicas,
+    port: service.port,
+    domain: service.domain,
+    healthcheckPath: service.healthcheck_path,
+    restartPolicy: service.restart_policy,
+    publicUrl: service.public_url,
   };
 }
 
@@ -952,10 +1025,53 @@ export async function createService(projectId: string, input: CreateServiceInput
   return parsed;
 }
 
+export async function updateService(serviceId: string, input: UpdateServiceInput): Promise<ServiceEntity> {
+  const payload = await requestJson<RawService | { service?: RawService }>(`/services/${serviceId}`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
+
+  const row = (payload as { service?: RawService }).service ?? (payload as RawService);
+  const parsed = normalizeService(row);
+
+  if (!parsed) {
+    throw new ApiError('Update service response is invalid', 500);
+  }
+
+  return parsed;
+}
+
 export async function deleteService(serviceId: string): Promise<void> {
   await requestJson<{ message?: string }>(`/services/${serviceId}`, {
     method: 'DELETE',
   });
+}
+
+export async function getServiceRuntime(serviceId: string): Promise<ServiceRuntime> {
+  const payload = await requestJson<{ runtime?: ServiceRuntime }>(`/services/${serviceId}/runtime`);
+  return (
+    payload.runtime ?? {
+      desired: 0,
+      status: 'stopped',
+      urls: [],
+      containers: [],
+    }
+  );
+}
+
+async function serviceAction(serviceId: string, action: 'start' | 'stop' | 'restart'): Promise<void> {
+  await requestJson<{ message?: string }>(`/services/${serviceId}/${action}`, { method: 'POST' });
+}
+
+export const startService = (serviceId: string) => serviceAction(serviceId, 'start');
+export const stopService = (serviceId: string) => serviceAction(serviceId, 'stop');
+export const restartService = (serviceId: string) => serviceAction(serviceId, 'restart');
+
+export async function redeployService(serviceId: string): Promise<ServiceRuntime> {
+  const payload = await requestJson<{ runtime?: ServiceRuntime }>(`/services/${serviceId}/redeploy`, {
+    method: 'POST',
+  });
+  return payload.runtime ?? { desired: 0, status: 'stopped', urls: [], containers: [] };
 }
 
 function normalizeServiceVariables(rows: RawServiceVariable[] | undefined): ServiceVariable[] {
@@ -1028,6 +1144,37 @@ export async function listAuditLogs(input: ListAuditLogsInput = {}): Promise<Aud
 export async function listDeployments(serviceId: string): Promise<DeploymentEntity[]> {
   const payload = await requestJson<RawDeploymentListResponse>(`/services/${serviceId}/deployments`);
   return normalizeDeploymentArray(payload.deployments);
+}
+
+export type RecentDeploymentEntity = {
+  id: string;
+  serviceId: string;
+  serviceName: string;
+  projectName: string;
+  status: string;
+  imageName?: string;
+  startedAt?: string;
+  completedAt?: string;
+  createdAt?: string;
+};
+
+export async function listRecentDeployments(limit = 10): Promise<RecentDeploymentEntity[]> {
+  const payload = await requestJson<{ deployments?: Array<Record<string, unknown>> }>(
+    `/deployments?limit=${limit}`,
+  );
+  return (payload.deployments ?? [])
+    .map((d) => ({
+      id: String(d.id ?? ''),
+      serviceId: String(d.service_id ?? ''),
+      serviceName: String(d.service_name ?? ''),
+      projectName: String(d.project_name ?? ''),
+      status: String(d.status ?? ''),
+      imageName: d.image_name ? String(d.image_name) : undefined,
+      startedAt: d.started_at ? String(d.started_at) : undefined,
+      completedAt: d.completed_at ? String(d.completed_at) : undefined,
+      createdAt: d.created_at ? String(d.created_at) : undefined,
+    }))
+    .filter((d) => d.id !== '');
 }
 
 export async function createDeployment(
@@ -1203,6 +1350,8 @@ export function serviceStatusClass(status: ServiceStatus): string {
   switch (status) {
     case 'running':
       return 'status-running';
+    case 'degraded':
+      return 'status-degraded';
     case 'building':
       return 'status-building';
     case 'failed':

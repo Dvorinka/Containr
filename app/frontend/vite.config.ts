@@ -54,6 +54,14 @@ export default defineConfig({
     fs: {
       // Allow serving files from project root
       allow: ['..']
+    },
+    proxy: {
+      // Same-origin API path for dev - matches the nginx proxy in the shipped image
+      '/api': {
+        target: 'http://localhost:8082',
+        changeOrigin: true,
+        ws: true,
+      },
     }
   },
   // Preview server optimization

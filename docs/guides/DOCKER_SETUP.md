@@ -68,7 +68,7 @@ Internet → Traefik (Port 80/443)
     ├── Frontend (React/Nginx)
     ├── Backend (Go API)
     ├── PostgreSQL (Database)
-    └── Redis (Cache)
+    └── Dragonfly (Cache)
 ```
 
 ## Configuration Files
@@ -138,8 +138,8 @@ docker-compose up -d --force-recreate
 # Backup PostgreSQL
 docker-compose exec postgres pg_dump -U containr_user containr > backup.sql
 
-# Backup Redis
-docker-compose exec redis redis-cli --rdb /data/dump.rdb
+# Backup Dragonfly (snapshot)
+docker-compose exec dragonfly redis-cli -a "$REDIS_PASSWORD" save
 ```
 
 ### SSL Certificates
@@ -211,7 +211,7 @@ docker-compose up -d
 ### Performance Tuning
 
 1. **Nginx Caching** - Already configured in `nginx.conf`
-2. **Redis Caching** - Configure in your application
+2. **Dragonfly Caching** - Configure in your application
 3. **Database Pooling** - Adjust connection limits in Go app
 
 ## Production Tips

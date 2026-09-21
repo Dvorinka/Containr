@@ -204,7 +204,16 @@ func (h *ScalingHandler) ManualScale(c *gin.Context) {
 
 	event, err := h.autoScaler.ManualScale(c.Request.Context(), serviceID, request.Replicas, strings.TrimSpace(request.Reason))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		// Service unknown to the autoscaler: the runtime is authoritative —
+		// reconcile containers directly and persist the replica count.
+		if runtimeErr := runtimeScaleService(c, serviceID, request.Replicas); runtimeErr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "runtime_error": runtimeErr.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"message": "Service scaled successfully",
+			"state":   gin.H{"service_id": serviceID, "desired_replicas": request.Replicas},
+		})
 		return
 	}
 
@@ -214,11 +223,19 @@ func (h *ScalingHandler) ManualScale(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	// Apply the replica change to live containers (best effort — the
+	// bookkeeping update above already succeeded).
+	runtimeErr := runtimeScaleService(c, serviceID, request.Replicas)
+
+	resp := gin.H{
 		"message": "Service scaled successfully",
 		"event":   event,
 		"state":   state,
-	})
+	}
+	if runtimeErr != nil {
+		resp["runtime_error"] = runtimeErr.Error()
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 // GetScalingStatus returns the overall status of the auto-scaler

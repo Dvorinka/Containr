@@ -109,7 +109,7 @@ jobs:
           BETTER_AUTH_SECRET=$(openssl rand -hex 32)
           BETTER_AUTH_INTERNAL_TOKEN=$(openssl rand -hex 32)
           export BETTER_AUTH_SECRET BETTER_AUTH_INTERNAL_TOKEN
-          docker compose -f infra/docker-compose.yml up -d --build postgres redis backend frontend traefik
+          docker compose -f infra/docker-compose.yml up -d --build postgres dragonfly backend frontend traefik
 
       - name: Wait for backend health
         run: |

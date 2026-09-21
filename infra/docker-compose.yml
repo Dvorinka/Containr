@@ -65,12 +65,16 @@ services:
       timeout: 10s
       retries: 3
 
-  redis:
-    image: redis:7-alpine
-    container_name: containr-redis
-    command: redis-server --requirepass ${REDIS_PASSWORD:-dev_redis_123}
+  dragonfly:
+    image: docker.dragonflydb.io/dragonflydb/dragonfly:${DRAGONFLY_VERSION:-latest}
+    container_name: containr-dragonfly
+    command:
+      - --requirepass=${REDIS_PASSWORD:-dev_redis_123}
+      - --proactor_threads=${DRAGONFLY_THREADS:-1}
+      - --maxmemory=${DRAGONFLY_MAXMEMORY:-256mb}
+      - --dir=/data
     volumes:
-      - redis_data:/data
+      - dragonfly_data:/data
     networks:
       - containr-network
     restart: unless-stopped
@@ -89,7 +93,7 @@ services:
       - "8082:8080"
     environment:
       - DATABASE_URL=postgres://${POSTGRES_USER:-containr_user}:${POSTGRES_PASSWORD:-dev_password_123}@postgres:5432/${POSTGRES_DB:-containr}?sslmode=disable
-      - REDIS_URL=redis://:${REDIS_PASSWORD:-dev_redis_123}@redis:6379/0
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-dev_redis_123}@dragonfly:6379/0
       - PORT=8080
       - HOST=0.0.0.0
       - ENVIRONMENT=${ENVIRONMENT:-production}
@@ -130,12 +134,16 @@ services:
       - BITBUCKET_API_URL=${BITBUCKET_API_URL:-https://api.bitbucket.org/2.0}
       - BITBUCKET_BASE_URL=${BITBUCKET_BASE_URL:-https://bitbucket.org}
       - GITEA_BASE_URL=${GITEA_BASE_URL:-https://gitea.example.com}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    group_add:
+      - "${DOCKER_GID:-0}"
     networks:
       - containr-network
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
+      dragonfly:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
@@ -160,8 +168,8 @@ services:
       context: ../app/frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_URL: ${VITE_API_URL:-http://localhost:8082}
-        VITE_AUTH_URL: ${VITE_AUTH_URL:-http://localhost:8082/api/auth}
+        VITE_API_URL: ${VITE_API_URL:-}
+        VITE_AUTH_URL: ${VITE_AUTH_URL:-}
     container_name: containr-frontend
     ports:
       - "3000:80"
@@ -203,7 +211,7 @@ services:
 volumes:
   postgres_data:
     driver: local
-  redis_data:
+  dragonfly_data:
     driver: local
 
 networks:

@@ -13,9 +13,10 @@ RUN npm ci
 # Copy source code
 COPY . .
 
-# Build-time API URL injection for Vite
-ARG VITE_API_URL=http://localhost:8082
-ARG VITE_AUTH_URL=http://localhost:8082/api/auth
+# Build-time API URL injection for Vite. Empty = same-origin via the nginx
+# /api/ proxy, which keeps the published image usable from any host.
+ARG VITE_API_URL=
+ARG VITE_AUTH_URL=
 ENV VITE_API_URL=${VITE_API_URL}
 ENV VITE_AUTH_URL=${VITE_AUTH_URL}
 

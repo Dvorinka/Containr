@@ -108,7 +108,7 @@ func TestValidateAllowsWildcardCorsWithoutCredentialsInProduction(t *testing.T) 
 	}
 }
 
-func TestValidateRejectsInsecureCookieInProduction(t *testing.T) {
+func TestValidateAllowsInsecureCookieInProduction(t *testing.T) {
 	t.Setenv("ENVIRONMENT", "production")
 	cfg := Config{
 		JWTSecret:       "this-is-a-very-strong-production-secret-123",
@@ -120,9 +120,10 @@ func TestValidateRejectsInsecureCookieInProduction(t *testing.T) {
 		CORSCredentials: true,
 	}
 
-	err := cfg.Validate()
-	if err == nil || !strings.Contains(err.Error(), "COOKIE_SECURE must be true") {
-		t.Fatalf("expected COOKIE_SECURE validation error, got %v", err)
+	// Plain-HTTP self-hosted installs are a supported production deployment;
+	// insecure cookies are allowed and surfaced as a startup warning.
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected production config with insecure cookies to validate, got %v", err)
 	}
 }
 

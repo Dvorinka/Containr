@@ -3,6 +3,8 @@ package api
 import (
 	"containr/internal/database"
 	"containr/internal/database/sqlcdb"
+	"containr/internal/deployment"
+	"context"
 	"database/sql"
 	"errors"
 	"net/http"
@@ -308,6 +310,16 @@ func handleDeleteProject(c *gin.Context) {
 	if ownerID != userID {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Only project owners can delete projects"})
 		return
+	}
+
+	// Remove live containers and the project network before dropping rows.
+	// Best-effort: Docker may be unavailable; DB cleanup proceeds regardless.
+	if engineValue, exists := c.Get("deployment_engine"); exists && engineValue != nil {
+		engine := engineValue.(*deployment.DeploymentEngine)
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		_ = engine.RemoveProjectContainers(ctx, projectID.String())
+		_ = engine.RemoveProjectNetwork(ctx, projectID.String())
+		cancel()
 	}
 
 	deletedRows, err := queries.DeleteProjectByID(c.Request.Context(), projectID)

@@ -89,6 +89,9 @@ func main() {
 	// Setup Gin router
 	if cfg.IsProduction() {
 		gin.SetMode(gin.ReleaseMode)
+		if !cfg.CookieSecure {
+			log.Println("Warning: COOKIE_SECURE=false in production - session cookies are sent over plain HTTP. Enable TLS and set COOKIE_SECURE=true.")
+		}
 	}
 
 	router := gin.New()

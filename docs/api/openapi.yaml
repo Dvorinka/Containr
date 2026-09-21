@@ -424,6 +424,126 @@ paths:
         '204':
           description: Service deleted successfully
 
+  /services/{id}/runtime:
+    get:
+      tags:
+        - Services
+      summary: Service runtime state
+      description: Live container state — replicas, URLs, aggregate status
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Runtime state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  runtime:
+                    type: object
+                    properties:
+                      desired:
+                        type: integer
+                      status:
+                        type: string
+                        enum: [running, degraded, stopped]
+                      urls:
+                        type: array
+                        items:
+                          type: string
+                      containers:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            name:
+                              type: string
+                            state:
+                              type: string
+                            replica:
+                              type: integer
+
+  /services/{id}/start:
+    post:
+      tags:
+        - Services
+      summary: Start service
+      description: Start all stopped replicas
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Service started
+
+  /services/{id}/stop:
+    post:
+      tags:
+        - Services
+      summary: Stop service
+      description: Stop all replicas without removing them
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Service stopped
+
+  /services/{id}/restart:
+    post:
+      tags:
+        - Services
+      summary: Restart service
+      description: Restart all replicas
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Service restarted
+
+  /services/{id}/redeploy:
+    post:
+      tags:
+        - Services
+      summary: Redeploy service
+      description: Re-apply the current spec — pulls the image for image-sourced services, reuses the last deployed image otherwise
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Reconciled runtime state
+
   /services/{id}/deployments:
     get:
       tags:
@@ -474,6 +594,56 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Deployment'
+
+  /deployments:
+    get:
+      tags:
+        - Deployments
+      summary: List recent deployments
+      description: Latest deployments across all services owned by the caller — feeds the dashboard deploy feed
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 10
+            maximum: 50
+      responses:
+        '200':
+          description: Recent deployments
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deployments:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        service_id:
+                          type: string
+                        service_name:
+                          type: string
+                        project_name:
+                          type: string
+                        status:
+                          type: string
+                        image_name:
+                          type: string
+                        started_at:
+                          type: string
+                          nullable: true
+                        completed_at:
+                          type: string
+                          nullable: true
+                        created_at:
+                          type: string
 
   /deployments/{id}:
     get:
@@ -1432,7 +1602,7 @@ paths:
       tags:
         - Authentication
       summary: Bootstrap status
-      description: Reports whether the instance already has a registered user. Drives the first-run setup gate.
+      description: Reports whether the instance already has a registered user, which auth providers are configured, and whether public registration is open. Drives the first-run setup gate.
       responses:
         '200':
           description: Bootstrap state
@@ -1441,11 +1611,70 @@ paths:
               schema:
                 type: object
                 properties:
-                  needs_setup:
+                  has_users:
                     type: boolean
-                    description: True when no user exists yet
+                    description: True when at least one account exists
                   user_count:
                     type: integer
+                  mode:
+                    type: string
+                    enum: [register, login]
+                    description: register when the instance has no users, login otherwise
+                  providers:
+                    type: array
+                    items:
+                      type: string
+                    description: OAuth providers with real credentials configured (e.g. github, google). Empty on self-hosted installs.
+                  signup_enabled:
+                    type: boolean
+                    description: True when the owner re-opened public registration in Settings
+
+  /settings:
+    get:
+      tags:
+        - Settings
+      summary: Read platform settings
+      description: Admin only. Returns in-app settings that override environment variables.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current platform settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformSettings'
+        '403':
+          description: Admin access required
+    put:
+      tags:
+        - Settings
+      summary: Update platform settings
+      description: Admin only. Provided keys are applied immediately; the Cloudflare tunnel token starts/stops the managed cloudflared sidecar.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                signup_enabled:
+                  type: boolean
+                  description: Allow new public account registration after bootstrap
+                cloudflare_tunnel_token:
+                  type: string
+                  description: Cloudflare Tunnel token. Empty string clears the stored token and removes the cloudflared container.
+      responses:
+        '200':
+          description: Updated platform settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformSettings'
+        '403':
+          description: Admin access required
 
   # User Management
   /users:
@@ -4111,6 +4340,26 @@ components:
           type: string
           description: User display name
 
+    PlatformSettings:
+      type: object
+      properties:
+        signup_enabled:
+          type: boolean
+          description: Whether public account registration is open after bootstrap
+        cloudflare_tunnel:
+          type: object
+          properties:
+            token_set:
+              type: boolean
+              description: Whether a tunnel token is configured (value is never returned)
+            source:
+              type: string
+              enum: [app, env, none]
+              description: Where the active token comes from - in-app setting, env fallback, or unset
+            container:
+              type: string
+              description: cloudflared container state - running/exited/missing, or unavailable when Docker is unreachable
+
     User:
       type: object
       properties:
@@ -4127,6 +4376,9 @@ components:
         avatar_url:
           type: string
           description: Optional avatar image URL
+        is_admin:
+          type: boolean
+          description: True for the platform owner (first registered account)
         created_at:
           type: string
           format: date-time
@@ -4290,6 +4542,24 @@ components:
         memory:
           type: string
           description: Memory allocation
+        replicas:
+          type: integer
+          description: Desired replica count
+        port:
+          type: integer
+          description: Container port to expose (published host port, or Traefik when domain set)
+        domain:
+          type: string
+          description: Public hostname routed via Traefik
+        healthcheck_path:
+          type: string
+          description: HTTP path probed on port for container health
+        restart_policy:
+          type: string
+          description: Docker restart policy (default unless-stopped)
+        public_url:
+          type: string
+          description: Computed public URL (published port or domain)
         created_at:
           type: string
           format: date-time
@@ -4342,6 +4612,21 @@ components:
         memory:
           type: string
           description: Memory allocation
+        replicas:
+          type: integer
+          description: Desired replica count
+        port:
+          type: integer
+          description: Container port to expose
+        domain:
+          type: string
+          description: Public hostname routed via Traefik
+        healthcheck_path:
+          type: string
+          description: HTTP path probed for container health
+        restart_policy:
+          type: string
+          description: Docker restart policy
 
     UpdateServiceRequest:
       type: object
@@ -4378,6 +4663,21 @@ components:
         memory:
           type: string
           description: Memory allocation
+        replicas:
+          type: integer
+          description: Desired replica count
+        port:
+          type: integer
+          description: Container port to expose
+        domain:
+          type: string
+          description: Public hostname routed via Traefik
+        healthcheck_path:
+          type: string
+          description: HTTP path probed for container health
+        restart_policy:
+          type: string
+          description: Docker restart policy
 
     Deployment:
       type: object

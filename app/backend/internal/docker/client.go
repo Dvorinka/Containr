@@ -3,6 +3,7 @@ package docker
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/events"
+	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/api/types/registry"
@@ -50,6 +52,14 @@ func (c *Client) ListContainers(ctx context.Context, all bool) ([]types.Containe
 	})
 }
 
+// ListContainersFiltered returns containers matching the given filters.
+func (c *Client) ListContainersFiltered(ctx context.Context, f filters.Args, all bool) ([]types.Container, error) {
+	return c.cli.ContainerList(ctx, container.ListOptions{
+		All:     all,
+		Filters: f,
+	})
+}
+
 // GetContainer returns detailed information about a specific container
 func (c *Client) GetContainer(ctx context.Context, containerID string) (types.ContainerJSON, error) {
 	return c.cli.ContainerInspect(ctx, containerID)
@@ -63,6 +73,7 @@ func (c *Client) CreateContainer(ctx context.Context, config ContainerConfig) (s
 		Env:          config.Env,
 		Labels:       config.Labels,
 		ExposedPorts: config.ExposedPorts,
+		Healthcheck:  config.Healthcheck,
 	}
 
 	hostConfig := &container.HostConfig{
@@ -168,12 +179,41 @@ func (c *Client) ListImages(ctx context.Context, all bool) ([]image.Summary, err
 	})
 }
 
-// PullImage pulls an image from a registry
+// PullImage pulls an image from a registry. The pull runs as the returned
+// stream is consumed — callers must drain and close it (or use
+// PullImageWait) or the pull may be aborted.
 func (c *Client) PullImage(ctx context.Context, ref string, auth registry.AuthConfig) (io.ReadCloser, error) {
 	authStr, _ := registry.EncodeAuthConfig(auth)
 	return c.cli.ImagePull(ctx, ref, image.PullOptions{
 		RegistryAuth: authStr,
 	})
+}
+
+// PullImageWait pulls an image and blocks until the pull stream completes.
+func (c *Client) PullImageWait(ctx context.Context, ref string, auth registry.AuthConfig) error {
+	reader, err := c.PullImage(ctx, ref, auth)
+	if err != nil {
+		return err
+	}
+	defer reader.Close()
+	// The daemon performs the pull while streaming progress; drain it fully
+	// and surface any errorDetail the daemon reports in the stream.
+	dec := json.NewDecoder(reader)
+	var msg struct {
+		ErrorDetail *struct {
+			Message string `json:"message"`
+		} `json:"errorDetail"`
+		Error string `json:"error"`
+	}
+	for dec.Decode(&msg) == nil {
+		if msg.ErrorDetail != nil {
+			return fmt.Errorf("%s", msg.ErrorDetail.Message)
+		}
+		if msg.Error != "" {
+			return fmt.Errorf("%s", msg.Error)
+		}
+	}
+	return nil
 }
 
 // BuildImage builds an image from a Dockerfile

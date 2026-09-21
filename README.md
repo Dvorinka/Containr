@@ -40,13 +40,15 @@ click away.
 
 ## Features
 
-- **Project canvas** — visual service topology, groups, drag/drop, auto-inferred connections
-- **Deployments & builds** — Docker deploys with history, logs, rollback, live build status
+- **Project canvas** — visual service topology, groups, drag/drop, auto-inferred connections, right-click lifecycle actions
+- **Private networking** — every project gets an isolated Docker network; services reach each other by name (`web:3000`) and share variables via `${{service.KEY}}` references
+- **Deployments & builds** — Docker deploys with history, logs, image rollback, live build status
+- **Runtime** — replicas, published ports, domains, health checks, restart policies; start/stop/restart/redeploy from canvas or service page
 - **Git integration** — GitHub, GitLab, Bitbucket, Gitea; webhooks, GitHub App
 - **Managed databases** — one-click provisioning with backup/restore
 - **Metrics** — per-service Docker stats plus host CPU/memory/disk telemetry
 - **Templates, cron, previews** — service catalog, scheduled jobs, preview deploys
-- **Auth & security** — Better Auth sessions (email + OAuth), audit logs, vuln scans
+- **Auth & security** — Better Auth sessions (email/password self-hosted), audit logs, vuln scans
 - **Networking** — Traefik reverse proxy, optional Cloudflare Tunnel
 
 ## Quick Start
@@ -60,6 +62,9 @@ curl -fsSL https://raw.githubusercontent.com/Dvorinka/Containr/main/install.sh |
 Installs into `./containr`, generates secrets, pulls the published `:latest`
 images, and starts the stack — UI at `http://localhost:3000`, API at
 `http://localhost:8082`. Non-interactive; re-runs never overwrite `.env`.
+On first visit you create the owner account (email/password); registration
+then closes automatically. The owner can reopen it and configure a Cloudflare
+Tunnel token under **Settings → Platform** — in-app values override env vars.
 
 Override with env vars:
 
@@ -80,7 +85,7 @@ see [docs/guides/](docs/guides/) and `infra/docker-compose.yml`.
 
 ```
 app/frontend/   React 19 + Vite + TypeScript + Tailwind + React Flow
-app/backend/    Go API (Gin) · PostgreSQL · Redis · Docker SDK · Better Auth sidecar
+app/backend/    Go API (Gin) · PostgreSQL · Dragonfly · Docker SDK · Better Auth sidecar
 infra/          Self-hosted compose: Traefik + Cloudflare Tunnel
 docs/           Guides, OpenAPI spec, design documents
 ```

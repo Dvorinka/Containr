@@ -46,10 +46,15 @@ const database = new PostgresDialect({
   pool,
 });
 
-const githubClientId = env.GITHUB_CLIENT_ID?.trim() || '';
-const githubClientSecret = env.GITHUB_CLIENT_SECRET?.trim() || '';
-const googleClientId = env.GOOGLE_CLIENT_ID?.trim() || '';
-const googleClientSecret = env.GOOGLE_CLIENT_SECRET?.trim() || '';
+const realCredential = (value) => {
+  const trimmed = (value || '').trim();
+  return trimmed && !trimmed.startsWith('PLACEHOLDER_') ? trimmed : '';
+};
+
+const githubClientId = realCredential(env.GITHUB_CLIENT_ID);
+const githubClientSecret = realCredential(env.GITHUB_CLIENT_SECRET);
+const googleClientId = realCredential(env.GOOGLE_CLIENT_ID);
+const googleClientSecret = realCredential(env.GOOGLE_CLIENT_SECRET);
 
 const socialProviders = {};
 if (githubClientId && githubClientSecret) {
@@ -67,7 +72,7 @@ if (googleClientId && googleClientSecret) {
   };
 }
 
-const trustedOrigins = [
+const staticTrustedOrigins = [
   ...splitCsv(env.BETTER_AUTH_TRUSTED_ORIGINS),
   env.FRONTEND_URL,
   env.BACKEND_URL,
@@ -86,12 +91,33 @@ const trustedOrigins = [
   .map((origin) => (origin || '').trim())
   .filter(Boolean);
 
+// Self-hosted installs are reached over arbitrary hosts/IPs, so the static
+// list above cannot cover them. Trust an Origin only when it matches the
+// request's own Host header - that is genuine same-origin traffic (browsers
+// cannot forge either header cross-origin). Do NOT consult x-forwarded-host
+// here: clients can set it freely.
+const resolveTrustedOrigins = (request) => {
+  const origins = new Set(staticTrustedOrigins);
+  const host = request?.headers?.get('host');
+  const origin = request?.headers?.get('origin');
+  if (host && origin) {
+    try {
+      if (new URL(origin).host === host) {
+        origins.add(origin);
+      }
+    } catch {
+      // malformed Origin header - leave untrusted
+    }
+  }
+  return [...origins];
+};
+
 export const auth = betterAuth({
   appName: env.BETTER_AUTH_APP_NAME || 'Containr',
   baseURL: env.BETTER_AUTH_URL || defaultBackendURL,
   basePath: '/api/auth',
   secret: env.BETTER_AUTH_SECRET || 'PLACEHOLDER_BETTER_AUTH_SECRET_CHANGE_ME_32CHARS_MIN',
-  trustedOrigins,
+  trustedOrigins: resolveTrustedOrigins,
   database,
   user: {
     modelName: 'auth_users',
