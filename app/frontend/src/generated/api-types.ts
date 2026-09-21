@@ -886,6 +886,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/deployments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List recent deployments
+         * @description Latest deployments across all services owned by the caller — feeds the dashboard deploy feed
+         */
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Recent deployments */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            deployments?: {
+                                id?: string;
+                                service_id?: string;
+                                service_name?: string;
+                                project_name?: string;
+                                status?: string;
+                                image_name?: string;
+                                started_at?: string | null;
+                                completed_at?: string | null;
+                                created_at?: string;
+                            }[];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/deployments/{id}": {
         parameters: {
             query?: never;

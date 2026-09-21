@@ -219,6 +219,7 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			// Deployment routes
 			protected.GET("/services/:id/deployments", handleGetDeployments)
 			protected.POST("/services/:id/deployments", handleCreateDeployment)
+			protected.GET("/deployments", handleGetRecentDeployments)
 			protected.GET("/deployments/:id", handleGetDeployment)
 			protected.POST("/deployments/:id/rollback", handleRollbackDeployment)
 

@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -111,6 +112,72 @@ func handleGetDeployments(c *gin.Context) {
 			&d.CreatedAt, &d.UpdatedAt,
 		)
 		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to scan deployment"})
+			return
+		}
+		deployments = append(deployments, d)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"deployments": deployments})
+}
+
+// RecentDeployment is a deployment row joined with its service and project names.
+type RecentDeployment struct {
+	ID          uuid.UUID  `json:"id"`
+	ServiceID   uuid.UUID  `json:"service_id"`
+	ServiceName string     `json:"service_name"`
+	ProjectName string     `json:"project_name"`
+	Status      string     `json:"status"`
+	ImageName   string     `json:"image_name"`
+	StartedAt   *time.Time `json:"started_at"`
+	CompletedAt *time.Time `json:"completed_at"`
+	CreatedAt   time.Time  `json:"created_at"`
+}
+
+// handleGetRecentDeployments lists the latest deployments across all of the
+// caller's services — feeds the dashboard deploy feed.
+func handleGetRecentDeployments(c *gin.Context) {
+	db, exists := c.Get("db")
+	if !exists {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database connection not available"})
+		return
+	}
+
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	limit := 10
+	if v := c.Query("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 50 {
+			limit = n
+		}
+	}
+
+	rows, err := db.(*database.DB).Query(
+		`SELECT d.id, d.service_id, s.name, p.name, d.status,
+		        COALESCE(d.image_name, ''), d.started_at, d.completed_at, d.created_at
+		 FROM deployments d
+		 JOIN services s ON s.id = d.service_id
+		 JOIN projects p ON p.id = s.project_id
+		 WHERE p.owner_id = $1
+		 ORDER BY d.created_at DESC
+		 LIMIT $2`,
+		userID.(string), limit,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve deployments"})
+		return
+	}
+	defer rows.Close()
+
+	deployments := []RecentDeployment{}
+	for rows.Next() {
+		var d RecentDeployment
+		if err := rows.Scan(&d.ID, &d.ServiceID, &d.ServiceName, &d.ProjectName,
+			&d.Status, &d.ImageName, &d.StartedAt, &d.CompletedAt, &d.CreatedAt); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to scan deployment"})
 			return
 		}

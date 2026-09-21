@@ -256,17 +256,23 @@ func createLocalUserFromBetterAuth(db *database.DB, authUser betterAuthLoginUser
 		return User{}, err
 	}
 
+	// A mirrored first account owns the platform, same as handleRegister.
+	var total int
+	if err := db.QueryRow("SELECT COUNT(*) FROM users").Scan(&total); err != nil {
+		return User{}, err
+	}
+
 	var user User
 	err = db.QueryRow(`
-		INSERT INTO users (email, password_hash, name, avatar_url)
-		VALUES ($1, $2, $3, NULLIF($4, ''))
+		INSERT INTO users (email, password_hash, name, avatar_url, is_admin)
+		VALUES ($1, $2, $3, NULLIF($4, ''), $5)
 		ON CONFLICT (email) DO UPDATE
 		SET name = EXCLUDED.name,
 		    avatar_url = COALESCE(EXCLUDED.avatar_url, users.avatar_url),
 		    updated_at = NOW()
-		RETURNING id, email, name, COALESCE(avatar_url, ''), created_at
-	`, email, string(hashedPassword), name, strings.TrimSpace(authUser.Image)).
-		Scan(&user.ID, &user.Email, &user.Name, &user.AvatarURL, &user.CreatedAt)
+		RETURNING id, email, name, COALESCE(avatar_url, ''), is_admin, created_at
+	`, email, string(hashedPassword), name, strings.TrimSpace(authUser.Image), total == 0).
+		Scan(&user.ID, &user.Email, &user.Name, &user.AvatarURL, &user.IsAdmin, &user.CreatedAt)
 	if err != nil {
 		return User{}, err
 	}
@@ -320,8 +326,8 @@ func handleRegister(c *gin.Context) {
 	err = db.QueryRow(`
 		INSERT INTO users (email, password_hash, name, is_admin)
 		VALUES ($1, $2, $3, $4)
-		RETURNING id, email, name, COALESCE(avatar_url, ''), created_at
-	`, req.Email, string(hashedPassword), req.Name, total == 0).Scan(&user.ID, &user.Email, &user.Name, &user.AvatarURL, &user.CreatedAt)
+		RETURNING id, email, name, COALESCE(avatar_url, ''), is_admin, created_at
+	`, req.Email, string(hashedPassword), req.Name, total == 0).Scan(&user.ID, &user.Email, &user.Name, &user.AvatarURL, &user.IsAdmin, &user.CreatedAt)
 
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
@@ -388,8 +394,8 @@ func handleCreateUser(c *gin.Context) {
 	err = db.QueryRow(`
 		INSERT INTO users (email, password_hash, name)
 		VALUES ($1, $2, $3)
-		RETURNING id, email, name, COALESCE(avatar_url, ''), created_at
-	`, req.Email, string(hashedPassword), req.Name).Scan(&user.ID, &user.Email, &user.Name, &user.AvatarURL, &user.CreatedAt)
+		RETURNING id, email, name, COALESCE(avatar_url, ''), is_admin, created_at
+	`, req.Email, string(hashedPassword), req.Name).Scan(&user.ID, &user.Email, &user.Name, &user.AvatarURL, &user.IsAdmin, &user.CreatedAt)
 	if err != nil {
 		c.JSON(http.StatusConflict, gin.H{"error": "User already exists"})
 		return

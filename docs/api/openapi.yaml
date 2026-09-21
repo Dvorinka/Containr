@@ -595,6 +595,56 @@ paths:
               schema:
                 $ref: '#/components/schemas/Deployment'
 
+  /deployments:
+    get:
+      tags:
+        - Deployments
+      summary: List recent deployments
+      description: Latest deployments across all services owned by the caller — feeds the dashboard deploy feed
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 10
+            maximum: 50
+      responses:
+        '200':
+          description: Recent deployments
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deployments:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        service_id:
+                          type: string
+                        service_name:
+                          type: string
+                        project_name:
+                          type: string
+                        status:
+                          type: string
+                        image_name:
+                          type: string
+                        started_at:
+                          type: string
+                          nullable: true
+                        completed_at:
+                          type: string
+                          nullable: true
+                        created_at:
+                          type: string
+
   /deployments/{id}:
     get:
       tags:

@@ -1146,6 +1146,37 @@ export async function listDeployments(serviceId: string): Promise<DeploymentEnti
   return normalizeDeploymentArray(payload.deployments);
 }
 
+export type RecentDeploymentEntity = {
+  id: string;
+  serviceId: string;
+  serviceName: string;
+  projectName: string;
+  status: string;
+  imageName?: string;
+  startedAt?: string;
+  completedAt?: string;
+  createdAt?: string;
+};
+
+export async function listRecentDeployments(limit = 10): Promise<RecentDeploymentEntity[]> {
+  const payload = await requestJson<{ deployments?: Array<Record<string, unknown>> }>(
+    `/deployments?limit=${limit}`,
+  );
+  return (payload.deployments ?? [])
+    .map((d) => ({
+      id: String(d.id ?? ''),
+      serviceId: String(d.service_id ?? ''),
+      serviceName: String(d.service_name ?? ''),
+      projectName: String(d.project_name ?? ''),
+      status: String(d.status ?? ''),
+      imageName: d.image_name ? String(d.image_name) : undefined,
+      startedAt: d.started_at ? String(d.started_at) : undefined,
+      completedAt: d.completed_at ? String(d.completed_at) : undefined,
+      createdAt: d.created_at ? String(d.created_at) : undefined,
+    }))
+    .filter((d) => d.id !== '');
+}
+
 export async function createDeployment(
   serviceId: string,
   input: CreateDeploymentInput = {},

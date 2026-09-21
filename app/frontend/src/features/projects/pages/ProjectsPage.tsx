@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   createProject,
   getHostMonitoring,
-  listBuilds,
+  listRecentDeployments,
   listProjects,
   type ProjectEntity,
   type ProjectStats,
@@ -156,10 +156,10 @@ export function ProjectsPage() {
     queryFn: getHostMonitoring,
     refetchInterval: 30_000,
   });
-  const buildsQuery = useQuery({
+  const deploysQuery = useQuery({
     queryKey: ['recent-deploys'],
     enabled: !isDemoMode,
-    queryFn: () => listBuilds({ page: 1, limit: 5 }),
+    queryFn: () => listRecentDeployments(10),
     refetchInterval: 30_000,
   });
 
@@ -193,16 +193,16 @@ export function ProjectsPage() {
   const memPct = isDemoMode ? 72 : host ? Math.round(host.memory.usagePercent) : null;
   const diskPct = isDemoMode ? 73 : host ? Math.round(host.storage.usagePercent) : null;
   const fmtGB = (v: number) => `${(v / (1024 * 1024 * 1024)).toFixed(0)}G`;
-  const builds = isDemoMode ? [] : buildsQuery.data?.builds ?? [];
-  const deployCount = buildsQuery.data?.total ?? builds.length;
+  const deployments = isDemoMode ? [] : deploysQuery.data ?? [];
+  const deployCount = deployments.length;
   const feed = isDemoMode
     ? demoDeploys
-    : builds.map((b) => ({
-        id: b.id,
-        name: b.imageName || b.serviceId || b.id,
-        project: '',
-        status: (b.status || 'queued').toUpperCase(),
-        when: formatRelative(b.startedAt ?? b.completedAt),
+    : deployments.slice(0, 5).map((d) => ({
+        id: d.id,
+        name: d.serviceName || d.imageName || d.serviceId || d.id,
+        project: d.projectName,
+        status: (d.status || 'queued').toUpperCase(),
+        when: formatRelative(d.startedAt ?? d.completedAt ?? d.createdAt),
       }));
 
   const statusClass = (status: string) =>
@@ -278,7 +278,7 @@ export function ProjectsPage() {
             <div className="v-k"><span>DEPLOYS</span></div>
             <div className="v-v">{isDemoMode ? 18 : deployCount}</div>
             <div className="v-meter"><i style={{ width: '94%' }} /></div>
-            <div className="v-d"><b style={{ color: 'var(--success)' }}>{isDemoMode ? '17 ok' : `${builds.filter((b) => (b.status ?? '').toLowerCase() !== 'failed').length} recent`}</b></div>
+            <div className="v-d"><b style={{ color: 'var(--success)' }}>{isDemoMode ? '17 ok' : `${deployments.filter((d) => (d.status ?? '').toLowerCase() !== 'failed').length} recent`}</b></div>
           </div>
         </div>
 
