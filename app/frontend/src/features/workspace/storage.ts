@@ -151,12 +151,24 @@ export function canvasStorageKey(projectId: string): string {
   return `containr.canvas.v1.${projectId}`;
 }
 
+function canvasStorage(): Storage | null {
+  try {
+    return typeof window === 'undefined' ? null : window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+export function hasCanvasMetadata(projectId: string): boolean {
+  return canvasStorage()?.getItem(canvasStorageKey(projectId)) != null;
+}
+
 export function clearCanvasMetadata(projectId: string): void {
-  localStorage.removeItem(canvasStorageKey(projectId));
+  canvasStorage()?.removeItem(canvasStorageKey(projectId));
 }
 
 export function saveCanvasMetadata(projectId: string, metadata: ProjectCanvasMetadata): void {
-  localStorage.setItem(canvasStorageKey(projectId), JSON.stringify(metadata));
+  canvasStorage()?.setItem(canvasStorageKey(projectId), JSON.stringify(metadata));
 }
 
 export function loadCanvasMetadata(projectId: string, services: ServiceEntity[]): ProjectCanvasMetadata {
@@ -164,7 +176,7 @@ export function loadCanvasMetadata(projectId: string, services: ServiceEntity[])
   const fallback = createDefaultCanvasMetadata(services);
   const serviceIds = new Set(services.map((service) => service.id));
 
-  const raw = localStorage.getItem(key);
+  const raw = canvasStorage()?.getItem(key);
   if (!raw) {
     saveCanvasMetadata(projectId, fallback);
     return fallback;

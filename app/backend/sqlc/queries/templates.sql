@@ -1,18 +1,75 @@
--- name: ListServiceTemplates :many
-SELECT id, name, description, category, logo, config, variables, is_official, created_at, updated_at
+-- name: ListServiceTemplatesForUser :many
+SELECT id, name, description, category, logo, config, variables, is_official, owner_id, created_at, updated_at
 FROM service_templates
+WHERE is_official = true OR owner_id = sqlc.narg(owner_id)
 ORDER BY is_official DESC, name ASC;
 
--- name: ListServiceTemplatesByCategory :many
-SELECT id, name, description, category, logo, config, variables, is_official, created_at, updated_at
+-- name: ListServiceTemplatesByCategoryForUser :many
+SELECT id, name, description, category, logo, config, variables, is_official, owner_id, created_at, updated_at
 FROM service_templates
-WHERE category = $1
+WHERE category = sqlc.arg(category)
+  AND (is_official = true OR owner_id = sqlc.narg(owner_id))
 ORDER BY is_official DESC, name ASC;
 
 -- name: GetServiceTemplateByID :one
-SELECT id, name, description, category, logo, config, variables, is_official, created_at, updated_at
+SELECT id, name, description, category, logo, config, variables, is_official, owner_id, created_at, updated_at
 FROM service_templates
 WHERE id = $1;
+
+-- name: UpsertServiceTemplate :exec
+INSERT INTO service_templates (id, name, description, category, logo, config, variables, is_official)
+VALUES (
+    sqlc.arg(id),
+    sqlc.arg(name),
+    sqlc.narg(description),
+    sqlc.arg(category),
+    sqlc.narg(logo),
+    sqlc.arg(config),
+    sqlc.narg(variables),
+    sqlc.arg(is_official)
+)
+ON CONFLICT (id) DO UPDATE
+SET name = EXCLUDED.name,
+    description = EXCLUDED.description,
+    category = EXCLUDED.category,
+    logo = EXCLUDED.logo,
+    config = EXCLUDED.config,
+    variables = EXCLUDED.variables,
+    is_official = EXCLUDED.is_official,
+    updated_at = NOW();
+
+-- name: CreateUserTemplate :exec
+INSERT INTO service_templates (id, name, description, category, logo, config, variables, is_official, owner_id)
+VALUES (
+    sqlc.arg(id),
+    sqlc.arg(name),
+    sqlc.narg(description),
+    sqlc.arg(category),
+    sqlc.narg(logo),
+    sqlc.arg(config),
+    sqlc.narg(variables),
+    false,
+    sqlc.arg(owner_id)
+);
+
+-- name: UpdateUserTemplate :execrows
+UPDATE service_templates
+SET name = sqlc.arg(name),
+    description = sqlc.narg(description),
+    category = sqlc.arg(category),
+    logo = sqlc.narg(logo),
+    config = sqlc.arg(config),
+    variables = sqlc.narg(variables),
+    updated_at = NOW()
+WHERE id = sqlc.arg(id)
+  AND owner_id = sqlc.arg(owner_id)
+  AND is_official = false;
+
+-- name: DeleteUserTemplate :execrows
+DELETE FROM service_templates
+WHERE id = sqlc.arg(id)
+  AND owner_id = sqlc.arg(owner_id)
+  AND is_official = false;
 
 -- name: GetProjectOwnerID :one
 SELECT owner_id

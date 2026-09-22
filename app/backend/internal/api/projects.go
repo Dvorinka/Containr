@@ -21,6 +21,7 @@ type Project struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	OwnerID     string `json:"owner_id"`
+	IsApproved  bool   `json:"is_approved"`
 	CreatedAt   string `json:"created_at"`
 	UpdatedAt   string `json:"updated_at"`
 }
@@ -48,10 +49,8 @@ type UpdateProjectRequest struct {
 }
 
 func handleGetProjects(c *gin.Context) {
-	userID, ok := requireAuthenticatedUserUUID(c)
-	if !ok {
-		return
-	}
+	userID := optionalUserUUID(c)
+	isAdmin := contextIsAdmin(c)
 
 	db := c.MustGet("db").(*database.DB)
 	queries := sqlcdb.New(db.DB)
@@ -75,6 +74,7 @@ func handleGetProjects(c *gin.Context) {
 
 	rows, err := queries.ListProjectsWithStatsByUser(c.Request.Context(), sqlcdb.ListProjectsWithStatsByUserParams{
 		UserID:      userID,
+		IsAdmin:     isAdmin,
 		Search:      searchParam,
 		LimitCount:  int32(limit),
 		OffsetCount: int32(offset),
@@ -90,8 +90,9 @@ func handleGetProjects(c *gin.Context) {
 	}
 
 	total, err := queries.CountProjectsByUser(c.Request.Context(), sqlcdb.CountProjectsByUserParams{
-		UserID: userID,
-		Search: searchParam,
+		UserID:  userID,
+		IsAdmin: isAdmin,
+		Search:  searchParam,
 	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database count error"})
@@ -171,10 +172,7 @@ func handleCreateProject(c *gin.Context) {
 }
 
 func handleGetProject(c *gin.Context) {
-	userID, ok := requireAuthenticatedUserUUID(c)
-	if !ok {
-		return
-	}
+	userID := optionalUserUUID(c)
 
 	db := c.MustGet("db").(*database.DB)
 	queries := sqlcdb.New(db.DB)
@@ -187,6 +185,7 @@ func handleGetProject(c *gin.Context) {
 	projectRow, err := queries.GetProjectByIDForUser(c.Request.Context(), sqlcdb.GetProjectByIDForUserParams{
 		ProjectID: projectID,
 		UserID:    userID,
+		IsAdmin:   contextIsAdmin(c),
 	})
 	if errors.Is(err, sql.ErrNoRows) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
@@ -217,6 +216,7 @@ func handleUpdateProject(c *gin.Context) {
 	role, err := queries.GetProjectRoleForUser(c.Request.Context(), sqlcdb.GetProjectRoleForUserParams{
 		ProjectID: projectID,
 		UserID:    userID,
+		IsAdmin:   contextIsAdmin(c),
 	})
 	if errors.Is(err, sql.ErrNoRows) || role == "" || role == "viewer" {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions"})
@@ -270,6 +270,7 @@ func handleUpdateProject(c *gin.Context) {
 	projectRow, err := queries.GetProjectByIDForUser(c.Request.Context(), sqlcdb.GetProjectByIDForUserParams{
 		ProjectID: projectID,
 		UserID:    userID,
+		IsAdmin:   contextIsAdmin(c),
 	})
 	if errors.Is(err, sql.ErrNoRows) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
@@ -307,7 +308,7 @@ func handleDeleteProject(c *gin.Context) {
 		return
 	}
 
-	if ownerID != userID {
+	if ownerID != userID && !contextIsAdmin(c) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Only project owners can delete projects"})
 		return
 	}
@@ -361,7 +362,7 @@ func parseProjectIDParam(c *gin.Context) (uuid.UUID, bool) {
 
 func mapProjectWithStatsRow(row sqlcdb.ListProjectsWithStatsByUserRow) ProjectWithStats {
 	result := ProjectWithStats{
-		Project: mapProjectFields(row.ID, row.Name, row.Description, row.OwnerID, row.CreatedAt, row.UpdatedAt),
+		Project: mapProjectFields(row.ID, row.Name, row.Description, row.OwnerID, row.IsApproved, row.CreatedAt, row.UpdatedAt),
 		Stats: ProjectStats{
 			ServiceCount:    int(row.ServiceCount),
 			DeploymentCount: int(row.DeploymentCount),
@@ -373,15 +374,16 @@ func mapProjectWithStatsRow(row sqlcdb.ListProjectsWithStatsByUserRow) ProjectWi
 }
 
 func mapSQLCProject(project sqlcdb.Project) Project {
-	return mapProjectFields(project.ID, project.Name, project.Description, project.OwnerID, project.CreatedAt, project.UpdatedAt)
+	return mapProjectFields(project.ID, project.Name, project.Description, project.OwnerID, project.IsApproved, project.CreatedAt, project.UpdatedAt)
 }
 
-func mapProjectFields(id uuid.UUID, name string, description sql.NullString, ownerID uuid.UUID, createdAt, updatedAt sql.NullTime) Project {
+func mapProjectFields(id uuid.UUID, name string, description sql.NullString, ownerID uuid.UUID, isApproved bool, createdAt, updatedAt sql.NullTime) Project {
 	return Project{
 		ID:          id.String(),
 		Name:        name,
 		Description: nullableStringValue(description),
 		OwnerID:     ownerID.String(),
+		IsApproved:  isApproved,
 		CreatedAt:   nullableTimestampString(createdAt),
 		UpdatedAt:   nullableTimestampString(updatedAt),
 	}

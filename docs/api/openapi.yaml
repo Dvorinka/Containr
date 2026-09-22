@@ -987,6 +987,149 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/ServiceTemplate'
+    post:
+      tags:
+        - Templates
+      summary: Create a user template
+      description: Create a user-owned template (JSON definition). Requires authentication; the caller becomes the template owner.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TemplateWriteRequest'
+      responses:
+        '201':
+          description: Template created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  template:
+                    $ref: '#/components/schemas/ServiceTemplate'
+
+  /admin/overview:
+    get:
+      tags:
+        - Admin
+      summary: Platform overview
+      description: Admin-only aggregate statistics plus the pending project approval queue.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Platform overview
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  stats:
+                    type: object
+                    additionalProperties:
+                      type: integer
+                  pending_projects:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Project'
+
+  /admin/users:
+    get:
+      tags:
+        - Admin
+      summary: List users
+      description: Admin-only listing of all platform users.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Users retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AdminUser'
+
+  /admin/users/{id}:
+    patch:
+      tags:
+        - Admin
+      summary: Set user admin flag
+      description: Grant or revoke platform admin. Admins cannot revoke their own flag.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - is_admin
+              properties:
+                is_admin:
+                  type: boolean
+      responses:
+        '200':
+          description: User updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+
+  /admin/projects/{id}:
+    patch:
+      tags:
+        - Admin
+      summary: Set project approval
+      description: Approve or unapprove a project for public listing.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - is_approved
+              properties:
+                is_approved:
+                  type: boolean
+      responses:
+        '200':
+          description: Project updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  project:
+                    $ref: '#/components/schemas/Project'
+                  message:
+                    type: string
 
   /templates/{id}:
     get:
@@ -1010,6 +1153,60 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TemplateDetailResponse'
+    put:
+      tags:
+        - Templates
+      summary: Update a user template
+      description: Update a user-created template. Official templates cannot be modified; only the owner or an admin may update.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Template ID
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TemplateWriteRequest'
+      responses:
+        '200':
+          description: Template updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  template:
+                    $ref: '#/components/schemas/ServiceTemplate'
+    delete:
+      tags:
+        - Templates
+      summary: Delete a user template
+      description: Delete a user-created template. Official templates cannot be deleted; only the owner or an admin may delete.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Template ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Template deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
 
   /templates/{id}/deploy:
     post:
@@ -4402,6 +4599,23 @@ components:
           type: string
           description: Optional avatar image URL
 
+    AdminUser:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        avatar_url:
+          type: string
+        is_admin:
+          type: boolean
+        created_at:
+          type: string
+
     Project:
       type: object
       properties:
@@ -4417,6 +4631,9 @@ components:
         owner_id:
           type: string
           description: Project owner ID
+        is_approved:
+          type: boolean
+          description: Whether the project is approved for public listing. New projects default to false and appear publicly only after admin approval.
         created_at:
           type: string
           format: date-time
@@ -4995,6 +5212,10 @@ components:
         is_official:
           type: boolean
           description: Whether template is an official preset
+        owner_id:
+          type: string
+          nullable: true
+          description: Owning user ID for user-created templates; null for official presets
         created_at:
           type: string
           format: date-time
@@ -5003,6 +5224,33 @@ components:
           type: string
           format: date-time
           description: Last update timestamp
+
+    TemplateWriteRequest:
+      type: object
+      required:
+        - name
+        - config
+      properties:
+        name:
+          type: string
+          description: Template display name
+        description:
+          type: string
+          description: Template description
+        category:
+          type: string
+          description: Template category (web, database, cache, queue, monitoring, storage, app, other)
+        logo:
+          type: string
+          description: Template logo URL
+        config:
+          type: object
+          description: Template config object (type, runtime, commands, port, environment)
+        variables:
+          type: array
+          items:
+            $ref: '#/components/schemas/TemplateVariable'
+          description: Configurable variables exposed at deploy time
 
     TemplateConfig:
       type: object

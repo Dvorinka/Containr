@@ -149,37 +149,18 @@ func (q *Queries) GetDatabaseBackupByIDAndDatabaseAndUser(ctx context.Context, a
 	return i, err
 }
 
-const getDatabaseServiceByIDAndUser = `-- name: GetDatabaseServiceByIDAndUser :one
-SELECT id, name, type, status, version, plan, region, connection_url, backup_schedule, next_backup_at, created_at, updated_at
+const getDatabaseServiceByID = `-- name: GetDatabaseServiceByID :one
+SELECT id, user_id, name, type, status, version, plan, region, connection_url, backup_schedule, next_backup_at, created_at, updated_at
 FROM database_services
-WHERE id = $1 AND user_id = $2
+WHERE id = $1
 `
 
-type GetDatabaseServiceByIDAndUserParams struct {
-	ID     string `json:"id"`
-	UserID string `json:"user_id"`
-}
-
-type GetDatabaseServiceByIDAndUserRow struct {
-	ID             string         `json:"id"`
-	Name           string         `json:"name"`
-	Type           string         `json:"type"`
-	Status         string         `json:"status"`
-	Version        string         `json:"version"`
-	Plan           string         `json:"plan"`
-	Region         string         `json:"region"`
-	ConnectionUrl  sql.NullString `json:"connection_url"`
-	BackupSchedule sql.NullString `json:"backup_schedule"`
-	NextBackupAt   sql.NullTime   `json:"next_backup_at"`
-	CreatedAt      sql.NullTime   `json:"created_at"`
-	UpdatedAt      sql.NullTime   `json:"updated_at"`
-}
-
-func (q *Queries) GetDatabaseServiceByIDAndUser(ctx context.Context, arg GetDatabaseServiceByIDAndUserParams) (GetDatabaseServiceByIDAndUserRow, error) {
-	row := q.db.QueryRowContext(ctx, getDatabaseServiceByIDAndUser, arg.ID, arg.UserID)
-	var i GetDatabaseServiceByIDAndUserRow
+func (q *Queries) GetDatabaseServiceByID(ctx context.Context, id string) (DatabaseService, error) {
+	row := q.db.QueryRowContext(ctx, getDatabaseServiceByID, id)
+	var i DatabaseService
 	err := row.Scan(
 		&i.ID,
+		&i.UserID,
 		&i.Name,
 		&i.Type,
 		&i.Status,
@@ -193,6 +174,94 @@ func (q *Queries) GetDatabaseServiceByIDAndUser(ctx context.Context, arg GetData
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const getDatabaseServiceByIDAndUser = `-- name: GetDatabaseServiceByIDAndUser :one
+SELECT id, user_id, name, type, status, version, plan, region, connection_url, backup_schedule, next_backup_at, created_at, updated_at
+FROM database_services
+WHERE id = $1 AND user_id = $2
+`
+
+type GetDatabaseServiceByIDAndUserParams struct {
+	ID     string `json:"id"`
+	UserID string `json:"user_id"`
+}
+
+func (q *Queries) GetDatabaseServiceByIDAndUser(ctx context.Context, arg GetDatabaseServiceByIDAndUserParams) (DatabaseService, error) {
+	row := q.db.QueryRowContext(ctx, getDatabaseServiceByIDAndUser, arg.ID, arg.UserID)
+	var i DatabaseService
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Name,
+		&i.Type,
+		&i.Status,
+		&i.Version,
+		&i.Plan,
+		&i.Region,
+		&i.ConnectionUrl,
+		&i.BackupSchedule,
+		&i.NextBackupAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getDatabaseServiceOwnerID = `-- name: GetDatabaseServiceOwnerID :one
+SELECT user_id
+FROM database_services
+WHERE id = $1
+`
+
+func (q *Queries) GetDatabaseServiceOwnerID(ctx context.Context, id string) (string, error) {
+	row := q.db.QueryRowContext(ctx, getDatabaseServiceOwnerID, id)
+	var user_id string
+	err := row.Scan(&user_id)
+	return user_id, err
+}
+
+const listAllDatabaseServices = `-- name: ListAllDatabaseServices :many
+SELECT id, user_id, name, type, status, version, plan, region, connection_url, backup_schedule, next_backup_at, created_at, updated_at
+FROM database_services
+ORDER BY created_at DESC
+`
+
+func (q *Queries) ListAllDatabaseServices(ctx context.Context) ([]DatabaseService, error) {
+	rows, err := q.db.QueryContext(ctx, listAllDatabaseServices)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DatabaseService{}
+	for rows.Next() {
+		var i DatabaseService
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Name,
+			&i.Type,
+			&i.Status,
+			&i.Version,
+			&i.Plan,
+			&i.Region,
+			&i.ConnectionUrl,
+			&i.BackupSchedule,
+			&i.NextBackupAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listDatabaseBackupsByDatabaseAndUser = `-- name: ListDatabaseBackupsByDatabaseAndUser :many
@@ -242,38 +311,24 @@ func (q *Queries) ListDatabaseBackupsByDatabaseAndUser(ctx context.Context, arg 
 }
 
 const listDatabaseServicesByUser = `-- name: ListDatabaseServicesByUser :many
-SELECT id, name, type, status, version, plan, region, connection_url, backup_schedule, next_backup_at, created_at, updated_at
+SELECT id, user_id, name, type, status, version, plan, region, connection_url, backup_schedule, next_backup_at, created_at, updated_at
 FROM database_services
 WHERE user_id = $1
 ORDER BY created_at DESC
 `
 
-type ListDatabaseServicesByUserRow struct {
-	ID             string         `json:"id"`
-	Name           string         `json:"name"`
-	Type           string         `json:"type"`
-	Status         string         `json:"status"`
-	Version        string         `json:"version"`
-	Plan           string         `json:"plan"`
-	Region         string         `json:"region"`
-	ConnectionUrl  sql.NullString `json:"connection_url"`
-	BackupSchedule sql.NullString `json:"backup_schedule"`
-	NextBackupAt   sql.NullTime   `json:"next_backup_at"`
-	CreatedAt      sql.NullTime   `json:"created_at"`
-	UpdatedAt      sql.NullTime   `json:"updated_at"`
-}
-
-func (q *Queries) ListDatabaseServicesByUser(ctx context.Context, userID string) ([]ListDatabaseServicesByUserRow, error) {
+func (q *Queries) ListDatabaseServicesByUser(ctx context.Context, userID string) ([]DatabaseService, error) {
 	rows, err := q.db.QueryContext(ctx, listDatabaseServicesByUser, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListDatabaseServicesByUserRow{}
+	items := []DatabaseService{}
 	for rows.Next() {
-		var i ListDatabaseServicesByUserRow
+		var i DatabaseService
 		if err := rows.Scan(
 			&i.ID,
+			&i.UserID,
 			&i.Name,
 			&i.Type,
 			&i.Status,

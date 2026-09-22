@@ -60,26 +60,19 @@ func handleGetServiceMetrics(c *gin.Context) {
 		return
 	}
 
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
-		return
-	}
-
-	var ownerID string
+	var projectID uuid.UUID
 	var status string
 	err = db.QueryRow(
-		`SELECT p.owner_id, COALESCE(s.status, '')
-		 FROM services s JOIN projects p ON s.project_id = p.id
-		 WHERE s.id = $1`,
+		`SELECT s.project_id, COALESCE(s.status, '')
+		 FROM services s WHERE s.id = $1`,
 		serviceID,
-	).Scan(&ownerID, &status)
+	).Scan(&projectID, &status)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Service not found"})
 		return
 	}
-	if ownerID != userID.(string) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+	if _, allowed := projectReadAccess(c, db, projectID); !allowed {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Service not found"})
 		return
 	}
 

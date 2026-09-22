@@ -14,7 +14,6 @@ import {
   listBuilds,
   listGitProviders,
   listProjects,
-  listTemplates,
   createAgentToken,
   listAgentTokens,
   revokeAgentToken,
@@ -23,6 +22,7 @@ import {
   updateDatabaseBackupSchedule,
   createDatabaseBackup,
   restoreDatabaseBackup,
+  createManagedDatabase,
   listServicesByProject,
   listServiceVariables,
   updateServiceVariables,
@@ -46,10 +46,13 @@ import {
   updateVulnerability,
   getSecurityMetrics,
   type AgentAuthTokenCreated,
+  type CreateDatabaseInput,
   type DatabaseEntity,
   type FailoverPolicy,
 } from '@/lib/api-client';
 import { demoDatabases } from '@/lib/demo-data';
+import { DocsBrowser } from '@/features/docs/DocsBrowser';
+import { useAuthSession } from '@/lib/use-auth-session';
 import { formatRelative } from '@/lib/time';
 import { getAuthBaseUrl, signOutAuthSession } from '@/lib/auth-client';
 import { useBuildUpdates } from '@/lib/use-build-updates';
@@ -72,9 +75,6 @@ import {
   Check,
   AlertCircle,
   Loader2,
-  BookOpen,
-  Folder,
-  Box,
   Terminal,
   Radio,
   Server,
@@ -149,13 +149,19 @@ type LocalStorageSummary = {
 };
 
 function getLocalStorageSummary(): LocalStorageSummary {
-  if (typeof window === 'undefined') {
+  let storage: Storage | null = null;
+  try {
+    storage = typeof window === 'undefined' ? null : window.localStorage;
+  } catch {
+    storage = null;
+  }
+  if (!storage) {
     return { canvasKeys: [], totalKeys: 0 };
   }
 
   const canvasKeys: string[] = [];
-  for (let index = 0; index < localStorage.length; index += 1) {
-    const key = localStorage.key(index);
+  for (let index = 0; index < storage.length; index += 1) {
+    const key = storage.key(index);
     if (key && key.startsWith('containr.canvas.v1.')) {
       canvasKeys.push(key);
     }
@@ -165,21 +171,8 @@ function getLocalStorageSummary(): LocalStorageSummary {
 
   return {
     canvasKeys,
-    totalKeys: localStorage.length,
+    totalKeys: storage.length,
   };
-}
-
-function endpointStateBadge(isLoading: boolean, isError: boolean): {
-  label: string;
-  toneClass: string;
-} {
-  if (isLoading) {
-    return { label: 'Loading', toneClass: 'text-[var(--warn)]' };
-  }
-  if (isError) {
-    return { label: 'Unavailable', toneClass: 'text-[var(--bad)]' };
-  }
-  return { label: 'Available', toneClass: 'text-[var(--ok)]' };
 }
 
 function formatBytes(value: number): string {
@@ -210,9 +203,20 @@ function formatUptime(seconds: number): string {
 
 export function UsagePage() {
   const queryClient = useQueryClient();
+  const sessionQuery = useAuthSession();
+  const profileQuery = useQuery({
+    queryKey: ['user-profile'],
+    queryFn: getCurrentUserProfile,
+    enabled: Boolean(sessionQuery.data),
+    retry: false,
+  });
+  const signedIn = Boolean(sessionQuery.data);
+  const isAdmin = Boolean(profileQuery.data?.isAdmin);
   const buildsQuery = useQuery({
     queryKey: ['usage-builds'],
     queryFn: () => listBuilds({ page: 1, limit: 100 }),
+    enabled: signedIn,
+    retry: false,
   });
   const hostQuery = useQuery({
     queryKey: ['usage-host-monitoring'],
@@ -223,10 +227,14 @@ export function UsagePage() {
     queryKey: ['usage-agents'],
     queryFn: listAgents,
     refetchInterval: 15_000,
+    enabled: isAdmin,
+    retry: false,
   });
   const agentTokensQuery = useQuery({
     queryKey: ['agent-tokens'],
     queryFn: listAgentTokens,
+    enabled: isAdmin,
+    retry: false,
   });
   const [tokenLabel, setTokenLabel] = useState('');
   const [issuedToken, setIssuedToken] = useState<AgentAuthTokenCreated | null>(null);
@@ -386,6 +394,10 @@ containr-agent`;
             </div>
             <p className="text-sm text-[var(--error)]">Failed to load usage data</p>
           </div>
+        ) : !signedIn ? (
+          <div className="panel p-8 text-center">
+            <p className="text-sm text-[var(--text-secondary)]">Sign in to view build activity and capacity.</p>
+          </div>
         ) : (
           <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -456,7 +468,7 @@ containr-agent`;
                     status={hostStatus(hostLoadPercent)}
                     statusText={host ? { good: 'Good', average: 'Average', warning: 'High' }[hostStatus(hostLoadPercent)] : ''}
                     subtitle={host ? `${host.cpu.cores} cores · 5m ${host.load.load5m.toFixed(2)} · 15m ${host.load.load15m.toFixed(2)}` : 'Loading CPU telemetry.'}
-                    chart={<LineAreaChart data={loadHistory.length > 0 ? loadHistory : [0]} color="#b4e34a" height={72} />}
+                    chart={<LineAreaChart data={loadHistory.length > 0 ? loadHistory : [0]} color="var(--accent-primary)" height={72} />}
                   />
                   <EnhancedMetricCard
                     title="Memory"
@@ -467,10 +479,10 @@ containr-agent`;
                     subtitle={host ? `${formatBytes(host.memory.available)} free` : 'Loading memory telemetry.'}
                     chart={
                       <div className="relative mx-auto" style={{ width: 150 }}>
-                        <DonutChart percentage={host?.memory.usagePercent ?? 0} color="#f2c94c" size={150} thickness={14} />
+                        <DonutChart percentage={host?.memory.usagePercent ?? 0} color="var(--warning)" size={150} thickness={14} />
                         <div className="absolute inset-x-0 bottom-0 text-center">
-                          <div className="text-[10px] uppercase tracking-wide text-[#6b6e7d]">Used</div>
-                          <div className="text-sm font-bold text-[#e8e9f0]">
+                          <div className="text-[10px] uppercase tracking-wide text-[var(--text-tertiary)]">Used</div>
+                          <div className="text-sm font-bold text-[var(--text-primary)]">
                             {host ? `${formatBytes(host.memory.used)} / ${formatBytes(host.memory.total)}` : '—'}
                           </div>
                         </div>
@@ -488,14 +500,14 @@ containr-agent`;
                       <div>
                         <SegmentedBar
                           segments={[
-                            { width: host?.storage.usagePercent ?? 0, color: '#ff8a5c' },
-                            { width: Math.max(2, 100 - (host?.storage.usagePercent ?? 0)), color: 'rgba(255,255,255,0.07)' },
+                            { width: host?.storage.usagePercent ?? 0, color: 'var(--info)' },
+                            { width: Math.max(2, 100 - (host?.storage.usagePercent ?? 0)), color: 'var(--surface-muted)' },
                           ]}
                           height={18}
                         />
-                        <div className="mt-3 flex items-center gap-4 text-xs text-[#6b6e7d]">
-                          <span><span className="mr-1.5 inline-block h-2 w-2 rounded-full" style={{ background: '#ff8a5c' }} />{host ? `${formatBytes(host.storage.used)} used` : '—'}</span>
-                          <span><span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-white/10" />{host ? `${formatBytes(host.storage.available)} free` : '—'}</span>
+                        <div className="mt-3 flex items-center gap-4 text-xs text-[var(--text-tertiary)]">
+                          <span><span className="mr-1.5 inline-block h-2 w-2 rounded-full" style={{ background: 'var(--info)' }} />{host ? `${formatBytes(host.storage.used)} used` : '—'}</span>
+                          <span><span className="mr-1.5 inline-block h-2 w-2 rounded-full" style={{ background: 'var(--surface-muted)' }} />{host ? `${formatBytes(host.storage.available)} free` : '—'}</span>
                         </div>
                       </div>
                     }
@@ -569,6 +581,8 @@ containr-agent`;
                     <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Connect Node</span>
                   </div>
 
+                  {isAdmin ? (
+                  <>
                   <div className="mb-3 flex gap-2">
                     <input
                       value={tokenLabel}
@@ -639,6 +653,12 @@ containr-agent`;
                         ))}
                       </div>
                     </div>
+                  )}
+                  </>
+                  ) : (
+                    <p className="text-xs text-[var(--text-tertiary)]">
+                      Node registration and token issuance are admin operations. {signedIn ? 'Your account does not have admin rights.' : 'Sign in as an admin to manage nodes.'}
+                    </p>
                   )}
                 </div>
               </div>
@@ -1266,8 +1286,12 @@ export function SettingsPage() {
   };
 
   const clearCanvasCache = () => {
-    for (const key of storageSummary.canvasKeys) {
-      localStorage.removeItem(key);
+    try {
+      for (const key of storageSummary.canvasKeys) {
+        window.localStorage.removeItem(key);
+      }
+    } catch {
+      // Storage unavailable — nothing to clear.
     }
     refreshStorage();
   };
@@ -1509,161 +1533,14 @@ export function SettingsPage() {
 }
 
 export function DocsPage() {
-  const profileQuery = useQuery({
-    queryKey: ['docs-profile'],
-    queryFn: getCurrentUserProfile,
-  });
-  const projectsQuery = useQuery({
-    queryKey: ['docs-projects'],
-    queryFn: listProjects,
-  });
-  const templatesQuery = useQuery({
-    queryKey: ['docs-templates'],
-    queryFn: () => listTemplates(),
-  });
-  const buildsQuery = useQuery({
-    queryKey: ['docs-builds'],
-    queryFn: () => listBuilds({ page: 1, limit: 1 }),
-  });
-
-  const profileStatus = endpointStateBadge(profileQuery.isLoading, profileQuery.isError);
-  const projectStatus = endpointStateBadge(projectsQuery.isLoading, projectsQuery.isError);
-  const templateStatus = endpointStateBadge(templatesQuery.isLoading, templatesQuery.isError);
-  const buildStatus = endpointStateBadge(buildsQuery.isLoading, buildsQuery.isError);
-
   return (
     <div className="min-h-screen">
       <SecondaryPageHeader
         title="Docs"
-        description="Operational references and API documentation"
+        description="Guides and references — synced from GitHub, cached offline"
       />
       <div className="w-full px-8 py-6">
-        {/* API Status Grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <div className="panel p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <User size={14} className={profileStatus.toneClass} />
-              <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Profile</span>
-            </div>
-            <p className={`text-sm font-semibold ${profileStatus.toneClass}`}>{profileStatus.label}</p>
-            <p className="text-xs text-[var(--text-tertiary)] mt-1">
-              {profileQuery.data ? `${profileQuery.data.name} authenticated` : 'GET /user/profile'}
-            </p>
-          </div>
-          <div className="panel p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Folder size={14} className={projectStatus.toneClass} />
-              <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Projects</span>
-            </div>
-            <p className={`text-sm font-semibold ${projectStatus.toneClass}`}>{projectStatus.label}</p>
-            <p className="text-xs text-[var(--text-tertiary)] mt-1">
-              {projectsQuery.data ? `${projectsQuery.data.length} projects` : 'GET /projects'}
-            </p>
-          </div>
-          <div className="panel p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Box size={14} className={templateStatus.toneClass} />
-              <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Templates</span>
-            </div>
-            <p className={`text-sm font-semibold ${templateStatus.toneClass}`}>{templateStatus.label}</p>
-            <p className="text-xs text-[var(--text-tertiary)] mt-1">
-              {templatesQuery.data ? `${templatesQuery.data.length} templates` : 'GET /templates'}
-            </p>
-          </div>
-          <div className="panel p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Activity size={14} className={buildStatus.toneClass} />
-              <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Builds</span>
-            </div>
-            <p className={`text-sm font-semibold ${buildStatus.toneClass}`}>{buildStatus.label}</p>
-            <p className="text-xs text-[var(--text-tertiary)] mt-1">
-              {buildsQuery.data ? `${buildsQuery.data.total} builds` : 'GET /builds'}
-            </p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-          {/* Repository Paths */}
-          <section className="panel p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
-                <BookOpen size={18} className="text-[var(--accent-primary)]" />
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold text-[var(--text-primary)]">Repository Paths</h2>
-                <p className="text-xs text-[var(--text-tertiary)]">Source files and documentation</p>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <div className="p-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)]">
-                <div className="flex items-center gap-2 mb-1">
-                  <FileText size={14} className="text-[var(--text-tertiary)]" />
-                  <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">API Contract</span>
-                </div>
-                <p className="mono text-xs text-[var(--text-primary)]">docs/api/openapi.yaml</p>
-              </div>
-              <div className="p-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)]">
-                <div className="flex items-center gap-2 mb-1">
-                  <FileText size={14} className="text-[var(--text-tertiary)]" />
-                  <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Generated Types</span>
-                </div>
-                <p className="mono text-xs text-[var(--text-primary)]">app/frontend/src/generated/api-types.ts</p>
-              </div>
-              <div className="p-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)]">
-                <div className="flex items-center gap-2 mb-1">
-                  <BookOpen size={14} className="text-[var(--text-tertiary)]" />
-                  <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Primary Guides</span>
-                </div>
-                <p className="mono text-xs text-[var(--text-primary)]">README.md • DOCKER_SETUP.md • docs/guides/</p>
-              </div>
-              <div className="p-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)]">
-                <div className="flex items-center gap-2 mb-1">
-                  <FileText size={14} className="text-[var(--text-tertiary)]" />
-                  <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">UI References</span>
-                </div>
-                <p className="mono text-xs text-[var(--text-primary)]">docs/references/dashboard.png • projects.png</p>
-              </div>
-            </div>
-          </section>
-
-          {/* Common Commands */}
-          <section className="panel p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--surface-muted)] flex items-center justify-center">
-                <Terminal size={18} className="text-[var(--text-tertiary)]" />
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold text-[var(--text-primary)]">Common Commands</h2>
-                <p className="text-xs text-[var(--text-tertiary)]">Development and build scripts</p>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-void)]">
-              <pre className="mono text-xs text-[var(--text-secondary)] whitespace-pre-wrap">
-{`# Regenerate frontend API types
-npm --prefix app/frontend run generate:api
-
-# Frontend type-check + build
-npm --prefix app/frontend run build:check
-
-# Backend API tests
-cd app/backend && go test ./internal/api/...
-
-# Build remote node agent
-cd app/backend && go build -o bin/containr-agent ./cmd/agent`}
-              </pre>
-            </div>
-
-            <div className="mt-4 p-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)]">
-              <div className="flex items-center gap-2 mb-1">
-                <Radio size={14} className="text-[var(--text-tertiary)]" />
-                <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Active API Base</span>
-              </div>
-              <p className="mono text-xs text-[var(--text-primary)] break-all">{getApiBaseUrl()}</p>
-            </div>
-          </section>
-        </div>
+        <DocsBrowser />
       </div>
     </div>
   );
@@ -1679,12 +1556,20 @@ const dbStatusClass: Record<string, string> = {
   error: 'bg-[var(--error-soft)] text-[var(--error)]',
 };
 
+const DATABASE_TYPES = ['postgresql', 'mysql', 'mariadb', 'mongodb', 'redis', 'dragonfly', 'clickhouse'] as const;
+const DATABASE_PLANS = ['hobby', 'starter', 'standard', 'business'] as const;
+
 export function DatabasesPage() {
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const isDemoMode = searchParams.get('demo') === '1';
+  const sessionQuery = useAuthSession({ enabled: !isDemoMode });
+  const signedIn = isDemoMode || Boolean(sessionQuery.data);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [bindDb, setBindDb] = useState<DatabaseEntity | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createForm, setCreateForm] = useState({ name: '', type: 'postgresql', plan: 'hobby', region: 'local' });
+  const [createError, setCreateError] = useState<string | null>(null);
   const databasesQuery = useQuery({
     queryKey: ['databases'],
     queryFn: listDatabases,
@@ -1693,6 +1578,24 @@ export function DatabasesPage() {
   });
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['databases'] });
+  const createMutation = useMutation({
+    mutationFn: () =>
+      createManagedDatabase({
+        name: createForm.name.trim(),
+        type: createForm.type as CreateDatabaseInput['type'],
+        plan: createForm.plan as CreateDatabaseInput['plan'],
+        region: createForm.region.trim() || 'local',
+      }),
+    onSuccess: () => {
+      setCreateOpen(false);
+      setCreateForm({ name: '', type: 'postgresql', plan: 'hobby', region: 'local' });
+      setCreateError(null);
+      invalidate();
+    },
+    onError: (error) => {
+      setCreateError(error instanceof Error ? error.message : 'Failed to create database');
+    },
+  });
   const actionMutation = useMutation({
     mutationFn: ({ id, action }: { id: string; action: 'start' | 'stop' | 'restart' }) =>
       databaseAction(id, action),
@@ -1717,6 +1620,20 @@ export function DatabasesPage() {
         description="Managed database services — connection info, runtime actions and backups"
       />
       <div className="w-full px-8 py-6">
+        <div className="mb-5 flex items-center justify-between">
+          <p className="text-xs text-[var(--text-tertiary)]">
+            {databases.length} {databases.length === 1 ? 'database' : 'databases'}
+          </p>
+          {signedIn && !isDemoMode ? (
+            <button
+              type="button"
+              onClick={() => setCreateOpen(true)}
+              className="inline-flex h-9 items-center gap-1.5 rounded-[var(--radius-md)] bg-[var(--accent-primary)] px-4 text-[12.5px] font-semibold text-[var(--accent-on)]"
+            >
+              <Database size={13} /> New database
+            </button>
+          ) : null}
+        </div>
         {databasesQuery.isLoading ? (
           <div className="flex items-center justify-center py-16 text-[var(--text-muted)]">
             <Loader2 size={20} className="animate-spin" />
@@ -1725,9 +1642,19 @@ export function DatabasesPage() {
           <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] p-10 text-center">
             <Database size={28} className="mx-auto text-[var(--text-muted)]" />
             <p className="mt-3 text-sm text-[var(--text-secondary)]">No managed databases yet.</p>
-            <p className="mt-1 text-xs text-[var(--text-muted)]">
-              Create one via Add Service &rarr; Database in a project workspace.
-            </p>
+            {signedIn ? (
+              <button
+                type="button"
+                onClick={() => setCreateOpen(true)}
+                className="mt-4 inline-flex items-center gap-1.5 rounded-[var(--radius-md)] bg-[var(--accent-primary)] px-4 py-2 text-[12.5px] font-semibold text-[var(--accent-on)]"
+              >
+                <Database size={13} /> Create your first database
+              </button>
+            ) : (
+              <p className="mt-1 text-xs text-[var(--text-muted)]">
+                Sign in to provision a managed database.
+              </p>
+            )}
           </div>
         ) : (
           <div className="space-y-3">
@@ -1775,6 +1702,8 @@ export function DatabasesPage() {
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2">
+                        {signedIn ? (
+                          <>
                         <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)] mr-1">Actions</span>
                         <button
                           onClick={() => actionMutation.mutate({ id: db.id ?? '', action: 'start' })}
@@ -1810,6 +1739,10 @@ export function DatabasesPage() {
                             {actionMutation.error instanceof Error ? actionMutation.error.message : 'Action failed'}
                           </span>
                         )}
+                          </>
+                        ) : (
+                          <span className="text-xs text-[var(--text-tertiary)]">Sign in to manage this database.</span>
+                        )}
                       </div>
 
                       {bindDb?.id === db.id && db.connection_url && (
@@ -1838,6 +1771,7 @@ export function DatabasesPage() {
                       <div>
                         <div className="mb-2 flex items-center justify-between">
                           <p className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Backups</p>
+                          {signedIn ? (
                           <button
                             onClick={() => backupMutation.mutate(db.id ?? '')}
                             disabled={!running || backupMutation.isPending}
@@ -1847,6 +1781,7 @@ export function DatabasesPage() {
                             <Archive size={11} />
                             {backupMutation.isPending ? 'Starting…' : 'New backup'}
                           </button>
+                          ) : null}
                         </div>
                         <BackupScheduleRow
                           databaseId={db.id ?? ''}
@@ -1897,6 +1832,84 @@ export function DatabasesPage() {
           </div>
         )}
       </div>
+
+      {createOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--bg-base)] shadow-2xl">
+            <div className="border-b border-[var(--border-subtle)] px-5 py-4">
+              <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">New database</h2>
+              <p className="text-xs text-[var(--text-tertiary)]">Provision a managed database service.</p>
+            </div>
+            <div className="space-y-4 px-5 py-4">
+              <div>
+                <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Name</label>
+                <input
+                  value={createForm.name}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, name: e.target.value }))}
+                  placeholder="my-postgres"
+                  className="h-10 w-full rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 text-sm focus:border-[var(--accent-primary)]"
+                />
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Type</label>
+                  <select
+                    value={createForm.type}
+                    onChange={(e) => setCreateForm((f) => ({ ...f, type: e.target.value }))}
+                    className="h-10 w-full rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-2 text-sm focus:border-[var(--accent-primary)]"
+                  >
+                    {DATABASE_TYPES.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Plan</label>
+                  <select
+                    value={createForm.plan}
+                    onChange={(e) => setCreateForm((f) => ({ ...f, plan: e.target.value }))}
+                    className="h-10 w-full rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-2 text-sm focus:border-[var(--accent-primary)]"
+                  >
+                    {DATABASE_PLANS.map((p) => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Region</label>
+                  <input
+                    value={createForm.region}
+                    onChange={(e) => setCreateForm((f) => ({ ...f, region: e.target.value }))}
+                    placeholder="local"
+                    className="h-10 w-full rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 text-sm focus:border-[var(--accent-primary)]"
+                  />
+                </div>
+              </div>
+              {createError ? (
+                <div className="rounded-[var(--radius-md)] bg-[var(--error-soft)] px-3.5 py-2.5 text-xs text-[var(--error)]">{createError}</div>
+              ) : null}
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-[var(--border-subtle)] px-5 py-3.5">
+              <button
+                type="button"
+                onClick={() => setCreateOpen(false)}
+                className="rounded-[var(--radius-md)] px-3.5 py-2 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--surface-muted)]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => createMutation.mutate()}
+                disabled={createMutation.isPending || createForm.name.trim().length === 0}
+                className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] bg-[var(--accent-primary)] px-4 py-2 text-xs font-semibold text-[var(--accent-on)] disabled:opacity-50"
+              >
+                {createMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : null}
+                Create database
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1935,7 +1948,7 @@ function BindDatabasePanel({
   const services = servicesQuery.data ?? [];
 
   return (
-    <div className="rounded-[var(--radius-md)] border border-[var(--border-default)] bg-[var(--surface-raised)] p-4 space-y-3">
+    <div className="rounded-[var(--radius-md)] border border-[var(--border-default)] bg-[var(--surface-card)] p-4 space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-xs font-medium text-[var(--text-primary)]">Bind to service</p>
         <button onClick={onClose} className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)]">Close</button>
@@ -1982,7 +1995,7 @@ function BindDatabasePanel({
         <button
           onClick={() => bindMutation.mutate()}
           disabled={!serviceId || !varKey.trim() || bindMutation.isPending}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-contrast)] text-xs font-medium disabled:opacity-40"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-on)] text-xs font-medium disabled:opacity-40"
         >
           {bindMutation.isPending ? <Loader2 size={11} className="animate-spin" /> : <Link2 size={11} />} Bind
         </button>
@@ -2061,6 +2074,14 @@ const failoverStrategies = [
 
 export function HighAvailabilityPage() {
   const queryClient = useQueryClient();
+  const sessionQuery = useAuthSession();
+  const profileQuery = useQuery({
+    queryKey: ['user-profile'],
+    queryFn: getCurrentUserProfile,
+    enabled: Boolean(sessionQuery.data),
+    retry: false,
+  });
+  const isAdmin = Boolean(profileQuery.data?.isAdmin);
   const [failoverReason, setFailoverReason] = useState('');
   const [policyForm, setPolicyForm] = useState<{
     serviceId: string;
@@ -2134,6 +2155,13 @@ export function HighAvailabilityPage() {
         description="Failover manager, policies, and active alerts"
       />
       <div className="p-8 space-y-8">
+        <div className="flex items-center gap-2 text-xs text-[var(--text-tertiary)]">
+          <ShieldCheck size={13} className="text-[var(--accent-primary)]" />
+          <span>HA state feeds the platform security posture.</span>
+          <Link to="/security" className="font-medium text-[var(--accent-primary)] hover:underline">
+            Open Security →
+          </Link>
+        </div>
         {pageError && (
           <div className="rounded-[var(--radius-md)] border border-[var(--error)] bg-[var(--error)]/10 px-4 py-3 text-sm text-[var(--error)]">
             {pageError instanceof Error ? pageError.message : 'Request failed'}
@@ -2171,6 +2199,7 @@ export function HighAvailabilityPage() {
           />
         </div>
 
+        {isAdmin ? (
         <div className="panel p-6">
           <div className="flex items-center gap-3 mb-4">
             <Zap size={18} className="text-[var(--accent-primary)]" />
@@ -2181,7 +2210,7 @@ export function HighAvailabilityPage() {
               type="button"
               disabled={toggleMutation.isPending || statusQuery.isLoading}
               onClick={() => toggleMutation.mutate(!status?.enabled)}
-              className="px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-contrast)] text-sm font-medium disabled:opacity-50"
+              className="px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-on)] text-sm font-medium disabled:opacity-50"
             >
               {status?.enabled ? 'Disable HA manager' : 'Enable HA manager'}
             </button>
@@ -2192,7 +2221,7 @@ export function HighAvailabilityPage() {
                   value={failoverReason}
                   onChange={(e) => setFailoverReason(e.target.value)}
                   placeholder="Manual failover"
-                  className="px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)] w-56"
+                  className="px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)] w-56"
                 />
               </div>
               <button
@@ -2210,6 +2239,7 @@ export function HighAvailabilityPage() {
             </div>
           </div>
         </div>
+        ) : null}
 
         <div className="panel p-6">
           <div className="flex items-center gap-3 mb-4">
@@ -2225,7 +2255,7 @@ export function HighAvailabilityPage() {
               {(alertsQuery.data ?? []).map((alert) => (
                 <div
                   key={alert.id}
-                  className="flex items-center justify-between rounded-[var(--radius-md)] border border-[var(--border-primary)] px-4 py-3"
+                  className="flex items-center justify-between rounded-[var(--radius-md)] border border-[var(--border-subtle)] px-4 py-3"
                 >
                   <div className="min-w-0">
                     <p className="text-sm text-[var(--text-primary)] truncate">{alert.message ?? alert.id}</p>
@@ -2233,14 +2263,16 @@ export function HighAvailabilityPage() {
                       {alert.severity ?? 'info'} · since {alert.starts_at ? formatRelative(alert.starts_at) : '—'}
                     </p>
                   </div>
+                  {isAdmin ? (
                   <button
                     type="button"
                     disabled={resolveMutation.isPending}
                     onClick={() => alert.id && resolveMutation.mutate(alert.id)}
-                    className="ml-4 shrink-0 px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-primary)] text-xs text-[var(--text-primary)] disabled:opacity-50"
+                    className="ml-4 shrink-0 px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] disabled:opacity-50"
                   >
                     Resolve
                   </button>
+                  ) : null}
                 </div>
               ))}
             </div>
@@ -2253,11 +2285,11 @@ export function HighAvailabilityPage() {
               <ShieldCheck size={18} className="text-[var(--accent-primary)]" />
               <h2 className="text-base font-semibold text-[var(--text-primary)]">Failover policies</h2>
             </div>
-            {policyForm === null && (
+            {policyForm === null && isAdmin && (
               <button
                 type="button"
                 onClick={() => setPolicyForm({ serviceId: '', strategy: 'active_passive', minHealthyNodes: '1', maxFailures: '3', enabled: true, editing: false })}
-                className="px-3 py-1.5 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-contrast)] text-xs font-medium"
+                className="px-3 py-1.5 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-on)] text-xs font-medium"
               >
                 New policy
               </button>
@@ -2265,12 +2297,12 @@ export function HighAvailabilityPage() {
           </div>
 
           {policyForm !== null && (
-            <div className="rounded-[var(--radius-md)] border border-[var(--border-primary)] p-4 mb-4 space-y-4">
+            <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] p-4 mb-4 space-y-4">
               <div className="grid gap-3 sm:grid-cols-2">
                 {policyForm.editing ? (
                   <div>
                     <label className="block text-xs text-[var(--text-tertiary)] mb-1">Service</label>
-                    <p className="px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)] font-mono">
+                    <p className="px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)] font-mono">
                       {policyForm.serviceId}
                     </p>
                   </div>
@@ -2281,7 +2313,7 @@ export function HighAvailabilityPage() {
                       <select
                         value={policyProjectId}
                         onChange={(e) => { setPolicyProjectId(e.target.value); setPolicyForm({ ...policyForm, serviceId: '' }); }}
-                        className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)]"
+                        className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)]"
                       >
                         <option value="">Select project…</option>
                         {(projectsQuery.data ?? []).map((p) => (
@@ -2295,7 +2327,7 @@ export function HighAvailabilityPage() {
                         value={policyForm.serviceId}
                         onChange={(e) => setPolicyForm({ ...policyForm, serviceId: e.target.value })}
                         disabled={!policyProjectId}
-                        className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)] disabled:opacity-50"
+                        className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)] disabled:opacity-50"
                       >
                         <option value="">Select service…</option>
                         {(servicesQuery.data ?? []).map((s) => (
@@ -2310,7 +2342,7 @@ export function HighAvailabilityPage() {
                   <select
                     value={policyForm.strategy}
                     onChange={(e) => setPolicyForm({ ...policyForm, strategy: e.target.value })}
-                    className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)]"
+                    className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)]"
                   >
                     {failoverStrategies.map((s) => (
                       <option key={s.value} value={s.value}>{s.label}</option>
@@ -2324,7 +2356,7 @@ export function HighAvailabilityPage() {
                       type="number" min={1}
                       value={policyForm.minHealthyNodes}
                       onChange={(e) => setPolicyForm({ ...policyForm, minHealthyNodes: e.target.value })}
-                      className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)]"
+                      className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)]"
                     />
                   </div>
                   <div>
@@ -2333,7 +2365,7 @@ export function HighAvailabilityPage() {
                       type="number" min={1}
                       value={policyForm.maxFailures}
                       onChange={(e) => setPolicyForm({ ...policyForm, maxFailures: e.target.value })}
-                      className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)]"
+                      className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)]"
                     />
                   </div>
                 </div>
@@ -2351,14 +2383,14 @@ export function HighAvailabilityPage() {
                   type="button"
                   disabled={savePolicyMutation.isPending || !policyForm.serviceId}
                   onClick={() => savePolicyMutation.mutate()}
-                  className="px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-contrast)] text-sm font-medium disabled:opacity-50"
+                  className="px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-on)] text-sm font-medium disabled:opacity-50"
                 >
                   {savePolicyMutation.isPending ? 'Saving…' : 'Save policy'}
                 </button>
                 <button
                   type="button"
                   onClick={() => setPolicyForm(null)}
-                  className="px-4 py-2 rounded-[var(--radius-md)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)]"
+                  className="px-4 py-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)]"
                 >
                   Cancel
                 </button>
@@ -2375,7 +2407,7 @@ export function HighAvailabilityPage() {
               {(policiesQuery.data ?? []).map((policy: FailoverPolicy) => (
                 <div
                   key={policy.service_id}
-                  className="flex items-center justify-between rounded-[var(--radius-md)] border border-[var(--border-primary)] px-4 py-3"
+                  className="flex items-center justify-between rounded-[var(--radius-md)] border border-[var(--border-subtle)] px-4 py-3"
                 >
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-[var(--text-primary)] font-mono truncate">{policy.service_id}</p>
@@ -2385,6 +2417,8 @@ export function HighAvailabilityPage() {
                     </p>
                   </div>
                   <div className="ml-4 flex items-center gap-2 shrink-0">
+                    {isAdmin ? (
+                    <>
                     <button
                       type="button"
                       onClick={() => setPolicyForm({
@@ -2395,7 +2429,7 @@ export function HighAvailabilityPage() {
                         enabled: policy.enabled ?? true,
                         editing: true,
                       })}
-                      className="px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-primary)] text-xs text-[var(--text-primary)]"
+                      className="px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)]"
                     >
                       Edit
                     </button>
@@ -2413,6 +2447,8 @@ export function HighAvailabilityPage() {
                         Disable
                       </button>
                     )}
+                    </>
+                    ) : null}
                   </div>
                 </div>
               ))}
@@ -2434,7 +2470,7 @@ export function HighAvailabilityPage() {
               {(healthQuery.data ?? []).slice(0, 20).map((result, i) => (
                 <div
                   key={`${result.check_id}-${i}`}
-                  className="flex items-center justify-between rounded-[var(--radius-md)] border border-[var(--border-primary)] px-4 py-3"
+                  className="flex items-center justify-between rounded-[var(--radius-md)] border border-[var(--border-subtle)] px-4 py-3"
                 >
                   <div className="min-w-0">
                     <p className="text-sm text-[var(--text-primary)] font-mono truncate">{result.check_id}</p>
@@ -2473,6 +2509,8 @@ const severityColor: Record<string, string> = {
 
 export function SecurityPage() {
   const queryClient = useQueryClient();
+  const sessionQuery = useAuthSession();
+  const signedIn = Boolean(sessionQuery.data);
   const [projectId, setProjectId] = useState('');
   const [scanType, setScanType] = useState<string>('comprehensive');
   const [scanServiceId, setScanServiceId] = useState('');
@@ -2534,6 +2572,13 @@ export function SecurityPage() {
         description="Scan findings, security posture, and compliance status"
       />
       <div className="p-8 space-y-8">
+        <div className="flex items-center gap-2 text-xs text-[var(--text-tertiary)]">
+          <HeartPulse size={13} className="text-[var(--accent-primary)]" />
+          <span>Platform availability and failover live under High availability.</span>
+          <Link to="/ha" className="font-medium text-[var(--accent-primary)] hover:underline">
+            Open HA →
+          </Link>
+        </div>
         {pageError && (
           <div className="rounded-[var(--radius-md)] border border-[var(--error)] bg-[var(--error)]/10 px-4 py-3 text-sm text-[var(--error)]">
             {pageError instanceof Error ? pageError.message : 'Request failed'}
@@ -2546,7 +2591,7 @@ export function SecurityPage() {
             <select
               value={projectId}
               onChange={(e) => { setProjectId(e.target.value); setScanServiceId(''); }}
-              className="px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)] w-56"
+              className="px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)] w-56"
             >
               <option value="">Select project…</option>
               {(projectsQuery.data ?? []).map((p) => (
@@ -2561,7 +2606,7 @@ export function SecurityPage() {
                 <select
                   value={scanType}
                   onChange={(e) => setScanType(e.target.value)}
-                  className="px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)]"
+                  className="px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)]"
                 >
                   {scanTypes.map((t) => (
                     <option key={t.value} value={t.value}>{t.label}</option>
@@ -2573,7 +2618,7 @@ export function SecurityPage() {
                 <select
                   value={scanServiceId}
                   onChange={(e) => setScanServiceId(e.target.value)}
-                  className="px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)]"
+                  className="px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)]"
                 >
                   <option value="">All services</option>
                   {(servicesQuery.data ?? []).map((s) => (
@@ -2581,14 +2626,18 @@ export function SecurityPage() {
                   ))}
                 </select>
               </div>
+              {signedIn ? (
               <button
                 type="button"
                 disabled={scanMutation.isPending}
                 onClick={() => scanMutation.mutate()}
-                className="px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-contrast)] text-sm font-medium disabled:opacity-50"
+                className="px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-on)] text-sm font-medium disabled:opacity-50"
               >
                 {scanMutation.isPending ? 'Starting…' : 'Run scan'}
               </button>
+              ) : (
+                <span className="self-end pb-2 text-xs text-[var(--text-tertiary)]">Sign in to run scans.</span>
+              )}
             </>
           )}
         </div>
@@ -2639,7 +2688,7 @@ export function SecurityPage() {
                 {vulns.map((v) => (
                   <div
                     key={v.id}
-                    className="flex items-start justify-between rounded-[var(--radius-md)] border border-[var(--border-primary)] px-4 py-3"
+                    className="flex items-start justify-between rounded-[var(--radius-md)] border border-[var(--border-subtle)] px-4 py-3"
                   >
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
@@ -2653,7 +2702,7 @@ export function SecurityPage() {
                         {v.type} · {v.status} · found {v.found_at ? formatRelative(v.found_at) : '—'}
                       </p>
                     </div>
-                    {v.status === 'open' && v.id && (
+                    {v.status === 'open' && v.id && signedIn && (
                       <div className="ml-4 flex items-center gap-2 shrink-0">
                         <button
                           type="button"
@@ -2667,7 +2716,7 @@ export function SecurityPage() {
                           type="button"
                           disabled={vulnMutation.isPending}
                           onClick={() => vulnMutation.mutate({ id: v.id!, status: 'ignored' })}
-                          className="px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-primary)] text-xs text-[var(--text-secondary)] disabled:opacity-50"
+                          className="px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs text-[var(--text-secondary)] disabled:opacity-50"
                         >
                           Ignore
                         </button>
@@ -2695,7 +2744,7 @@ export function SecurityPage() {
                 {(historyQuery.data ?? []).map((scan) => (
                   <div
                     key={scan.id}
-                    className="flex items-center justify-between rounded-[var(--radius-md)] border border-[var(--border-primary)] px-4 py-3"
+                    className="flex items-center justify-between rounded-[var(--radius-md)] border border-[var(--border-subtle)] px-4 py-3"
                   >
                     <div>
                       <p className="text-sm text-[var(--text-primary)]">

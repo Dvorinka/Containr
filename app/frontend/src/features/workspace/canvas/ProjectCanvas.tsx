@@ -28,7 +28,7 @@ import {
   type CanvasNodeLayout,
   type ProjectCanvasMetadata,
 } from '../model';
-import { canvasStorageKey, loadCanvasMetadata, saveCanvasMetadata } from '../storage';
+import { hasCanvasMetadata, loadCanvasMetadata, saveCanvasMetadata } from '../storage';
 import { GroupNode, ServiceNode, type GroupNodeData, type ServiceNodeData } from './nodes';
 import {
   Plus,
@@ -287,7 +287,7 @@ function CanvasInner({ projectId, services, variablesByService, onAddService, on
     deleteMutation.isPending;
 
   useEffect(() => {
-    const hasStoredViewport = localStorage.getItem(canvasStorageKey(projectId)) !== null;
+    const hasStoredViewport = hasCanvasMetadata(projectId);
     const metadata = loadCanvasMetadata(projectId, services);
     const nextNodes = toFlowNodes(metadata, services, onOpenService);
 

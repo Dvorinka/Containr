@@ -8,6 +8,7 @@ export type ProjectEntity = {
   id: string;
   name: string;
   description: string;
+  isApproved: boolean;
   createdAt?: string;
   updatedAt?: string;
   stats: ProjectStats;
@@ -122,6 +123,7 @@ export type TemplateEntity = {
   configRaw: string;
   variablesRaw: string;
   isOfficial: boolean;
+  ownerId: string | null;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -452,6 +454,7 @@ function normalizeProject(project: RawProject): ProjectEntity | null {
     id: project.id,
     name: project.name,
     description: project.description ?? '',
+    isApproved: project.is_approved ?? false,
     createdAt: project.created_at,
     updatedAt: project.updated_at,
     stats: {
@@ -611,6 +614,7 @@ function normalizeTemplate(template: RawServiceTemplate): TemplateEntity | null 
     configRaw: template.config ?? '',
     variablesRaw: template.variables ?? '',
     isOfficial: Boolean(template.is_official),
+    ownerId: template.owner_id ?? null,
     createdAt: template.created_at,
     updatedAt: template.updated_at,
   };
@@ -762,8 +766,12 @@ function normalizeServiceLogArray(raw: unknown): ServiceLogEntity[] {
     .filter((entry): entry is ServiceLogEntity => entry !== null);
 }
 
-export async function listProjects(): Promise<ProjectEntity[]> {
-  const payload = await requestJson<ProjectsResponse200 | { projects?: RawProject[] }>(`/projects`);
+export async function listProjects(params?: { limit?: number; search?: string }): Promise<ProjectEntity[]> {
+  const search = new URLSearchParams();
+  if (params?.limit) search.set('limit', String(params.limit));
+  if (params?.search) search.set('search', params.search);
+  const qs = search.toString();
+  const payload = await requestJson<ProjectsResponse200 | { projects?: RawProject[] }>(`/projects${qs ? `?${qs}` : ''}`);
 
   return normalizeProjectArray((payload as { projects?: RawProject[] }).projects);
 }
@@ -989,6 +997,26 @@ export async function createProject(input: CreateProjectInput): Promise<ProjectE
   }
 
   return parsed;
+}
+
+export async function updateProject(
+  projectId: string,
+  input: { name?: string; description?: string },
+): Promise<ProjectEntity> {
+  const payload = await requestJson<RawProject | { project?: RawProject }>(
+    `/projects/${encodeURIComponent(projectId)}`,
+    { method: 'PUT', body: JSON.stringify(input) },
+  );
+  const rawProject = (payload as { project?: RawProject }).project ?? (payload as RawProject);
+  const parsed = normalizeProject(rawProject);
+  if (!parsed) {
+    throw new ApiError('Update project response is invalid', 500);
+  }
+  return parsed;
+}
+
+export async function deleteProject(projectId: string): Promise<void> {
+  await requestJson(`/projects/${encodeURIComponent(projectId)}`, { method: 'DELETE' });
 }
 
 export async function listServicesByProject(projectId: string): Promise<ServiceEntity[]> {
@@ -1321,6 +1349,54 @@ export async function getTemplateById(templateId: string): Promise<TemplateDetai
     config: normalizeTemplateConfig(payload.config),
     variables: normalizeTemplateVariableArray(payload.variables),
   };
+}
+
+export type TemplateWriteInput = {
+  name: string;
+  description?: string;
+  category?: string;
+  logo?: string;
+  config: Record<string, unknown>;
+  variables?: TemplateVariableEntity[];
+};
+
+function templateWriteBody(input: TemplateWriteInput): string {
+  return JSON.stringify({
+    name: input.name,
+    description: input.description ?? '',
+    category: input.category ?? '',
+    logo: input.logo ?? '',
+    config: input.config,
+    variables: input.variables ?? [],
+  });
+}
+
+export async function createTemplate(input: TemplateWriteInput): Promise<TemplateEntity> {
+  const payload = await requestJson<{ template?: RawServiceTemplate }>('/templates', {
+    method: 'POST',
+    body: templateWriteBody(input),
+  });
+  const template = payload.template ? normalizeTemplate(payload.template) : null;
+  if (!template) {
+    throw new ApiError('Template response is invalid', 500);
+  }
+  return template;
+}
+
+export async function updateTemplate(templateId: string, input: TemplateWriteInput): Promise<TemplateEntity> {
+  const payload = await requestJson<{ template?: RawServiceTemplate }>(`/templates/${templateId}`, {
+    method: 'PUT',
+    body: templateWriteBody(input),
+  });
+  const template = payload.template ? normalizeTemplate(payload.template) : null;
+  if (!template) {
+    throw new ApiError('Template response is invalid', 500);
+  }
+  return template;
+}
+
+export async function deleteTemplate(templateId: string): Promise<void> {
+  await requestJson(`/templates/${templateId}`, { method: 'DELETE' });
 }
 
 export async function deployTemplate(
@@ -1815,4 +1891,56 @@ export async function execInService(serviceId: string, command: string): Promise
     method: 'POST',
     body: JSON.stringify({ command }),
   });
+}
+
+// ---------------------------------------------------------------------------
+// Admin
+// ---------------------------------------------------------------------------
+
+export type AdminUser = {
+  id: string;
+  email: string;
+  name: string;
+  avatar_url?: string;
+  is_admin: boolean;
+  created_at?: string;
+};
+
+export type AdminOverview = {
+  stats: Record<string, number>;
+  pending_projects: ProjectEntity[];
+};
+
+export async function getAdminOverview(): Promise<AdminOverview> {
+  const payload = await requestJson<{
+    stats?: Record<string, number>;
+    pending_projects?: RawProject[];
+  }>('/admin/overview');
+
+  return {
+    stats: payload.stats ?? {},
+    pending_projects: (payload.pending_projects ?? [])
+      .map((project) => normalizeProject(project))
+      .filter((project): project is ProjectEntity => project !== null),
+  };
+}
+
+export async function listAdminUsers(): Promise<AdminUser[]> {
+  const payload = await requestJson<{ users?: AdminUser[] }>('/admin/users');
+  return payload.users ?? [];
+}
+
+export async function setUserAdmin(userId: string, isAdmin: boolean): Promise<void> {
+  await requestJson(`/admin/users/${encodeURIComponent(userId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ is_admin: isAdmin }),
+  });
+}
+
+export async function setProjectApproval(projectId: string, isApproved: boolean): Promise<ProjectEntity | null> {
+  const payload = await requestJson<{ project?: RawProject; message?: string }>(
+    `/admin/projects/${encodeURIComponent(projectId)}`,
+    { method: 'PATCH', body: JSON.stringify({ is_approved: isApproved }) },
+  );
+  return payload.project ? normalizeProject(payload.project) : null;
 }

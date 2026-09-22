@@ -1441,11 +1441,224 @@ export interface paths {
             };
         };
         put?: never;
+        /**
+         * Create a user template
+         * @description Create a user-owned template (JSON definition). Requires authentication; the caller becomes the template owner.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["TemplateWriteRequest"];
+                };
+            };
+            responses: {
+                /** @description Template created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            template?: components["schemas"]["ServiceTemplate"];
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Platform overview
+         * @description Admin-only aggregate statistics plus the pending project approval queue.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Platform overview */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            stats?: {
+                                [key: string]: number;
+                            };
+                            pending_projects?: components["schemas"]["Project"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/admin/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List users
+         * @description Admin-only listing of all platform users.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Users retrieved */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            users?: components["schemas"]["AdminUser"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/users/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set user admin flag
+         * @description Grant or revoke platform admin. Admins cannot revoke their own flag.
+         */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        is_admin: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description User updated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            message?: string;
+                        };
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/admin/projects/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set project approval
+         * @description Approve or unapprove a project for public listing.
+         */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        is_approved: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Project updated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            project?: components["schemas"]["Project"];
+                            message?: string;
+                        };
+                    };
+                };
+            };
+        };
         trace?: never;
     };
     "/templates/{id}": {
@@ -1482,9 +1695,69 @@ export interface paths {
                 };
             };
         };
-        put?: never;
+        /**
+         * Update a user template
+         * @description Update a user-created template. Official templates cannot be modified; only the owner or an admin may update.
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Template ID */
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["TemplateWriteRequest"];
+                };
+            };
+            responses: {
+                /** @description Template updated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            template?: components["schemas"]["ServiceTemplate"];
+                        };
+                    };
+                };
+            };
+        };
         post?: never;
-        delete?: never;
+        /**
+         * Delete a user template
+         * @description Delete a user-created template. Official templates cannot be deleted; only the owner or an admin may delete.
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Template ID */
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Template deleted */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            message?: string;
+                        };
+                    };
+                };
+            };
+        };
         options?: never;
         head?: never;
         patch?: never;
@@ -7095,6 +7368,15 @@ export interface components {
             /** @description Optional avatar image URL */
             avatar_url?: string;
         };
+        AdminUser: {
+            id?: string;
+            /** Format: email */
+            email?: string;
+            name?: string;
+            avatar_url?: string;
+            is_admin?: boolean;
+            created_at?: string;
+        };
         Project: {
             /** @description Project ID */
             id?: string;
@@ -7104,6 +7386,8 @@ export interface components {
             description?: string;
             /** @description Project owner ID */
             owner_id?: string;
+            /** @description Whether the project is approved for public listing. New projects default to false and appear publicly only after admin approval. */
+            is_approved?: boolean;
             /**
              * Format: date-time
              * @description Project creation timestamp
@@ -7520,6 +7804,8 @@ export interface components {
             variables?: string;
             /** @description Whether template is an official preset */
             is_official?: boolean;
+            /** @description Owning user ID for user-created templates; null for official presets */
+            owner_id?: string | null;
             /**
              * Format: date-time
              * @description Creation timestamp
@@ -7530,6 +7816,20 @@ export interface components {
              * @description Last update timestamp
              */
             updated_at?: string;
+        };
+        TemplateWriteRequest: {
+            /** @description Template display name */
+            name: string;
+            /** @description Template description */
+            description?: string;
+            /** @description Template category (web, database, cache, queue, monitoring, storage, app, other) */
+            category?: string;
+            /** @description Template logo URL */
+            logo?: string;
+            /** @description Template config object (type, runtime, commands, port, environment) */
+            config: Record<string, never>;
+            /** @description Configurable variables exposed at deploy time */
+            variables?: components["schemas"]["TemplateVariable"][];
         };
         TemplateConfig: {
             /** @description Service type for created service */

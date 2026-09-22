@@ -2,13 +2,19 @@ import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  createTemplate,
+  deleteTemplate,
   deployTemplate,
+  getCurrentUserProfile,
   getTemplateById,
   listProjects,
   listTemplates,
+  updateTemplate,
   type TemplateDetailEntity,
   type TemplateEntity,
+  type TemplateWriteInput,
 } from '@/lib/api-client';
+import { useAuthSession } from '@/lib/use-auth-session';
 import {
   Search,
   Filter,
@@ -24,6 +30,11 @@ import {
   Play,
   ArrowRight,
   Star,
+  Plus,
+  Pencil,
+  Trash2,
+  Upload,
+  X,
 } from 'lucide-react';
 
 const demoTemplates: TemplateEntity[] = [
@@ -36,6 +47,7 @@ const demoTemplates: TemplateEntity[] = [
     configRaw: '{"runtime":"node"}',
     variablesRaw: '[]',
     isOfficial: true,
+    ownerId: null,
   },
   {
     id: 'tpl-go',
@@ -46,6 +58,7 @@ const demoTemplates: TemplateEntity[] = [
     configRaw: '{"runtime":"go"}',
     variablesRaw: '[]',
     isOfficial: true,
+    ownerId: null,
   },
   {
     id: 'tpl-postgres',
@@ -56,6 +69,7 @@ const demoTemplates: TemplateEntity[] = [
     configRaw: '{"runtime":"postgres"}',
     variablesRaw: '[]',
     isOfficial: true,
+    ownerId: null,
   },
   {
     id: 'tpl-mysql',
@@ -66,6 +80,7 @@ const demoTemplates: TemplateEntity[] = [
     configRaw: '{"runtime":"mysql"}',
     variablesRaw: '[]',
     isOfficial: true,
+    ownerId: null,
   },
   {
     id: 'tpl-mariadb',
@@ -76,6 +91,7 @@ const demoTemplates: TemplateEntity[] = [
     configRaw: '{"runtime":"mariadb"}',
     variablesRaw: '[]',
     isOfficial: true,
+    ownerId: null,
   },
   {
     id: 'tpl-clickhouse',
@@ -86,6 +102,7 @@ const demoTemplates: TemplateEntity[] = [
     configRaw: '{"runtime":"clickhouse"}',
     variablesRaw: '[]',
     isOfficial: true,
+    ownerId: null,
   },
   {
     id: 'tpl-dragonfly',
@@ -96,6 +113,7 @@ const demoTemplates: TemplateEntity[] = [
     configRaw: '{"runtime":"dragonfly"}',
     variablesRaw: '[]',
     isOfficial: true,
+    ownerId: null,
   },
 ];
 
@@ -354,6 +372,15 @@ function categoryLabel(category: string): string {
   return category ? category[0].toUpperCase() + category.slice(1) : 'Uncategorized';
 }
 
+function safeTemplateRuntime(configRaw: string): string {
+  try {
+    const parsed = JSON.parse(configRaw || '{}') as { runtime?: string };
+    return parsed.runtime || 'n/a';
+  } catch {
+    return 'n/a';
+  }
+}
+
 function categoryIcon(category: string): typeof Box {
   switch (category) {
     case 'frontend':
@@ -369,10 +396,56 @@ function categoryIcon(category: string): typeof Box {
   }
 }
 
+const EMPTY_TEMPLATE_JSON = JSON.stringify(
+  {
+    name: 'my-template',
+    description: 'What this template deploys.',
+    category: 'app',
+    logo: '',
+    config: {
+      type: 'web',
+      runtime: 'node',
+      build_command: '',
+      start_command: '',
+      port: 3000,
+      health_check: '/health',
+      environment: {},
+    },
+    variables: [
+      {
+        key: 'EXAMPLE_VAR',
+        label: 'Example variable',
+        default: '',
+        required: false,
+        secret: false,
+        description: 'Shown at deploy time',
+      },
+    ],
+  },
+  null,
+  2,
+);
+
 export function TemplatesPage() {
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const isDemoMode = searchParams.get('demo') === '1';
+
+  const sessionQuery = useAuthSession({ enabled: !isDemoMode });
+  const signedIn = isDemoMode || Boolean(sessionQuery.data);
+  const profileQuery = useQuery({
+    queryKey: ['current-profile'],
+    queryFn: getCurrentUserProfile,
+    enabled: !isDemoMode && Boolean(sessionQuery.data),
+    retry: false,
+  });
+  const myUserId = profileQuery.data?.id ?? '';
+  const isAdmin = Boolean(profileQuery.data?.isAdmin);
+
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editorJson, setEditorJson] = useState(EMPTY_TEMPLATE_JSON);
+  const [editingTemplate, setEditingTemplate] = useState<TemplateEntity | null>(null);
+  const [editorError, setEditorError] = useState<string | null>(null);
 
   const [categoryFilter, setCategoryFilter] = useState('');
   const [searchFilter, setSearchFilter] = useState('');
@@ -553,6 +626,109 @@ export function TemplatesPage() {
     missingRequiredVariables.length > 0 ||
     deployMutation.isPending;
 
+  const canManageTemplate = (template: TemplateEntity) =>
+    !template.isOfficial && Boolean(template.ownerId) && (template.ownerId === myUserId || isAdmin);
+
+  const saveTemplateMutation = useMutation({
+    mutationFn: (input: TemplateWriteInput) =>
+      editingTemplate ? updateTemplate(editingTemplate.id, input) : createTemplate(input),
+    onSuccess: (template) => {
+      queryClient.invalidateQueries({ queryKey: ['templates-page'] });
+      setEditorOpen(false);
+      setEditingTemplate(null);
+      setEditorError(null);
+      setSelectedTemplateId(template.id);
+    },
+    onError: (error) => {
+      setEditorError(error instanceof Error ? error.message : 'Failed to save template');
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteTemplate(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['templates-page'] });
+      setSelectedTemplateId(null);
+    },
+  });
+
+  const openCreateEditor = () => {
+    setEditingTemplate(null);
+    setEditorJson(EMPTY_TEMPLATE_JSON);
+    setEditorError(null);
+    setEditorOpen(true);
+  };
+
+  const openEditEditor = (template: TemplateEntity) => {
+    let config: unknown = {};
+    let variables: unknown = [];
+    try {
+      config = JSON.parse(template.configRaw || '{}');
+    } catch {
+      /* keep {} */
+    }
+    try {
+      variables = JSON.parse(template.variablesRaw || '[]');
+    } catch {
+      /* keep [] */
+    }
+    setEditingTemplate(template);
+    setEditorJson(
+      JSON.stringify(
+        {
+          name: template.name,
+          description: template.description,
+          category: template.category,
+          logo: template.logo,
+          config,
+          variables,
+        },
+        null,
+        2,
+      ),
+    );
+    setEditorError(null);
+    setEditorOpen(true);
+  };
+
+  const submitEditor = () => {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(editorJson);
+    } catch (err) {
+      setEditorError(`Invalid JSON: ${err instanceof Error ? err.message : 'parse error'}`);
+      return;
+    }
+    const body = parsed as Partial<TemplateWriteInput>;
+    if (!body || typeof body !== 'object' || !body.name || typeof body.config !== 'object' || body.config === null) {
+      setEditorError('Template JSON needs at least "name" and a "config" object.');
+      return;
+    }
+    saveTemplateMutation.mutate({
+      name: String(body.name),
+      description: body.description ?? '',
+      category: body.category ?? 'other',
+      logo: body.logo ?? '',
+      config: body.config as Record<string, unknown>,
+      variables: Array.isArray(body.variables) ? body.variables : [],
+    });
+  };
+
+  const uploadJsonFile = (file: File) => {
+    if (!file.name.toLowerCase().endsWith('.json') && file.type !== 'application/json') {
+      setEditorError('Only .json files are accepted.');
+      return;
+    }
+    file
+      .text()
+      .then((text) => {
+        JSON.parse(text);
+        setEditorJson(text);
+        setEditorError(null);
+      })
+      .catch(() => setEditorError('File is not valid JSON.'));
+  };
+
   return (
     <div className="min-h-screen">
       {/* Header */}
@@ -563,9 +739,18 @@ export function TemplatesPage() {
               <h1 className="v-title">Template Catalog<span className="v-cursor">_</span></h1>
               <p className="text-sm text-[var(--text-secondary)]">Deploy services from pre-configured templates</p>
             </div>
-            <div className="flex items-center gap-2 text-sm text-[var(--text-tertiary)]">
+            <div className="flex items-center gap-3 text-sm text-[var(--text-tertiary)]">
               <Layers size={16} />
               <span>{filteredTemplates.length} templates</span>
+              {signedIn && !isDemoMode ? (
+                <button
+                  type="button"
+                  onClick={openCreateEditor}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-[var(--radius-md)] bg-[var(--accent-primary)] px-3.5 text-[12.5px] font-semibold text-[var(--accent-on)]"
+                >
+                  <Plus size={14} /> New template
+                </button>
+              ) : null}
             </div>
           </div>
         </div>
@@ -685,12 +870,16 @@ export function TemplatesPage() {
                               <p className={`text-sm font-semibold tracking-tight ${selected ? 'text-[var(--accent-primary)]' : 'text-[var(--text-primary)]'}`}>
                                 {template.name}
                               </p>
-                              {template.isOfficial && (
+                              {template.isOfficial ? (
                                 <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-[var(--warning-soft)] text-[var(--warning)] text-[10px] font-semibold">
                                   <Star size={8} className="fill-[var(--warning)]" />
                                   Official
                                 </span>
-                              )}
+                              ) : template.ownerId === myUserId ? (
+                                <span className="px-1.5 py-0.5 rounded bg-[var(--accent-primary-soft)] text-[var(--accent-primary)] text-[10px] font-semibold">
+                                  Mine
+                                </span>
+                              ) : null}
                             </div>
                             <div className="flex items-center gap-2 mt-1">
                               <span 
@@ -700,7 +889,7 @@ export function TemplatesPage() {
                                 {categoryLabel(template.category)}
                               </span>
                               <span className="text-[10px] text-[var(--text-tertiary)]">•</span>
-                              <span className="text-[10px] text-[var(--text-tertiary)]">{template.configRaw ? JSON.parse(template.configRaw).runtime : 'n/a'}</span>
+                              <span className="text-[10px] text-[var(--text-tertiary)]">{safeTemplateRuntime(template.configRaw)}</span>
                             </div>
                             <p className="text-xs text-[var(--text-tertiary)] mt-2 line-clamp-2 group-hover:text-[var(--text-secondary)] transition-colors">{template.description}</p>
                           </div>
@@ -777,6 +966,25 @@ export function TemplatesPage() {
                     <span className="px-3 py-1 rounded-full border border-[var(--border-subtle)] text-xs text-[var(--text-tertiary)]">
                       {selectedDetail.config.runtime || 'n/a'}
                     </span>
+                    {canManageTemplate(selectedDetail.template) ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => openEditEditor(selectedDetail.template)}
+                          className="inline-flex items-center gap-1 rounded-[var(--radius-md)] border border-[var(--border-subtle)] px-2.5 py-1 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                        >
+                          <Pencil size={11} /> Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteMutation.mutate(selectedDetail.template.id)}
+                          disabled={deleteMutation.isPending}
+                          className="inline-flex items-center gap-1 rounded-[var(--radius-md)] border border-[var(--border-subtle)] px-2.5 py-1 text-xs text-[var(--error)] hover:bg-[var(--error-soft)] disabled:opacity-50"
+                        >
+                          <Trash2 size={11} /> Delete
+                        </button>
+                      </>
+                    ) : null}
                   </div>
                 </div>
 
@@ -824,6 +1032,20 @@ export function TemplatesPage() {
                     </div>
                   </div>
 
+                  {!signedIn ? (
+                    <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-4 py-5 text-center">
+                      <p className="text-sm text-[var(--text-secondary)]">
+                        Sign in to deploy this template into one of your projects.
+                      </p>
+                      <Link
+                        to="/auth/sign-in"
+                        className="mt-3 inline-flex items-center gap-1.5 rounded-[var(--radius-md)] bg-[var(--accent-primary)] px-4 py-2 text-[12.5px] font-semibold text-[var(--accent-on)]"
+                      >
+                        Sign in <ArrowRight size={13} />
+                      </Link>
+                    </div>
+                  ) : (
+                  <>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)] mb-2">
@@ -951,12 +1173,88 @@ export function TemplatesPage() {
                       )}
                     </button>
                   </div>
+                  </>
+                  )}
                 </div>
               </>
             ) : null}
           </section>
         </div>
       </div>
+
+      {/* Template editor — JSON only */}
+      {editorOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--bg-base)] shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[var(--border-subtle)] px-5 py-4">
+              <div>
+                <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">
+                  {editingTemplate ? `Edit ${editingTemplate.name}` : 'New template'}
+                </h2>
+                <p className="text-xs text-[var(--text-tertiary)]">
+                  JSON definition — name, category, config and variables.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--border-default)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
+                  <Upload size={12} /> Upload .json
+                  <input
+                    type="file"
+                    accept=".json,application/json"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) uploadJsonFile(file);
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setEditorOpen(false)}
+                  className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-md)] text-[var(--text-tertiary)] hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)]"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+            </div>
+            <textarea
+              value={editorJson}
+              onChange={(e) => setEditorJson(e.target.value)}
+              spellCheck={false}
+              className="mono min-h-[380px] flex-1 resize-none bg-[var(--bg-void)] p-4 text-[12.5px] leading-relaxed text-[var(--text-secondary)] outline-none"
+            />
+            {editorError ? (
+              <div className="border-t border-[var(--border-subtle)] bg-[var(--error-soft)] px-5 py-2.5 text-xs text-[var(--error)]">
+                {editorError}
+              </div>
+            ) : null}
+            <div className="flex items-center justify-between border-t border-[var(--border-subtle)] px-5 py-3.5">
+              <p className="text-[11px] text-[var(--text-tertiary)]">
+                Saved as a user template — only you (and admins) can edit or delete it.
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditorOpen(false)}
+                  className="rounded-[var(--radius-md)] px-3.5 py-2 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--surface-muted)]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={submitEditor}
+                  disabled={saveTemplateMutation.isPending}
+                  className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] bg-[var(--accent-primary)] px-4 py-2 text-xs font-semibold text-[var(--accent-on)] disabled:opacity-50"
+                >
+                  {saveTemplateMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : null}
+                  {editingTemplate ? 'Save changes' : 'Create template'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

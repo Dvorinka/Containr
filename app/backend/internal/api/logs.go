@@ -37,27 +37,13 @@ func handleGetLogs(c *gin.Context) {
 		return
 	}
 
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
-		return
-	}
-
-	var ownerCheck string
-	err = db.(*database.DB).QueryRow(
-		`SELECT p.owner_id FROM services s 
-		 JOIN projects p ON s.project_id = p.id 
-		 WHERE s.id = $1`,
-		serviceID,
-	).Scan(&ownerCheck)
-
-	if err != nil {
+	projectID, found := serviceProjectID(db.(*database.DB), serviceID)
+	if !found {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Service not found"})
 		return
 	}
-
-	if ownerCheck != userID.(string) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+	if _, allowed := projectManageAccess(c, db.(*database.DB), projectID); !allowed {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Service not found"})
 		return
 	}
 
@@ -209,30 +195,24 @@ func handleGetDeploymentLogs(c *gin.Context) {
 		return
 	}
 
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
-		return
-	}
-
 	var buildLog, runtimeLog string
-	var ownerCheck string
+	var projectID uuid.UUID
 	err = db.(*database.DB).QueryRow(
-		`SELECT d.build_log, d.runtime_log, p.owner_id
+		`SELECT d.build_log, d.runtime_log, p.id
 		 FROM deployments d
 		 JOIN services s ON d.service_id = s.id
 		 JOIN projects p ON s.project_id = p.id
 		 WHERE d.id = $1`,
 		deploymentID,
-	).Scan(&buildLog, &runtimeLog, &ownerCheck)
+	).Scan(&buildLog, &runtimeLog, &projectID)
 
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Deployment not found"})
 		return
 	}
 
-	if ownerCheck != userID.(string) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+	if _, allowed := projectManageAccess(c, db.(*database.DB), projectID); !allowed {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Deployment not found"})
 		return
 	}
 

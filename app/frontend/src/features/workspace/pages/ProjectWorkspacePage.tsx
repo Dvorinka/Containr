@@ -19,6 +19,7 @@ import {
   type CreateServiceInput,
 } from '@/lib/api-client';
 import { getDemoProjectById, getDemoServicesByProject, getDemoVariablesByProject } from '@/lib/demo-data';
+import { useAuthSession } from '@/lib/use-auth-session';
 import { formatDate, formatRelative } from '@/lib/time';
 import type { ServiceVariable } from '../auto-connections';
 import { ProjectCanvas } from '../canvas/ProjectCanvas';
@@ -46,10 +47,10 @@ import {
 
 type WorkspaceView = 'canvas' | 'observability' | 'logs' | 'settings';
 
-const viewItems: Array<{ key: WorkspaceView; label: string; icon: typeof LayoutGrid }> = [
+const viewItems: Array<{ key: WorkspaceView; label: string; icon: typeof LayoutGrid; authOnly?: boolean }> = [
   { key: 'canvas', label: 'Canvas', icon: LayoutGrid },
   { key: 'observability', label: 'Observability', icon: Activity },
-  { key: 'logs', label: 'Logs', icon: FileText },
+  { key: 'logs', label: 'Logs', icon: FileText, authOnly: true },
   { key: 'settings', label: 'Settings', icon: Settings },
 ];
 
@@ -345,7 +346,7 @@ function ServiceCreateDialog(props: {
                           className={`w-full flex items-center justify-between px-3 py-2 rounded-[var(--radius-sm)] text-left text-sm transition-colors ${
                             repoFullName === repo.full_name
                               ? 'bg-[var(--accent-primary-soft)] text-[var(--text-primary)]'
-                              : 'text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]'
+                              : 'text-[var(--text-secondary)] hover:bg-[var(--surface-card-hover)]'
                           }`}
                         >
                           <span className="mono text-xs truncate">{repo.full_name}</span>
@@ -466,8 +467,18 @@ export function ProjectWorkspacePage() {
 
   const activeView = (searchParams.get('view') as WorkspaceView | null) ?? 'canvas';
   const isDemoMode = searchParams.get('demo') === '1';
+  const sessionQuery = useAuthSession({ enabled: !isDemoMode });
+  const signedIn = isDemoMode || Boolean(sessionQuery.data);
   const [createOpen, setCreateOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+
+  const openAddService = () => {
+    if (!signedIn) {
+      navigate('/auth/sign-in');
+      return;
+    }
+    setCreateOpen(true);
+  };
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -569,7 +580,8 @@ export function ProjectWorkspacePage() {
 
       return Object.fromEntries(entries) as Record<string, ServiceVariable[]>;
     },
-    enabled: !isDemoMode && services.length > 0,
+    enabled: !isDemoMode && signedIn && services.length > 0,
+    retry: false,
   });
 
   const variablesByService = isDemoMode ? getDemoVariablesByProject(projectId) : variablesQuery.data ?? {};
@@ -599,7 +611,8 @@ export function ProjectWorkspacePage() {
         })
         .slice(0, 200);
     },
-    enabled: !isDemoMode && activeView === 'logs' && services.length > 0,
+    enabled: !isDemoMode && signedIn && activeView === 'logs' && services.length > 0,
+    retry: false,
   });
 
   const runningServices = useMemo(() => services.filter((service) => service.status === 'running').length, [services]);
@@ -695,7 +708,7 @@ export function ProjectWorkspacePage() {
               {/* Add Service Button */}
               {!isDemoMode && (
                 <button
-                  onClick={() => setCreateOpen(true)}
+                  onClick={openAddService}
                   className="flex items-center gap-2 h-9 px-4 rounded-[var(--radius-md)] text-[var(--accent-on)] text-sm font-medium shadow-lg hover:shadow-xl transition-all"
                   style={{ background: 'var(--accent-primary)' }}
                 >
@@ -726,7 +739,7 @@ export function ProjectWorkspacePage() {
           {/* Sidebar Navigation */}
           <aside className="lg:sticky lg:top-6 lg:h-fit">
             <nav className="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-visible pb-2 lg:pb-0">
-              {viewItems.map((item) => {
+              {viewItems.filter((item) => signedIn || !item.authOnly).map((item) => {
                 const active = activeView === item.key;
                 const Icon = item.icon;
                 return (
@@ -761,7 +774,7 @@ export function ProjectWorkspacePage() {
                 projectId={project.id}
                 services={services}
                 variablesByService={variablesByService}
-                onAddService={() => setCreateOpen(true)}
+                onAddService={openAddService}
                 onOpenService={(serviceId) => navigate(serviceHref(serviceId))}
               />
             )}
@@ -973,6 +986,10 @@ export function ProjectWorkspacePage() {
         open={commandPaletteOpen}
         onClose={() => setCommandPaletteOpen(false)}
         onAddService={(type) => {
+          if (!signedIn) {
+            navigate('/auth/sign-in');
+            return;
+          }
           setCreateOpen(true);
           toast.showToast(`Creating ${type} service...`, 'info');
         }}

@@ -61,7 +61,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
       return (
         <div className="min-h-screen bg-[var(--bg-void)] flex items-center justify-center p-4">
-          <div className="max-w-md w-full bg-[var(--bg-primary)] border border-[var(--border-primary)] rounded-lg p-6 space-y-4">
+          <div className="max-w-md w-full bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-lg p-6 space-y-4">
             <div className="space-y-2">
               <h2 className="text-xl font-semibold text-[var(--text-primary)]">
                 Something went wrong
@@ -72,8 +72,8 @@ export class ErrorBoundary extends Component<Props, State> {
             </div>
 
             {import.meta.env.DEV && this.state.error && (
-              <div className="bg-[var(--bg-secondary)] border border-[var(--border-secondary)] rounded p-3">
-                <p className="text-xs font-mono text-[var(--text-error)] break-all">
+              <div className="bg-[var(--surface-muted)] border border-[var(--border-subtle)] rounded p-3">
+                <p className="text-xs font-mono text-[var(--error)] break-all">
                   {this.state.error.toString()}
                 </p>
               </div>
@@ -82,13 +82,13 @@ export class ErrorBoundary extends Component<Props, State> {
             <div className="flex gap-2">
               <button
                 onClick={this.handleReset}
-                className="flex-1 px-4 py-2 bg-[var(--bg-accent)] text-[var(--text-primary)] rounded hover:opacity-90 transition-opacity"
+                className="flex-1 px-4 py-2 bg-[var(--accent-primary-soft)] text-[var(--text-primary)] rounded hover:opacity-90 transition-opacity"
               >
                 Try Again
               </button>
               <button
                 onClick={() => window.location.reload()}
-                className="flex-1 px-4 py-2 bg-[var(--bg-secondary)] text-[var(--text-primary)] border border-[var(--border-primary)] rounded hover:bg-[var(--bg-tertiary)] transition-colors"
+                className="flex-1 px-4 py-2 bg-[var(--surface-muted)] text-[var(--text-primary)] border border-[var(--border-subtle)] rounded hover:bg-[var(--surface-soft)] transition-colors"
               >
                 Reload Page
               </button>

@@ -6,8 +6,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"containr/internal/database"
-
 	"github.com/gin-gonic/gin"
 )
 
@@ -89,7 +87,7 @@ func TestRequireAuthenticatedUserIDRejectsMissingUserContext(t *testing.T) {
 	}
 }
 
-func TestRecentDeploymentsRequireAuthentication(t *testing.T) {
+func TestRecentDeploymentsAllowAnonymousRead(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.GET("/api/v1/deployments", handleGetRecentDeployments)
@@ -98,20 +96,9 @@ func TestRecentDeploymentsRequireAuthentication(t *testing.T) {
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 
-	// No db in context → dependency failure surfaces before auth.
+	// Deployments are publicly readable; with no db in context the handler
+	// fails at the dependency boundary, never at an auth check.
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("expected status %d, got %d", http.StatusInternalServerError, rec.Code)
-	}
-
-	// With db present but no user context → 401.
-	router2 := gin.New()
-	router2.GET("/api/v1/deployments", func(c *gin.Context) {
-		c.Set("db", &database.DB{})
-		handleGetRecentDeployments(c)
-	})
-	rec2 := httptest.NewRecorder()
-	router2.ServeHTTP(rec2, httptest.NewRequest(http.MethodGet, "/api/v1/deployments", nil))
-	if rec2.Code != http.StatusUnauthorized {
-		t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, rec2.Code)
 	}
 }

@@ -36,6 +36,8 @@ import {
   type CronJobEntity,
 } from '@/lib/api-client';
 import { getDemoProjectById, getDemoServiceById, getDemoCronJobsByService } from '@/lib/demo-data';
+import { useAuthSession } from '@/lib/use-auth-session';
+import { getCurrentUserProfile } from '@/lib/api-client';
 import { parseDotenv, validateVariableRows, type VariableDraft } from '../variable-utils';
 import { formatBytes, formatDate, formatRelative, seededMetric } from '@/lib/time';
 import { EnhancedMetricCard, LineAreaChart, DonutChart } from '@/shared/components';
@@ -70,16 +72,18 @@ import {
 
 type ServiceSection = 'metrics' | 'logs' | 'config' | 'variables' | 'cron' | 'previews' | 'scaling' | 'console' | 'settings';
 
-const sectionItems: Array<{ key: ServiceSection; label: string; icon: typeof Activity }> = [
+// Sections marked manageOnly are hidden from anonymous visitors — they
+// expose authenticated or owner-scoped data (logs, variables, exec).
+const sectionItems: Array<{ key: ServiceSection; label: string; icon: typeof Activity; manageOnly?: boolean }> = [
   { key: 'metrics', label: 'Metrics', icon: Activity },
-  { key: 'logs', label: 'Logs', icon: FileText },
+  { key: 'logs', label: 'Logs', icon: FileText, manageOnly: true },
   { key: 'config', label: 'Config', icon: Sliders },
-  { key: 'variables', label: 'Variables', icon: KeyRound },
+  { key: 'variables', label: 'Variables', icon: KeyRound, manageOnly: true },
   { key: 'cron', label: 'Cron', icon: Clock },
   { key: 'previews', label: 'Previews', icon: GitPullRequest },
   { key: 'scaling', label: 'Scaling', icon: Layers },
-  { key: 'console', label: 'Console', icon: Terminal },
-  { key: 'settings', label: 'Settings', icon: Settings },
+  { key: 'console', label: 'Console', icon: Terminal, manageOnly: true },
+  { key: 'settings', label: 'Settings', icon: Settings, manageOnly: true },
 ];
 
 function metricStatus(percent: number): 'good' | 'average' | 'warning' {
@@ -120,6 +124,15 @@ export function ServiceDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const isDemoMode = searchParams.get('demo') === '1';
+  const sessionQuery = useAuthSession({ enabled: !isDemoMode });
+  const signedIn = isDemoMode || Boolean(sessionQuery.data);
+  const profileQuery = useQuery({
+    queryKey: ['user-profile'],
+    queryFn: getCurrentUserProfile,
+    enabled: signedIn && !isDemoMode,
+    retry: false,
+  });
+  const isAdmin = Boolean(profileQuery.data?.isAdmin);
 
   const [activeSection, setActiveSection] = useState<ServiceSection>('metrics');
   const [logTail, setLogTail] = useState('100');
@@ -557,22 +570,22 @@ export function ServiceDetailPage() {
         style={{ 
           gap: '6px', 
           padding: '14px 24px 10px',
-          color: '#6b6e7d',
+          color: 'var(--text-tertiary)',
           fontSize: '13px'
         }}
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b6e7d" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <polyline points="15 18 9 12 15 6"/>
         </svg>
         <button 
           onClick={() => navigate(isDemoMode ? `/projects/${project.id}?demo=1` : `/projects/${project.id}`)}
-          style={{ color: '#6b6e7d', textDecoration: 'none' }}
-          className="hover:text-[#9295a4] transition-colors"
+          style={{ color: 'var(--text-tertiary)', textDecoration: 'none' }}
+          className="hover:text-[var(--text-secondary)] transition-colors"
         >
           Servers
         </button>
         <span style={{ opacity: 0.4 }}>/</span>
-        <span style={{ color: '#9295a4' }}>{service.name}</span>
+        <span style={{ color: 'var(--text-secondary)' }}>{service.name}</span>
       </div>
 
       {/* Project Header - self.html exact match */}
@@ -592,7 +605,7 @@ export function ServiceDetailPage() {
         </div>
         <div>
           <div className="flex items-center" style={{ gap: '10px' }}>
-            <span style={{ fontSize: '20px', fontWeight: 800, letterSpacing: '-0.5px', color: '#e8e9f0' }}>{service.name}</span>
+            <span style={{ fontSize: '20px', fontWeight: 800, letterSpacing: '-0.5px', color: 'var(--text-primary)' }}>{service.name}</span>
             <span
               className={`badge-${service.status === 'running' ? 'active' : service.status === 'degraded' ? 'degraded' : 'stopped'}`}
             >
@@ -606,8 +619,8 @@ export function ServiceDetailPage() {
                 href={service.publicUrl ?? `https://${service.domain}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center hover:text-[#9295a4] transition-colors"
-                style={{ color: '#6b6e7d', fontSize: '12.5px', textDecoration: 'none', gap: '4px' }}
+                className="flex items-center hover:text-[var(--text-secondary)] transition-colors"
+                style={{ color: 'var(--text-tertiary)', fontSize: '12.5px', textDecoration: 'none', gap: '4px' }}
               >
                 {service.publicUrl ?? `https://${service.domain}`}
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -619,8 +632,8 @@ export function ServiceDetailPage() {
             )}
             <button 
               onClick={() => navigate(isDemoMode ? `/projects/${project.id}?demo=1` : `/projects/${project.id}`)}
-              className="flex items-center hover:text-[#9295a4] transition-colors"
-              style={{ color: '#6b6e7d', fontSize: '12.5px', textDecoration: 'none', gap: '4px' }}
+              className="flex items-center hover:text-[var(--text-secondary)] transition-colors"
+              style={{ color: 'var(--text-tertiary)', fontSize: '12.5px', textDecoration: 'none', gap: '4px' }}
             >
               Project Information
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -630,7 +643,7 @@ export function ServiceDetailPage() {
           </div>
         </div>
         <div className="ml-auto flex" style={{ gap: '10px' }}>
-          {!isDemoMode && (
+          {!isDemoMode && signedIn && (
             <>
               <button
                 onClick={() => stopMutation.mutate()}
@@ -697,7 +710,7 @@ export function ServiceDetailPage() {
                 data={isDemoMode
                   ? Array.from({ length: 24 }, (_, i) => seededMetric(`${service.id}:cpu:${i}`, 8, 80))
                   : metricHistory.cpu.length > 0 ? metricHistory.cpu : [0]}
-                color="#b4e34a"
+                color="var(--accent-primary)"
                 height={72}
               />
             }
@@ -711,10 +724,10 @@ export function ServiceDetailPage() {
             subtitle={isDemoMode ? 'Container footprint' : hasLiveTelemetry ? `${formatBytes(liveMetrics!.memory_usage_bytes)} used` : 'No running containers'}
             chart={
               <div className="relative mx-auto" style={{ width: 150 }}>
-                <DonutChart percentage={isDemoMode ? metricSet?.memory ?? 0 : memoryPercent} color="#f2c94c" size={150} thickness={14} />
+                <DonutChart percentage={isDemoMode ? metricSet?.memory ?? 0 : memoryPercent} color="var(--warning)" size={150} thickness={14} />
                 <div className="absolute inset-x-0 bottom-0 text-center">
-                  <div className="text-[10px] uppercase tracking-wide text-[#6b6e7d]">Used</div>
-                  <div className="text-sm font-bold text-[#e8e9f0]">
+                  <div className="text-[10px] uppercase tracking-wide text-[var(--text-tertiary)]">Used</div>
+                  <div className="text-sm font-bold text-[var(--text-primary)]">
                     {isDemoMode
                       ? `${((8 * (metricSet?.memory ?? 0)) / 100).toFixed(1)} GB / 8 GB`
                       : hasLiveTelemetry
@@ -737,7 +750,7 @@ export function ServiceDetailPage() {
                 data={isDemoMode
                   ? Array.from({ length: 24 }, (_, i) => seededMetric(`${service.id}:net:${i}`, 15, 70))
                   : metricHistory.net.length > 0 ? metricHistory.net : [0]}
-                color="#7ab8ff"
+                color="var(--info)"
                 height={72}
               />
             }
@@ -785,12 +798,12 @@ export function ServiceDetailPage() {
       <div 
         className="flex"
         style={{ 
-          borderBottom: '1px solid rgba(255,255,255,0.07)',
+          borderBottom: '1px solid var(--border-subtle)',
           marginBottom: '18px',
           padding: '0 24px'
         }}
       >
-        {sectionItems.map((item) => {
+        {sectionItems.filter((item) => signedIn || !item.manageOnly).map((item) => {
           const active = activeSection === item.key;
           const Icon = item.icon;
           return (
@@ -847,8 +860,8 @@ export function ServiceDetailPage() {
                         return (
                           <div
                             key={i}
-                            className="flex-1 rounded-[var(--radius-xs)] transition-all hover:opacity-80 cursor-pointer"
-                            style={{ height: `${value}%`, background: '#b4e34a' }}
+                            className="flex-1 rounded-[var(--radius-sm)] transition-all hover:opacity-80 cursor-pointer"
+                            style={{ height: `${value}%`, background: 'var(--accent-primary)' }}
                             title={`${value}%`}
                           />
                         );
@@ -856,8 +869,8 @@ export function ServiceDetailPage() {
                     : metricHistory.cpu.map((value, i) => (
                         <div
                           key={i}
-                          className="flex-1 rounded-[var(--radius-xs)] transition-all hover:opacity-80"
-                          style={{ height: `${Math.max(3, value)}%`, background: '#b4e34a' }}
+                          className="flex-1 rounded-[var(--radius-sm)] transition-all hover:opacity-80"
+                          style={{ height: `${Math.max(3, value)}%`, background: 'var(--accent-primary)' }}
                           title={`${value.toFixed(1)}%`}
                         />
                       ))}
@@ -888,8 +901,8 @@ export function ServiceDetailPage() {
                         return (
                           <div
                             key={i}
-                            className="flex-1 rounded-[var(--radius-xs)] transition-all hover:opacity-80 cursor-pointer"
-                            style={{ height: `${value}%`, background: '#5ee6a0' }}
+                            className="flex-1 rounded-[var(--radius-sm)] transition-all hover:opacity-80 cursor-pointer"
+                            style={{ height: `${value}%`, background: 'var(--success)' }}
                             title={`${value}%`}
                           />
                         );
@@ -897,8 +910,8 @@ export function ServiceDetailPage() {
                     : metricHistory.memory.map((value, i) => (
                         <div
                           key={i}
-                          className="flex-1 rounded-[var(--radius-xs)] transition-all hover:opacity-80"
-                          style={{ height: `${Math.max(3, value)}%`, background: '#5ee6a0' }}
+                          className="flex-1 rounded-[var(--radius-sm)] transition-all hover:opacity-80"
+                          style={{ height: `${Math.max(3, value)}%`, background: 'var(--success)' }}
                           title={`${value.toFixed(1)}%`}
                         />
                       ))}
@@ -1288,6 +1301,7 @@ export function ServiceDetailPage() {
                   <p className="text-sm text-[var(--text-secondary)]">Scheduled commands executed inside the service container</p>
                 </div>
               </div>
+              {signedIn ? (
               <button
                 onClick={() => { setEditingCronId(null); setCronForm({ name: '', schedule: '', command: '', timezone: 'UTC', enabled: true, retention: 30 }); }}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-secondary)] hover:border-[var(--border-default)] transition-colors"
@@ -1295,6 +1309,7 @@ export function ServiceDetailPage() {
                 <Plus size={12} />
                 New job
               </button>
+              ) : null}
             </div>
 
             {cronForm && (
@@ -1378,9 +1393,10 @@ export function ServiceDetailPage() {
                   <div key={job.id} className="panel-soft p-3">
                     <div className="flex items-center gap-3">
                       <button
-                        onClick={() => toggleCronMutation.mutate(job)}
+                        onClick={() => signedIn && toggleCronMutation.mutate(job)}
                         title={job.enabled ? 'Disable' : 'Enable'}
-                        className={`w-8 h-5 rounded-full relative transition-colors shrink-0 ${job.enabled ? 'bg-[var(--accent-primary)]' : 'bg-[var(--border-default)]'}`}
+                        disabled={!signedIn}
+                        className={`w-8 h-5 rounded-full relative transition-colors shrink-0 ${job.enabled ? 'bg-[var(--accent-primary)]' : 'bg-[var(--border-default)]'} disabled:opacity-60 disabled:cursor-not-allowed`}
                       >
                         <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${job.enabled ? 'left-3.5' : 'left-0.5'}`} />
                       </button>
@@ -1396,15 +1412,19 @@ export function ServiceDetailPage() {
                         </p>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
-                        <button onClick={() => triggerCronMutation.mutate(job.id as string)} title="Run now"
-                          disabled={triggerCronMutation.isPending}
-                          className="p-1.5 rounded-[var(--radius-md)] text-[var(--text-secondary)] hover:text-[var(--accent-primary)] hover:bg-[var(--accent-primary-soft)] transition-colors disabled:opacity-50">
-                          <Play size={13} />
-                        </button>
+                        {signedIn ? (
+                          <button onClick={() => triggerCronMutation.mutate(job.id as string)} title="Run now"
+                            disabled={triggerCronMutation.isPending}
+                            className="p-1.5 rounded-[var(--radius-md)] text-[var(--text-secondary)] hover:text-[var(--accent-primary)] hover:bg-[var(--accent-primary-soft)] transition-colors disabled:opacity-50">
+                            <Play size={13} />
+                          </button>
+                        ) : null}
                         <button onClick={() => setHistoryCronId(historyCronId === job.id ? null : (job.id as string))} title="History"
                           className="p-1.5 rounded-[var(--radius-md)] text-[var(--text-secondary)] hover:text-[var(--accent-primary)] hover:bg-[var(--accent-primary-soft)] transition-colors">
                           <ChevronDown size={13} className={historyCronId === job.id ? 'rotate-180 transition-transform' : 'transition-transform'} />
                         </button>
+                        {signedIn ? (
+                          <>
                         <button
                           onClick={() => { setEditingCronId(job.id as string); setCronForm({ name: job.name ?? '', schedule: job.schedule ?? '', command: job.command ?? '', timezone: job.timezone ?? 'UTC', enabled: job.enabled ?? true, retention: job.retention ?? 30 }); }}
                           title="Edit"
@@ -1417,6 +1437,8 @@ export function ServiceDetailPage() {
                           className="p-1.5 rounded-[var(--radius-md)] text-[var(--text-secondary)] hover:text-[var(--error)] hover:bg-[var(--error-soft)] transition-colors">
                           <Trash2 size={13} />
                         </button>
+                          </>
+                        ) : null}
                       </div>
                     </div>
                     {historyCronId === job.id && (
@@ -1462,12 +1484,14 @@ export function ServiceDetailPage() {
                   <p className="text-sm text-[var(--text-secondary)]">Ephemeral per-branch deployments of this service</p>
                 </div>
               </div>
+              {signedIn ? (
               <button
                 onClick={() => setPreviewForm({ branch: '', prNumber: '', ttlHours: '72' })}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-secondary)] hover:border-[var(--border-default)] transition-colors"
               >
                 <Plus size={12} /> New preview
               </button>
+              ) : null}
             </div>
 
             {previewForm && (
@@ -1479,7 +1503,7 @@ export function ServiceDetailPage() {
                       value={previewForm.branch}
                       onChange={(e) => setPreviewForm({ ...previewForm, branch: e.target.value })}
                       placeholder="feature/my-branch"
-                      className="w-52 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-2 py-1.5 text-xs text-[var(--text-primary)]"
+                      className="w-52 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-card)] px-2 py-1.5 text-xs text-[var(--text-primary)]"
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-xs text-[var(--text-muted)]">
@@ -1488,7 +1512,7 @@ export function ServiceDetailPage() {
                       value={previewForm.prNumber}
                       onChange={(e) => setPreviewForm({ ...previewForm, prNumber: e.target.value })}
                       placeholder="123"
-                      className="w-24 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-2 py-1.5 text-xs text-[var(--text-primary)]"
+                      className="w-24 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-card)] px-2 py-1.5 text-xs text-[var(--text-primary)]"
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-xs text-[var(--text-muted)]">
@@ -1497,7 +1521,7 @@ export function ServiceDetailPage() {
                       value={previewForm.ttlHours}
                       onChange={(e) => setPreviewForm({ ...previewForm, ttlHours: e.target.value })}
                       placeholder="72"
-                      className="w-24 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-2 py-1.5 text-xs text-[var(--text-primary)]"
+                      className="w-24 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-card)] px-2 py-1.5 text-xs text-[var(--text-primary)]"
                     />
                   </label>
                   <button
@@ -1551,7 +1575,7 @@ export function ServiceDetailPage() {
                         <ExternalLink size={11} /> Open
                       </a>
                     )}
-                    {env.status === 'running' && (
+                    {env.status === 'running' && signedIn && (
                       <button
                         onClick={() => { if (window.confirm('Promote this preview to production?')) promotePreviewMutation.mutate(env.id ?? ''); }}
                         disabled={promotePreviewMutation.isPending}
@@ -1560,6 +1584,7 @@ export function ServiceDetailPage() {
                         Promote
                       </button>
                     )}
+                    {signedIn ? (
                     <button
                       onClick={() => { if (window.confirm(`Delete preview ${env.environment}?`)) deletePreviewMutation.mutate(env.id ?? ''); }}
                       disabled={deletePreviewMutation.isPending}
@@ -1567,6 +1592,7 @@ export function ServiceDetailPage() {
                     >
                       Delete
                     </button>
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -1598,7 +1624,7 @@ export function ServiceDetailPage() {
             ) : (
               <>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-                  <div className="rounded-[var(--radius-md)] border border-[var(--border-primary)] p-3">
+                  <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] p-3">
                     <p className="text-xs text-[var(--text-tertiary)] uppercase tracking-wide">Replicas</p>
                     <p className="text-xl font-semibold text-[var(--text-primary)]">
                       {scalingStateQuery.data?.CurrentReplicas ??
@@ -1609,19 +1635,19 @@ export function ServiceDetailPage() {
                       </span>
                     </p>
                   </div>
-                  <div className="rounded-[var(--radius-md)] border border-[var(--border-primary)] p-3">
+                  <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] p-3">
                     <p className="text-xs text-[var(--text-tertiary)] uppercase tracking-wide">Policy</p>
                     <p className="text-xl font-semibold text-[var(--text-primary)]">
                       {scalingPolicyQuery.data ? `${scalingPolicyQuery.data.min_replicas}–${scalingPolicyQuery.data.max_replicas}` : 'None'}
                     </p>
                   </div>
-                  <div className="rounded-[var(--radius-md)] border border-[var(--border-primary)] p-3">
+                  <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] p-3">
                     <p className="text-xs text-[var(--text-tertiary)] uppercase tracking-wide">Autoscaling</p>
                     <p className="text-xl font-semibold text-[var(--text-primary)]">
                       {scalingPolicyQuery.data?.enabled ? 'On' : 'Off'}
                     </p>
                   </div>
-                  <div className="rounded-[var(--radius-md)] border border-[var(--border-primary)] p-3">
+                  <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] p-3">
                     <p className="text-xs text-[var(--text-tertiary)] uppercase tracking-wide">Last action</p>
                     <p className="text-sm font-medium text-[var(--text-primary)] truncate">
                       {scalingStateQuery.data?.LastScaleDirection ?? '—'}
@@ -1639,15 +1665,17 @@ export function ServiceDetailPage() {
                         max={20}
                         value={scaleReplicas}
                         onChange={(e) => setScaleReplicas(e.target.value)}
-                        className="w-28 px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)]"
+                        className="w-28 px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)]"
                         placeholder="e.g. 3"
                       />
                     </div>
+                    {isAdmin ? (
+                    <>
                     <button
                       type="button"
                       disabled={manualScaleMutation.isPending || !scaleReplicas}
                       onClick={() => manualScaleMutation.mutate(Number(scaleReplicas))}
-                      className="px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-contrast)] text-sm font-medium disabled:opacity-50"
+                      className="px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-on)] text-sm font-medium disabled:opacity-50"
                     >
                       {manualScaleMutation.isPending ? 'Scaling…' : 'Scale'}
                     </button>
@@ -1660,7 +1688,7 @@ export function ServiceDetailPage() {
                         targetMemory: String(scalingPolicyQuery.data?.target_memory ?? 80),
                         enabled: scalingPolicyQuery.data?.enabled ?? true,
                       })}
-                      className="px-4 py-2 rounded-[var(--radius-md)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)]"
+                      className="px-4 py-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)]"
                     >
                       {scalingPolicyQuery.data ? 'Edit policy' : 'Create policy'}
                     </button>
@@ -1674,9 +1702,13 @@ export function ServiceDetailPage() {
                         Disable policy
                       </button>
                     )}
+                    </>
+                    ) : (
+                      <span className="self-center text-xs text-[var(--text-tertiary)]">Scaling policy changes are admin-only.</span>
+                    )}
                   </div>
                 ) : (
-                  <div className="rounded-[var(--radius-md)] border border-[var(--border-primary)] p-4 space-y-4">
+                  <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] p-4 space-y-4">
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                       {([
                         ['Min replicas', 'min'],
@@ -1691,7 +1723,7 @@ export function ServiceDetailPage() {
                             min={field === 'min' || field === 'max' ? 1 : 0}
                             value={scalingForm[field]}
                             onChange={(e) => setScalingForm({ ...scalingForm, [field]: e.target.value })}
-                            className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)]"
+                            className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)]"
                           />
                         </div>
                       ))}
@@ -1709,14 +1741,14 @@ export function ServiceDetailPage() {
                         type="button"
                         disabled={saveScalingMutation.isPending}
                         onClick={() => saveScalingMutation.mutate()}
-                        className="px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-contrast)] text-sm font-medium disabled:opacity-50"
+                        className="px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-on)] text-sm font-medium disabled:opacity-50"
                       >
                         {saveScalingMutation.isPending ? 'Saving…' : 'Save policy'}
                       </button>
                       <button
                         type="button"
                         onClick={() => setScalingForm(null)}
-                        className="px-4 py-2 rounded-[var(--radius-md)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)]"
+                        className="px-4 py-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)]"
                       >
                         Cancel
                       </button>
@@ -1765,12 +1797,12 @@ export function ServiceDetailPage() {
                 onChange={(e) => setConsoleInput(e.target.value)}
                 placeholder="e.g. env | sort | head -20"
                 disabled={execMutation.isPending}
-                className="flex-1 px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-sm font-mono text-[var(--text-primary)] disabled:opacity-50"
+                className="flex-1 px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm font-mono text-[var(--text-primary)] disabled:opacity-50"
               />
               <button
                 type="submit"
                 disabled={execMutation.isPending || !consoleInput.trim()}
-                className="px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-contrast)] text-sm font-medium disabled:opacity-50"
+                className="px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-on)] text-sm font-medium disabled:opacity-50"
               >
                 {execMutation.isPending ? 'Running…' : 'Run'}
               </button>
@@ -1789,7 +1821,7 @@ export function ServiceDetailPage() {
             ) : (
               <div className="space-y-3">
                 {consoleHistory.map((entry, i) => (
-                  <div key={i} className="rounded-[var(--radius-md)] border border-[var(--border-primary)] bg-[var(--bg-secondary)] p-3">
+                  <div key={i} className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] p-3">
                     <div className="flex items-center justify-between mb-1">
                       <p className="text-xs font-mono text-[var(--text-primary)]">$ {entry.command}</p>
                       <span className={`text-xs font-mono ${entry.exitCode === 0 && !entry.error ? 'text-[var(--success)]' : 'text-[var(--error)]'}`}>
@@ -1878,25 +1910,25 @@ export function ServiceDetailPage() {
 
                 {networkForm === null ? (
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                    <div className="rounded-[var(--radius-md)] border border-[var(--border-primary)] p-3">
+                    <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] p-3">
                       <p className="text-[var(--text-tertiary)] uppercase tracking-wide">Port</p>
                       <p className="mt-1 text-sm font-medium text-[var(--text-primary)]">{service.port || '—'}</p>
                     </div>
-                    <div className="rounded-[var(--radius-md)] border border-[var(--border-primary)] p-3">
+                    <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] p-3">
                       <p className="text-[var(--text-tertiary)] uppercase tracking-wide">Domain</p>
                       <p className="mt-1 text-sm font-medium text-[var(--text-primary)] truncate">{service.domain || '—'}</p>
                     </div>
-                    <div className="rounded-[var(--radius-md)] border border-[var(--border-primary)] p-3">
+                    <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] p-3">
                       <p className="text-[var(--text-tertiary)] uppercase tracking-wide">Replicas</p>
                       <p className="mt-1 text-sm font-medium text-[var(--text-primary)]">{service.replicas ?? 1}</p>
                     </div>
-                    <div className="rounded-[var(--radius-md)] border border-[var(--border-primary)] p-3">
+                    <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] p-3">
                       <p className="text-[var(--text-tertiary)] uppercase tracking-wide">Restart</p>
                       <p className="mt-1 text-sm font-medium text-[var(--text-primary)]">{service.restartPolicy || 'unless-stopped'}</p>
                     </div>
                   </div>
                 ) : (
-                  <div className="rounded-[var(--radius-md)] border border-[var(--border-primary)] p-4 space-y-4">
+                  <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] p-4 space-y-4">
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                       <div>
                         <label className="block text-xs text-[var(--text-tertiary)] mb-1">Container port</label>
@@ -1907,7 +1939,7 @@ export function ServiceDetailPage() {
                           value={networkForm.port}
                           onChange={(e) => setNetworkForm({ ...networkForm, port: e.target.value })}
                           placeholder="e.g. 3000"
-                          className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)]"
+                          className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)]"
                         />
                         <p className="mt-1 text-[10px] text-[var(--text-tertiary)]">Published on the host; routed via Traefik when a domain is set</p>
                       </div>
@@ -1917,7 +1949,7 @@ export function ServiceDetailPage() {
                           value={networkForm.domain}
                           onChange={(e) => setNetworkForm({ ...networkForm, domain: e.target.value })}
                           placeholder="app.example.com"
-                          className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)]"
+                          className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)]"
                         />
                       </div>
                       <div>
@@ -1926,7 +1958,7 @@ export function ServiceDetailPage() {
                           value={networkForm.healthcheckPath}
                           onChange={(e) => setNetworkForm({ ...networkForm, healthcheckPath: e.target.value })}
                           placeholder="/health"
-                          className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)]"
+                          className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)]"
                         />
                       </div>
                       <div>
@@ -1937,7 +1969,7 @@ export function ServiceDetailPage() {
                           max={20}
                           value={networkForm.replicas}
                           onChange={(e) => setNetworkForm({ ...networkForm, replicas: e.target.value })}
-                          className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)]"
+                          className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)]"
                         />
                       </div>
                       <div>
@@ -1945,7 +1977,7 @@ export function ServiceDetailPage() {
                         <select
                           value={networkForm.restartPolicy}
                           onChange={(e) => setNetworkForm({ ...networkForm, restartPolicy: e.target.value })}
-                          className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)]"
+                          className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)]"
                         >
                           <option value="unless-stopped">unless-stopped</option>
                           <option value="always">always</option>
@@ -1967,14 +1999,14 @@ export function ServiceDetailPage() {
                             replicas: Math.max(1, Math.min(20, Number(networkForm.replicas) || 1)),
                           })
                         }
-                        className="px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-contrast)] text-sm font-medium disabled:opacity-50"
+                        className="px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-on)] text-sm font-medium disabled:opacity-50"
                       >
                         {updateServiceMutation.isPending ? 'Saving…' : 'Save'}
                       </button>
                       <button
                         type="button"
                         onClick={() => setNetworkForm(null)}
-                        className="px-4 py-2 rounded-[var(--radius-md)] border border-[var(--border-primary)] text-sm text-[var(--text-primary)]"
+                        className="px-4 py-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)]"
                       >
                         Cancel
                       </button>

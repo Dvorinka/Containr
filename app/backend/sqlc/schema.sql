@@ -3,6 +3,7 @@ CREATE TABLE projects (
     name VARCHAR(255) NOT NULL,
     description TEXT,
     owner_id UUID NOT NULL,
+    is_approved BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -82,6 +83,7 @@ CREATE TABLE service_templates (
     config JSONB NOT NULL,
     variables JSONB DEFAULT '[]',
     is_official BOOLEAN DEFAULT false,
+    owner_id UUID,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

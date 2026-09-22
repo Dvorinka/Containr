@@ -231,7 +231,7 @@ export function BarChart({
       {data.map((value, index) => (
         <div
           key={index}
-          className="flex-1 cursor-pointer rounded-[var(--radius-xs)] transition-all hover:opacity-80"
+          className="flex-1 cursor-pointer rounded-[var(--radius-sm)] transition-all hover:opacity-80"
           style={{
             height: `${value}%`,
             background: color,

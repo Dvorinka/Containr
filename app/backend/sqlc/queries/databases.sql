@@ -1,11 +1,26 @@
 -- name: ListDatabaseServicesByUser :many
-SELECT id, name, type, status, version, plan, region, connection_url, backup_schedule, next_backup_at, created_at, updated_at
+SELECT id, user_id, name, type, status, version, plan, region, connection_url, backup_schedule, next_backup_at, created_at, updated_at
 FROM database_services
 WHERE user_id = $1
 ORDER BY created_at DESC;
 
+-- name: ListAllDatabaseServices :many
+SELECT id, user_id, name, type, status, version, plan, region, connection_url, backup_schedule, next_backup_at, created_at, updated_at
+FROM database_services
+ORDER BY created_at DESC;
+
+-- name: GetDatabaseServiceByID :one
+SELECT id, user_id, name, type, status, version, plan, region, connection_url, backup_schedule, next_backup_at, created_at, updated_at
+FROM database_services
+WHERE id = $1;
+
+-- name: GetDatabaseServiceOwnerID :one
+SELECT user_id
+FROM database_services
+WHERE id = $1;
+
 -- name: GetDatabaseServiceByIDAndUser :one
-SELECT id, name, type, status, version, plan, region, connection_url, backup_schedule, next_backup_at, created_at, updated_at
+SELECT id, user_id, name, type, status, version, plan, region, connection_url, backup_schedule, next_backup_at, created_at, updated_at
 FROM database_services
 WHERE id = $1 AND user_id = $2;
 

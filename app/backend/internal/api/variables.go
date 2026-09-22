@@ -47,26 +47,12 @@ func handleGetVariables(c *gin.Context) {
 		return
 	}
 
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
-		return
-	}
-
-	var ownerCheck string
-	err = db.(*database.DB).QueryRow(
-		`SELECT p.owner_id FROM services s 
-		 JOIN projects p ON s.project_id = p.id 
-		 WHERE s.id = $1`,
-		serviceID,
-	).Scan(&ownerCheck)
-
-	if err != nil {
+	projectID, found := serviceProjectID(db.(*database.DB), serviceID)
+	if !found {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Service not found"})
 		return
 	}
-
-	if ownerCheck != userID.(string) {
+	if _, allowed := projectManageAccess(c, db.(*database.DB), projectID); !allowed {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 		return
 	}
@@ -123,26 +109,12 @@ func handleUpdateVariables(c *gin.Context) {
 		return
 	}
 
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
-		return
-	}
-
-	var ownerCheck string
-	err = db.(*database.DB).QueryRow(
-		`SELECT p.owner_id FROM services s 
-		 JOIN projects p ON s.project_id = p.id 
-		 WHERE s.id = $1`,
-		serviceID,
-	).Scan(&ownerCheck)
-
-	if err != nil {
+	projectID, found := serviceProjectID(db.(*database.DB), serviceID)
+	if !found {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Service not found"})
 		return
 	}
-
-	if ownerCheck != userID.(string) {
+	if _, allowed := projectManageAccess(c, db.(*database.DB), projectID); !allowed {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 		return
 	}

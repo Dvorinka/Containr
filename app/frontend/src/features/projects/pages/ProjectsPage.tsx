@@ -14,12 +14,14 @@ import {
   FolderOpen,
   X,
 } from 'lucide-react';
+import { useAuthSession } from '@/lib/use-auth-session';
 
 const demoProjects: ProjectEntity[] = [
   {
     id: 'project-demo',
     name: 'core-services',
     description: 'Sample project with mock services for UI preview.',
+    isApproved: true,
     createdAt: new Date(Date.now() - 14 * 86_400_000).toISOString(),
     updatedAt: new Date().toISOString(),
     stats: { service_count: 5, deployment_count: 12, running_services: 5, last_deployment: null },
@@ -28,6 +30,7 @@ const demoProjects: ProjectEntity[] = [
     id: 'project-staging',
     name: 'ml-pipeline',
     description: 'Pre-production environment for testing new releases.',
+    isApproved: true,
     createdAt: new Date(Date.now() - 7 * 86_400_000).toISOString(),
     updatedAt: new Date(Date.now() - 2 * 86_400_000).toISOString(),
     stats: { service_count: 2, deployment_count: 5, running_services: 1, last_deployment: null },
@@ -141,6 +144,15 @@ export function ProjectsPage() {
   const [search, setSearch] = useState('');
   const [isCreateOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState({ name: '', description: '' });
+  const sessionQuery = useAuthSession({ enabled: !isDemoMode });
+  const signedIn = isDemoMode || Boolean(sessionQuery.data);
+  const openCreate = () => {
+    if (!signedIn) {
+      navigate('/auth/sign-in');
+      return;
+    }
+    setCreateOpen(true);
+  };
 
   const projectHref = (projectId: string) =>
     isDemoMode ? `/projects/${projectId}?demo=1` : `/projects/${projectId}`;
@@ -238,7 +250,7 @@ export function ProjectsPage() {
                 style={{ fontSize: 11.5 }}
               />
             </div>
-            <button onClick={() => setCreateOpen(true)} className="v-btn">
+            <button onClick={openCreate} className="v-btn">
               + new project
             </button>
           </div>
@@ -310,10 +322,12 @@ export function ProjectsPage() {
             </div>
             <p className="text-xl font-semibold text-[var(--text-primary)]">No projects yet</p>
             <p className="mx-auto mt-2 max-w-md text-[var(--text-secondary)]">
-              Create your first project to start deploying services with visual topology management.
+              {signedIn
+                ? 'Create your first project to start deploying services with visual topology management.'
+                : 'No public projects yet. Sign in to create one — an admin approves it before it goes public.'}
             </p>
-            <button onClick={() => setCreateOpen(true)} className="v-btn mt-6">
-              + create project
+            <button onClick={openCreate} className="v-btn mt-6">
+              {signedIn ? '+ create project' : 'sign in to create'}
             </button>
           </div>
         ) : null}
@@ -356,6 +370,9 @@ export function ProjectsPage() {
             <h2 className="text-xl font-semibold text-[var(--text-primary)]">Create new project</h2>
             <p className="mt-1 text-sm text-[var(--text-secondary)]">
               Projects organize your services and provide a visual canvas for topology management.
+            </p>
+            <p className="mt-2 rounded-[var(--radius-md)] bg-[var(--warning-soft)] px-3 py-2 text-xs text-[var(--warning)]">
+              New projects stay private until a platform admin approves them for public listing.
             </p>
 
             <div className="mt-6 space-y-4">

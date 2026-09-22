@@ -1217,8 +1217,10 @@ func (h *NodeAgentHandler) SetupPublicRoutes(router *gin.RouterGroup) {
 	}
 }
 
-// SetupRoutes registers authenticated dashboard/control agent routes.
-func (h *NodeAgentHandler) SetupRoutes(router *gin.RouterGroup) {
+// SetupAdminRoutes registers dashboard/control agent routes. Command
+// history and container details can leak sensitive output, so these stay
+// admin-only rather than joining the public read group.
+func (h *NodeAgentHandler) SetupAdminRoutes(router *gin.RouterGroup) {
 	tokens := router.Group("/agent-tokens")
 	{
 		tokens.POST("", h.CreateAgentToken)

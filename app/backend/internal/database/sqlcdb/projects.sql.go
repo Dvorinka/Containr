@@ -16,25 +16,31 @@ const countProjectsByUser = `-- name: CountProjectsByUser :one
 SELECT COUNT(*)::bigint AS total
 FROM projects p
 WHERE
-    (p.owner_id = $1 OR EXISTS (
-        SELECT 1
-        FROM project_members pm
-        WHERE pm.project_id = p.id AND pm.user_id = $1
-    ))
+    (
+        p.is_approved
+        OR p.owner_id = $1
+        OR $2::bool
+        OR EXISTS (
+            SELECT 1
+            FROM project_members pm
+            WHERE pm.project_id = p.id AND pm.user_id = $1
+        )
+    )
     AND (
-        $2::text IS NULL
-        OR p.name ILIKE ('%' || $2::text || '%')
-        OR COALESCE(p.description, '') ILIKE ('%' || $2::text || '%')
+        $3::text IS NULL
+        OR p.name ILIKE ('%' || $3::text || '%')
+        OR COALESCE(p.description, '') ILIKE ('%' || $3::text || '%')
     )
 `
 
 type CountProjectsByUserParams struct {
-	UserID uuid.UUID      `json:"user_id"`
-	Search sql.NullString `json:"search"`
+	UserID  uuid.UUID      `json:"user_id"`
+	IsAdmin bool           `json:"is_admin"`
+	Search  sql.NullString `json:"search"`
 }
 
 func (q *Queries) CountProjectsByUser(ctx context.Context, arg CountProjectsByUserParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, countProjectsByUser, arg.UserID, arg.Search)
+	row := q.db.QueryRowContext(ctx, countProjectsByUser, arg.UserID, arg.IsAdmin, arg.Search)
 	var total int64
 	err := row.Scan(&total)
 	return total, err
@@ -43,7 +49,7 @@ func (q *Queries) CountProjectsByUser(ctx context.Context, arg CountProjectsByUs
 const createProject = `-- name: CreateProject :one
 INSERT INTO projects (name, description, owner_id)
 VALUES ($1, $2, $3)
-RETURNING id, name, description, owner_id, created_at, updated_at
+RETURNING id, name, description, owner_id, is_approved, created_at, updated_at
 `
 
 type CreateProjectParams struct {
@@ -60,6 +66,7 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (P
 		&i.Name,
 		&i.Description,
 		&i.OwnerID,
+		&i.IsApproved,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -80,11 +87,13 @@ func (q *Queries) DeleteProjectByID(ctx context.Context, projectID uuid.UUID) (i
 }
 
 const getProjectByIDForUser = `-- name: GetProjectByIDForUser :one
-SELECT p.id, p.name, p.description, p.owner_id, p.created_at, p.updated_at
+SELECT p.id, p.name, p.description, p.owner_id, p.is_approved, p.created_at, p.updated_at
 FROM projects p
 WHERE p.id = $1
   AND (
-      p.owner_id = $2
+      p.is_approved
+      OR p.owner_id = $2
+      OR $3::bool
       OR EXISTS (
           SELECT 1
           FROM project_members pm
@@ -96,16 +105,18 @@ WHERE p.id = $1
 type GetProjectByIDForUserParams struct {
 	ProjectID uuid.UUID `json:"project_id"`
 	UserID    uuid.UUID `json:"user_id"`
+	IsAdmin   bool      `json:"is_admin"`
 }
 
 func (q *Queries) GetProjectByIDForUser(ctx context.Context, arg GetProjectByIDForUserParams) (Project, error) {
-	row := q.db.QueryRowContext(ctx, getProjectByIDForUser, arg.ProjectID, arg.UserID)
+	row := q.db.QueryRowContext(ctx, getProjectByIDForUser, arg.ProjectID, arg.UserID, arg.IsAdmin)
 	var i Project
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
 		&i.Description,
 		&i.OwnerID,
+		&i.IsApproved,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -127,21 +138,22 @@ func (q *Queries) GetProjectOwnerByID(ctx context.Context, projectID uuid.UUID) 
 
 const getProjectRoleForUser = `-- name: GetProjectRoleForUser :one
 SELECT (CASE
-    WHEN p.owner_id = $1 THEN 'owner'
+    WHEN p.owner_id = $1 OR $2::bool THEN 'owner'
     ELSE COALESCE(pm.role, '')
 END)::text AS role
 FROM projects p
 LEFT JOIN project_members pm ON p.id = pm.project_id AND pm.user_id = $1
-WHERE p.id = $2
+WHERE p.id = $3
 `
 
 type GetProjectRoleForUserParams struct {
 	UserID    uuid.UUID `json:"user_id"`
+	IsAdmin   bool      `json:"is_admin"`
 	ProjectID uuid.UUID `json:"project_id"`
 }
 
 func (q *Queries) GetProjectRoleForUser(ctx context.Context, arg GetProjectRoleForUserParams) (string, error) {
-	row := q.db.QueryRowContext(ctx, getProjectRoleForUser, arg.UserID, arg.ProjectID)
+	row := q.db.QueryRowContext(ctx, getProjectRoleForUser, arg.UserID, arg.IsAdmin, arg.ProjectID)
 	var role string
 	err := row.Scan(&role)
 	return role, err
@@ -162,12 +174,52 @@ func (q *Queries) InsertProjectEnvironment(ctx context.Context, arg InsertProjec
 	return err
 }
 
+const listPendingProjects = `-- name: ListPendingProjects :many
+SELECT p.id, p.name, p.description, p.owner_id, p.is_approved, p.created_at, p.updated_at
+FROM projects p
+WHERE p.is_approved = false
+ORDER BY p.created_at DESC
+`
+
+func (q *Queries) ListPendingProjects(ctx context.Context) ([]Project, error) {
+	rows, err := q.db.QueryContext(ctx, listPendingProjects)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Project{}
+	for rows.Next() {
+		var i Project
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Description,
+			&i.OwnerID,
+			&i.IsApproved,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listProjectsWithStatsByUser = `-- name: ListProjectsWithStatsByUser :many
+
 SELECT
     p.id,
     p.name,
     p.description,
     p.owner_id,
+    p.is_approved,
     p.created_at,
     p.updated_at,
     COUNT(DISTINCT s.id)::bigint AS service_count,
@@ -185,23 +237,29 @@ FROM projects p
 LEFT JOIN services s ON s.project_id = p.id
 LEFT JOIN deployments d ON d.service_id = s.id
 WHERE
-    (p.owner_id = $1 OR EXISTS (
-        SELECT 1
-        FROM project_members pm
-        WHERE pm.project_id = p.id AND pm.user_id = $1
-    ))
-    AND (
-        $2::text IS NULL
-        OR p.name ILIKE ('%' || $2::text || '%')
-        OR COALESCE(p.description, '') ILIKE ('%' || $2::text || '%')
+    (
+        p.is_approved
+        OR p.owner_id = $1
+        OR $2::bool
+        OR EXISTS (
+            SELECT 1
+            FROM project_members pm
+            WHERE pm.project_id = p.id AND pm.user_id = $1
+        )
     )
-GROUP BY p.id, p.name, p.description, p.owner_id, p.created_at, p.updated_at
+    AND (
+        $3::text IS NULL
+        OR p.name ILIKE ('%' || $3::text || '%')
+        OR COALESCE(p.description, '') ILIKE ('%' || $3::text || '%')
+    )
+GROUP BY p.id, p.name, p.description, p.owner_id, p.is_approved, p.created_at, p.updated_at
 ORDER BY p.updated_at DESC
-LIMIT $4 OFFSET $3
+LIMIT $5 OFFSET $4
 `
 
 type ListProjectsWithStatsByUserParams struct {
 	UserID      uuid.UUID      `json:"user_id"`
+	IsAdmin     bool           `json:"is_admin"`
 	Search      sql.NullString `json:"search"`
 	OffsetCount int32          `json:"offset_count"`
 	LimitCount  int32          `json:"limit_count"`
@@ -212,6 +270,7 @@ type ListProjectsWithStatsByUserRow struct {
 	Name            string         `json:"name"`
 	Description     sql.NullString `json:"description"`
 	OwnerID         uuid.UUID      `json:"owner_id"`
+	IsApproved      bool           `json:"is_approved"`
 	CreatedAt       sql.NullTime   `json:"created_at"`
 	UpdatedAt       sql.NullTime   `json:"updated_at"`
 	ServiceCount    int64          `json:"service_count"`
@@ -220,9 +279,13 @@ type ListProjectsWithStatsByUserRow struct {
 	LastDeployment  sql.NullTime   `json:"last_deployment"`
 }
 
+// Visibility model: a project is readable when it is approved for public
+// display, when the caller owns or is a member of it, or when the caller is a
+// platform admin. Anonymous callers pass user_id = uuid.Nil, is_admin = false.
 func (q *Queries) ListProjectsWithStatsByUser(ctx context.Context, arg ListProjectsWithStatsByUserParams) ([]ListProjectsWithStatsByUserRow, error) {
 	rows, err := q.db.QueryContext(ctx, listProjectsWithStatsByUser,
 		arg.UserID,
+		arg.IsAdmin,
 		arg.Search,
 		arg.OffsetCount,
 		arg.LimitCount,
@@ -239,6 +302,7 @@ func (q *Queries) ListProjectsWithStatsByUser(ctx context.Context, arg ListProje
 			&i.Name,
 			&i.Description,
 			&i.OwnerID,
+			&i.IsApproved,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ServiceCount,
@@ -257,6 +321,25 @@ func (q *Queries) ListProjectsWithStatsByUser(ctx context.Context, arg ListProje
 		return nil, err
 	}
 	return items, nil
+}
+
+const setProjectApproved = `-- name: SetProjectApproved :execrows
+UPDATE projects
+SET is_approved = $1, updated_at = NOW()
+WHERE id = $2
+`
+
+type SetProjectApprovedParams struct {
+	IsApproved bool      `json:"is_approved"`
+	ProjectID  uuid.UUID `json:"project_id"`
+}
+
+func (q *Queries) SetProjectApproved(ctx context.Context, arg SetProjectApprovedParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setProjectApproved, arg.IsApproved, arg.ProjectID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const updateProjectByID = `-- name: UpdateProjectByID :execrows

@@ -55,5 +55,5 @@ func (db *DB) Health(ctx context.Context) error {
 
 // Stats returns connection pool statistics for monitoring
 func (db *DB) Stats() sql.DBStats {
-	return db.Stats()
+	return db.DB.Stats()
 }

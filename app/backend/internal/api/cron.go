@@ -65,19 +65,34 @@ type UpdateCronJobRequest struct {
 	Retention int    `json:"retention"`
 }
 
+// cronJobProjectID resolves the project a cron job belongs to.
+func cronJobProjectID(db *database.DB, jobID string) (uuid.UUID, bool) {
+	var projectID uuid.UUID
+	err := db.QueryRow(
+		`SELECT cj.project_id FROM cron_jobs cj WHERE cj.id = $1`,
+		jobID,
+	).Scan(&projectID)
+	if err != nil {
+		return uuid.Nil, false
+	}
+	return projectID, true
+}
+
 func handleGetCronJobs(c *gin.Context) {
 	db := c.MustGet("db").(*database.DB)
-	userID := c.MustGet("user_id").(string)
+	userID := optionalUserUUID(c)
+	isAdmin := contextIsAdmin(c)
 	projectID := c.Query("project_id")
 	serviceID := c.Query("service_id")
 
-	query := `SELECT cj.id, cj.project_id, cj.service_id, cj.name, cj.schedule, cj.timezone, 
-	          cj.enabled, cj.last_run_at, cj.next_run_at, cj.last_status, cj.last_output, 
+	query := `SELECT cj.id, cj.project_id, cj.service_id, cj.name, cj.schedule, cj.timezone,
+	          cj.enabled, cj.last_run_at, cj.next_run_at, cj.last_status, cj.last_output,
 	          cj.retention, cj.created_at, cj.updated_at
 	          FROM cron_jobs cj
 	          JOIN projects p ON cj.project_id = p.id
-	          WHERE p.owner_id = $1`
-	args := []interface{}{userID}
+	          WHERE (p.is_approved OR p.owner_id = $1 OR $2::bool
+	              OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = p.id AND pm.user_id = $1))`
+	args := []interface{}{userID, isAdmin}
 
 	if projectID != "" {
 		args = append(args, projectID)
@@ -130,7 +145,7 @@ func handleCreateCronJob(c *gin.Context) {
 		req.ServiceID,
 	).Scan(&ownerCheck)
 
-	if err != nil || ownerCheck != userID {
+	if err != nil || (ownerCheck != userID && !contextIsAdmin(c)) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 		return
 	}
@@ -184,30 +199,32 @@ func handleCreateCronJob(c *gin.Context) {
 
 func handleGetCronJob(c *gin.Context) {
 	db := c.MustGet("db").(*database.DB)
-	userID := c.MustGet("user_id").(string)
 	jobID := c.Param("id")
 
 	var job CronJob
-	var ownerCheck string
 	err := db.QueryRow(
-		`SELECT cj.id, cj.project_id, cj.service_id, cj.name, cj.schedule, cj.timezone, 
-		        cj.enabled, cj.last_run_at, cj.next_run_at, cj.last_status, cj.last_output, 
-		        cj.retention, cj.created_at, cj.updated_at, p.owner_id
+		`SELECT cj.id, cj.project_id, cj.service_id, cj.name, cj.schedule, cj.timezone,
+		        cj.enabled, cj.last_run_at, cj.next_run_at, cj.last_status, cj.last_output,
+		        cj.retention, cj.created_at, cj.updated_at
 		 FROM cron_jobs cj
-		 JOIN projects p ON cj.project_id = p.id
 		 WHERE cj.id = $1`,
 		jobID,
 	).Scan(&job.ID, &job.ProjectID, &job.ServiceID, &job.Name, &job.Schedule, &job.Timezone,
 		&job.Enabled, &job.LastRunAt, &job.NextRunAt, &job.LastStatus, &job.LastOutput,
-		&job.Retention, &job.CreatedAt, &job.UpdatedAt, &ownerCheck)
+		&job.Retention, &job.CreatedAt, &job.UpdatedAt)
 
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Cron job not found"})
 		return
 	}
 
-	if ownerCheck != userID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+	projectID, found := cronJobProjectID(db, jobID)
+	if !found {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Cron job not found"})
+		return
+	}
+	if _, allowed := projectReadAccess(c, db, projectID); !allowed {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Cron job not found"})
 		return
 	}
 
@@ -233,7 +250,7 @@ func handleUpdateCronJob(c *gin.Context) {
 		jobID,
 	).Scan(&ownerCheck)
 
-	if err != nil || ownerCheck != userID {
+	if err != nil || (ownerCheck != userID && !contextIsAdmin(c)) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 		return
 	}
@@ -303,7 +320,7 @@ func handleDeleteCronJob(c *gin.Context) {
 		jobID,
 	).Scan(&ownerCheck)
 
-	if err != nil || ownerCheck != userID {
+	if err != nil || (ownerCheck != userID && !contextIsAdmin(c)) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 		return
 	}
@@ -321,19 +338,15 @@ func handleDeleteCronJob(c *gin.Context) {
 
 func handleGetCronExecutions(c *gin.Context) {
 	db := c.MustGet("db").(*database.DB)
-	userID := c.MustGet("user_id").(string)
 	jobID := c.Param("id")
 
-	var ownerCheck string
-	err := db.QueryRow(
-		`SELECT p.owner_id FROM cron_jobs cj
-		 JOIN projects p ON cj.project_id = p.id
-		 WHERE cj.id = $1`,
-		jobID,
-	).Scan(&ownerCheck)
-
-	if err != nil || ownerCheck != userID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+	projectID, found := cronJobProjectID(db, jobID)
+	if !found {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Cron job not found"})
+		return
+	}
+	if _, allowed := projectReadAccess(c, db, projectID); !allowed {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Cron job not found"})
 		return
 	}
 
@@ -380,7 +393,7 @@ func handleTriggerCronJob(c *gin.Context) {
 		jobID,
 	).Scan(&job.ServiceID, &job.Command, &job.Schedule, &job.Timezone, &job.Retention, &ownerCheck)
 
-	if err != nil || ownerCheck != userID {
+	if err != nil || (ownerCheck != userID && !contextIsAdmin(c)) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 		return
 	}

@@ -8,8 +8,10 @@ package sqlcdb
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 
 	"github.com/google/uuid"
+	"github.com/sqlc-dev/pqtype"
 )
 
 const countServicesByProjectAndName = `-- name: CountServicesByProjectAndName :one
@@ -122,6 +124,66 @@ func (q *Queries) CreateServiceFromTemplate(ctx context.Context, arg CreateServi
 	return err
 }
 
+const createUserTemplate = `-- name: CreateUserTemplate :exec
+INSERT INTO service_templates (id, name, description, category, logo, config, variables, is_official, owner_id)
+VALUES (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5,
+    $6,
+    $7,
+    false,
+    $8
+)
+`
+
+type CreateUserTemplateParams struct {
+	ID          string                `json:"id"`
+	Name        string                `json:"name"`
+	Description sql.NullString        `json:"description"`
+	Category    string                `json:"category"`
+	Logo        sql.NullString        `json:"logo"`
+	Config      json.RawMessage       `json:"config"`
+	Variables   pqtype.NullRawMessage `json:"variables"`
+	OwnerID     uuid.NullUUID         `json:"owner_id"`
+}
+
+func (q *Queries) CreateUserTemplate(ctx context.Context, arg CreateUserTemplateParams) error {
+	_, err := q.db.ExecContext(ctx, createUserTemplate,
+		arg.ID,
+		arg.Name,
+		arg.Description,
+		arg.Category,
+		arg.Logo,
+		arg.Config,
+		arg.Variables,
+		arg.OwnerID,
+	)
+	return err
+}
+
+const deleteUserTemplate = `-- name: DeleteUserTemplate :execrows
+DELETE FROM service_templates
+WHERE id = $1
+  AND owner_id = $2
+  AND is_official = false
+`
+
+type DeleteUserTemplateParams struct {
+	ID      string        `json:"id"`
+	OwnerID uuid.NullUUID `json:"owner_id"`
+}
+
+func (q *Queries) DeleteUserTemplate(ctx context.Context, arg DeleteUserTemplateParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteUserTemplate, arg.ID, arg.OwnerID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const getProjectOwnerID = `-- name: GetProjectOwnerID :one
 SELECT owner_id
 FROM projects
@@ -136,7 +198,7 @@ func (q *Queries) GetProjectOwnerID(ctx context.Context, id uuid.UUID) (uuid.UUI
 }
 
 const getServiceTemplateByID = `-- name: GetServiceTemplateByID :one
-SELECT id, name, description, category, logo, config, variables, is_official, created_at, updated_at
+SELECT id, name, description, category, logo, config, variables, is_official, owner_id, created_at, updated_at
 FROM service_templates
 WHERE id = $1
 `
@@ -153,20 +215,28 @@ func (q *Queries) GetServiceTemplateByID(ctx context.Context, id string) (Servic
 		&i.Config,
 		&i.Variables,
 		&i.IsOfficial,
+		&i.OwnerID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
 	return i, err
 }
 
-const listServiceTemplates = `-- name: ListServiceTemplates :many
-SELECT id, name, description, category, logo, config, variables, is_official, created_at, updated_at
+const listServiceTemplatesByCategoryForUser = `-- name: ListServiceTemplatesByCategoryForUser :many
+SELECT id, name, description, category, logo, config, variables, is_official, owner_id, created_at, updated_at
 FROM service_templates
+WHERE category = $1
+  AND (is_official = true OR owner_id = $2)
 ORDER BY is_official DESC, name ASC
 `
 
-func (q *Queries) ListServiceTemplates(ctx context.Context) ([]ServiceTemplate, error) {
-	rows, err := q.db.QueryContext(ctx, listServiceTemplates)
+type ListServiceTemplatesByCategoryForUserParams struct {
+	Category string        `json:"category"`
+	OwnerID  uuid.NullUUID `json:"owner_id"`
+}
+
+func (q *Queries) ListServiceTemplatesByCategoryForUser(ctx context.Context, arg ListServiceTemplatesByCategoryForUserParams) ([]ServiceTemplate, error) {
+	rows, err := q.db.QueryContext(ctx, listServiceTemplatesByCategoryForUser, arg.Category, arg.OwnerID)
 	if err != nil {
 		return nil, err
 	}
@@ -183,6 +253,7 @@ func (q *Queries) ListServiceTemplates(ctx context.Context) ([]ServiceTemplate, 
 			&i.Config,
 			&i.Variables,
 			&i.IsOfficial,
+			&i.OwnerID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -199,15 +270,15 @@ func (q *Queries) ListServiceTemplates(ctx context.Context) ([]ServiceTemplate, 
 	return items, nil
 }
 
-const listServiceTemplatesByCategory = `-- name: ListServiceTemplatesByCategory :many
-SELECT id, name, description, category, logo, config, variables, is_official, created_at, updated_at
+const listServiceTemplatesForUser = `-- name: ListServiceTemplatesForUser :many
+SELECT id, name, description, category, logo, config, variables, is_official, owner_id, created_at, updated_at
 FROM service_templates
-WHERE category = $1
+WHERE is_official = true OR owner_id = $1
 ORDER BY is_official DESC, name ASC
 `
 
-func (q *Queries) ListServiceTemplatesByCategory(ctx context.Context, category string) ([]ServiceTemplate, error) {
-	rows, err := q.db.QueryContext(ctx, listServiceTemplatesByCategory, category)
+func (q *Queries) ListServiceTemplatesForUser(ctx context.Context, ownerID uuid.NullUUID) ([]ServiceTemplate, error) {
+	rows, err := q.db.QueryContext(ctx, listServiceTemplatesForUser, ownerID)
 	if err != nil {
 		return nil, err
 	}
@@ -224,6 +295,7 @@ func (q *Queries) ListServiceTemplatesByCategory(ctx context.Context, category s
 			&i.Config,
 			&i.Variables,
 			&i.IsOfficial,
+			&i.OwnerID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -238,6 +310,48 @@ func (q *Queries) ListServiceTemplatesByCategory(ctx context.Context, category s
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateUserTemplate = `-- name: UpdateUserTemplate :execrows
+UPDATE service_templates
+SET name = $1,
+    description = $2,
+    category = $3,
+    logo = $4,
+    config = $5,
+    variables = $6,
+    updated_at = NOW()
+WHERE id = $7
+  AND owner_id = $8
+  AND is_official = false
+`
+
+type UpdateUserTemplateParams struct {
+	Name        string                `json:"name"`
+	Description sql.NullString        `json:"description"`
+	Category    string                `json:"category"`
+	Logo        sql.NullString        `json:"logo"`
+	Config      json.RawMessage       `json:"config"`
+	Variables   pqtype.NullRawMessage `json:"variables"`
+	ID          string                `json:"id"`
+	OwnerID     uuid.NullUUID         `json:"owner_id"`
+}
+
+func (q *Queries) UpdateUserTemplate(ctx context.Context, arg UpdateUserTemplateParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updateUserTemplate,
+		arg.Name,
+		arg.Description,
+		arg.Category,
+		arg.Logo,
+		arg.Config,
+		arg.Variables,
+		arg.ID,
+		arg.OwnerID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const upsertEnvironmentVariable = `-- name: UpsertEnvironmentVariable :exec
@@ -268,6 +382,54 @@ func (q *Queries) UpsertEnvironmentVariable(ctx context.Context, arg UpsertEnvir
 		arg.IsSecret,
 		arg.CreatedAt,
 		arg.UpdatedAt,
+	)
+	return err
+}
+
+const upsertServiceTemplate = `-- name: UpsertServiceTemplate :exec
+INSERT INTO service_templates (id, name, description, category, logo, config, variables, is_official)
+VALUES (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5,
+    $6,
+    $7,
+    $8
+)
+ON CONFLICT (id) DO UPDATE
+SET name = EXCLUDED.name,
+    description = EXCLUDED.description,
+    category = EXCLUDED.category,
+    logo = EXCLUDED.logo,
+    config = EXCLUDED.config,
+    variables = EXCLUDED.variables,
+    is_official = EXCLUDED.is_official,
+    updated_at = NOW()
+`
+
+type UpsertServiceTemplateParams struct {
+	ID          string                `json:"id"`
+	Name        string                `json:"name"`
+	Description sql.NullString        `json:"description"`
+	Category    string                `json:"category"`
+	Logo        sql.NullString        `json:"logo"`
+	Config      json.RawMessage       `json:"config"`
+	Variables   pqtype.NullRawMessage `json:"variables"`
+	IsOfficial  sql.NullBool          `json:"is_official"`
+}
+
+func (q *Queries) UpsertServiceTemplate(ctx context.Context, arg UpsertServiceTemplateParams) error {
+	_, err := q.db.ExecContext(ctx, upsertServiceTemplate,
+		arg.ID,
+		arg.Name,
+		arg.Description,
+		arg.Category,
+		arg.Logo,
+		arg.Config,
+		arg.Variables,
+		arg.IsOfficial,
 	)
 	return err
 }

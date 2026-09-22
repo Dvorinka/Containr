@@ -25,10 +25,12 @@ type Querier interface {
 	CreateNotification(ctx context.Context, arg CreateNotificationParams) error
 	CreateProject(ctx context.Context, arg CreateProjectParams) (Project, error)
 	CreateServiceFromTemplate(ctx context.Context, arg CreateServiceFromTemplateParams) error
+	CreateUserTemplate(ctx context.Context, arg CreateUserTemplateParams) error
 	DatabaseServiceExistsByIDAndUser(ctx context.Context, arg DatabaseServiceExistsByIDAndUserParams) (bool, error)
 	DeleteAgent(ctx context.Context, id string) error
 	DeleteDatabaseServiceByIDAndUser(ctx context.Context, arg DeleteDatabaseServiceByIDAndUserParams) error
 	DeleteProjectByID(ctx context.Context, projectID uuid.UUID) (int64, error)
+	DeleteUserTemplate(ctx context.Context, arg DeleteUserTemplateParams) (int64, error)
 	GetActiveAgentAuthTokenByHash(ctx context.Context, tokenHash string) (AgentAuthToken, error)
 	GetAgent(ctx context.Context, id string) (NodeAgent, error)
 	GetAgentByHostAndIP(ctx context.Context, arg GetAgentByHostAndIPParams) (NodeAgent, error)
@@ -36,7 +38,9 @@ type Querier interface {
 	GetContainer(ctx context.Context, id string) (ContainerInstance, error)
 	GetContainerForAgent(ctx context.Context, arg GetContainerForAgentParams) (ContainerInstance, error)
 	GetDatabaseBackupByIDAndDatabaseAndUser(ctx context.Context, arg GetDatabaseBackupByIDAndDatabaseAndUserParams) (DatabaseBackup, error)
-	GetDatabaseServiceByIDAndUser(ctx context.Context, arg GetDatabaseServiceByIDAndUserParams) (GetDatabaseServiceByIDAndUserRow, error)
+	GetDatabaseServiceByID(ctx context.Context, id string) (DatabaseService, error)
+	GetDatabaseServiceByIDAndUser(ctx context.Context, arg GetDatabaseServiceByIDAndUserParams) (DatabaseService, error)
+	GetDatabaseServiceOwnerID(ctx context.Context, id string) (string, error)
 	GetProjectByIDForUser(ctx context.Context, arg GetProjectByIDForUserParams) (Project, error)
 	GetProjectOwnerByID(ctx context.Context, projectID uuid.UUID) (uuid.UUID, error)
 	GetProjectOwnerID(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
@@ -47,16 +51,21 @@ type Querier interface {
 	ListAgentAuthTokens(ctx context.Context) ([]AgentAuthToken, error)
 	ListAgentHeartbeatsSince(ctx context.Context, arg ListAgentHeartbeatsSinceParams) ([]AgentHeartbeat, error)
 	ListAgents(ctx context.Context) ([]NodeAgent, error)
+	ListAllDatabaseServices(ctx context.Context) ([]DatabaseService, error)
 	ListCommandsForAgent(ctx context.Context, nodeAgentID string) ([]AgentCommand, error)
 	ListContainersForAgent(ctx context.Context, nodeAgentID string) ([]ContainerInstance, error)
 	ListDatabaseBackupsByDatabaseAndUser(ctx context.Context, arg ListDatabaseBackupsByDatabaseAndUserParams) ([]DatabaseBackup, error)
-	ListDatabaseServicesByUser(ctx context.Context, userID string) ([]ListDatabaseServicesByUserRow, error)
+	ListDatabaseServicesByUser(ctx context.Context, userID string) ([]DatabaseService, error)
 	ListDueDatabaseBackups(ctx context.Context) ([]ListDueDatabaseBackupsRow, error)
 	ListNotificationsByUser(ctx context.Context, arg ListNotificationsByUserParams) ([]Notification, error)
 	ListPendingCommands(ctx context.Context, nodeAgentID string) ([]AgentCommand, error)
+	ListPendingProjects(ctx context.Context) ([]Project, error)
+	// Visibility model: a project is readable when it is approved for public
+	// display, when the caller owns or is a member of it, or when the caller is a
+	// platform admin. Anonymous callers pass user_id = uuid.Nil, is_admin = false.
 	ListProjectsWithStatsByUser(ctx context.Context, arg ListProjectsWithStatsByUserParams) ([]ListProjectsWithStatsByUserRow, error)
-	ListServiceTemplates(ctx context.Context) ([]ServiceTemplate, error)
-	ListServiceTemplatesByCategory(ctx context.Context, category string) ([]ServiceTemplate, error)
+	ListServiceTemplatesByCategoryForUser(ctx context.Context, arg ListServiceTemplatesByCategoryForUserParams) ([]ServiceTemplate, error)
+	ListServiceTemplatesForUser(ctx context.Context, ownerID uuid.NullUUID) ([]ServiceTemplate, error)
 	MarkAllNotificationsReadByUser(ctx context.Context, arg MarkAllNotificationsReadByUserParams) error
 	MarkNotificationReadByIDAndUser(ctx context.Context, arg MarkNotificationReadByIDAndUserParams) error
 	RevokeAgentAuthToken(ctx context.Context, id uuid.UUID) (AgentAuthToken, error)
@@ -66,6 +75,7 @@ type Querier interface {
 	SetDatabaseServiceStatusAndConnectionByID(ctx context.Context, arg SetDatabaseServiceStatusAndConnectionByIDParams) error
 	SetDatabaseServiceStatusByID(ctx context.Context, arg SetDatabaseServiceStatusByIDParams) error
 	SetDatabaseServiceStatusByIDAndUser(ctx context.Context, arg SetDatabaseServiceStatusByIDAndUserParams) error
+	SetProjectApproved(ctx context.Context, arg SetProjectApprovedParams) (int64, error)
 	TouchAgentAuthToken(ctx context.Context, tokenHash string) error
 	UpdateAgent(ctx context.Context, arg UpdateAgentParams) (NodeAgent, error)
 	UpdateAgentHeartbeat(ctx context.Context, arg UpdateAgentHeartbeatParams) error
@@ -74,7 +84,9 @@ type Querier interface {
 	UpdateDatabaseServiceNameByIDAndUser(ctx context.Context, arg UpdateDatabaseServiceNameByIDAndUserParams) error
 	UpdateDatabaseServicePlanByIDAndUser(ctx context.Context, arg UpdateDatabaseServicePlanByIDAndUserParams) error
 	UpdateProjectByID(ctx context.Context, arg UpdateProjectByIDParams) (int64, error)
+	UpdateUserTemplate(ctx context.Context, arg UpdateUserTemplateParams) (int64, error)
 	UpsertEnvironmentVariable(ctx context.Context, arg UpsertEnvironmentVariableParams) error
+	UpsertServiceTemplate(ctx context.Context, arg UpsertServiceTemplateParams) error
 }
 
 var _ Querier = (*Queries)(nil)

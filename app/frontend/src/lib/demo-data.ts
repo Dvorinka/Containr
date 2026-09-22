@@ -5,7 +5,8 @@ export const demoProjects: ProjectEntity[] = [
   {
     id: 'demo-project-core',
     name: 'Core Platform',
-    description: 'Primary production workload with web, API, queue, and data services.',
+     description: 'Primary production workload with web, API, queue, and data services.',
+    isApproved: true,
     createdAt: '2026-03-12T09:30:00Z',
     updatedAt: '2026-03-31T09:10:00Z',
     stats: {
@@ -18,7 +19,8 @@ export const demoProjects: ProjectEntity[] = [
   {
     id: 'demo-project-growth',
     name: 'Growth Surface',
-    description: 'Landing pages and campaign services for growth experiments.',
+     description: 'Landing pages and campaign services for growth experiments.',
+    isApproved: true,
     createdAt: '2026-03-01T14:05:00Z',
     updatedAt: '2026-03-30T16:44:00Z',
     stats: {
@@ -31,7 +33,8 @@ export const demoProjects: ProjectEntity[] = [
   {
     id: 'demo-project-ml',
     name: 'Inference Lab',
-    description: 'Internal inference jobs and model-serving edge services.',
+     description: 'Internal inference jobs and model-serving edge services.',
+    isApproved: true,
     createdAt: '2026-02-18T07:12:00Z',
     updatedAt: '2026-03-29T19:22:00Z',
     stats: {

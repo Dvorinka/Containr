@@ -41,6 +41,7 @@ const (
 // DatabaseService represents a managed database service
 type DatabaseService struct {
 	ID             string               `json:"id" db:"id"`
+	OwnerID        string               `json:"-" db:"user_id"`
 	Name           string               `json:"name" db:"name"`
 	Type           string               `json:"type" db:"type"`     // postgresql, redis, mysql, mariadb, mongodb, clickhouse, dragonfly
 	Status         string               `json:"status" db:"status"` // running, stopped, building, error
@@ -168,13 +169,14 @@ func NewDatabaseHandler(db *sql.DB, dockerClient *docker.Client) *DatabaseHandle
 	}
 }
 
-// GetDatabases returns all database services for a user
+// GetDatabases returns database services. The platform is public-read: every
+// caller sees the fleet, but connection URLs (which may embed credentials)
+// are only exposed to admins.
 func (h *DatabaseHandler) GetDatabases(c *gin.Context) {
-	userID, ok := requireAuthenticatedUserID(c)
-	if !ok {
-		return
-	}
-	rows, err := h.queries.ListDatabaseServicesByUser(c.Request.Context(), userID)
+	userID := optionalUserID(c)
+	isAdmin := contextIsAdmin(c)
+
+	rows, err := h.queries.ListAllDatabaseServices(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch databases"})
 		return
@@ -182,17 +184,23 @@ func (h *DatabaseHandler) GetDatabases(c *gin.Context) {
 
 	databases := make([]DatabaseService, 0, len(rows))
 	for _, row := range rows {
-		db := mapDatabaseServiceListRow(row)
+		db := mapDatabaseServiceRow(row)
 		db = h.reconcileManagedDatabaseState(c.Request.Context(), db)
 
 		db.Metrics = h.resolveDatabaseMetrics(c.Request.Context(), db)
-		if backupConfig, err := h.resolveBackupConfig(c.Request.Context(), userID, db); err == nil {
-			db.Backups = backupConfig
+		privileged := isAdmin || (userID != "" && db.OwnerID == userID)
+		if privileged {
+			if backupConfig, err := h.resolveBackupConfig(c.Request.Context(), db.OwnerID, db); err == nil {
+				db.Backups = backupConfig
+			} else {
+				db.Backups = DatabaseBackupConfig{Backups: []DatabaseBackup{}}
+			}
+			db.Settings = h.generateMockSettings()
+			db.ConnectionURL = h.resolveConnectionURL(db)
 		} else {
-			db.Backups = h.generateMockBackupConfig()
+			db.Backups = DatabaseBackupConfig{Backups: []DatabaseBackup{}}
+			db.ConnectionURL = ""
 		}
-		db.Settings = h.generateMockSettings()
-		db.ConnectionURL = h.resolveConnectionURL(db)
 
 		databases = append(databases, db)
 	}
@@ -202,15 +210,11 @@ func (h *DatabaseHandler) GetDatabases(c *gin.Context) {
 
 // GetDatabase returns a specific database service
 func (h *DatabaseHandler) GetDatabase(c *gin.Context) {
-	userID, ok := requireAuthenticatedUserID(c)
-	if !ok {
-		return
-	}
+	userID := optionalUserID(c)
+	isAdmin := contextIsAdmin(c)
+
 	databaseID := c.Param("id")
-	row, err := h.queries.GetDatabaseServiceByIDAndUser(c.Request.Context(), sqlcdb.GetDatabaseServiceByIDAndUserParams{
-		ID:     databaseID,
-		UserID: userID,
-	})
+	row, err := h.queries.GetDatabaseServiceByID(c.Request.Context(), databaseID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Database not found"})
@@ -219,19 +223,38 @@ func (h *DatabaseHandler) GetDatabase(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch database"})
 		return
 	}
-	db := mapDatabaseServiceGetRow(row)
+	db := mapDatabaseServiceRow(row)
 	db = h.reconcileManagedDatabaseState(c.Request.Context(), db)
 
 	db.Metrics = h.resolveDatabaseMetrics(c.Request.Context(), db)
-	if backupConfig, err := h.resolveBackupConfig(c.Request.Context(), userID, db); err == nil {
-		db.Backups = backupConfig
+	privileged := isAdmin || (userID != "" && db.OwnerID == userID)
+	if privileged {
+		if backupConfig, err := h.resolveBackupConfig(c.Request.Context(), db.OwnerID, db); err == nil {
+			db.Backups = backupConfig
+		} else {
+			db.Backups = DatabaseBackupConfig{Backups: []DatabaseBackup{}}
+		}
+		db.Settings = h.generateMockSettings()
+		db.ConnectionURL = h.resolveConnectionURL(db)
 	} else {
-		db.Backups = h.generateMockBackupConfig()
+		db.Backups = DatabaseBackupConfig{Backups: []DatabaseBackup{}}
+		db.ConnectionURL = ""
 	}
-	db.Settings = h.generateMockSettings()
-	db.ConnectionURL = h.resolveConnectionURL(db)
 
 	c.JSON(http.StatusOK, db)
+}
+
+// effectiveUserID returns the user scope for row-level queries. Admins act
+// on behalf of the row's owner so management works across accounts.
+func (h *DatabaseHandler) effectiveUserID(c *gin.Context, userID, databaseID string) string {
+	if !contextIsAdmin(c) || databaseID == "" {
+		return userID
+	}
+	owner, err := h.queries.GetDatabaseServiceOwnerID(c.Request.Context(), databaseID)
+	if err == nil && owner != "" {
+		return owner
+	}
+	return userID
 }
 
 // CreateDatabase creates a new database service
@@ -357,6 +380,7 @@ func (h *DatabaseHandler) UpdateDatabase(c *gin.Context) {
 		return
 	}
 	databaseID := c.Param("id")
+	userID = h.effectiveUserID(c, userID, databaseID)
 
 	var req DatabaseUpdateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -440,6 +464,7 @@ func (h *DatabaseHandler) DeleteDatabase(c *gin.Context) {
 		return
 	}
 	databaseID := c.Param("id")
+	userID = h.effectiveUserID(c, userID, databaseID)
 
 	exists, err := h.queries.DatabaseServiceExistsByIDAndUser(c.Request.Context(), sqlcdb.DatabaseServiceExistsByIDAndUserParams{
 		ID:     databaseID,
@@ -481,6 +506,7 @@ func (h *DatabaseHandler) PerformDatabaseAction(c *gin.Context) {
 		return
 	}
 	databaseID := c.Param("id")
+	userID = h.effectiveUserID(c, userID, databaseID)
 
 	var req DatabaseActionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -574,6 +600,7 @@ func (h *DatabaseHandler) CreateBackup(c *gin.Context) {
 		return
 	}
 	databaseID := c.Param("id")
+	userID = h.effectiveUserID(c, userID, databaseID)
 
 	row, err := h.queries.GetDatabaseServiceByIDAndUser(c.Request.Context(), sqlcdb.GetDatabaseServiceByIDAndUserParams{
 		ID:     databaseID,
@@ -623,6 +650,7 @@ func (h *DatabaseHandler) RestoreBackup(c *gin.Context) {
 		return
 	}
 	databaseID := c.Param("id")
+	userID = h.effectiveUserID(c, userID, databaseID)
 
 	var req DatabaseRestoreRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -684,6 +712,7 @@ func (h *DatabaseHandler) DownloadBackup(c *gin.Context) {
 		return
 	}
 	databaseID := c.Param("id")
+	userID = h.effectiveUserID(c, userID, databaseID)
 	backupID := c.Param("bid")
 
 	backup, err := h.queries.GetDatabaseBackupByIDAndDatabaseAndUser(c.Request.Context(), sqlcdb.GetDatabaseBackupByIDAndDatabaseAndUserParams{
@@ -904,35 +933,6 @@ func (h *DatabaseHandler) resolveBackupConfig(ctx context.Context, userID string
 	}, nil
 }
 
-func (h *DatabaseHandler) generateMockBackupConfig() DatabaseBackupConfig {
-	return DatabaseBackupConfig{
-		Enabled:    true,
-		LastBackup: &time.Time{},
-		Retention:  30,
-		NextBackup: &time.Time{},
-		Backups: []DatabaseBackup{
-			{
-				ID:        "backup_1",
-				CreatedAt: time.Now().Add(-6 * time.Hour),
-				Size:      "245 MB",
-				Status:    "completed",
-			},
-			{
-				ID:        "backup_2",
-				CreatedAt: time.Now().Add(-24 * time.Hour),
-				Size:      "238 MB",
-				Status:    "completed",
-			},
-			{
-				ID:        "backup_3",
-				CreatedAt: time.Now().Add(-48 * time.Hour),
-				Size:      "241 MB",
-				Status:    "completed",
-			},
-		},
-	}
-}
-
 func (h *DatabaseHandler) generateMockSettings() DatabaseSettings {
 	return DatabaseSettings{
 		MaxConnections: 100,
@@ -1038,26 +1038,10 @@ func (h *DatabaseHandler) resolveManagedRuntimeStatus(ctx context.Context, db Da
 	}
 }
 
-func mapDatabaseServiceListRow(row sqlcdb.ListDatabaseServicesByUserRow) DatabaseService {
+func mapDatabaseServiceRow(row sqlcdb.DatabaseService) DatabaseService {
 	return DatabaseService{
 		ID:             row.ID,
-		Name:           row.Name,
-		Type:           row.Type,
-		Status:         row.Status,
-		Version:        row.Version,
-		Plan:           row.Plan,
-		Region:         row.Region,
-		BackupSchedule: databaseNullString(row.BackupSchedule),
-		NextBackupAt:   databaseNullTimePtr(row.NextBackupAt),
-		ConnectionURL:  databaseNullString(row.ConnectionUrl),
-		CreatedAt:      databaseNullTime(row.CreatedAt),
-		UpdatedAt:      databaseNullTime(row.UpdatedAt),
-	}
-}
-
-func mapDatabaseServiceGetRow(row sqlcdb.GetDatabaseServiceByIDAndUserRow) DatabaseService {
-	return DatabaseService{
-		ID:             row.ID,
+		OwnerID:        row.UserID,
 		Name:           row.Name,
 		Type:           row.Type,
 		Status:         row.Status,

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"containr/internal/database"
 	"containr/internal/docker"
@@ -17,7 +18,6 @@ import (
 // commands run as the container's default user with a 30s ceiling.
 func handleExecInService(c *gin.Context) {
 	serviceID := c.Param("id")
-	userID := c.MustGet("user_id").(string)
 	db := c.MustGet("db").(*database.DB)
 
 	var req struct {
@@ -33,15 +33,18 @@ func handleExecInService(c *gin.Context) {
 		return
 	}
 
-	var ownerID string
-	err := db.QueryRow(
-		`SELECT p.owner_id FROM services s
-		 JOIN projects p ON p.id = s.project_id
-		 WHERE s.id = $1`,
-		serviceID,
-	).Scan(&ownerID)
-	if err != nil || ownerID != userID {
+	serviceUUID, err := uuid.Parse(serviceID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid service ID"})
+		return
+	}
+	projectID, found := serviceProjectID(db, serviceUUID)
+	if !found {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Service not found"})
+		return
+	}
+	if _, allowed := projectManageAccess(c, db, projectID); !allowed {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 		return
 	}
 

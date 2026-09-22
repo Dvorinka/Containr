@@ -86,6 +86,9 @@ func main() {
 		}()
 	}
 
+	// Provision the platform owner account (idempotent, non-fatal).
+	api.EnsureAdminAccount(context.Background(), db, cfg)
+
 	// Setup Gin router
 	if cfg.IsProduction() {
 		gin.SetMode(gin.ReleaseMode)

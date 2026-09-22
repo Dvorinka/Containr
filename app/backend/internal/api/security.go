@@ -589,16 +589,7 @@ func (sh *SecurityHandler) GetAuditLogs(c *gin.Context) {
 }
 
 func (sh *SecurityHandler) requireProjectAccess(c *gin.Context, projectID string) (string, bool) {
-	userIDValue, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
-		return "", false
-	}
-	userID, ok := userIDValue.(string)
-	if !ok || userID == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user context"})
-		return "", false
-	}
+	userID := optionalUserID(c)
 
 	if _, err := uuid.Parse(projectID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid project ID"})
@@ -611,12 +602,14 @@ func (sh *SecurityHandler) requireProjectAccess(c *gin.Context, projectID string
 			SELECT 1
 			FROM projects p
 			WHERE p.id = $1
-			  AND (p.owner_id = $2 OR EXISTS (
+			  AND (p.is_approved
+				   OR $3::bool
+				   OR p.owner_id = $2 OR EXISTS (
 					SELECT 1 FROM project_members pm
 					WHERE pm.project_id = p.id AND pm.user_id = $2
 			  ))
 		)`,
-		projectID, userID,
+		projectID, optionalUserUUID(c), contextIsAdmin(c),
 	).Scan(&hasAccess)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify project access"})

@@ -12,7 +12,7 @@ export function LoadingSpinner({ size = 'md', className = '' }: LoadingSpinnerPr
 
   return (
     <div
-      className={`${sizeClasses[size]} border-[var(--border-primary)] border-t-[var(--text-accent)] rounded-full animate-spin ${className}`}
+      className={`${sizeClasses[size]} border-[var(--border-subtle)] border-t-[var(--accent-primary)] rounded-full animate-spin ${className}`}
       role="status"
       aria-label="Loading"
     >
@@ -28,7 +28,7 @@ interface LoadingOverlayProps {
 export function LoadingOverlay({ message = 'Loading...' }: LoadingOverlayProps) {
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="bg-[var(--bg-primary)] border border-[var(--border-primary)] rounded-lg p-6 flex flex-col items-center gap-4">
+      <div className="bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-lg p-6 flex flex-col items-center gap-4">
         <LoadingSpinner size="lg" />
         <p className="text-sm text-[var(--text-secondary)]">{message}</p>
       </div>

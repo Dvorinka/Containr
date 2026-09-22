@@ -91,28 +91,14 @@ func handleGetServices(c *gin.Context) {
 		return
 	}
 
-	// Check if project exists and user has access
-	var project Project
-	err = db.(*database.DB).QueryRow(
-		"SELECT id, name, owner_id FROM projects WHERE id = $1",
-		projectID,
-	).Scan(&project.ID, &project.Name, &project.OwnerID)
-
-	if err != nil {
+	// Approved projects are public; unapproved ones need owner/member/admin.
+	projectExists, allowed := projectReadAccess(c, db.(*database.DB), projectID)
+	if !projectExists {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
 		return
 	}
-
-	// Get user ID from JWT token (set by auth middleware)
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
-		return
-	}
-
-	// Check if user owns the project
-	if project.OwnerID != userID.(string) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+	if !allowed {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
 		return
 	}
 
@@ -217,7 +203,7 @@ func handleCreateService(c *gin.Context) {
 	}
 
 	// Check if user owns the project
-	if project.OwnerID != userID.(string) {
+	if project.OwnerID != userID.(string) && !contextIsAdmin(c) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 		return
 	}
@@ -344,14 +330,9 @@ func handleGetService(c *gin.Context) {
 		return
 	}
 
-	// Get user ID from JWT token
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
-		return
-	}
-
-	// Get service with project ownership check
+	// Get service — public when its project is approved, otherwise
+	// owner/member/admin only.
+	userID := optionalUserUUID(c)
 	var service Service
 	err = db.(*database.DB).QueryRow(
 		`SELECT s.id, s.project_id, s.name,
@@ -371,8 +352,9 @@ func handleGetService(c *gin.Context) {
 				s.created_at, s.updated_at
 			FROM services s
 			JOIN projects p ON s.project_id = p.id
-			WHERE s.id = $1 AND p.owner_id = $2`,
-		serviceID, userID,
+			WHERE s.id = $1 AND (p.is_approved OR p.owner_id = $2 OR $3::bool
+				OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = p.id AND pm.user_id = $2))`,
+		serviceID, userID, contextIsAdmin(c),
 	).Scan(
 		&service.ID, &service.ProjectID, &service.Name, &service.Type, &service.Status,
 		&service.Image, &service.Command, &service.Environment, &service.GitRepo,
@@ -438,8 +420,8 @@ func handleUpdateService(c *gin.Context) {
 				s.created_at, s.updated_at
 			FROM services s
 			JOIN projects p ON s.project_id = p.id
-			WHERE s.id = $1 AND p.owner_id = $2`,
-		serviceID, userID,
+			WHERE s.id = $1 AND (p.owner_id = $2 OR $3::bool)`,
+		serviceID, userID, contextIsAdmin(c),
 	).Scan(
 		&existingService.ID, &existingService.ProjectID, &existingService.Name, &existingService.Type,
 		&existingService.Status, &existingService.Image, &existingService.Command,

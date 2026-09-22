@@ -69,41 +69,72 @@ func RequestID() gin.HandlerFunc {
 	}
 }
 
+// resolveRequestUser authenticates the request via Bearer JWT or the Better
+// Auth session cookie. On success it returns the local user id and email.
+// tokenErr/hasToken mirror the legacy error contract for Auth.
+func resolveRequestUser(c *gin.Context, jwtSecret string, sessionVerifier *betterAuthSessionVerifier) (userID, email, tokenErr string, hasToken, ok bool) {
+	tokenString, tokenErr, hasToken := extractJWTToken(c)
+	if tokenString != "" {
+		if claims, valid := validateJWTClaims(tokenString, jwtSecret); valid {
+			userIDClaim, exists := claims["user_id"]
+			if exists {
+				id := strings.TrimSpace(fmt.Sprint(userIDClaim))
+				if _, err := uuid.Parse(id); err == nil {
+					if emailClaim, exists := claims["email"]; exists && emailClaim != nil {
+						email = strings.TrimSpace(fmt.Sprint(emailClaim))
+					}
+					return id, email, "", hasToken, true
+				}
+			}
+			tokenErr = "Invalid token claims"
+		} else if tokenErr == "" {
+			tokenErr = "Invalid token"
+		}
+	}
+
+	if sessionVerifier != nil {
+		if id, mail, verified := sessionVerifier.resolveUser(c); verified {
+			return id, mail, "", hasToken, true
+		}
+	}
+
+	return "", "", tokenErr, hasToken, false
+}
+
+// setAuthenticatedContext stores the resolved identity plus the admin flag on
+// the gin context so handlers and RequireAdmin can rely on it.
+func setAuthenticatedContext(c *gin.Context, userID, email string) {
+	c.Set("user_id", userID)
+	c.Set("email", email)
+	c.Set("is_admin", loadIsAdmin(c, userID))
+}
+
+func loadIsAdmin(c *gin.Context, userID string) bool {
+	dbValue, exists := c.Get("db")
+	if !exists {
+		return false
+	}
+	db, ok := dbValue.(*database.DB)
+	if !ok || db == nil || db.DB == nil {
+		return false
+	}
+	var isAdmin bool
+	if err := db.QueryRow(`SELECT is_admin FROM users WHERE id = $1`, userID).Scan(&isAdmin); err != nil {
+		return false
+	}
+	return isAdmin
+}
+
 // Auth middleware for JWT authentication
 func Auth(jwtSecret string) gin.HandlerFunc {
 	sessionVerifier := newBetterAuthSessionVerifier()
 
 	return func(c *gin.Context) {
-		tokenString, tokenErr, hasToken := extractJWTToken(c)
-		if tokenString != "" {
-			if claims, valid := validateJWTClaims(tokenString, jwtSecret); valid {
-				userIDClaim, exists := claims["user_id"]
-				if exists {
-					userID := strings.TrimSpace(fmt.Sprint(userIDClaim))
-					if _, err := uuid.Parse(userID); err == nil {
-						email := ""
-						if emailClaim, ok := claims["email"]; ok && emailClaim != nil {
-							email = strings.TrimSpace(fmt.Sprint(emailClaim))
-						}
-						c.Set("user_id", userID)
-						c.Set("email", email)
-						c.Next()
-						return
-					}
-				}
-				tokenErr = "Invalid token claims"
-			} else if tokenErr == "" {
-				tokenErr = "Invalid token"
-			}
-		}
-
-		if sessionVerifier != nil {
-			if userID, email, ok := sessionVerifier.resolveUser(c); ok {
-				c.Set("user_id", userID)
-				c.Set("email", email)
-				c.Next()
-				return
-			}
+		userID, email, tokenErr, hasToken, ok := resolveRequestUser(c, jwtSecret, sessionVerifier)
+		if ok {
+			setAuthenticatedContext(c, userID, email)
+			c.Next()
+			return
 		}
 
 		if tokenErr != "" {
@@ -118,6 +149,38 @@ func Auth(jwtSecret string) gin.HandlerFunc {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
 		}
 		c.Abort()
+	}
+}
+
+// OptionalAuth resolves identity when a valid credential is present but never
+// rejects the request — anonymous callers simply get no user context. Read
+// endpoints hang off this so the public site can browse approved resources.
+func OptionalAuth(jwtSecret string) gin.HandlerFunc {
+	sessionVerifier := newBetterAuthSessionVerifier()
+
+	return func(c *gin.Context) {
+		if userID, email, _, _, ok := resolveRequestUser(c, jwtSecret, sessionVerifier); ok {
+			setAuthenticatedContext(c, userID, email)
+		}
+		c.Next()
+	}
+}
+
+// RequireAdmin rejects requests whose resolved user is not a platform admin.
+// Must run after Auth (or OptionalAuth) so user_id/is_admin are populated.
+func RequireAdmin() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if _, exists := c.Get("user_id"); !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+			c.Abort()
+			return
+		}
+		if !c.GetBool("is_admin") {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			c.Abort()
+			return
+		}
+		c.Next()
 	}
 }
 

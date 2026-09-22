@@ -24,28 +24,36 @@ func NewScalingHandler(autoScaler *scaling.AutoScaler) *ScalingHandler {
 	}
 }
 
-// RegisterRoutes registers scaling routes
-func (h *ScalingHandler) RegisterRoutes(router *gin.RouterGroup) {
+// RegisterReadRoutes registers public scaling read endpoints.
+func (h *ScalingHandler) RegisterReadRoutes(router *gin.RouterGroup) {
 	scaling := router.Group("/scaling")
 	{
 		scaling.GET("/policies", h.GetScalingPolicies)
-		scaling.POST("/policies", h.SetScalingPolicy)
 		scaling.GET("/policies/:serviceId", h.GetScalingPolicy)
-		scaling.PUT("/policies/:serviceId", h.UpdateScalingPolicy)
-		scaling.DELETE("/policies/:serviceId", h.DeleteScalingPolicy)
 
 		scaling.GET("/services", h.GetServiceStates)
 		scaling.GET("/services/:serviceId", h.GetServiceState)
 		scaling.GET("/services/:serviceId/history", h.GetScalingHistory)
 
-		scaling.POST("/services/:serviceId/scale", h.ManualScale)
-
 		scaling.GET("/status", h.GetScalingStatus)
-		scaling.POST("/enable", h.EnableAutoScaler)
-		scaling.POST("/disable", h.DisableAutoScaler)
 
 		scaling.GET("/metrics", h.GetScalingMetrics)
 		scaling.GET("/events", h.GetScalingEvents)
+	}
+}
+
+// RegisterAdminRoutes registers scaling mutation endpoints.
+func (h *ScalingHandler) RegisterAdminRoutes(router *gin.RouterGroup) {
+	scaling := router.Group("/scaling")
+	{
+		scaling.POST("/policies", h.SetScalingPolicy)
+		scaling.PUT("/policies/:serviceId", h.UpdateScalingPolicy)
+		scaling.DELETE("/policies/:serviceId", h.DeleteScalingPolicy)
+
+		scaling.POST("/services/:serviceId/scale", h.ManualScale)
+
+		scaling.POST("/enable", h.EnableAutoScaler)
+		scaling.POST("/disable", h.DisableAutoScaler)
 	}
 }
 

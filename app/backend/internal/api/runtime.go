@@ -225,13 +225,56 @@ func loadOwnedService(c *gin.Context, db *database.DB) (Service, bool) {
 	return service, true
 }
 
+// loadReadableService loads a service when the caller may read its project:
+// approved projects are public, unapproved ones need owner/member/admin.
+func loadReadableService(c *gin.Context, db *database.DB) (Service, bool) {
+	serviceID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid service ID"})
+		return Service{}, false
+	}
+
+	var service Service
+	var projectID uuid.UUID
+	err = db.QueryRow(
+		`SELECT s.id, s.project_id, s.name,
+		        COALESCE(s.type, s.service_type, ''), COALESCE(s.status, ''),
+		        COALESCE(s.image, s.image_name, ''), COALESCE(s.command, s.start_command, ''),
+		        COALESCE(s.environment, ''), COALESCE(s.git_repo, s.source_url, ''),
+		        COALESCE(s.git_branch, ''), COALESCE(s.build_path, ''),
+		        COALESCE(s.cpu, ''), COALESCE(s.memory, ''),
+		        COALESCE(s.replicas, 1), COALESCE(s.port, 0),
+		        COALESCE(s.domain, ''), COALESCE(s.healthcheck_path, ''),
+		        COALESCE(s.restart_policy, 'unless-stopped'),
+		        s.created_at, s.updated_at, s.project_id
+		 FROM services s
+		 WHERE s.id = $1`,
+		serviceID,
+	).Scan(
+		&service.ID, &service.ProjectID, &service.Name, &service.Type, &service.Status,
+		&service.Image, &service.Command, &service.Environment, &service.GitRepo,
+		&service.GitBranch, &service.BuildPath, &service.CPU, &service.Memory,
+		&service.Replicas, &service.Port, &service.Domain, &service.HealthCheckPath,
+		&service.RestartPolicy, &service.CreatedAt, &service.UpdatedAt, &projectID,
+	)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Service not found"})
+		return Service{}, false
+	}
+	if _, allowed := projectReadAccess(c, db, projectID); !allowed {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Service not found"})
+		return Service{}, false
+	}
+	return service, true
+}
+
 // handleServiceRuntime returns live container state for a service.
 func handleGetServiceRuntime(c *gin.Context) {
 	engine, db, ok := getRuntimeEngine(c)
 	if !ok {
 		return
 	}
-	service, ok := loadOwnedService(c, db)
+	service, ok := loadReadableService(c, db)
 	if !ok {
 		return
 	}

@@ -49,7 +49,9 @@ func setupScalingTestRouter(t *testing.T) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	handler := NewScalingHandler(autoScaler)
-	handler.RegisterRoutes(router.Group("/api/v1"))
+	group := router.Group("/api/v1")
+	handler.RegisterReadRoutes(group)
+	handler.RegisterAdminRoutes(group)
 	return router
 }
 

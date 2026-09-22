@@ -154,6 +154,7 @@ type Project struct {
 	Name        string         `json:"name"`
 	Description sql.NullString `json:"description"`
 	OwnerID     uuid.UUID      `json:"owner_id"`
+	IsApproved  bool           `json:"is_approved"`
 	CreatedAt   sql.NullTime   `json:"created_at"`
 	UpdatedAt   sql.NullTime   `json:"updated_at"`
 }
@@ -205,6 +206,7 @@ type ServiceTemplate struct {
 	Config      json.RawMessage       `json:"config"`
 	Variables   pqtype.NullRawMessage `json:"variables"`
 	IsOfficial  sql.NullBool          `json:"is_official"`
+	OwnerID     uuid.NullUUID         `json:"owner_id"`
 	CreatedAt   sql.NullTime          `json:"created_at"`
 	UpdatedAt   sql.NullTime          `json:"updated_at"`
 }

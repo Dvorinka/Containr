@@ -69,28 +69,10 @@ func handleGetPreviewEnvironments(c *gin.Context) {
 		return
 	}
 
-	// Check if project exists and user has access
-	var project Project
-	err = db.(*database.DB).QueryRow(
-		"SELECT id, name, owner_id FROM projects WHERE id = $1",
-		projectID,
-	).Scan(&project.ID, &project.Name, &project.OwnerID)
-
-	if err != nil {
+	// Approved projects are public; unapproved ones need owner/member/admin.
+	projectExists, allowed := projectReadAccess(c, db.(*database.DB), projectID)
+	if !projectExists || !allowed {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
-		return
-	}
-
-	// Get user ID from JWT token (set by auth middleware)
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
-		return
-	}
-
-	// Check if user owns the project
-	if project.OwnerID != userID.(string) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 		return
 	}
 
@@ -193,7 +175,7 @@ func handleCreatePreviewEnvironment(c *gin.Context) {
 	}
 
 	// Check if user owns the project
-	if project.OwnerID != userID.(string) {
+	if project.OwnerID != userID.(string) && !contextIsAdmin(c) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 		return
 	}
@@ -332,27 +314,22 @@ func handleGetPreviewEnvironment(c *gin.Context) {
 		return
 	}
 
-	// Get user ID from JWT token
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
-		return
-	}
-
-	// Get preview environment with project ownership check
+	// Public when the parent project is approved; otherwise owner/member/admin.
+	userID := optionalUserUUID(c)
 	var env PreviewEnvironment
 	var serviceID sql.NullString
 	var serviceName sql.NullString
 	var serviceType sql.NullString
 	err = db.(*database.DB).QueryRow(
-		`SELECT pe.id, pe.project_id, pe.service_id, pe.branch_name, pe.pr_number, 
+		`SELECT pe.id, pe.project_id, pe.service_id, pe.branch_name, pe.pr_number,
 				pe.environment, pe.status, pe.url, pe.expires_at, pe.created_at, pe.updated_at,
 				s.id as service_id, s.name as service_name, s.type as service_type
 			FROM preview_environments pe
 			LEFT JOIN services s ON pe.service_id = s.id
 			JOIN projects p ON pe.project_id = p.id
-			WHERE pe.id = $1 AND p.owner_id = $2`,
-		envID, userID,
+			WHERE pe.id = $1 AND (p.is_approved OR p.owner_id = $2 OR $3::bool
+				OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = p.id AND pm.user_id = $2))`,
+		envID, userID, contextIsAdmin(c),
 	).Scan(
 		&env.ID, &env.ProjectID, &env.ServiceID, &env.BranchName, &env.PRNumber,
 		&env.Environment, &env.Status, &env.URL, &env.ExpiresAt, &env.CreatedAt, &env.UpdatedAt,
@@ -414,8 +391,8 @@ func handleUpdatePreviewEnvironment(c *gin.Context) {
 				pe.environment, pe.status, pe.url, pe.expires_at, pe.created_at, pe.updated_at
 			FROM preview_environments pe
 			JOIN projects p ON pe.project_id = p.id
-			WHERE pe.id = $1 AND p.owner_id = $2`,
-		envID, userID,
+			WHERE pe.id = $1 AND (p.owner_id = $2 OR $3::bool)`,
+		envID, userID, contextIsAdmin(c),
 	).Scan(
 		&existingEnv.ID, &existingEnv.ProjectID, &existingEnv.ServiceID, &existingEnv.BranchName,
 		&existingEnv.PRNumber, &existingEnv.Environment, &existingEnv.Status, &existingEnv.URL,
@@ -498,7 +475,7 @@ func handleDeletePreviewEnvironment(c *gin.Context) {
 	}
 
 	// Check if user owns the project
-	if projectOwnerID != userID.(string) {
+	if projectOwnerID != userID.(string) && !contextIsAdmin(c) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 		return
 	}
@@ -568,8 +545,8 @@ func handlePromotePreviewEnvironment(c *gin.Context) {
 		`SELECT pe.id, pe.project_id, pe.service_id, pe.branch_name, pe.environment, pe.status
 			FROM preview_environments pe
 			JOIN projects p ON pe.project_id = p.id
-			WHERE pe.id = $1 AND p.owner_id = $2`,
-		envID, userID,
+			WHERE pe.id = $1 AND (p.owner_id = $2 OR $3::bool)`,
+		envID, userID, contextIsAdmin(c),
 	).Scan(
 		&env.ID, &env.ProjectID, &env.ServiceID, &env.BranchName, &env.Environment, &env.Status,
 	)
@@ -665,8 +642,8 @@ func handleCleanupExpiredPreviewEnvironments(c *gin.Context) {
 		`SELECT pe.id, pe.project_id, pe.service_id, pe.branch_name, pe.environment
 			FROM preview_environments pe
 			JOIN projects p ON pe.project_id = p.id
-			WHERE p.owner_id = $1 AND pe.expires_at < NOW() AND pe.status != 'expired'`,
-		userID,
+			WHERE (p.owner_id = $1 OR $2::bool) AND pe.expires_at < NOW() AND pe.status != 'expired'`,
+		userID, contextIsAdmin(c),
 	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to find expired preview environments"})

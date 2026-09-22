@@ -96,6 +96,9 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 		c.Next()
 	})
 
+	// Seed the official service template catalog (idempotent upserts).
+	go SeedOfficialTemplates(context.Background(), db)
+
 	go func() {
 		if err := haManager.Start(context.Background()); err != nil {
 			log.Printf("HA manager exited: %v", err)
@@ -136,7 +139,7 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 
 		if redis == nil {
 			redisStatus = "unhealthy"
-			checks["redis"] = redisStatus
+			checks["redis"] = "unhealthy"
 			checks["redisError"] = "redis client not initialized"
 			overallStatus = "degraded"
 			statusCode = http.StatusServiceUnavailable
@@ -177,163 +180,182 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			public.POST("/auth/register", handleRegister)
 		}
 
-		// Protected routes (authentication required)
-		protected := v1.Group("/")
-		protected.Use(middleware.Auth(cfg.JWTSecret))
+		// Read routes — public browsing. OptionalAuth resolves a session when
+		// present so handlers can widen visibility for owners/admins; anonymous
+		// callers see approved resources only.
+		read := v1.Group("/")
+		read.Use(middleware.OptionalAuth(cfg.JWTSecret))
 		{
-			// User routes
-			protected.GET("/user/profile", handleGetProfile)
-			protected.PUT("/user/profile", handleUpdateProfile)
-			protected.POST("/users", handleCreateUser)
+			read.GET("/projects", handleGetProjects)
+			read.GET("/projects/:id", handleGetProject)
+			read.GET("/projects/:id/services", handleGetServices)
+			read.GET("/projects/:id/preview-environments", handleGetPreviewEnvironments)
+			read.GET("/projects/:id/security/history", securityHandler.GetProjectSecurityHistory)
+			read.GET("/projects/:id/vulnerabilities", securityHandler.GetVulnerabilities)
+			read.GET("/projects/:id/security/metrics", securityHandler.GetSecurityMetrics)
 
-			// Platform settings (admin-gated inside handlers)
-			protected.GET("/settings", handleGetSettings)
-			protected.PUT("/settings", handleUpdateSettings)
+			read.GET("/services/:id", handleGetService)
+			read.GET("/services/:id/metrics", handleGetServiceMetrics)
+			read.GET("/services/:id/runtime", handleGetServiceRuntime)
+			read.GET("/services/:id/deployments", handleGetDeployments)
+			read.GET("/deployments", handleGetRecentDeployments)
+			read.GET("/deployments/:id", handleGetDeployment)
 
-			// Project routes
-			protected.GET("/projects", handleGetProjects)
-			protected.POST("/projects", handleCreateProject)
+			read.GET("/databases", databaseHandler.GetDatabases)
+			read.GET("/databases/:id", databaseHandler.GetDatabase)
 
-			// Service routes (nested under projects)
-			protected.GET("/projects/:id/services", handleGetServices)
-			protected.POST("/projects/:id/services", handleCreateService)
+			read.GET("/templates", handleGetTemplates)
+			read.GET("/templates/:id", handleGetTemplate)
 
-			// Generic project routes
-			protected.GET("/projects/:id", handleGetProject)
-			protected.PUT("/projects/:id", handleUpdateProject)
-			protected.DELETE("/projects/:id", handleDeleteProject)
+			read.GET("/cron-jobs", handleGetCronJobs)
+			read.GET("/cron-jobs/:id", handleGetCronJob)
+			read.GET("/cron-jobs/:id/executions", handleGetCronExecutions)
 
-			// Service routes
-			protected.GET("/services/:id", handleGetService)
-			protected.PUT("/services/:id", handleUpdateService)
-			protected.DELETE("/services/:id", handleDeleteService)
-			protected.GET("/services/:id/metrics", handleGetServiceMetrics)
+			read.GET("/security/scans/:id", securityHandler.GetSecurityScan)
+			read.GET("/security/compliance/reports/:id", securityHandler.GetComplianceReport)
+			read.GET("/security/compliance/frameworks", securityHandler.GetComplianceFrameworks)
 
-			// Runtime lifecycle (Railway-style)
-			protected.GET("/services/:id/runtime", handleGetServiceRuntime)
-			protected.POST("/services/:id/start", handleServiceStart)
-			protected.POST("/services/:id/stop", handleServiceStop)
-			protected.POST("/services/:id/restart", handleServiceRestart)
-			protected.POST("/services/:id/redeploy", handleServiceRedeploy)
+			read.GET("/preview-environments/:id", handleGetPreviewEnvironment)
 
-			// Deployment routes
-			protected.GET("/services/:id/deployments", handleGetDeployments)
-			protected.POST("/services/:id/deployments", handleCreateDeployment)
-			protected.GET("/deployments", handleGetRecentDeployments)
-			protected.GET("/deployments/:id", handleGetDeployment)
-			protected.POST("/deployments/:id/rollback", handleRollbackDeployment)
+			read.GET("/system/upgrade/status", handleGetUpgradeStatus)
+			read.GET("/system/host", handleGetHostMonitoring)
 
-			// Environment variables routes
-			protected.GET("/services/:id/variables", handleGetVariables)
-			protected.PUT("/services/:id/variables", handleUpdateVariables)
+			// HA + scaling read endpoints (status, policies, health, alerts)
+			haAPIManager.RegisterReadRoutes(read)
+			scalingHandler.RegisterReadRoutes(read)
+		}
 
-			// Logs routes
-			protected.GET("/services/:id/logs", handleGetLogs)
-			protected.GET("/deployments/:id/logs", handleGetDeploymentLogs)
+		// Authenticated routes — a valid session is required and handlers
+		// enforce ownership; platform admins additionally pass every check.
+		authed := v1.Group("/")
+		authed.Use(middleware.Auth(cfg.JWTSecret))
+		{
+			authed.GET("/user/profile", handleGetProfile)
+			authed.PUT("/user/profile", handleUpdateProfile)
 
-			// One-off exec console (docker exec, 30s ceiling)
-			protected.POST("/services/:id/exec", handleExecInService)
-
-			// Git integration routes
-			protected.GET("/git/github-app/install-url", handleGetGitHubAppInstallURL)
-			protected.POST("/git/github-app/connect", handleConnectGitHubApp)
-			protected.GET("/git/providers", handleGetGitProviders)
-			protected.POST("/git/providers", handleCreateGitProvider)
-			protected.DELETE("/git/providers/:providerId", handleDeleteGitProvider)
-			protected.GET("/git/providers/:providerId/repositories", handleGetGitRepositories)
-			protected.GET("/git/providers/:providerId/repositories/:owner/:repo/branches", handleGetGitRepositoryBranches)
-			protected.POST("/git/repositories/connect", handleConnectGitRepository)
-			protected.GET("/git/repositories", handleGetConnectedRepositories)
-			protected.POST("/git/webhooks", handleCreateWebhook)
-
-			// Build routes
-			protected.POST("/builds", buildHandler.StartBuild)
-			protected.GET("/builds", buildHandler.ListBuilds)
-			protected.GET("/builds/:id", buildHandler.GetBuildStatus)
-			protected.POST("/builds/:id/cancel", buildHandler.CancelBuild)
-			protected.GET("/builds/:id/logs", buildHandler.GetBuildLogs)
-			protected.POST("/builds/plan", buildHandler.GetBuildPlan)
-			protected.GET("/builds/detect", buildHandler.DetectBuildType)
-
-			// System routes
-			protected.GET("/system/upgrade/status", handleGetUpgradeStatus)
-			protected.POST("/system/upgrade/pull", handlePullUpgradeImage)
-			protected.GET("/system/host", handleGetHostMonitoring)
-
-			// Scaling routes
-			scalingHandler.RegisterRoutes(protected)
-			haAPIManager.RegisterRoutes(protected)
-
-			// Database routes
-			protected.GET("/databases", databaseHandler.GetDatabases)
-			protected.POST("/databases", databaseHandler.CreateDatabase)
-			protected.GET("/databases/:id", databaseHandler.GetDatabase)
-			protected.PUT("/databases/:id", databaseHandler.UpdateDatabase)
-			protected.DELETE("/databases/:id", databaseHandler.DeleteDatabase)
-			protected.POST("/databases/:id/action", databaseHandler.PerformDatabaseAction)
-			protected.POST("/databases/:id/backup", databaseHandler.CreateBackup)
-			protected.POST("/databases/:id/restore", databaseHandler.RestoreBackup)
-			protected.GET("/databases/:id/backups/:bid/download", databaseHandler.DownloadBackup)
-
-			// Notification routes
-			protected.GET("/notifications", handleListNotifications)
-			protected.POST("/notifications/:id/read", handleMarkNotificationRead)
-			protected.POST("/notifications/read-all", handleMarkAllNotificationsRead)
-
-			// Node Agent routes
-			agentHandler.SetupRoutes(protected)
-
-			// Preview Environments routes
-			protected.GET("/projects/:id/preview-environments", handleGetPreviewEnvironments)
-			protected.POST("/projects/:id/preview-environments", handleCreatePreviewEnvironment)
-			protected.GET("/preview-environments/:id", handleGetPreviewEnvironment)
-			protected.PUT("/preview-environments/:id", handleUpdatePreviewEnvironment)
-			protected.DELETE("/preview-environments/:id", handleDeletePreviewEnvironment)
-			protected.POST("/preview-environments/:id/promote", handlePromotePreviewEnvironment)
-			protected.POST("/preview-environments/cleanup-expired", handleCleanupExpiredPreviewEnvironments)
-
-			// Security routes
-			protected.POST("/security/scans", securityHandler.StartSecurityScan)
-			protected.GET("/security/scans/:id", securityHandler.GetSecurityScan)
-			protected.GET("/projects/:id/security/history", securityHandler.GetProjectSecurityHistory)
-			protected.GET("/projects/:id/vulnerabilities", securityHandler.GetVulnerabilities)
-			protected.PUT("/vulnerabilities/:id", securityHandler.UpdateVulnerability)
-			protected.POST("/security/compliance/assess", securityHandler.StartComplianceAssessment)
-			protected.GET("/security/compliance/reports/:id", securityHandler.GetComplianceReport)
-			protected.GET("/security/compliance/frameworks", securityHandler.GetComplianceFrameworks)
-			protected.POST("/security/compliance/gdpr/init", securityHandler.InitializeGDPRFramework)
-			protected.GET("/projects/:id/security/metrics", securityHandler.GetSecurityMetrics)
-			protected.GET("/projects/:id/security/audit-logs", securityHandler.GetAuditLogs)
+			authed.GET("/notifications", handleListNotifications)
+			authed.POST("/notifications/:id/read", handleMarkNotificationRead)
+			authed.POST("/notifications/read-all", handleMarkAllNotificationsRead)
 
 			// WebSocket endpoint
-			protected.GET("/ws", handleWebSocket)
+			authed.GET("/ws", handleWebSocket)
 
-			// Templates routes
-			protected.GET("/templates", handleGetTemplates)
-			protected.GET("/templates/:id", handleGetTemplate)
-			protected.POST("/templates/:id/deploy", handleCreateFromTemplate)
+			// Owned-resource mutations — handlers scope to the caller and
+			// admit admins. New projects land unapproved until an admin
+			// publishes them.
+			authed.POST("/projects", handleCreateProject)
+			authed.POST("/projects/:id/services", handleCreateService)
+			authed.PUT("/projects/:id", handleUpdateProject)
+			authed.DELETE("/projects/:id", handleDeleteProject)
 
-			// Cron Jobs routes
-			protected.GET("/cron-jobs", handleGetCronJobs)
-			protected.POST("/cron-jobs", handleCreateCronJob)
-			protected.GET("/cron-jobs/:id", handleGetCronJob)
-			protected.PUT("/cron-jobs/:id", handleUpdateCronJob)
-			protected.DELETE("/cron-jobs/:id", handleDeleteCronJob)
-			protected.GET("/cron-jobs/:id/executions", handleGetCronExecutions)
-			protected.POST("/cron-jobs/:id/trigger", handleTriggerCronJob)
+			authed.PUT("/services/:id", handleUpdateService)
+			authed.DELETE("/services/:id", handleDeleteService)
+			authed.POST("/services/:id/start", handleServiceStart)
+			authed.POST("/services/:id/stop", handleServiceStop)
+			authed.POST("/services/:id/restart", handleServiceRestart)
+			authed.POST("/services/:id/redeploy", handleServiceRedeploy)
+			authed.POST("/services/:id/deployments", handleCreateDeployment)
+			authed.POST("/deployments/:id/rollback", handleRollbackDeployment)
 
-			// Audit Logs routes
-			protected.GET("/audit-logs", handleGetAuditLogs)
-			protected.GET("/audit-logs/:resource/:id", handleGetResourceAuditLogs)
+			// Environment variables — secrets, owner/admin only.
+			authed.GET("/services/:id/variables", handleGetVariables)
+			authed.PUT("/services/:id/variables", handleUpdateVariables)
+
+			// Runtime logs — container stdout routinely echoes secrets,
+			// so these stay behind authentication like build logs.
+			authed.GET("/services/:id/logs", handleGetLogs)
+			authed.GET("/deployments/:id/logs", handleGetDeploymentLogs)
+
+			// One-off exec console (docker exec, 30s ceiling)
+			authed.POST("/services/:id/exec", handleExecInService)
+
+			// Git integration — providers carry per-user credentials.
+			authed.GET("/git/github-app/install-url", handleGetGitHubAppInstallURL)
+			authed.POST("/git/github-app/connect", handleConnectGitHubApp)
+			authed.GET("/git/providers", handleGetGitProviders)
+			authed.POST("/git/providers", handleCreateGitProvider)
+			authed.DELETE("/git/providers/:providerId", handleDeleteGitProvider)
+			authed.GET("/git/providers/:providerId/repositories", handleGetGitRepositories)
+			authed.GET("/git/providers/:providerId/repositories/:owner/:repo/branches", handleGetGitRepositoryBranches)
+			authed.POST("/git/repositories/connect", handleConnectGitRepository)
+			authed.GET("/git/repositories", handleGetConnectedRepositories)
+			authed.POST("/git/webhooks", handleCreateWebhook)
+
+			// Builds have no per-user scoping and logs may carry secrets —
+			// keep every build endpoint behind authentication.
+			authed.POST("/builds", buildHandler.StartBuild)
+			authed.GET("/builds", buildHandler.ListBuilds)
+			authed.GET("/builds/:id", buildHandler.GetBuildStatus)
+			authed.GET("/builds/:id/logs", buildHandler.GetBuildLogs)
+			authed.GET("/builds/detect", buildHandler.DetectBuildType)
+			authed.POST("/builds/:id/cancel", buildHandler.CancelBuild)
+			authed.POST("/builds/plan", buildHandler.GetBuildPlan)
+
+			authed.POST("/databases", databaseHandler.CreateDatabase)
+			authed.PUT("/databases/:id", databaseHandler.UpdateDatabase)
+			authed.DELETE("/databases/:id", databaseHandler.DeleteDatabase)
+			authed.POST("/databases/:id/action", databaseHandler.PerformDatabaseAction)
+			authed.POST("/databases/:id/backup", databaseHandler.CreateBackup)
+			authed.POST("/databases/:id/restore", databaseHandler.RestoreBackup)
+			authed.GET("/databases/:id/backups/:bid/download", databaseHandler.DownloadBackup)
+
+			authed.POST("/projects/:id/preview-environments", handleCreatePreviewEnvironment)
+			authed.PUT("/preview-environments/:id", handleUpdatePreviewEnvironment)
+			authed.DELETE("/preview-environments/:id", handleDeletePreviewEnvironment)
+			authed.POST("/preview-environments/:id/promote", handlePromotePreviewEnvironment)
+
+			authed.POST("/security/scans", securityHandler.StartSecurityScan)
+			authed.PUT("/vulnerabilities/:id", securityHandler.UpdateVulnerability)
+			authed.POST("/security/compliance/assess", securityHandler.StartComplianceAssessment)
+			authed.POST("/security/compliance/gdpr/init", securityHandler.InitializeGDPRFramework)
+			authed.GET("/projects/:id/security/audit-logs", securityHandler.GetAuditLogs)
+
+			// User templates — ownership enforced inside the handlers.
+			authed.POST("/templates", handleCreateTemplate)
+			authed.PUT("/templates/:id", handleUpdateTemplate)
+			authed.DELETE("/templates/:id", handleDeleteTemplate)
+			authed.POST("/templates/:id/deploy", handleCreateFromTemplate)
+
+			authed.POST("/cron-jobs", handleCreateCronJob)
+			authed.PUT("/cron-jobs/:id", handleUpdateCronJob)
+			authed.DELETE("/cron-jobs/:id", handleDeleteCronJob)
+			authed.POST("/cron-jobs/:id/trigger", handleTriggerCronJob)
+		}
+
+		// Admin routes — platform-wide controls and cross-user management.
+		admin := v1.Group("/")
+		admin.Use(middleware.Auth(cfg.JWTSecret))
+		admin.Use(middleware.RequireAdmin())
+		{
+			admin.GET("/admin/overview", handleAdminOverview)
+			admin.GET("/admin/users", handleAdminListUsers)
+			admin.PATCH("/admin/users/:id", handleAdminSetUserAdmin)
+			admin.PATCH("/admin/projects/:id", handleAdminSetProjectApproval)
+
+			admin.POST("/users", handleCreateUser)
+
+			admin.GET("/settings", handleGetSettings)
+			admin.PUT("/settings", handleUpdateSettings)
+
+			admin.POST("/system/upgrade/pull", handlePullUpgradeImage)
+			admin.POST("/preview-environments/cleanup-expired", handleCleanupExpiredPreviewEnvironments)
+
+			// HA + scaling + agent mutations — platform-level controls.
+			haAPIManager.RegisterAdminRoutes(admin)
+			scalingHandler.RegisterAdminRoutes(admin)
+			agentHandler.SetupAdminRoutes(admin)
+
+			admin.GET("/audit-logs", handleGetAuditLogs)
+			admin.GET("/audit-logs/:resource/:id", handleGetResourceAuditLogs)
 
 			// API Gateway routes (merged APwhy) - namespaced to avoid
 			// colliding with Containr's own /services paths.
-			gateway := protected.Group("/gateway")
+			gateway := admin.Group("/gateway")
 			{
 				gateway.GET("/services", handleAPwhyServicesList)
 				gateway.POST("/services", handleAPwhyServicesCreate)
 				gateway.PATCH("/services/:id", handleAPwhyServicesPatch)
-				gateway.GET("/services/:id/validate", handleAPwhyServiceValidate)
+				gateway.GET("/services/:id", handleAPwhyServiceValidate)
 
 				gateway.GET("/keys", handleAPwhyKeysList)
 				gateway.POST("/keys", handleAPwhyKeysCreate)

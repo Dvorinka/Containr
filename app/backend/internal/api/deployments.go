@@ -64,36 +64,22 @@ func handleGetDeployments(c *gin.Context) {
 		return
 	}
 
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+	projectID, found := serviceProjectID(db.(*database.DB), serviceID)
+	if !found {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Service not found"})
 		return
 	}
-
-	var ownerCheck string
-	err = db.(*database.DB).QueryRow(
-		`SELECT p.owner_id FROM services s 
-		 JOIN projects p ON s.project_id = p.id 
-		 WHERE s.id = $1`,
-		serviceID,
-	).Scan(&ownerCheck)
-
-	if err != nil {
+	if _, allowed := projectReadAccess(c, db.(*database.DB), projectID); !allowed {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Service not found"})
 		return
 	}
 
-	if ownerCheck != userID.(string) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
-		return
-	}
-
 	rows, err := db.(*database.DB).Query(
-		`SELECT id, service_id, commit_hash, status, image_name, image_tag, 
+		`SELECT id, service_id, commit_hash, status, image_name, image_tag,
 		        build_log, runtime_log, error, started_at, completed_at, created_at, updated_at
-		 FROM deployments 
-		 WHERE service_id = $1 
-		 ORDER BY created_at DESC 
+		 FROM deployments
+		 WHERE service_id = $1
+		 ORDER BY created_at DESC
 		 LIMIT 50`,
 		serviceID,
 	)
@@ -143,11 +129,8 @@ func handleGetRecentDeployments(c *gin.Context) {
 		return
 	}
 
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
-		return
-	}
+	userID := optionalUserUUID(c)
+	isAdmin := contextIsAdmin(c)
 
 	limit := 10
 	if v := c.Query("limit"); v != "" {
@@ -162,10 +145,11 @@ func handleGetRecentDeployments(c *gin.Context) {
 		 FROM deployments d
 		 JOIN services s ON s.id = d.service_id
 		 JOIN projects p ON p.id = s.project_id
-		 WHERE p.owner_id = $1
+		 WHERE p.is_approved OR p.owner_id = $1 OR $2::bool
+		    OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = p.id AND pm.user_id = $1)
 		 ORDER BY d.created_at DESC
-		 LIMIT $2`,
-		userID.(string), limit,
+		 LIMIT $3`,
+		userID, isAdmin, limit,
 	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve deployments"})
@@ -557,18 +541,12 @@ func handleGetDeployment(c *gin.Context) {
 		return
 	}
 
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
-		return
-	}
-
 	var d DeploymentModel
-	var ownerCheck string
+	var projectID uuid.UUID
 	err = db.(*database.DB).QueryRow(
-		`SELECT d.id, d.service_id, d.commit_hash, d.status, d.image_name, d.image_tag, 
-		        d.build_log, d.runtime_log, d.error, d.started_at, d.completed_at, 
-		        d.created_at, d.updated_at, p.owner_id
+		`SELECT d.id, d.service_id, d.commit_hash, d.status, d.image_name, d.image_tag,
+		        d.build_log, d.runtime_log, d.error, d.started_at, d.completed_at,
+		        d.created_at, d.updated_at, p.id
 		 FROM deployments d
 		 JOIN services s ON d.service_id = s.id
 		 JOIN projects p ON s.project_id = p.id
@@ -577,7 +555,7 @@ func handleGetDeployment(c *gin.Context) {
 	).Scan(
 		&d.ID, &d.ServiceID, &d.CommitHash, &d.Status, &d.ImageName, &d.ImageTag,
 		&d.BuildLog, &d.RuntimeLog, &d.Error, &d.StartedAt, &d.CompletedAt,
-		&d.CreatedAt, &d.UpdatedAt, &ownerCheck,
+		&d.CreatedAt, &d.UpdatedAt, &projectID,
 	)
 
 	if err != nil {
@@ -585,8 +563,8 @@ func handleGetDeployment(c *gin.Context) {
 		return
 	}
 
-	if ownerCheck != userID.(string) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+	if _, allowed := projectReadAccess(c, db.(*database.DB), projectID); !allowed {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Deployment not found"})
 		return
 	}
 
@@ -639,7 +617,7 @@ func handleRollbackDeployment(c *gin.Context) {
 		return
 	}
 
-	if ownerCheck != userID.(string) {
+	if ownerCheck != userID.(string) && !contextIsAdmin(c) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 		return
 	}

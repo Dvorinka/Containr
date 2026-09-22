@@ -91,6 +91,12 @@ type Config struct {
 
 	// Dashboard UI Configuration
 	DashboardUIBasePath string `env:"DASHBOARD_UI_BASE_PATH" default:"/"`
+
+	// Admin bootstrap — when set, the account is provisioned/promoted on
+	// startup so the owner always has admin credentials that work.
+	AdminEmail    string `env:"ADMIN_EMAIL" default:""`
+	AdminPassword string `env:"ADMIN_PASSWORD" default:""`
+	AdminName     string `env:"ADMIN_NAME" default:""`
 }
 
 // Environment represents the application environment
@@ -180,6 +186,10 @@ func Load() *Config {
 	cfg.MaxRequestBody = getenvInt64("MAX_REQUEST_BODY_BYTES", 10*1024*1024)
 
 	cfg.DashboardUIBasePath = getenv("DASHBOARD_UI_BASE_PATH", "/")
+
+	cfg.AdminEmail = getenv("ADMIN_EMAIL", "")
+	cfg.AdminPassword = getenv("ADMIN_PASSWORD", "")
+	cfg.AdminName = getenv("ADMIN_NAME", "")
 
 	// Validate configuration
 	if err := cfg.Validate(); err != nil {

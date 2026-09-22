@@ -25,43 +25,58 @@ func NewHAManager(haManager *ha.HighAvailabilityManager) *HAManager {
 	}
 }
 
-// RegisterRoutes registers HA routes
-func (h *HAManager) RegisterRoutes(router *gin.RouterGroup) {
+// RegisterReadRoutes registers public HA read endpoints.
+func (h *HAManager) RegisterReadRoutes(router *gin.RouterGroup) {
 	ha := router.Group("/ha")
 	{
 		ha.GET("/status", h.GetHAStatus)
+
+		// Failover policies
+		ha.GET("/failover/policies", h.GetFailoverPolicies)
+		ha.GET("/failover/policies/:serviceId", h.GetFailoverPolicy)
+
+		// Health checks
+		ha.GET("/health/checks", h.GetHealthChecks)
+		ha.GET("/health/checks/:checkId", h.GetHealthCheck)
+		ha.GET("/health/results", h.GetHealthResults)
+
+		// Alerts
+		ha.GET("/alerts/rules", h.GetAlertRules)
+		ha.GET("/alerts/rules/:ruleId", h.GetAlertRule)
+		ha.GET("/alerts/active", h.GetActiveAlerts)
+
+		// Notifiers
+		ha.GET("/notifiers", h.GetNotifiers)
+		ha.GET("/notifiers/:notifierId", h.GetNotifier)
+	}
+}
+
+// RegisterAdminRoutes registers HA mutation endpoints.
+func (h *HAManager) RegisterAdminRoutes(router *gin.RouterGroup) {
+	ha := router.Group("/ha")
+	{
 		ha.POST("/enable", h.EnableHA)
 		ha.POST("/disable", h.DisableHA)
 		ha.POST("/failover", h.TriggerFailover)
 
 		// Failover policies
-		ha.GET("/failover/policies", h.GetFailoverPolicies)
 		ha.POST("/failover/policies", h.SetFailoverPolicy)
-		ha.GET("/failover/policies/:serviceId", h.GetFailoverPolicy)
 		ha.PUT("/failover/policies/:serviceId", h.UpdateFailoverPolicy)
 		ha.DELETE("/failover/policies/:serviceId", h.DeleteFailoverPolicy)
 
 		// Health checks
-		ha.GET("/health/checks", h.GetHealthChecks)
 		ha.POST("/health/checks", h.AddHealthCheck)
-		ha.GET("/health/checks/:checkId", h.GetHealthCheck)
 		ha.PUT("/health/checks/:checkId", h.UpdateHealthCheck)
 		ha.DELETE("/health/checks/:checkId", h.DeleteHealthCheck)
-		ha.GET("/health/results", h.GetHealthResults)
 
 		// Alerts
-		ha.GET("/alerts/rules", h.GetAlertRules)
 		ha.POST("/alerts/rules", h.AddAlertRule)
-		ha.GET("/alerts/rules/:ruleId", h.GetAlertRule)
 		ha.PUT("/alerts/rules/:ruleId", h.UpdateAlertRule)
 		ha.DELETE("/alerts/rules/:ruleId", h.DeleteAlertRule)
-		ha.GET("/alerts/active", h.GetActiveAlerts)
 		ha.POST("/alerts/:alertId/resolve", h.ResolveAlert)
 
 		// Notifiers
-		ha.GET("/notifiers", h.GetNotifiers)
 		ha.POST("/notifiers", h.AddNotifier)
-		ha.GET("/notifiers/:notifierId", h.GetNotifier)
 		ha.DELETE("/notifiers/:notifierId", h.DeleteNotifier)
 	}
 }
