@@ -28,6 +28,11 @@ and deploy — no Kubernetes, no cloud bill. Services appear as nodes with
 auto-inferred connections; logs, metrics, builds, and rollbacks are one
 click away.
 
+The platform doubles as a public showcase: visitors browse approved projects
+and the template catalog without an account, while owners manage everything
+behind sign-in and a platform admin approves, curates, and moderates from a
+dedicated console.
+
 ## Screenshots
 
 | Projects dashboard | Project canvas |
@@ -41,15 +46,31 @@ click away.
 ## Features
 
 - **Project canvas** — visual service topology, groups, drag/drop, auto-inferred connections, right-click lifecycle actions
+- **Public project catalog** — approved projects are browsable anonymously; new projects stay private until an admin approves them
+- **Admin console** (`/admin`) — platform stats, project approval/edit/delete, user admin management
 - **Private networking** — every project gets an isolated Docker network; services reach each other by name (`web:3000`) and share variables via `${{service.KEY}}` references
-- **Deployments & builds** — Docker deploys with history, logs, image rollback, live build status
+- **Deployments & builds** — Docker deploys with history, image rollback, live build status
 - **Runtime** — replicas, published ports, domains, health checks, restart policies; start/stop/restart/redeploy from canvas or service page
 - **Git integration** — GitHub, GitLab, Bitbucket, Gitea; webhooks, GitHub App
-- **Managed databases** — one-click provisioning with backup/restore
+- **Managed databases** — create PostgreSQL, MySQL, MariaDB, MongoDB, Redis, Dragonfly, or ClickHouse directly from `/databases`, with backup/restore
+- **Template catalog** — 30 official templates (NocoDB, Plausible, MinIO, n8n, …) plus user-defined templates with JSON upload and owner-scoped edit/delete
 - **Metrics** — per-service Docker stats plus host CPU/memory/disk telemetry
-- **Templates, cron, previews** — service catalog, scheduled jobs, preview deploys
-- **Auth & security** — Better Auth sessions (email/password self-hosted), audit logs, vuln scans
+- **HA & scaling** — failover policies, node agents, autoscaling rules
+- **Auth & security** — Better Auth sessions (email/password self-hosted), audit logs, vulnerability scans
+- **Integrated docs** — searchable documentation rendered in-app on the landing page and `/docs`; syncs from GitHub, falls back to a bundled snapshot offline
 - **Networking** — Traefik reverse proxy, optional Cloudflare Tunnel
+
+## Access model
+
+| Audience | Can do |
+| --- | --- |
+| **Anonymous** | Browse approved projects, services, templates, databases, HA status, docs |
+| **Signed-in user** | Create/manage own projects, services, databases, templates; view own logs, variables, builds, deployments |
+| **Admin** | Everything above plus project approval/moderation, user admin flags, HA manager controls, agent tokens, platform settings |
+
+Logs, variables, exec consoles, and database connection URLs are never
+public — they require owner, member, or admin access regardless of a
+project's public visibility.
 
 ## Quick Start
 
@@ -62,11 +83,22 @@ curl -fsSL https://raw.githubusercontent.com/Dvorinka/Containr/main/install.sh |
 Installs into `./containr`, generates secrets, pulls the published `:latest`
 images, and starts the stack — UI at `http://localhost:3000`, API at
 `http://localhost:8082`. Non-interactive; re-runs never overwrite `.env`.
-On first visit you create the owner account (email/password); registration
-then closes automatically. The owner can reopen it and configure a Cloudflare
-Tunnel token under **Settings → Platform** — in-app values override env vars.
 
-Override with env vars:
+The platform admin is provisioned at startup from environment variables:
+
+```bash
+ADMIN_EMAIL=you@example.com
+ADMIN_PASSWORD=<generated>   # keep in a local untracked file
+ADMIN_NAME=Your Name         # optional
+```
+
+Both the local account and the Better Auth session account are created, so
+either sign-in path works. Without `ADMIN_*`, the first registered account
+becomes owner; registration then closes automatically. The owner can reopen
+it and configure a Cloudflare Tunnel token under **Settings → Platform** —
+in-app values override env vars.
+
+Override install defaults with env vars:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Dvorinka/Containr/main/install.sh | \
@@ -91,10 +123,14 @@ docs/           Guides, OpenAPI spec, design documents
 ```
 
 All configuration is via environment variables — see `.env.example`. Never
-commit `.env` or `.env.prod`; if a secret was ever committed, rotate it.
+commit `.env` or `.env.prod`; keep generated admin credentials in a local
+untracked file (e.g. `admin-credentials.local`). If a secret was ever
+committed, rotate it.
 
 ## Documentation
 
+- In-app: the landing page and `/docs` render searchable docs — synced from
+  this repository, with a bundled snapshot so they are never blank offline
 - [docs/guides/](docs/guides/) — setup, deployment, Cloudflare, autoscaling
 - [docs/api/openapi.yaml](docs/api/openapi.yaml) — API contract
 - [docs/developers/onboarding.md](docs/developers/onboarding.md) — contributor onboarding
