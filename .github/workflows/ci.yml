@@ -309,6 +309,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.release.outputs.tag }}
         run: |
+          # Delete-then-create keeps reruns idempotent: --clobber uploads
+          # race GitHub's asset tombstones and intermittently 422. The git
+          # tag itself is kept (no --cleanup-tag).
+          gh release delete "$TAG" --yes 2>/dev/null || true
           gh release create "$TAG" --title "$TAG" --generate-notes \
-            containr-* checksums.txt \
-          || gh release upload "$TAG" containr-* checksums.txt --clobber
+            containr-* checksums.txt
