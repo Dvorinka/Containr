@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   createDeployment,
   deleteService,
@@ -36,6 +36,7 @@ import {
   type CronJobEntity,
 } from '@/lib/api-client';
 import { getDemoProjectById, getDemoServiceById, getDemoCronJobsByService } from '@/lib/demo-data';
+import { useDemoMode } from '@/lib/demo-mode';
 import { useAuthSession } from '@/lib/use-auth-session';
 import { getCurrentUserProfile } from '@/lib/api-client';
 import { parseDotenv, validateVariableRows, type VariableDraft } from '../variable-utils';
@@ -120,10 +121,9 @@ function StatusBadge({ status }: { status: string }) {
 
 export function ServiceDetailPage() {
   const { projectId = '', serviceId = '' } = useParams<{ projectId: string; serviceId: string }>();
-  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const isDemoMode = searchParams.get('demo') === '1';
+  const isDemoMode = useDemoMode();
   const sessionQuery = useAuthSession({ enabled: !isDemoMode });
   const signedIn = isDemoMode || Boolean(sessionQuery.data);
   const profileQuery = useQuery({

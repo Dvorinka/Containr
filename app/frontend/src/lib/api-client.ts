@@ -424,7 +424,10 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(message, response.status);
   }
 
-  return payload as T;
+  // SPA fallback servers may answer /api/* with index.html — an ok response
+  // whose body is not JSON. Surface an empty object so envelope unwraps
+  // (`payload.x ?? []`) degrade instead of dereferencing null.
+  return (payload ?? {}) as T;
 }
 
 async function requestText(path: string, init?: RequestInit): Promise<string> {

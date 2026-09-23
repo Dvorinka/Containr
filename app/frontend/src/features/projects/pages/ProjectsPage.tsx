@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   createProject,
@@ -15,33 +15,14 @@ import {
   X,
 } from 'lucide-react';
 import { useAuthSession } from '@/lib/use-auth-session';
-
-const demoProjects: ProjectEntity[] = [
-  {
-    id: 'project-demo',
-    name: 'core-services',
-    description: 'Sample project with mock services for UI preview.',
-    isApproved: true,
-    createdAt: new Date(Date.now() - 14 * 86_400_000).toISOString(),
-    updatedAt: new Date().toISOString(),
-    stats: { service_count: 5, deployment_count: 12, running_services: 5, last_deployment: null },
-  },
-  {
-    id: 'project-staging',
-    name: 'ml-pipeline',
-    description: 'Pre-production environment for testing new releases.',
-    isApproved: true,
-    createdAt: new Date(Date.now() - 7 * 86_400_000).toISOString(),
-    updatedAt: new Date(Date.now() - 2 * 86_400_000).toISOString(),
-    stats: { service_count: 2, deployment_count: 5, running_services: 1, last_deployment: null },
-  },
-];
+import { useDemoMode } from '@/lib/demo-mode';
+import { demoProjects } from '@/lib/demo-data';
 
 const demoDeploys = [
-  { id: 'd1', name: 'api-gateway', project: 'core-services', status: 'DEPLOYED', when: '4m' },
-  { id: 'd2', name: 'web-frontend', project: 'core-services', status: 'BUILDING', when: '6m' },
-  { id: 'd3', name: 'worker', project: 'ml-pipeline', status: 'FAILED', when: '1h' },
-  { id: 'd4', name: 'site', project: 'growth-site', status: 'DEPLOYED', when: '2h' },
+  { id: 'd1', name: 'API Gateway', project: 'Core Platform', status: 'DEPLOYED', when: '4m' },
+  { id: 'd2', name: 'Web Frontend', project: 'Core Platform', status: 'BUILDING', when: '6m' },
+  { id: 'd3', name: 'Batch Evaluator', project: 'Inference Lab', status: 'FAILED', when: '1h' },
+  { id: 'd4', name: 'Marketing Site', project: 'Growth Surface', status: 'DEPLOYED', when: '2h' },
 ];
 
 function getHealthStatus(stats: ProjectStats): 'healthy' | 'degraded' | 'critical' {
@@ -137,9 +118,8 @@ function ProjectCard({ project, href }: { project: ProjectEntity; href: string }
 
 export function ProjectsPage() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
-  const isDemoMode = searchParams.get('demo') === '1';
+  const isDemoMode = useDemoMode();
 
   const [search, setSearch] = useState('');
   const [isCreateOpen, setCreateOpen] = useState(false);

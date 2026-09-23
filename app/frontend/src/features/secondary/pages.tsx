@@ -50,13 +50,27 @@ import {
   type DatabaseEntity,
   type FailoverPolicy,
 } from '@/lib/api-client';
-import { demoDatabases } from '@/lib/demo-data';
+import {
+  demoBuilds,
+  demoDatabases,
+  demoHAAlerts,
+  demoHAHealthResults,
+  demoHAPolicies,
+  demoHAStatus,
+  demoHostMonitoring,
+  demoProjects,
+  demoSecurityMetrics,
+  demoSecurityScans,
+  demoVulnerabilities,
+  getDemoServicesByProject,
+} from '@/lib/demo-data';
 import { DocsBrowser } from '@/features/docs/DocsBrowser';
 import { useAuthSession } from '@/lib/use-auth-session';
+import { useDemoMode } from '@/lib/demo-mode';
 import { formatRelative } from '@/lib/time';
 import { getAuthBaseUrl, signOutAuthSession } from '@/lib/auth-client';
 import { useBuildUpdates } from '@/lib/use-build-updates';
-import { EnhancedMetricCard, LineAreaChart, DonutChart, SegmentedBar, BarChart } from '@/shared/components';
+import { EnhancedMetricCard, LineAreaChart, DonutChart, SegmentedBar, BarChart, DemoRestricted } from '@/shared/components';
 import {
   Clock,
   Activity,
@@ -203,25 +217,27 @@ function formatUptime(seconds: number): string {
 
 export function UsagePage() {
   const queryClient = useQueryClient();
-  const sessionQuery = useAuthSession();
+  const isDemoMode = useDemoMode();
+  const sessionQuery = useAuthSession({ enabled: !isDemoMode });
   const profileQuery = useQuery({
     queryKey: ['user-profile'],
     queryFn: getCurrentUserProfile,
-    enabled: Boolean(sessionQuery.data),
+    enabled: !isDemoMode && Boolean(sessionQuery.data),
     retry: false,
   });
-  const signedIn = Boolean(sessionQuery.data);
-  const isAdmin = Boolean(profileQuery.data?.isAdmin);
+  const signedIn = isDemoMode || Boolean(sessionQuery.data);
+  const isAdmin = !isDemoMode && Boolean(profileQuery.data?.isAdmin);
   const buildsQuery = useQuery({
     queryKey: ['usage-builds'],
     queryFn: () => listBuilds({ page: 1, limit: 100 }),
-    enabled: signedIn,
+    enabled: signedIn && !isDemoMode,
     retry: false,
   });
   const hostQuery = useQuery({
     queryKey: ['usage-host-monitoring'],
     queryFn: getHostMonitoring,
     refetchInterval: 15_000,
+    enabled: !isDemoMode,
   });
   const agentsQuery = useQuery({
     queryKey: ['usage-agents'],
@@ -251,9 +267,12 @@ export function UsagePage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['agent-tokens'] }),
   });
 
-  const builds = buildsQuery.data?.builds ?? [];
+  const builds = useMemo(
+    () => (isDemoMode ? demoBuilds : buildsQuery.data?.builds ?? []),
+    [isDemoMode, buildsQuery.data],
+  );
   const liveStatus = useBuildUpdates(
-    builds.map((build) => build.id),
+    isDemoMode ? [] : builds.map((build) => build.id),
     () => {
       queryClient.invalidateQueries({ queryKey: ['usage-builds'] });
     },
@@ -280,20 +299,19 @@ export function UsagePage() {
   const avgBuildMinutes = averageBuildDurationMs / 60_000;
   const activeBuildPressure = runningBuilds + pendingBuilds;
   const uniqueServices = new Set(builds.map((build) => build.serviceId).filter(Boolean)).size;
-  const host = hostQuery.data;
+  const host = isDemoMode ? demoHostMonitoring : hostQuery.data;
   const agents = agentsQuery.data ?? [];
 
   // Accumulate host samples for the load sparkline (polled every 15s).
   const [loadHistory, setLoadHistory] = useState<number[]>([]);
   useEffect(() => {
-    const sample = hostQuery.data;
-    if (!sample || sample.cpu.cores <= 0) {
+    if (!host || host.cpu.cores <= 0) {
       return;
     }
-    const loadPercent = Math.min(100, (sample.load.load1m / sample.cpu.cores) * 100);
+    const loadPercent = Math.min(100, (host.load.load1m / host.cpu.cores) * 100);
     // eslint-disable-next-line react-hooks/set-state-in-effect -- accumulating polled samples is a legitimate sync-to-external pattern
     setLoadHistory((prev) => [...prev, loadPercent].slice(-24));
-  }, [hostQuery.data]);
+  }, [host]);
 
   const hostLoadPercent = host && host.cpu.cores > 0
     ? Math.min(100, (host.load.load1m / host.cpu.cores) * 100)
@@ -307,14 +325,14 @@ export function UsagePage() {
   const buildsPerDay = useMemo(() => {
     const days = 14;
     const counts = new Array<number>(days).fill(0);
-    const timestamps = (buildsQuery.data?.builds ?? [])
+    const timestamps = builds
       .map((build) => new Date((build.startedAt ?? build.completedAt) as string).getTime())
       .filter((t) => Number.isFinite(t));
     if (timestamps.length === 0) {
       return counts;
     }
     const anchor = Math.max(...timestamps);
-    (buildsQuery.data?.builds ?? []).forEach((build) => {
+    builds.forEach((build) => {
       const timestamp = build.startedAt ?? build.completedAt;
       if (!timestamp) {
         return;
@@ -327,7 +345,7 @@ export function UsagePage() {
     });
     const peak = Math.max(...counts, 1);
     return counts.map((count) => (count / peak) * 100);
-  }, [buildsQuery.data]);
+  }, [builds]);
   const onlineAgents = agents.filter((agent) => agent.status === 'online' || agent.status === 'connecting').length;
   const totalAgentMemory = agents.reduce((sum, agent) => sum + agent.resources.memory.total, 0);
   const availableAgentMemory = agents.reduce((sum, agent) => sum + agent.resources.memory.available, 0);
@@ -382,12 +400,12 @@ containr-agent`;
           </span>
         </div>
 
-        {buildsQuery.isLoading ? (
+        {!isDemoMode && buildsQuery.isLoading ? (
           <div className="py-16 text-center">
             <Loader2 size={24} className="animate-spin mx-auto text-[var(--text-tertiary)]" />
             <p className="mt-3 text-sm text-[var(--text-muted)]">Loading usage data...</p>
           </div>
-        ) : buildsQuery.isError ? (
+        ) : !isDemoMode && buildsQuery.isError ? (
           <div className="panel p-8 text-center">
             <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-[var(--error-soft)] flex items-center justify-center">
               <AlertCircle size={24} className="text-[var(--error)]" />
@@ -455,7 +473,7 @@ containr-agent`;
                 </button>
               </div>
 
-              {hostQuery.isError ? (
+              {!isDemoMode && hostQuery.isError ? (
                 <div className="rounded-[var(--radius-md)] bg-[var(--error-soft)] px-4 py-3 text-sm text-[var(--error)]">
                   Host monitoring unavailable.
                 </div>
@@ -672,9 +690,11 @@ containr-agent`;
 
 export function PeoplePage() {
   const queryClient = useQueryClient();
+  const isDemoMode = useDemoMode();
   const profileQuery = useQuery({
     queryKey: ['user-profile'],
     queryFn: getCurrentUserProfile,
+    enabled: !isDemoMode,
   });
   const [newUserName, setNewUserName] = useState('');
   const [newUserEmail, setNewUserEmail] = useState('');
@@ -699,11 +719,17 @@ export function PeoplePage() {
   const projectsQuery = useQuery({
     queryKey: ['people-projects'],
     queryFn: () => listProjects(),
+    enabled: !isDemoMode,
   });
   const auditLogsQuery = useQuery({
     queryKey: ['people-audit-logs'],
     queryFn: () => listAuditLogs({ page: 1, limit: 20 }),
+    enabled: !isDemoMode,
   });
+
+  if (isDemoMode) {
+    return <DemoRestricted feature="People and access management" />;
+  }
 
   let membersBody = 'Owner-only mode currently. Multi-user collaboration is planned.';
 
@@ -1242,9 +1268,11 @@ function PlatformSettingsSection() {
 export function SettingsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const isDemoMode = useDemoMode();
   const profileQuery = useQuery({
     queryKey: ['settings-profile'],
     queryFn: getCurrentUserProfile,
+    enabled: !isDemoMode,
   });
 
   const [nameDraft, setNameDraft] = useState<string | null>(null);
@@ -1307,6 +1335,10 @@ export function SettingsPage() {
     navigate('/auth/sign-in', { replace: true });
     refreshStorage();
   };
+
+  if (isDemoMode) {
+    return <DemoRestricted feature="Account and platform settings" />;
+  }
 
   return (
     <div className="min-h-screen">
@@ -1561,8 +1593,7 @@ const DATABASE_PLANS = ['hobby', 'starter', 'standard', 'business'] as const;
 
 export function DatabasesPage() {
   const queryClient = useQueryClient();
-  const [searchParams] = useSearchParams();
-  const isDemoMode = searchParams.get('demo') === '1';
+  const isDemoMode = useDemoMode();
   const sessionQuery = useAuthSession({ enabled: !isDemoMode });
   const signedIn = isDemoMode || Boolean(sessionQuery.data);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -2074,14 +2105,15 @@ const failoverStrategies = [
 
 export function HighAvailabilityPage() {
   const queryClient = useQueryClient();
-  const sessionQuery = useAuthSession();
+  const isDemoMode = useDemoMode();
+  const sessionQuery = useAuthSession({ enabled: !isDemoMode });
   const profileQuery = useQuery({
     queryKey: ['user-profile'],
     queryFn: getCurrentUserProfile,
-    enabled: Boolean(sessionQuery.data),
+    enabled: !isDemoMode && Boolean(sessionQuery.data),
     retry: false,
   });
-  const isAdmin = Boolean(profileQuery.data?.isAdmin);
+  const isAdmin = !isDemoMode && Boolean(profileQuery.data?.isAdmin);
   const [failoverReason, setFailoverReason] = useState('');
   const [policyForm, setPolicyForm] = useState<{
     serviceId: string;
@@ -2093,11 +2125,11 @@ export function HighAvailabilityPage() {
   } | null>(null);
   const [policyProjectId, setPolicyProjectId] = useState('');
 
-  const statusQuery = useQuery({ queryKey: ['ha-status'], queryFn: getHAStatus, refetchInterval: 15_000 });
-  const policiesQuery = useQuery({ queryKey: ['ha-policies'], queryFn: listFailoverPolicies });
-  const alertsQuery = useQuery({ queryKey: ['ha-alerts'], queryFn: listActiveAlerts, refetchInterval: 15_000 });
-  const healthQuery = useQuery({ queryKey: ['ha-health'], queryFn: listHealthResults, refetchInterval: 30_000 });
-  const projectsQuery = useQuery({ queryKey: ['projects'], queryFn: () => listProjects() });
+  const statusQuery = useQuery({ queryKey: ['ha-status'], queryFn: getHAStatus, refetchInterval: 15_000, enabled: !isDemoMode });
+  const policiesQuery = useQuery({ queryKey: ['ha-policies'], queryFn: listFailoverPolicies, enabled: !isDemoMode });
+  const alertsQuery = useQuery({ queryKey: ['ha-alerts'], queryFn: listActiveAlerts, refetchInterval: 15_000, enabled: !isDemoMode });
+  const healthQuery = useQuery({ queryKey: ['ha-health'], queryFn: listHealthResults, refetchInterval: 30_000, enabled: !isDemoMode });
+  const projectsQuery = useQuery({ queryKey: ['projects'], queryFn: () => listProjects(), enabled: !isDemoMode });
   const servicesQuery = useQuery({
     queryKey: ['services', policyProjectId],
     queryFn: () => listServicesByProject(policyProjectId),
@@ -2142,7 +2174,10 @@ export function HighAvailabilityPage() {
     onSuccess: invalidate,
   });
 
-  const status = statusQuery.data;
+  const status = isDemoMode ? demoHAStatus : statusQuery.data;
+  const alerts = isDemoMode ? demoHAAlerts : alertsQuery.data ?? [];
+  const policies = isDemoMode ? demoHAPolicies : policiesQuery.data ?? [];
+  const healthResults = isDemoMode ? demoHAHealthResults : healthQuery.data ?? [];
   const pageError =
     statusQuery.error ?? policiesQuery.error ?? alertsQuery.error ?? healthQuery.error ??
     toggleMutation.error ?? failoverMutation.error ?? savePolicyMutation.error ??
@@ -2158,7 +2193,7 @@ export function HighAvailabilityPage() {
         <div className="flex items-center gap-2 text-xs text-[var(--text-tertiary)]">
           <ShieldCheck size={13} className="text-[var(--accent-primary)]" />
           <span>HA state feeds the platform security posture.</span>
-          <Link to="/security" className="font-medium text-[var(--accent-primary)] hover:underline">
+          <Link to={isDemoMode ? '/security?demo=1' : '/security'} className="font-medium text-[var(--accent-primary)] hover:underline">
             Open Security →
           </Link>
         </div>
@@ -2246,13 +2281,13 @@ export function HighAvailabilityPage() {
             <AlertCircle size={18} className="text-[var(--accent-primary)]" />
             <h2 className="text-base font-semibold text-[var(--text-primary)]">Active alerts</h2>
           </div>
-          {alertsQuery.isLoading ? (
+          {!isDemoMode && alertsQuery.isLoading ? (
             <p className="text-sm text-[var(--text-secondary)]">Loading…</p>
-          ) : (alertsQuery.data ?? []).length === 0 ? (
+          ) : alerts.length === 0 ? (
             <p className="text-sm text-[var(--text-tertiary)]">No active alerts.</p>
           ) : (
             <div className="space-y-2">
-              {(alertsQuery.data ?? []).map((alert) => (
+              {alerts.map((alert) => (
                 <div
                   key={alert.id}
                   className="flex items-center justify-between rounded-[var(--radius-md)] border border-[var(--border-subtle)] px-4 py-3"
@@ -2398,13 +2433,13 @@ export function HighAvailabilityPage() {
             </div>
           )}
 
-          {policiesQuery.isLoading ? (
+          {!isDemoMode && policiesQuery.isLoading ? (
             <p className="text-sm text-[var(--text-secondary)]">Loading…</p>
-          ) : (policiesQuery.data ?? []).length === 0 ? (
+          ) : policies.length === 0 ? (
             <p className="text-sm text-[var(--text-tertiary)]">No failover policies configured.</p>
           ) : (
             <div className="space-y-2">
-              {(policiesQuery.data ?? []).map((policy: FailoverPolicy) => (
+              {policies.map((policy: FailoverPolicy) => (
                 <div
                   key={policy.service_id}
                   className="flex items-center justify-between rounded-[var(--radius-md)] border border-[var(--border-subtle)] px-4 py-3"
@@ -2461,13 +2496,13 @@ export function HighAvailabilityPage() {
             <HeartPulse size={18} className="text-[var(--accent-primary)]" />
             <h2 className="text-base font-semibold text-[var(--text-primary)]">Health check results</h2>
           </div>
-          {healthQuery.isLoading ? (
+          {!isDemoMode && healthQuery.isLoading ? (
             <p className="text-sm text-[var(--text-secondary)]">Loading…</p>
-          ) : (healthQuery.data ?? []).length === 0 ? (
+          ) : healthResults.length === 0 ? (
             <p className="text-sm text-[var(--text-tertiary)]">No health checks configured.</p>
           ) : (
             <div className="space-y-2">
-              {(healthQuery.data ?? []).slice(0, 20).map((result, i) => (
+              {healthResults.slice(0, 20).map((result, i) => (
                 <div
                   key={`${result.check_id}-${i}`}
                   className="flex items-center justify-between rounded-[var(--radius-md)] border border-[var(--border-subtle)] px-4 py-3"
@@ -2509,34 +2544,37 @@ const severityColor: Record<string, string> = {
 
 export function SecurityPage() {
   const queryClient = useQueryClient();
-  const sessionQuery = useAuthSession();
-  const signedIn = Boolean(sessionQuery.data);
-  const [projectId, setProjectId] = useState('');
+  const isDemoMode = useDemoMode();
+  const sessionQuery = useAuthSession({ enabled: !isDemoMode });
+  const signedIn = !isDemoMode && Boolean(sessionQuery.data);
+  const [projectId, setProjectId] = useState(isDemoMode ? 'demo-project-core' : '');
   const [scanType, setScanType] = useState<string>('comprehensive');
   const [scanServiceId, setScanServiceId] = useState('');
 
-  const projectsQuery = useQuery({ queryKey: ['projects'], queryFn: () => listProjects() });
+  const projectsQuery = useQuery({ queryKey: ['projects'], queryFn: () => listProjects(), enabled: !isDemoMode });
+  const projects = isDemoMode ? demoProjects : projectsQuery.data ?? [];
   const servicesQuery = useQuery({
     queryKey: ['services', projectId],
     queryFn: () => listServicesByProject(projectId),
-    enabled: Boolean(projectId),
+    enabled: !isDemoMode && Boolean(projectId),
   });
+  const services = isDemoMode ? getDemoServicesByProject(projectId) : servicesQuery.data ?? [];
   const metricsQuery = useQuery({
     queryKey: ['security-metrics', projectId],
     queryFn: () => getSecurityMetrics(projectId),
-    enabled: Boolean(projectId),
+    enabled: !isDemoMode && Boolean(projectId),
     refetchInterval: 15_000,
   });
   const historyQuery = useQuery({
     queryKey: ['security-history', projectId],
     queryFn: () => getSecurityHistory(projectId),
-    enabled: Boolean(projectId),
+    enabled: !isDemoMode && Boolean(projectId),
     refetchInterval: 15_000,
   });
   const vulnsQuery = useQuery({
     queryKey: ['security-vulns', projectId],
     queryFn: () => listVulnerabilities(projectId),
-    enabled: Boolean(projectId),
+    enabled: !isDemoMode && Boolean(projectId),
   });
 
   const invalidate = () => {
@@ -2559,8 +2597,14 @@ export function SecurityPage() {
     onSuccess: invalidate,
   });
 
-  const metrics = metricsQuery.data;
-  const vulns = (vulnsQuery.data ?? []).filter((v) => v.status !== 'resolved');
+  const metrics = isDemoMode ? demoSecurityMetrics : metricsQuery.data;
+  const scanHistory = isDemoMode
+    ? demoSecurityScans.filter((s) => s.project_id === projectId)
+    : historyQuery.data ?? [];
+  const vulns = (isDemoMode
+    ? demoVulnerabilities.filter((v) => v.project_id === projectId)
+    : vulnsQuery.data ?? []
+  ).filter((v) => v.status !== 'resolved');
   const pageError =
     projectsQuery.error ?? metricsQuery.error ?? historyQuery.error ?? vulnsQuery.error ??
     scanMutation.error ?? vulnMutation.error;
@@ -2575,7 +2619,7 @@ export function SecurityPage() {
         <div className="flex items-center gap-2 text-xs text-[var(--text-tertiary)]">
           <HeartPulse size={13} className="text-[var(--accent-primary)]" />
           <span>Platform availability and failover live under High availability.</span>
-          <Link to="/ha" className="font-medium text-[var(--accent-primary)] hover:underline">
+          <Link to={isDemoMode ? '/ha?demo=1' : '/ha'} className="font-medium text-[var(--accent-primary)] hover:underline">
             Open HA →
           </Link>
         </div>
@@ -2594,7 +2638,7 @@ export function SecurityPage() {
               className="px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)] w-56"
             >
               <option value="">Select project…</option>
-              {(projectsQuery.data ?? []).map((p) => (
+              {projects.map((p) => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
@@ -2621,7 +2665,7 @@ export function SecurityPage() {
                   className="px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)]"
                 >
                   <option value="">All services</option>
-                  {(servicesQuery.data ?? []).map((s) => (
+                  {services.map((s) => (
                     <option key={s.id} value={s.id}>{s.name}</option>
                   ))}
                 </select>
@@ -2636,7 +2680,7 @@ export function SecurityPage() {
                 {scanMutation.isPending ? 'Starting…' : 'Run scan'}
               </button>
               ) : (
-                <span className="self-end pb-2 text-xs text-[var(--text-tertiary)]">Sign in to run scans.</span>
+                <span className="self-end pb-2 text-xs text-[var(--text-tertiary)]">{isDemoMode ? 'Read-only in demo.' : 'Sign in to run scans.'}</span>
               )}
             </>
           )}
@@ -2679,7 +2723,7 @@ export function SecurityPage() {
               <Shield size={18} className="text-[var(--accent-primary)]" />
               <h2 className="text-base font-semibold text-[var(--text-primary)]">Findings</h2>
             </div>
-            {vulnsQuery.isLoading ? (
+            {!isDemoMode && vulnsQuery.isLoading ? (
               <p className="text-sm text-[var(--text-secondary)]">Loading…</p>
             ) : vulns.length === 0 ? (
               <p className="text-sm text-[var(--text-tertiary)]">No open findings.</p>
@@ -2735,13 +2779,13 @@ export function SecurityPage() {
               <Clock size={18} className="text-[var(--accent-primary)]" />
               <h2 className="text-base font-semibold text-[var(--text-primary)]">Scan history</h2>
             </div>
-            {historyQuery.isLoading ? (
+            {!isDemoMode && historyQuery.isLoading ? (
               <p className="text-sm text-[var(--text-secondary)]">Loading…</p>
-            ) : (historyQuery.data ?? []).length === 0 ? (
+            ) : scanHistory.length === 0 ? (
               <p className="text-sm text-[var(--text-tertiary)]">No scans yet.</p>
             ) : (
               <div className="space-y-2">
-                {(historyQuery.data ?? []).map((scan) => (
+                {scanHistory.map((scan) => (
                   <div
                     key={scan.id}
                     className="flex items-center justify-between rounded-[var(--radius-md)] border border-[var(--border-subtle)] px-4 py-3"

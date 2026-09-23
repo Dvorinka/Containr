@@ -78,7 +78,7 @@ export function LineChart({
 
   return (
     <div className="chart-wrap" style={{ height: `${height}px`, width: '100%' }}>
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 320, height }}>
         <RechartsLineChart data={chartData}>
           <Line
             type={smooth ? 'monotone' : 'linear'}
@@ -105,7 +105,7 @@ export function LineAreaChart({
 
   return (
     <div className="chart-wrap" style={{ height: `${height}px`, width: '100%' }}>
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 320, height }}>
         <AreaChart data={chartData}>
           <defs>
             <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
@@ -142,7 +142,7 @@ export function MultiLineChart({
 
   return (
     <div className="chart-wrap" style={{ height: `${height}px`, width: '100%' }}>
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 320, height }}>
         <AreaChart data={chartData}>
           <defs>
             {datasets.map((dataset, index) => {

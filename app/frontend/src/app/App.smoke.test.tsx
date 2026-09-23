@@ -32,7 +32,7 @@ describe('App smoke routes', () => {
 
     expect(await screen.findByRole('heading', { name: /^projects\s*_?$/i })).toBeInTheDocument();
     expect(screen.getByText(/recent deployments/i)).toBeInTheDocument();
-    expect(screen.getAllByText(/core-services/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/core platform/i).length).toBeGreaterThan(0);
   });
 
   it('renders builds page in demo mode', async () => {
