@@ -654,131 +654,113 @@ export function ProjectWorkspacePage() {
     );
   }
 
+  const canvasView = activeView === 'canvas';
+
   return (
-    <div className="min-h-screen">
-      {/* Header */}
-      <div className="border-b border-[var(--border-subtle)] bg-[var(--bg-base)]/50 backdrop-blur-sm">
-        <div className="w-full px-8 py-4">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
+    <div className="flex h-full min-h-0 flex-col">
+      {/* Slim workspace bar — tabs + project meta, canvas fills everything below */}
+      <div className="flex h-12 shrink-0 items-center gap-3 border-b border-[var(--border-subtle)] bg-[var(--bg-base)]/80 px-4 backdrop-blur-sm">
+        <button
+          onClick={() => navigate('/projects')}
+          className="flex items-center gap-1.5 text-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors shrink-0"
+        >
+          <ArrowLeft size={14} />
+          <span className="hidden sm:inline">Projects</span>
+        </button>
+        <div className="w-px h-4 bg-[var(--border-subtle)] shrink-0" />
+        <h1 className="v-title text-sm shrink-0 min-w-0 truncate">{project.name}<span className="v-cursor">_</span></h1>
+        <span className="hidden lg:flex items-center gap-1.5 text-[11px] text-[var(--text-tertiary)] shrink-0">
+          {services.length} service{services.length !== 1 ? 's' : ''} · {runningServices} running
+        </span>
+
+        {/* View tabs */}
+        <nav className="flex items-center gap-0.5 rounded-full bg-[var(--surface-muted)] border border-[var(--border-subtle)] p-0.5 mx-2 overflow-x-auto min-w-0">
+          {viewItems.filter((item) => signedIn || !item.authOnly).map((item) => {
+            const active = activeView === item.key;
+            const Icon = item.icon;
+            return (
               <button
-                onClick={() => navigate('/projects')}
-                className="flex items-center gap-2 text-sm text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
+                key={item.key}
+                onClick={() => setSearchParams((prev) => {
+                  const next = new URLSearchParams(prev);
+                  next.set('view', item.key);
+                  return next;
+                })}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap ${
+                  active
+                    ? 'bg-[var(--surface-card)] text-[var(--text-primary)] shadow-sm'
+                    : 'text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'
+                }`}
               >
-                <ArrowLeft size={16} />
-                <span>Projects</span>
+                <Icon size={13} />
+                <span className="hidden md:inline">{item.label}</span>
               </button>
-              <div className="w-px h-5 bg-[var(--border-subtle)]" />
-              <div>
-                <h1 className="v-title">{project.name}<span className="v-cursor">_</span></h1>
-                <p className="text-sm text-[var(--text-secondary)]">{project.description || 'No description'}</p>
-              </div>
-            </div>
+            );
+          })}
+        </nav>
 
-            <div className="flex items-center gap-6">
-              {/* Stats */}
-              <div className="hidden md:flex items-center gap-6">
-                <div className="text-center">
-                  <p className="text-2xl font-semibold text-[var(--text-primary)]">{services.length}</p>
-                  <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">Services</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-2xl font-semibold text-[var(--success)]">{runningServices}</p>
-                  <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">Running</p>
-                </div>
-                <div className="w-px h-8 bg-[var(--border-subtle)]" />
-                <LiveIndicator isLive={runningServices > 0} />
-                <div className="w-px h-8 bg-[var(--border-subtle)]" />
-                <div className="flex items-center gap-1.5 text-xs text-[var(--text-tertiary)]">
-                  <Clock size={12} />
-                  <span>{formatRelative(project.updatedAt)}</span>
-                </div>
-              </div>
-
-              {/* Search / Command Palette */}
-              <button
-                onClick={() => setCommandPaletteOpen(true)}
-                className="hidden md:flex items-center gap-2 h-9 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-[var(--text-muted)] text-sm hover:border-[var(--border-default)] hover:text-[var(--text-secondary)] transition-colors"
-              >
-                <Search size={14} />
-                <span>Search...</span>
-                <kbd className="ml-2 px-1.5 py-0.5 rounded bg-[var(--surface-card)] text-[10px] font-mono">⌘K</kbd>
-              </button>
-
-              {/* Add Service Button */}
-              {!isDemoMode && (
-                <button
-                  onClick={openAddService}
-                  className="flex items-center gap-2 h-9 px-4 rounded-[var(--radius-md)] text-[var(--accent-on)] text-sm font-medium shadow-lg hover:shadow-xl transition-all"
-                  style={{ background: 'var(--accent-primary)' }}
-                >
-                  <Plus size={16} />
-                  <span className="hidden sm:inline">Add Service</span>
-                </button>
-              )}
-            </div>
+        <div className="ml-auto flex items-center gap-2 shrink-0">
+          <div className="hidden xl:block">
+            <LiveIndicator isLive={runningServices > 0} />
           </div>
+          <span className="hidden xl:flex items-center gap-1.5 text-[11px] text-[var(--text-tertiary)]">
+            <Clock size={11} />
+            {formatRelative(project.updatedAt)}
+          </span>
+          <button
+            onClick={() => setCommandPaletteOpen(true)}
+            className="hidden md:flex items-center gap-2 h-8 px-2.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-[var(--text-muted)] text-xs hover:border-[var(--border-default)] hover:text-[var(--text-secondary)] transition-colors"
+          >
+            <Search size={12} />
+            <kbd className="px-1 py-0.5 rounded bg-[var(--surface-card)] text-[10px] font-mono">⌘K</kbd>
+          </button>
+          {!isDemoMode && (
+            <button
+              onClick={openAddService}
+              className="flex items-center gap-1.5 h-8 px-3 rounded-[var(--radius-md)] text-[var(--accent-on)] text-xs font-semibold shadow-lg hover:shadow-xl transition-all"
+              style={{ background: 'var(--accent-primary)' }}
+            >
+              <Plus size={14} />
+              <span className="hidden sm:inline">Add Service</span>
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Demo Mode Banner */}
-      {isDemoMode && (
-        <div className="w-full px-8 py-4">
-          <div className="px-4 py-3 rounded-[var(--radius-md)] border border-[var(--warning-soft)] bg-[var(--warning-soft)]/50">
-            <div className="flex items-center gap-2 text-sm text-[var(--warning)]">
-              <Sparkles size={16} />
-              <span>Demo mode active — using sample data for preview</span>
+      {/* Content */}
+      {canvasView ? (
+        <div className="relative flex-1 min-h-0">
+          <ProjectCanvas
+            projectId={project.id}
+            services={services}
+            variablesByService={variablesByService}
+            onAddService={openAddService}
+            onOpenService={(serviceId) => navigate(serviceHref(serviceId))}
+            readOnly={isDemoMode}
+          />
+          {isDemoMode && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 pointer-events-none">
+              <span className="canvas-pill flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium text-[var(--warning)]">
+                <Sparkles size={12} />
+                Demo data
+              </span>
+            </div>
+          )}
+        </div>
+      ) : (
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        {isDemoMode && (
+          <div className="w-full px-8 pt-6">
+            <div className="px-4 py-3 rounded-[var(--radius-md)] border border-[var(--warning-soft)] bg-[var(--warning-soft)]/50">
+              <div className="flex items-center gap-2 text-sm text-[var(--warning)]">
+                <Sparkles size={16} />
+                <span>Demo mode active - using sample data for preview</span>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Main Content */}
-      <div className="w-full px-8 py-6">
-        <div className="grid grid-cols-1 lg:grid-cols-[200px_1fr] gap-6">
-          {/* Sidebar Navigation */}
-          <aside className="lg:sticky lg:top-6 lg:h-fit">
-            <nav className="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-visible pb-2 lg:pb-0">
-              {viewItems.filter((item) => signedIn || !item.authOnly).map((item) => {
-                const active = activeView === item.key;
-                const Icon = item.icon;
-                return (
-                  <button
-                    key={item.key}
-                    onClick={() => setSearchParams((prev) => {
-                      const next = new URLSearchParams(prev);
-                      next.set('view', item.key);
-                      return next;
-                    })}
-                    className={`flex items-center gap-3 px-3 py-2.5 rounded-[var(--radius-md)] transition-all whitespace-nowrap ${
-                      active
-                        ? 'bg-[var(--accent-primary-soft)] text-[var(--accent-primary)]'
-                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-muted)]'
-                    }`}
-                  >
-                    <Icon size={18} />
-                    <span className="text-sm font-medium">{item.label}</span>
-                    {active && (
-                      <div className="hidden lg:block absolute left-0 w-0.5 h-5 bg-[var(--accent-primary)] rounded-full" />
-                    )}
-                  </button>
-                );
-              })}
-            </nav>
-          </aside>
-
-          {/* Content Area */}
+        )}
+        <div className="w-full px-8 py-6">
           <section className="min-w-0">
-            {activeView === 'canvas' && (
-              <ProjectCanvas
-                projectId={project.id}
-                services={services}
-                variablesByService={variablesByService}
-                onAddService={openAddService}
-                onOpenService={(serviceId) => navigate(serviceHref(serviceId))}
-              />
-            )}
-
             {activeView === 'observability' && (
               <div className="space-y-6">
                 {/* Health Summary */}
@@ -965,6 +947,7 @@ export function ProjectWorkspacePage() {
           </section>
         </div>
       </div>
+      )}
 
       {/* Create Service Dialog */}
       {!isDemoMode && (
