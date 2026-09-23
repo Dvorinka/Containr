@@ -317,7 +317,7 @@
       <a class="gh-link" href="https://github.com/Dvorinka/Containr" target="_blank" rel="noopener" aria-label="Containr on GitHub">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
       </a>
-      <a class="btn btn-primary" href="index.html#install">Get started</a>
+      <a class="btn btn-primary" href="https://containr-app.vercel.app/projects">Live demo</a>
     </div>
   </div>
 </nav>
@@ -370,6 +370,7 @@
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
         Copy template JSON
       </button>
+      <a class="btn btn-ghost" id="m-open" href="https://containr-app.vercel.app/templates" target="_blank" rel="noopener">Open in demo app</a>
       <a class="btn btn-ghost" href="https://github.com/Dvorinka/Containr/tree/main/docs/guides" target="_blank" rel="noopener">Deploy guide</a>
     </div>
     <p class="hint">In your instance: <code>Templates &rarr; New template &rarr; Upload .json</code> (or paste the copied JSON). Deploy it to any project from there.</p>
@@ -380,6 +381,7 @@
   <div class="wrap foot">
     <span class="l"><img src="containr.svg" alt="">Containr - MIT License</span>
     <nav>
+      <a href="https://containr-app.vercel.app/projects">Live demo</a>
       <a href="https://github.com/Dvorinka/Containr" target="_blank" rel="noopener">GitHub</a>
       <a href="https://github.com/Dvorinka/Containr/tree/main/docs" target="_blank" rel="noopener">Docs</a>
       <a href="https://github.com/Dvorinka/Containr/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">Contribute</a>
@@ -389,14 +391,15 @@
 </footer>
 
 <script>
-  // The catalog comes from a live Containr instance when one is reachable.
-  // Default is the project's public API; override once with ?api=https://host
-  // (persisted in localStorage) or fall back to the bundled snapshot.
-  const DEFAULT_API = 'https://containr-api.up.railway.app';
+  // The catalog comes from a live Containr instance when one is configured.
+  // Point it at an instance once with ?api=https://host (persisted in
+  // localStorage); with no instance configured the bundled official
+  // snapshot renders immediately.
+  const APP_BASE = 'https://containr-app.vercel.app';
   const params = new URLSearchParams(location.search);
   const paramApi = params.get('api');
   if (paramApi) localStorage.setItem('containr-api', paramApi.replace(/\/$/, ''));
-  const API_BASE = (localStorage.getItem('containr-api') || DEFAULT_API).replace(/\/$/, '');
+  const API_BASE = (localStorage.getItem('containr-api') || '').replace(/\/$/, '');
 
   const grid = document.getElementById('grid');
   const catsEl = document.getElementById('cats');
@@ -412,22 +415,26 @@
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   async function loadTemplates() {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 4000);
-    try {
-      const res = await fetch(API_BASE + '/api/v1/templates', { signal: ctrl.signal });
-      if (!res.ok) throw new Error('api ' + res.status);
-      const data = await res.json();
-      const list = Array.isArray(data.templates) ? data.templates : [];
-      if (!list.length) throw new Error('empty catalog');
-      setTemplates(list, 'live: ' + API_BASE.replace(/^https?:\/\//, ''), true);
-    } catch {
-      const res = await fetch('templates.json');
-      const data = await res.json();
-      setTemplates(data.templates || [], 'offline snapshot - official catalog', false);
-    } finally {
-      clearTimeout(timer);
+    if (API_BASE) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 4000);
+      try {
+        const res = await fetch(API_BASE + '/api/v1/templates', { signal: ctrl.signal });
+        if (!res.ok) throw new Error('api ' + res.status);
+        const data = await res.json();
+        const list = Array.isArray(data.templates) ? data.templates : [];
+        if (!list.length) throw new Error('empty catalog');
+        setTemplates(list, 'live: ' + API_BASE.replace(/^https?:\/\//, ''), true);
+        return;
+      } catch {
+        // fall through to the bundled snapshot
+      } finally {
+        clearTimeout(timer);
+      }
     }
+    const res = await fetch('templates.json');
+    const data = await res.json();
+    setTemplates(data.templates || [], 'official snapshot - connect an instance with ?api=', false);
   }
 
   function setTemplates(list, label, live) {
@@ -534,6 +541,7 @@
     document.getElementById('m-badges').innerHTML =
       badge(t) + `<span class="badge" style="background:var(--surface-muted);color:var(--text-tertiary)">${esc(t.category || 'custom')}</span>`;
     document.getElementById('m-desc').textContent = t.description || 'No description.';
+    document.getElementById('m-open').href = `${APP_BASE}/templates?template=${encodeURIComponent(t.id)}`;
 
     const c = cfg(t);
     const meta = [];
