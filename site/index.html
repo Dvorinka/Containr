@@ -34,7 +34,7 @@
       <a class="gh-link" href="https://github.com/Dvorinka/Containr" target="_blank" rel="noopener" aria-label="Containr on GitHub">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
       </a>
-      <a class="btn btn-primary" href="https://containr-app.vercel.app/projects">Live demo</a>
+      <a class="btn btn-primary" href="#install">Get started</a>
     </div>
   </div>
 </nav>
@@ -48,16 +48,97 @@
     <h1>Deploy containers on <em>your own cloud</em></h1>
     <p class="sub">Containr turns a Docker host into a full deployment platform. Git builds, managed databases, previews, failover.</p>
     <div class="hero-cta">
-      <a class="btn btn-primary" href="https://containr-app.vercel.app/projects">
-        Explore the live demo
+      <a class="btn btn-primary" href="#install">
+        Get started
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
       </a>
-      <a class="btn btn-ghost" href="#install">Get started</a>
+      <a class="btn btn-ghost" href="https://github.com/Dvorinka/Containr" target="_blank" rel="noopener">View on GitHub</a>
     </div>
 
     <div class="shot-frame reveal">
-      <div class="shot-bar"><span class="addr">containr-app.vercel.app/projects/demo-project-core</span></div>
-      <img src="screenshots/canvas.png" alt="Containr fullscreen project canvas with connected services" fetchpriority="high">
+      <div class="shot-bar"><span class="addr">containr &#8250; core-platform &#8250; canvas</span></div>
+      <div class="cv" aria-label="Containr project canvas preview">
+        <div class="cv-top">
+          <span class="cv-back">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 18l-6-6 6-6"/></svg>
+            Projects
+          </span>
+          <b>Core Platform</b>
+          <span class="cv-meta">5 services &#183; 4 running</span>
+          <span class="cv-tabs">
+            <i class="on">Canvas</i><i>Observability</i><i>Logs</i><i>Settings</i>
+          </span>
+          <span class="cv-active">&#9679; ACTIVE</span>
+        </div>
+        <div class="cv-stage">
+          <svg class="cv-edges" viewBox="0 0 1000 360" preserveAspectRatio="none" aria-hidden="true">
+            <path d="M 222 101 C 287 101 287 177 358 177" />
+            <path class="live" d="M 222 238 C 287 238 287 177 358 177" />
+            <path d="M 536 168 C 618 168 618 83 706 83" />
+            <path d="M 536 195 C 618 195 618 216 706 216" />
+          </svg>
+          <svg class="cv-edges-m" viewBox="0 0 1000 360" preserveAspectRatio="none" aria-hidden="true">
+            <path d="M 468 105 C 494 105 494 185 520 185" />
+            <path class="live" d="M 468 278 C 494 278 494 185 520 185" />
+            <path d="M 949 62 C 985 62 985 155 949 155" />
+            <path d="M 949 300 C 985 300 985 215 949 215" />
+          </svg>
+
+          <div class="cv-pill env"><i></i>production<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></div>
+
+          <div class="cv-node cv-n1">
+            <div class="cv-row">
+              <span class="cv-ic" style="background:rgba(97,218,251,.14);color:#61dafb"><img src="https://cdn.simpleicons.org/react/61dafb" alt="" onerror="this.replaceWith('R')"></span>
+              <div><h4>Web Frontend</h4><p>web</p></div>
+            </div>
+            <div class="cv-addr"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg><span>web.containr.local</span></div>
+            <div class="cv-foot"><span class="cv-st run"></span><em>running</em><code>ghcr.io/web:v42</code></div>
+          </div>
+
+          <div class="cv-node cv-n2">
+            <div class="cv-row">
+              <span class="cv-ic" style="background:rgba(180,227,74,.14);color:var(--accent)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 17 6-6-6-6M12 19h8"/></svg></span>
+              <div><h4>Queue Worker</h4><p>worker</p></div>
+            </div>
+            <div class="cv-addr"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="m9 9 6 6M15 9l-6 6"/></svg><span>queue-worker</span></div>
+            <div class="cv-foot"><span class="cv-st dep"></span><em style="color:#f2c94c">deploying</em><code>worker:edge</code></div>
+          </div>
+
+          <div class="cv-node sel cv-n3">
+            <div class="cv-row">
+              <span class="cv-ic" style="background:rgba(0,173,216,.14);color:#00add8"><img src="https://cdn.simpleicons.org/go/00add8" alt="" onerror="this.replaceWith('G')"></span>
+              <div><h4>API Gateway</h4><p>web &#183; 2 replicas</p></div>
+            </div>
+            <div class="cv-addr"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg><span>api.containr.local</span></div>
+            <div class="cv-foot"><span class="cv-st run"></span><em>running</em><code>api:v2.4.1</code></div>
+          </div>
+
+          <div class="cv-node cv-n4">
+            <div class="cv-row">
+              <span class="cv-ic" style="background:rgba(65,105,225,.16);color:#7ab8ff"><img src="https://cdn.simpleicons.org/postgresql/7ab8ff" alt="" onerror="this.replaceWith('P')"></span>
+              <div><h4>Postgres</h4><p>database</p></div>
+            </div>
+            <div class="cv-addr"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/></svg><span>postgres:5432</span></div>
+            <div class="cv-foot"><span class="cv-st run"></span><em>running</em><code>postgres:16</code></div>
+          </div>
+
+          <div class="cv-node cv-n5">
+            <div class="cv-row">
+              <span class="cv-ic" style="background:rgba(255,68,68,.13);color:#ff6b6b"><img src="https://cdn.simpleicons.org/redis/ff6b6b" alt="" onerror="this.replaceWith('R')"></span>
+              <div><h4>Redis Cache</h4><p>database</p></div>
+            </div>
+            <div class="cv-addr"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/></svg><span>redis:6379</span></div>
+            <div class="cv-foot"><span class="cv-st run"></span><em>running</em><code>dragonfly:1</code></div>
+          </div>
+
+          <div class="cv-pill zoom">
+            <span>&#8722;</span><b>100%</b><span>+</span><i></i>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 15-4.5 4.5M9 15l6-6M8 4l.9 2.6L11.5 8 9 9.5 6.4 8 8 5.4zM19 13l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7zM13 3l.6 1.7L15.3 5l-1.7.6L13 7.3 12.4 5.6 10.7 5l1.7-.6z"/></svg>
+          </div>
+          <div class="cv-minimap"><i style="left:6%;top:14%"></i><i style="left:6%;top:52%"></i><i style="left:38%;top:35%"></i><i style="left:72%;top:9%"></i><i style="left:72%;top:46%"></i></div>
+        </div>
+      </div>
     </div>
   </div>
 </header>
@@ -67,7 +148,7 @@
     <div class="install-inner reveal">
       <div class="install-copy">
         <h2>One command, running stack</h2>
-        <p>Requires Docker and openssl. Installs into ./containr, never overwrites your .env. <a href="https://containr-app.vercel.app/projects" style="color: var(--accent);">Or explore the hosted demo first &rarr;</a></p>
+        <p>Requires Docker and openssl. Installs into ./containr, never overwrites your .env.</p>
       </div>
       <div class="cmd">
         <code id="install-cmd">curl -fsSL https://raw.githubusercontent.com/Dvorinka/Containr/main/install.sh | bash</code>
@@ -154,7 +235,6 @@
       </div>
       <img id="gallery-img" src="screenshots/dashboard.png" alt="Containr dashboard" loading="lazy">
       <p class="cap" id="gallery-cap">Projects dashboard with host CPU, memory, and disk telemetry.</p>
-      <p class="cap"><a href="https://containr-app.vercel.app/projects/demo-project-core" style="color: var(--accent);">Try the canvas live &rarr;</a></p>
     </div>
   </div>
 </section>
@@ -163,7 +243,7 @@
   <div class="wrap">
     <div class="sec-head reveal">
       <h2>A catalog worth browsing</h2>
-      <p>Thirty official templates plus community presets. <a href="templates.html" style="color: var(--accent);">Browse the full catalog</a>, <a href="https://containr-app.vercel.app/templates" style="color: var(--accent);">open it in the app</a>, or publish your own.</p>
+      <p>Thirty official templates plus community presets. <a href="templates.html" style="color: var(--accent);">Browse the full catalog</a> or publish your own.</p>
     </div>
     <div class="marquee reveal" aria-label="Template catalog">
       <div class="marquee-track" id="marquee-track">
@@ -232,7 +312,7 @@
         Get started
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
       </a>
-      <a class="btn btn-ghost" href="https://containr-app.vercel.app/projects">Live demo</a>
+      <a class="btn btn-ghost" href="https://github.com/Dvorinka/Containr" target="_blank" rel="noopener">Star on GitHub</a>
     </div>
   </div>
 </div>
@@ -241,7 +321,6 @@
   <div class="wrap foot">
     <span class="l"><img src="containr.svg" alt="">Containr - MIT License</span>
     <nav>
-      <a href="https://containr-app.vercel.app/projects">Live demo</a>
       <a href="https://github.com/Dvorinka/Containr" target="_blank" rel="noopener">GitHub</a>
       <a href="https://github.com/Dvorinka/Containr/tree/main/docs" target="_blank" rel="noopener">Docs</a>
       <a href="https://github.com/Dvorinka/Containr/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">Contribute</a>
