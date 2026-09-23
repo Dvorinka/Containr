@@ -4,8 +4,9 @@ import { inferAutoConnections } from '../auto-connections';
 
 export const NODE_WIDTH = 240;
 export const NODE_HEIGHT = 104;
-export const COL_GAP = 340;
-export const ROW_GAP = 172;
+// Multiples of the 26px canvas grid so laid-out nodes land on the lattice.
+export const COL_GAP = 338;
+export const ROW_GAP = 182;
 
 type LinkEdge = { sourceServiceId: string; targetServiceId: string };
 
@@ -81,8 +82,10 @@ export function computeLayeredLayout(
     looseServices.length,
   );
 
+  const gridOffset = (value: number) => Math.round(value / 26) * 26;
+
   for (const [col, list] of columns) {
-    const offsetY = ((maxRows - list.length) * ROW_GAP) / 2;
+    const offsetY = gridOffset(((maxRows - list.length) * ROW_GAP) / 2);
     list.forEach((service, row) => {
       positions.set(service.id, { x: col * COL_GAP, y: offsetY + row * ROW_GAP });
     });
@@ -90,7 +93,7 @@ export function computeLayeredLayout(
 
   looseServices.forEach((service, row) => {
     const col = connectedColCount > 0 ? connectedColCount : 0;
-    const offsetY = ((maxRows - looseServices.length) * ROW_GAP) / 2;
+    const offsetY = gridOffset(((maxRows - looseServices.length) * ROW_GAP) / 2);
     positions.set(service.id, { x: col * COL_GAP, y: offsetY + row * ROW_GAP });
   });
 

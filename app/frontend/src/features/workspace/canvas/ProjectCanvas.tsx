@@ -180,6 +180,59 @@ const GROUP_PAD_X = 28;
 const GROUP_PAD_TOP = 56;
 const GROUP_PAD_BOTTOM = 24;
 const GROUP_ROW_GAP = 16;
+const GRID_STEP = 26;
+const NODE_GAP = 14;
+
+type Rect = { x: number; y: number; w: number; h: number };
+
+function rectsOverlap(a: Rect, b: Rect): boolean {
+  return (
+    a.x < b.x + b.w + NODE_GAP &&
+    a.x + a.w + NODE_GAP > b.x &&
+    a.y < b.y + b.h + NODE_GAP &&
+    a.y + a.h + NODE_GAP > b.y
+  );
+}
+
+// Nearest grid-aligned position where a node fits without touching any
+// occupied rect. Spiral-searches outward on the canvas lattice; falls back to
+// the given position when the neighbourhood is fully boxed in.
+function resolveFreeSpot(
+  desired: { x: number; y: number },
+  occupied: Rect[],
+  fallback: { x: number; y: number },
+  bounds?: Rect,
+): { x: number; y: number } {
+  const snap = (v: number) => Math.round(v / GRID_STEP) * GRID_STEP;
+  const base = { x: snap(desired.x), y: snap(desired.y) };
+  const fits = (x: number, y: number) => {
+    if (bounds && (x < bounds.x || y < bounds.y || x + NODE_WIDTH > bounds.x + bounds.w || y + NODE_HEIGHT > bounds.y + bounds.h)) {
+      return false;
+    }
+    return !occupied.some((rect) => rectsOverlap({ x, y, w: NODE_WIDTH, h: NODE_HEIGHT }, rect));
+  };
+
+  if (fits(base.x, base.y)) {
+    return base;
+  }
+
+  for (let ring = 1; ring <= 12; ring++) {
+    for (let dx = -ring; dx <= ring; dx++) {
+      for (let dy = -ring; dy <= ring; dy++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== ring) {
+          continue;
+        }
+        const x = base.x + dx * GRID_STEP;
+        const y = base.y + dy * GRID_STEP;
+        if (fits(x, y)) {
+          return { x, y };
+        }
+      }
+    }
+  }
+
+  return fallback;
+}
 
 // Where an incoming service lands inside a group frame. If the point already
 // fits inside the padded area, honour it. Otherwise append beneath the lowest
@@ -196,14 +249,29 @@ function groupSlot(
   const width = typeof group.style?.width === 'number' ? group.style.width : GROUP_DEFAULT_WIDTH;
   const height = typeof group.style?.height === 'number' ? group.style.height : GROUP_DEFAULT_HEIGHT;
 
-  const fits =
-    desiredX >= GROUP_PAD_X &&
-    desiredY >= GROUP_PAD_TOP &&
-    desiredX + NODE_WIDTH <= width - GROUP_PAD_X &&
-    desiredY + NODE_HEIGHT <= height - GROUP_PAD_BOTTOM;
+  const members = nodes.filter(
+    (node) => node.type === 'serviceNode' && node.parentId === groupId && node.id !== ignoreServiceId,
+  );
+  const memberRects: Rect[] = members.map((node) => ({
+    x: node.position.x,
+    y: node.position.y,
+    w: NODE_WIDTH,
+    h: NODE_HEIGHT,
+  }));
+  const snap = (v: number) => Math.round(v / GRID_STEP) * GRID_STEP;
+  const snappedX = snap(desiredX);
+  const snappedY = snap(desiredY);
+  const snappedFits =
+    snappedX >= GROUP_PAD_X &&
+    snappedY >= GROUP_PAD_TOP &&
+    snappedX + NODE_WIDTH <= width - GROUP_PAD_X &&
+    snappedY + NODE_HEIGHT <= height - GROUP_PAD_BOTTOM;
+  const collides = memberRects.some((rect) =>
+    rectsOverlap({ x: snappedX, y: snappedY, w: NODE_WIDTH, h: NODE_HEIGHT }, rect),
+  );
 
-  if (fits) {
-    return { x: desiredX, y: desiredY, width, height };
+  if (snappedFits && !collides) {
+    return { x: snappedX, y: snappedY, width, height };
   }
 
   let bottom = GROUP_PAD_TOP - GROUP_ROW_GAP;
@@ -561,6 +629,27 @@ function CanvasInner({ projectId, services, variablesByService, onAddService, on
     return null;
   }, [getInternalNode, nodes]);
 
+  const dragStartPositions = useRef<Map<string, { x: number; y: number }>>(new Map());
+
+  const onNodeDragStart = useCallback(
+    (_event: MouseEvent, node: CanvasNode) => {
+      const abs = getInternalNode(node.id)?.internals.positionAbsolute ?? node.position;
+      dragStartPositions.current.set(node.id, { ...abs });
+    },
+    [getInternalNode],
+  );
+
+  const absoluteServiceRects = useCallback(
+    (excludeId: string): Rect[] =>
+      nodes
+        .filter((node) => node.type === 'serviceNode' && node.id !== excludeId)
+        .map((node) => {
+          const abs = getInternalNode(node.id)?.internals.positionAbsolute ?? node.position;
+          return { x: abs.x, y: abs.y, w: NODE_WIDTH, h: NODE_HEIGHT };
+        }),
+    [getInternalNode, nodes],
+  );
+
   const onNodeDragStop = useCallback(
     (_event: MouseEvent, movedNode: CanvasNode) => {
       if (movedNode.type !== 'serviceNode') {
@@ -568,6 +657,7 @@ function CanvasInner({ projectId, services, variablesByService, onAddService, on
       }
 
       const basePosition = getInternalNode(movedNode.id)?.internals.positionAbsolute ?? movedNode.position;
+      const fallback = dragStartPositions.current.get(movedNode.id) ?? basePosition;
       const centerX = basePosition.x + NODE_WIDTH / 2;
       const centerY = basePosition.y + NODE_HEIGHT / 2;
       const targetGroup = getGroupUnderPoint(centerX, centerY, movedNode.parentId);
@@ -604,25 +694,53 @@ function CanvasInner({ projectId, services, variablesByService, onAddService, on
         return;
       }
 
-      if (!movedNode.parentId) {
-        return;
-      }
-
-      // Still inside its own frame — keep membership, the relative move stands.
-      const parent = nodes.find((entry) => entry.id === movedNode.parentId && entry.type === 'groupNode');
-      if (parent) {
-        const parentAbs = getInternalNode(parent.id)?.internals.positionAbsolute ?? parent.position;
-        const parentW = typeof parent.style?.width === 'number' ? parent.style.width : GROUP_DEFAULT_WIDTH;
-        const parentH = typeof parent.style?.height === 'number' ? parent.style.height : GROUP_DEFAULT_HEIGHT;
-        const inside =
-          centerX >= parentAbs.x &&
-          centerX <= parentAbs.x + parentW &&
-          centerY >= parentAbs.y &&
-          centerY <= parentAbs.y + parentH;
-        if (inside) {
-          return;
+      // Member staying inside its own frame — keep membership, but resolve
+      // against siblings so nodes can't stack on each other.
+      if (movedNode.parentId) {
+        const parent = nodes.find((entry) => entry.id === movedNode.parentId && entry.type === 'groupNode');
+        if (parent) {
+          const parentAbs = getInternalNode(parent.id)?.internals.positionAbsolute ?? parent.position;
+          const parentW = typeof parent.style?.width === 'number' ? parent.style.width : GROUP_DEFAULT_WIDTH;
+          const parentH = typeof parent.style?.height === 'number' ? parent.style.height : GROUP_DEFAULT_HEIGHT;
+          const inside =
+            centerX >= parentAbs.x &&
+            centerX <= parentAbs.x + parentW &&
+            centerY >= parentAbs.y &&
+            centerY <= parentAbs.y + parentH;
+          if (inside) {
+            const siblingRects: Rect[] = nodes
+              .filter(
+                (entry) =>
+                  entry.type === 'serviceNode' && entry.parentId === parent.id && entry.id !== movedNode.id,
+              )
+              .map((entry) => ({ x: entry.position.x, y: entry.position.y, w: NODE_WIDTH, h: NODE_HEIGHT }));
+            const relDesired = { x: basePosition.x - parentAbs.x, y: basePosition.y - parentAbs.y };
+            const relFallback = {
+              x: Math.max(GROUP_PAD_X, Math.min(parentW - GROUP_PAD_X - NODE_WIDTH, fallback.x - parentAbs.x)),
+              y: Math.max(GROUP_PAD_TOP, Math.min(parentH - GROUP_PAD_BOTTOM - NODE_HEIGHT, fallback.y - parentAbs.y)),
+            };
+            const bounds: Rect = {
+              x: GROUP_PAD_X,
+              y: GROUP_PAD_TOP,
+              w: Math.max(NODE_WIDTH, parentW - GROUP_PAD_X * 2),
+              h: Math.max(NODE_HEIGHT, parentH - GROUP_PAD_TOP - GROUP_PAD_BOTTOM),
+            };
+            const spot = resolveFreeSpot(relDesired, siblingRects, relFallback, bounds);
+            setNodes((current) =>
+              current.map((entry) =>
+                entry.id === movedNode.id && entry.type === 'serviceNode'
+                  ? { ...entry, position: spot }
+                  : entry,
+              ),
+            );
+            return;
+          }
         }
       }
+
+      // Free placement — snapped to the canvas grid and pushed off any node it
+      // would overlap; reverts to the pre-drag spot if fully boxed in.
+      const spot = resolveFreeSpot(basePosition, absoluteServiceRects(movedNode.id), fallback);
 
       setNodes((current) =>
         current.map((node) => {
@@ -634,15 +752,12 @@ function CanvasInner({ projectId, services, variablesByService, onAddService, on
             ...node,
             parentId: undefined,
             extent: undefined,
-            position: {
-              x: basePosition.x,
-              y: basePosition.y,
-            },
+            position: spot,
           };
         }),
       );
     },
-    [getGroupUnderPoint, getInternalNode, nodes, setNodes],
+    [absoluteServiceRects, getGroupUnderPoint, getInternalNode, nodes, setNodes],
   );
 
   const addGroup = useCallback(
@@ -696,13 +811,20 @@ function CanvasInner({ projectId, services, variablesByService, onAddService, on
       const abs = getInternalNode(serviceId)?.internals.positionAbsolute ?? node.position;
 
       if (groupId === null) {
-        setNodes((current) =>
-          current.map((entry) =>
+        setNodes((current) => {
+          const occupied: Rect[] = current
+            .filter((entry) => entry.type === 'serviceNode' && entry.id !== serviceId)
+            .map((entry) => {
+              const entryAbs = getInternalNode(entry.id)?.internals.positionAbsolute ?? entry.position;
+              return { x: entryAbs.x, y: entryAbs.y, w: NODE_WIDTH, h: NODE_HEIGHT };
+            });
+          const spot = resolveFreeSpot(abs, occupied, abs);
+          return current.map((entry) =>
             entry.id === serviceId && entry.type === 'serviceNode'
-              ? { ...entry, parentId: undefined, extent: undefined, position: abs }
+              ? { ...entry, parentId: undefined, extent: undefined, position: spot }
               : entry,
-          ),
-        );
+          );
+        });
         return;
       }
 
@@ -773,12 +895,27 @@ function CanvasInner({ projectId, services, variablesByService, onAddService, on
   const deleteGroup = useCallback(
     (groupId: string) => {
       setNodes((current) => {
+        const memberIds = new Set(
+          current
+            .filter((entry) => entry.type === 'serviceNode' && entry.parentId === groupId)
+            .map((entry) => entry.id),
+        );
+        // Freed members must not land on free nodes — resolve each in turn and
+        // treat already-placed members as occupied for the next.
+        const occupied: Rect[] = current
+          .filter((entry) => entry.type === 'serviceNode' && !memberIds.has(entry.id))
+          .map((entry) => {
+            const abs = getInternalNode(entry.id)?.internals.positionAbsolute ?? entry.position;
+            return { x: abs.x, y: abs.y, w: NODE_WIDTH, h: NODE_HEIGHT };
+          });
         const unparented = current.map((entry) => {
           if (entry.type !== 'serviceNode' || entry.parentId !== groupId) {
             return entry;
           }
           const abs = getInternalNode(entry.id)?.internals.positionAbsolute ?? entry.position;
-          return { ...entry, parentId: undefined, extent: undefined, position: abs };
+          const spot = resolveFreeSpot(abs, occupied, abs);
+          occupied.push({ x: spot.x, y: spot.y, w: NODE_WIDTH, h: NODE_HEIGHT });
+          return { ...entry, parentId: undefined, extent: undefined, position: spot };
         });
         return unparented.filter((entry) => entry.id !== groupId);
       });
@@ -913,7 +1050,10 @@ function CanvasInner({ projectId, services, variablesByService, onAddService, on
         }}
         onNodeContextMenu={onNodeContextMenu}
         onPaneContextMenu={onPaneContextMenu}
+        onNodeDragStart={onNodeDragStart}
         onNodeDragStop={onNodeDragStop}
+        snapToGrid
+        snapGrid={[GRID_STEP, GRID_STEP]}
         onMoveEnd={() => setViewportTick((value) => value + 1)}
         panOnDrag
         zoomOnScroll
