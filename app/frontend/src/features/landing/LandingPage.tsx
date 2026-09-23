@@ -28,7 +28,7 @@ export function LandingPage() {
   const sessionQuery = useAuthSession();
   const signedIn = Boolean(sessionQuery.data);
 
-  const projectsQuery = useQuery({ queryKey: ['landing-projects'], queryFn: listProjects, staleTime: 60_000 });
+  const projectsQuery = useQuery({ queryKey: ['landing-projects'], queryFn: () => listProjects(), staleTime: 60_000 });
   const templatesQuery = useQuery({ queryKey: ['landing-templates'], queryFn: () => listTemplates(), staleTime: 60_000 });
 
   const projects = projectsQuery.data ?? [];
