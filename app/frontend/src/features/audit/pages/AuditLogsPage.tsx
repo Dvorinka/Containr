@@ -1,7 +1,9 @@
 import { useDeferredValue, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { listAuditLogs } from '@/lib/api-client';
+import { useDemoMode } from '@/lib/demo-mode';
 import { formatDate, formatRelative } from '@/lib/time';
+import { DemoRestricted } from '@/shared/components';
 import { ScrollText, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 
 const PAGE_SIZE = 50;
@@ -17,6 +19,7 @@ const inputClass =
   'h-9 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all';
 
 export function AuditLogsPage() {
+  const isDemoMode = useDemoMode();
   const [resource, setResource] = useState('');
   const [action, setAction] = useState('');
   const [actor, setActor] = useState('');
@@ -42,7 +45,12 @@ export function AuditLogsPage() {
       const since = option && 'ms' in option ? new Date(Date.now() - option.ms).toISOString() : undefined;
       return listAuditLogs({ ...filters, since });
     },
+    enabled: !isDemoMode,
   });
+
+  if (isDemoMode) {
+    return <DemoRestricted feature="Audit logs" />;
+  }
 
   const logs = logsQuery.data ?? [];
   const hasNext = logs.length === PAGE_SIZE;

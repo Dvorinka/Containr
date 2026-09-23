@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
 import {
   cancelBuild,
   getBuildLogs,
@@ -9,6 +8,8 @@ import {
   type BuildStatus,
 } from '@/lib/api-client';
 import { useBuildUpdates } from '@/lib/use-build-updates';
+import { useDemoMode } from '@/lib/demo-mode';
+import { demoBuilds } from '@/lib/demo-data';
 import { formatRelative } from '@/lib/time';
 import {
   Check,
@@ -31,36 +32,6 @@ const statusOptions: Array<{ value: '' | BuildStatus; label: string }> = [
   { value: 'success', label: 'Success' },
   { value: 'failed', label: 'Failed' },
   { value: 'cancelled', label: 'Cancelled' },
-];
-
-const demoBuilds: BuildEntity[] = [
-  {
-    id: 'build-demo-01',
-    projectId: 'project-demo',
-    serviceId: 'service-api',
-    status: 'success',
-    progress: 100,
-    startedAt: new Date(Date.now() - 20 * 60_000).toISOString(),
-    completedAt: new Date(Date.now() - 18 * 60_000).toISOString(),
-    imageName: 'ghcr.io/containr/api',
-    imageTag: 'sha-1f2e3d4',
-    size: 156_000_000,
-    log: '[demo] Build finished successfully.',
-    metadata: { branch: 'main' },
-  },
-  {
-    id: 'build-demo-02',
-    projectId: 'project-demo',
-    serviceId: 'service-worker',
-    status: 'running',
-    progress: 54,
-    startedAt: new Date(Date.now() - 2 * 60_000).toISOString(),
-    imageName: 'ghcr.io/containr/worker',
-    imageTag: 'sha-9a8b7c6',
-    size: 0,
-    log: '[demo] Building image layers...',
-    metadata: { branch: 'feature/queue' },
-  },
 ];
 
 function StatusBadge({ status }: { status: BuildStatus }) {
@@ -99,8 +70,7 @@ function bytesToHumanReadable(bytes: number): string {
 
 export function BuildsPage() {
   const queryClient = useQueryClient();
-  const [searchParams] = useSearchParams();
-  const isDemoMode = searchParams.get('demo') === '1';
+  const isDemoMode = useDemoMode();
 
   const [projectFilter, setProjectFilter] = useState('');
   const [serviceFilter, setServiceFilter] = useState('');

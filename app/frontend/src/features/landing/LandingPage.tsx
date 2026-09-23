@@ -14,6 +14,8 @@ import {
 import { listProjects, listTemplates } from '@/lib/api-client';
 import { DocsBrowser } from '@/features/docs/DocsBrowser';
 import { useAuthSession } from '@/lib/use-auth-session';
+import { useDemoMode } from '@/lib/demo-mode';
+import { demoProjects, demoTemplates } from '@/lib/demo-data';
 
 const features = [
   { icon: Rocket, title: 'Git-push deploys', text: 'Connect a repository and ship. Builds, rollouts, and rollbacks are handled for you.' },
@@ -25,14 +27,16 @@ const features = [
 ];
 
 export function LandingPage() {
-  const sessionQuery = useAuthSession();
-  const signedIn = Boolean(sessionQuery.data);
+  const isDemoMode = useDemoMode();
+  const sessionQuery = useAuthSession({ enabled: !isDemoMode });
+  const signedIn = !isDemoMode && Boolean(sessionQuery.data);
+  const demo = isDemoMode ? '?demo=1' : '';
 
-  const projectsQuery = useQuery({ queryKey: ['landing-projects'], queryFn: () => listProjects(), staleTime: 60_000 });
-  const templatesQuery = useQuery({ queryKey: ['landing-templates'], queryFn: () => listTemplates(), staleTime: 60_000 });
+  const projectsQuery = useQuery({ queryKey: ['landing-projects'], queryFn: () => listProjects(), staleTime: 60_000, enabled: !isDemoMode });
+  const templatesQuery = useQuery({ queryKey: ['landing-templates'], queryFn: () => listTemplates(), staleTime: 60_000, enabled: !isDemoMode });
 
-  const projects = projectsQuery.data ?? [];
-  const templates = (templatesQuery.data ?? []).slice(0, 12);
+  const projects = isDemoMode ? demoProjects : (projectsQuery.data ?? []);
+  const templates = (isDemoMode ? demoTemplates : (templatesQuery.data ?? [])).slice(0, 12);
 
   return (
     <div className="min-h-screen bg-[var(--bg-void)] text-[var(--text-secondary)]">
@@ -51,7 +55,7 @@ export function LandingPage() {
             <a href="#templates" className="rounded-[var(--radius-md)] px-3 py-1.5 text-[var(--text-secondary)] hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)] max-sm:hidden">Templates</a>
             <a href="#docs" className="rounded-[var(--radius-md)] px-3 py-1.5 text-[var(--text-secondary)] hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)] max-sm:hidden">Docs</a>
             <Link
-              to="/projects"
+              to={`/projects${demo}`}
               className="rounded-[var(--radius-md)] px-3 py-1.5 font-medium text-[var(--text-secondary)] hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)]"
             >
               Browse
@@ -65,10 +69,10 @@ export function LandingPage() {
               </Link>
             ) : (
               <Link
-                to="/auth/sign-in"
+                to={isDemoMode ? `/projects${demo}` : '/auth/sign-in'}
                 className="ml-1 inline-flex items-center gap-1.5 rounded-[var(--radius-md)] bg-[var(--accent-primary)] px-3.5 py-1.5 font-semibold text-[var(--accent-on)]"
               >
-                Sign in <ArrowRight size={13} />
+                {isDemoMode ? 'Live demo' : 'Sign in'} <ArrowRight size={13} />
               </Link>
             )}
           </nav>
@@ -91,10 +95,10 @@ export function LandingPage() {
           </p>
           <div className="mt-8 flex items-center justify-center gap-3">
             <Link
-              to="/projects"
+              to={`/projects${demo}`}
               className="inline-flex items-center gap-2 rounded-[var(--radius-md)] bg-[var(--accent-primary)] px-5 py-2.5 text-sm font-semibold text-[var(--accent-on)] transition-transform hover:scale-[1.02]"
             >
-              Browse projects <ArrowRight size={15} />
+              {isDemoMode ? 'Explore the live demo' : 'Browse projects'} <ArrowRight size={15} />
             </Link>
             <a
               href="#docs"
@@ -152,7 +156,7 @@ export function LandingPage() {
                 </p>
               </div>
               <Link
-                to="/templates"
+                to={`/templates${demo}`}
                 className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[var(--accent-primary)] hover:underline"
               >
                 Browse all <ArrowRight size={13} />
@@ -162,7 +166,7 @@ export function LandingPage() {
               {templates.map((template) => (
                 <Link
                   key={template.id}
-                  to="/templates"
+                  to={`/templates?template=${template.id}${isDemoMode ? '&demo=1' : ''}`}
                   className="group rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--surface-card)] p-4 transition-colors hover:border-[var(--border-strong)]"
                 >
                   <div className="flex items-center gap-2.5">
@@ -212,9 +216,9 @@ export function LandingPage() {
             Containr — self-hosted container platform
           </span>
           <div className="flex items-center gap-4">
-            <Link to="/projects" className="hover:text-[var(--text-secondary)]">Projects</Link>
-            <Link to="/templates" className="hover:text-[var(--text-secondary)]">Templates</Link>
-            <Link to="/admin" className="hover:text-[var(--text-secondary)]">Admin</Link>
+            <Link to={`/projects${demo}`} className="hover:text-[var(--text-secondary)]">Projects</Link>
+            <Link to={`/templates${demo}`} className="hover:text-[var(--text-secondary)]">Templates</Link>
+            {!isDemoMode ? <Link to="/admin" className="hover:text-[var(--text-secondary)]">Admin</Link> : null}
           </div>
         </div>
       </footer>

@@ -23,13 +23,9 @@ import {
 } from '@/features/secondary/pages';
 import { SignInPage, SignUpPage } from '@/features/auth/pages';
 import { useAuthSession } from '@/lib/use-auth-session';
+import { useDemoMode } from '@/lib/demo-mode';
 import { getCurrentUserProfile } from '@/lib/api-client';
 import { ErrorBoundary, LoadingState } from '@/shared/components';
-
-function useDemoMode() {
-  const location = useLocation();
-  return new URLSearchParams(location.search).get('demo') === '1';
-}
 
 function AuthRequired() {
   const location = useLocation();

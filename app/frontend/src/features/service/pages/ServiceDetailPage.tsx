@@ -36,6 +36,7 @@ import {
   type CronJobEntity,
 } from '@/lib/api-client';
 import { getDemoProjectById, getDemoServiceById, getDemoCronJobsByService } from '@/lib/demo-data';
+import { useDemoMode } from '@/lib/demo-mode';
 import { ServiceIcon } from '@/features/workspace/canvas/ServiceIcon';
 import { serviceAccent } from '@/features/workspace/canvas/service-visuals';
 import { useAuthSession } from '@/lib/use-auth-session';
@@ -122,10 +123,10 @@ function StatusBadge({ status }: { status: string }) {
 
 export function ServiceDetailPage() {
   const { projectId = '', serviceId = '' } = useParams<{ projectId: string; serviceId: string }>();
-  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
-  const isDemoMode = searchParams.get('demo') === '1';
+  const isDemoMode = useDemoMode();
   const sessionQuery = useAuthSession({ enabled: !isDemoMode });
   const signedIn = isDemoMode || Boolean(sessionQuery.data);
   const profileQuery = useQuery({

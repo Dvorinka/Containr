@@ -37,6 +37,7 @@ import {
   pullUpgradeImage,
 } from '@/lib/api-client';
 import { signOutAuthSession } from '@/lib/auth-client';
+import { isDemoSearch } from '@/lib/demo-mode';
 import { useAuthSession } from '@/lib/use-auth-session';
 import { useToast } from '@/shared/components';
 
@@ -103,8 +104,18 @@ export function PlatformShell() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
-  const isDemoMode = new URLSearchParams(location.search).get('demo') === '1';
+  const isDemoMode = isDemoSearch(location.search);
   const href = (target: string) => (isDemoMode ? `${target}?demo=1` : target);
+  // Auth/admin-scoped pages have no demo fixtures — keep the demo nav honest.
+  const visibleNavSections = isDemoMode
+    ? navSections
+        .map((section) =>
+          section.title === 'Workspace'
+            ? { ...section, items: section.items.filter((item) => item.href === '/docs') }
+            : section,
+        )
+        .filter((section) => section.items.length > 0)
+    : navSections;
   const [theme, setTheme] = useState<ThemeMode>(() => getInitialTheme());
   const [sidebarExpanded, setSidebarExpanded] = useState<boolean>(() => getInitialSidebar());
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -118,7 +129,7 @@ export function PlatformShell() {
     staleTime: 60_000,
     retry: false,
   });
-  const isAdmin = isDemoMode || Boolean(profileQuery.data?.isAdmin);
+  const isAdmin = !isDemoMode && Boolean(profileQuery.data?.isAdmin);
   const upgradeQuery = useQuery({
     queryKey: ['upgrade-status'],
     queryFn: getUpgradeStatus,
@@ -174,8 +185,8 @@ export function PlatformShell() {
   const isActiveRoute = (itemHref: string) =>
     location.pathname === itemHref || location.pathname.startsWith(`${itemHref}/`);
 
-  const userName = profileQuery.data?.name ?? sessionQuery.data?.user.name ?? 'Account';
-  const userEmail = profileQuery.data?.email ?? sessionQuery.data?.user.email ?? 'Local session';
+  const userName = isDemoMode ? 'Demo workspace' : profileQuery.data?.name ?? sessionQuery.data?.user.name ?? 'Account';
+  const userEmail = isDemoMode ? 'Sample data · read-only' : profileQuery.data?.email ?? sessionQuery.data?.user.email ?? 'Local session';
   const initials = userName
     .split(' ')
     .map((part) => part[0])
@@ -220,7 +231,7 @@ export function PlatformShell() {
           </div>
 
           <nav className="mt-3 flex flex-1 flex-col gap-4 overflow-y-auto px-2">
-            {navSections.map((section) => (
+            {visibleNavSections.map((section) => (
               <div key={section.title}>
                 {sidebarExpanded ? (
                   <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
@@ -297,27 +308,31 @@ export function PlatformShell() {
                       <p className="truncate text-xs text-[var(--text-tertiary)]">{userEmail}</p>
                     </div>
                     <DropdownMenu.Separator className="my-1 h-px bg-[var(--border-subtle)]" />
-                    <DropdownMenu.Item asChild>
-                      <button type="button" onClick={() => navigate(href('/settings'))} className={menuItemClass}>
-                        <User size={14} /> Profile & account
-                      </button>
-                    </DropdownMenu.Item>
-                    <DropdownMenu.Item asChild>
-                      <button type="button" onClick={() => navigate(href('/settings'))} className={menuItemClass}>
-                        <Settings size={14} /> Settings
-                      </button>
-                    </DropdownMenu.Item>
-                    <DropdownMenu.Item asChild>
-                      <button type="button" onClick={() => navigate(href('/settings/audit-logs'))} className={menuItemClass}>
-                        <ScrollText size={14} /> Audit logs
-                      </button>
-                    </DropdownMenu.Item>
-                    {isAdmin ? (
-                      <DropdownMenu.Item asChild>
-                        <button type="button" onClick={() => navigate(href('/admin'))} className={menuItemClass}>
-                          <ShieldCheck size={14} /> Admin console
-                        </button>
-                      </DropdownMenu.Item>
+                    {!isDemoMode ? (
+                      <>
+                        <DropdownMenu.Item asChild>
+                          <button type="button" onClick={() => navigate(href('/settings'))} className={menuItemClass}>
+                            <User size={14} /> Profile & account
+                          </button>
+                        </DropdownMenu.Item>
+                        <DropdownMenu.Item asChild>
+                          <button type="button" onClick={() => navigate(href('/settings'))} className={menuItemClass}>
+                            <Settings size={14} /> Settings
+                          </button>
+                        </DropdownMenu.Item>
+                        <DropdownMenu.Item asChild>
+                          <button type="button" onClick={() => navigate(href('/settings/audit-logs'))} className={menuItemClass}>
+                            <ScrollText size={14} /> Audit logs
+                          </button>
+                        </DropdownMenu.Item>
+                        {isAdmin ? (
+                          <DropdownMenu.Item asChild>
+                            <button type="button" onClick={() => navigate(href('/admin'))} className={menuItemClass}>
+                              <ShieldCheck size={14} /> Admin console
+                            </button>
+                          </DropdownMenu.Item>
+                        ) : null}
+                      </>
                     ) : null}
                     <DropdownMenu.Item asChild>
                       <button
@@ -331,13 +346,23 @@ export function PlatformShell() {
                     </DropdownMenu.Item>
                     <DropdownMenu.Separator className="my-1 h-px bg-[var(--border-subtle)]" />
                     <DropdownMenu.Item asChild>
-                      <button
-                        type="button"
-                        onClick={() => void signOut()}
-                        className={`${menuItemClass} text-[var(--error)] hover:!bg-[var(--error-soft)] hover:!text-[var(--error)]`}
-                      >
-                        <LogOut size={14} /> Sign out
-                      </button>
+                      {isDemoMode ? (
+                        <button
+                          type="button"
+                          onClick={() => navigate('/')}
+                          className={`${menuItemClass} text-[var(--error)] hover:!bg-[var(--error-soft)] hover:!text-[var(--error)]`}
+                        >
+                          <LogOut size={14} /> Exit demo
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => void signOut()}
+                          className={`${menuItemClass} text-[var(--error)] hover:!bg-[var(--error-soft)] hover:!text-[var(--error)]`}
+                        >
+                          <LogOut size={14} /> Sign out
+                        </button>
+                      )}
                     </DropdownMenu.Item>
                   </DropdownMenu.Content>
                 </DropdownMenu.Portal>
@@ -382,7 +407,7 @@ export function PlatformShell() {
             </div>
 
             <div className="ml-auto flex items-center gap-4">
-              <span className="v-env">env:production</span>
+              <span className="v-env">{isDemoMode ? 'env:demo' : 'env:production'}</span>
               <button
                 type="button"
                 onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
@@ -393,11 +418,11 @@ export function PlatformShell() {
                 {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
               </button>
 
-              {isAdmin ? (
+              {isAdmin && !isDemoMode ? (
                 <button
                   type="button"
                   onClick={() => pullMutation.mutate()}
-                  disabled={isDemoMode || pullMutation.isPending || !upgradeQuery.data?.imageRef}
+                  disabled={pullMutation.isPending || !upgradeQuery.data?.imageRef}
                   className="inline-flex h-8 items-center gap-2 rounded-[var(--radius-md)] px-3 text-xs font-semibold text-[var(--accent-on)] disabled:cursor-not-allowed disabled:opacity-50"
                   style={{ background: 'var(--accent-primary)' }}
                   title={upgradeQuery.data?.message || 'Pull latest configured image'}
@@ -407,7 +432,7 @@ export function PlatformShell() {
                 </button>
               ) : null}
 
-              {signedIn ? (
+              {signedIn && !isDemoMode ? (
                 <div className="relative">
                   <button
                     type="button"
@@ -504,7 +529,7 @@ export function PlatformShell() {
               </button>
             </div>
             <nav className="flex gap-1 overflow-x-auto px-3 pb-3">
-              {navSections.flatMap((section) => section.items).map((item) => {
+              {visibleNavSections.flatMap((section) => section.items).map((item) => {
                 const Icon = item.icon;
                 const isActive = isActiveRoute(item.href);
                 return (

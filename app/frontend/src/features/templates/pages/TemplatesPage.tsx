@@ -10,11 +10,12 @@ import {
   listProjects,
   listTemplates,
   updateTemplate,
-  type TemplateDetailEntity,
   type TemplateEntity,
   type TemplateWriteInput,
 } from '@/lib/api-client';
 import { useAuthSession } from '@/lib/use-auth-session';
+import { useDemoMode } from '@/lib/demo-mode';
+import { demoProjects, demoTemplates, demoTemplateDetails } from '@/lib/demo-data';
 import {
   Search,
   Filter,
@@ -36,334 +37,6 @@ import {
   Upload,
   X,
 } from 'lucide-react';
-
-const demoTemplates: TemplateEntity[] = [
-  {
-    id: 'tpl-react',
-    name: 'React Application',
-    description: 'Single-page frontend with Vite and static serving runtime.',
-    category: 'frontend',
-    logo: 'https://cdn.simpleicons.org/react',
-    configRaw: '{"runtime":"node"}',
-    variablesRaw: '[]',
-    isOfficial: true,
-    ownerId: null,
-    isPublic: false,
-  },
-  {
-    id: 'tpl-go',
-    name: 'Go API Service',
-    description: 'API-ready Go runtime with direct binary startup.',
-    category: 'web',
-    logo: 'https://cdn.simpleicons.org/go',
-    configRaw: '{"runtime":"go"}',
-    variablesRaw: '[]',
-    isOfficial: true,
-    ownerId: null,
-    isPublic: false,
-  },
-  {
-    id: 'tpl-postgres',
-    name: 'PostgreSQL Database',
-    description: 'Managed PostgreSQL service with credential setup variables.',
-    category: 'database',
-    logo: 'https://cdn.simpleicons.org/postgresql',
-    configRaw: '{"runtime":"postgres"}',
-    variablesRaw: '[]',
-    isOfficial: true,
-    ownerId: null,
-    isPublic: false,
-  },
-  {
-    id: 'tpl-mysql',
-    name: 'MySQL Database',
-    description: 'Managed MySQL service for transactional workloads.',
-    category: 'database',
-    logo: 'https://cdn.simpleicons.org/mysql',
-    configRaw: '{"runtime":"mysql"}',
-    variablesRaw: '[]',
-    isOfficial: true,
-    ownerId: null,
-    isPublic: false,
-  },
-  {
-    id: 'tpl-mariadb',
-    name: 'MariaDB Database',
-    description: 'Managed MariaDB service with MySQL compatibility.',
-    category: 'database',
-    logo: 'https://cdn.simpleicons.org/mariadb',
-    configRaw: '{"runtime":"mariadb"}',
-    variablesRaw: '[]',
-    isOfficial: true,
-    ownerId: null,
-    isPublic: false,
-  },
-  {
-    id: 'tpl-clickhouse',
-    name: 'ClickHouse Database',
-    description: 'Columnar analytics database template for high-speed queries.',
-    category: 'database',
-    logo: 'https://cdn.simpleicons.org/clickhouse',
-    configRaw: '{"runtime":"clickhouse"}',
-    variablesRaw: '[]',
-    isOfficial: true,
-    ownerId: null,
-    isPublic: false,
-  },
-  {
-    id: 'tpl-dragonfly',
-    name: 'Dragonfly Database',
-    description: 'Redis-compatible in-memory store powered by Dragonfly.',
-    category: 'database',
-    logo: 'https://cdn.simpleicons.org/redis',
-    configRaw: '{"runtime":"dragonfly"}',
-    variablesRaw: '[]',
-    isOfficial: true,
-    ownerId: null,
-    isPublic: false,
-  },
-];
-
-const demoTemplateDetails: Record<string, TemplateDetailEntity> = {
-  'tpl-react': {
-    template: demoTemplates[0],
-    config: {
-      type: 'web',
-      runtime: 'node',
-      buildCommand: 'npm install && npm run build',
-      startCommand: 'npx serve -s dist',
-      port: 3000,
-      healthCheck: '/health',
-      environment: {},
-      nixpacksConfig: {},
-    },
-    variables: [
-      {
-        key: 'VITE_API_URL',
-        label: 'API URL',
-        defaultValue: 'https://api.example.com',
-        required: true,
-        secret: false,
-        description: 'Public API endpoint for frontend calls',
-      },
-    ],
-  },
-  'tpl-go': {
-    template: demoTemplates[1],
-    config: {
-      type: 'web',
-      runtime: 'go',
-      buildCommand: 'go build -o app .',
-      startCommand: './app',
-      port: 8080,
-      healthCheck: '/health',
-      environment: {},
-      nixpacksConfig: {},
-    },
-    variables: [
-      {
-        key: 'GO_ENV',
-        label: 'Go Environment',
-        defaultValue: 'production',
-        required: false,
-        secret: false,
-        description: 'Runtime environment value',
-      },
-    ],
-  },
-  'tpl-postgres': {
-    template: demoTemplates[2],
-    config: {
-      type: 'database',
-      runtime: 'postgres',
-      buildCommand: '',
-      startCommand: '',
-      port: 5432,
-      healthCheck: '',
-      environment: {},
-      nixpacksConfig: {},
-    },
-    variables: [
-      {
-        key: 'POSTGRES_USER',
-        label: 'Username',
-        defaultValue: 'postgres',
-        required: true,
-        secret: false,
-        description: 'Database user',
-      },
-      {
-        key: 'POSTGRES_PASSWORD',
-        label: 'Password',
-        defaultValue: '',
-        required: true,
-        secret: true,
-        description: 'Database password',
-      },
-    ],
-  },
-  'tpl-mysql': {
-    template: demoTemplates[3],
-    config: {
-      type: 'database',
-      runtime: 'mysql',
-      buildCommand: '',
-      startCommand: '',
-      port: 3306,
-      healthCheck: '',
-      environment: {},
-      nixpacksConfig: {},
-    },
-    variables: [
-      {
-        key: 'MYSQL_DATABASE',
-        label: 'Database Name',
-        defaultValue: 'app',
-        required: true,
-        secret: false,
-        description: 'Initial database to create',
-      },
-      {
-        key: 'MYSQL_USER',
-        label: 'Username',
-        defaultValue: 'app',
-        required: true,
-        secret: false,
-        description: 'Application DB user',
-      },
-      {
-        key: 'MYSQL_PASSWORD',
-        label: 'User Password',
-        defaultValue: '',
-        required: true,
-        secret: true,
-        description: 'Application DB password',
-      },
-      {
-        key: 'MYSQL_ROOT_PASSWORD',
-        label: 'Root Password',
-        defaultValue: '',
-        required: true,
-        secret: true,
-        description: 'Root account password',
-      },
-    ],
-  },
-  'tpl-mariadb': {
-    template: demoTemplates[4],
-    config: {
-      type: 'database',
-      runtime: 'mariadb',
-      buildCommand: '',
-      startCommand: '',
-      port: 3306,
-      healthCheck: '',
-      environment: {},
-      nixpacksConfig: {},
-    },
-    variables: [
-      {
-        key: 'MARIADB_DATABASE',
-        label: 'Database Name',
-        defaultValue: 'app',
-        required: true,
-        secret: false,
-        description: 'Initial database to create',
-      },
-      {
-        key: 'MARIADB_USER',
-        label: 'Username',
-        defaultValue: 'app',
-        required: true,
-        secret: false,
-        description: 'Application DB user',
-      },
-      {
-        key: 'MARIADB_PASSWORD',
-        label: 'User Password',
-        defaultValue: '',
-        required: true,
-        secret: true,
-        description: 'Application DB password',
-      },
-      {
-        key: 'MARIADB_ROOT_PASSWORD',
-        label: 'Root Password',
-        defaultValue: '',
-        required: true,
-        secret: true,
-        description: 'Root account password',
-      },
-    ],
-  },
-  'tpl-clickhouse': {
-    template: demoTemplates[5],
-    config: {
-      type: 'database',
-      runtime: 'clickhouse',
-      buildCommand: '',
-      startCommand: '',
-      port: 8123,
-      healthCheck: '',
-      environment: {},
-      nixpacksConfig: {},
-    },
-    variables: [
-      {
-        key: 'CLICKHOUSE_DB',
-        label: 'Database Name',
-        defaultValue: 'app',
-        required: false,
-        secret: false,
-        description: 'Default database name',
-      },
-      {
-        key: 'CLICKHOUSE_USER',
-        label: 'Username',
-        defaultValue: 'default',
-        required: false,
-        secret: false,
-        description: 'ClickHouse user',
-      },
-      {
-        key: 'CLICKHOUSE_PASSWORD',
-        label: 'Password',
-        defaultValue: '',
-        required: false,
-        secret: true,
-        description: 'ClickHouse password',
-      },
-    ],
-  },
-  'tpl-dragonfly': {
-    template: demoTemplates[6],
-    config: {
-      type: 'database',
-      runtime: 'dragonfly',
-      buildCommand: '',
-      startCommand: '',
-      port: 6379,
-      healthCheck: '',
-      environment: {},
-      nixpacksConfig: {},
-    },
-    variables: [
-      {
-        key: 'DRAGONFLY_PASSWORD',
-        label: 'Password',
-        defaultValue: '',
-        required: false,
-        secret: true,
-        description: 'Optional Redis-compatible password',
-      },
-    ],
-  },
-};
-
-const demoProjects = [
-  { id: 'project-demo', name: 'Demo Project' },
-  { id: 'project-internal', name: 'Internal Tooling' },
-];
 
 function toServiceName(value: string): string {
   const normalized = value
@@ -435,8 +108,8 @@ const EMPTY_TEMPLATE_JSON = JSON.stringify(
 
 export function TemplatesPage() {
   const queryClient = useQueryClient();
-  const [searchParams] = useSearchParams();
-  const isDemoMode = searchParams.get('demo') === '1';
+  const [searchParams, setSearchParams] = useSearchParams();
+  const isDemoMode = useDemoMode();
 
   const sessionQuery = useAuthSession({ enabled: !isDemoMode });
   const signedIn = isDemoMode || Boolean(sessionQuery.data);
@@ -457,7 +130,18 @@ export function TemplatesPage() {
 
   const [categoryFilter, setCategoryFilter] = useState('');
   const [searchFilter, setSearchFilter] = useState('');
-  const [selectedTemplateIdState, setSelectedTemplateId] = useState<string | null>(null);
+  // Selection lives in the URL (?template=<id>) so catalog deep links and
+  // card clicks share one source of truth.
+  const templateParam = searchParams.get('template');
+  const selectTemplate = (id: string | null) => {
+    const next = new URLSearchParams(searchParams);
+    if (id) {
+      next.set('template', id);
+    } else {
+      next.delete('template');
+    }
+    setSearchParams(next, { replace: true });
+  };
   const [deployProjectIdState, setDeployProjectId] = useState(searchParams.get('project') ?? '');
   const [deployNameByTemplate, setDeployNameByTemplate] = useState<Record<string, string>>({});
   const [variableValuesByTemplate, setVariableValuesByTemplate] = useState<
@@ -515,11 +199,11 @@ export function TemplatesPage() {
     if (filteredTemplates.length === 0) {
       return null;
     }
-    if (selectedTemplateIdState && filteredTemplates.some((template) => template.id === selectedTemplateIdState)) {
-      return selectedTemplateIdState;
+    if (templateParam && filteredTemplates.some((template) => template.id === templateParam)) {
+      return templateParam;
     }
     return filteredTemplates[0].id;
-  }, [filteredTemplates, selectedTemplateIdState]);
+  }, [filteredTemplates, templateParam]);
 
   const templateDetailQuery = useQuery({
     queryKey: ['template-detail-page', selectedTemplateId],
@@ -645,7 +329,7 @@ export function TemplatesPage() {
       setEditorOpen(false);
       setEditingTemplate(null);
       setEditorError(null);
-      setSelectedTemplateId(template.id);
+      selectTemplate(template.id);
     },
     onError: (error) => {
       setEditorError(error instanceof Error ? error.message : 'Failed to save template');
@@ -656,7 +340,7 @@ export function TemplatesPage() {
     mutationFn: (id: string) => deleteTemplate(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['templates-page'] });
-      setSelectedTemplateId(null);
+      selectTemplate(null);
     },
   });
 
@@ -857,7 +541,7 @@ export function TemplatesPage() {
                     return (
                       <button
                         key={template.id}
-                        onClick={() => setSelectedTemplateId(template.id)}
+                        onClick={() => selectTemplate(template.id)}
                         className={`w-full p-4 rounded-[var(--radius-lg)] border text-left transition-all duration-300 group ${
                           selected
                             ? 'border-[var(--accent-primary)] bg-[var(--accent-primary-soft)] shadow-lg shadow-[var(--accent-primary-glow)]'

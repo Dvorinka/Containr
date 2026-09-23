@@ -23,7 +23,8 @@ import {
   type ProjectEntity,
 } from '@/lib/api-client';
 import { useAuthSession } from '@/lib/use-auth-session';
-import { LoadingState, useToast } from '@/shared/components';
+import { useDemoMode } from '@/lib/demo-mode';
+import { DemoRestricted, LoadingState, useToast } from '@/shared/components';
 
 const statLabels: Record<string, string> = {
   users: 'Users',
@@ -42,12 +43,13 @@ const statLabels: Record<string, string> = {
 export function AdminPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
-  const sessionQuery = useAuthSession();
+  const isDemoMode = useDemoMode();
+  const sessionQuery = useAuthSession({ enabled: !isDemoMode });
   const myId = sessionQuery.data?.user.id;
 
-  const overviewQuery = useQuery({ queryKey: ['admin-overview'], queryFn: getAdminOverview });
-  const usersQuery = useQuery({ queryKey: ['admin-users'], queryFn: listAdminUsers });
-  const projectsQuery = useQuery({ queryKey: ['admin-projects'], queryFn: () => listProjects({ limit: 100 }) });
+  const overviewQuery = useQuery({ queryKey: ['admin-overview'], queryFn: getAdminOverview, enabled: !isDemoMode });
+  const usersQuery = useQuery({ queryKey: ['admin-users'], queryFn: listAdminUsers, enabled: !isDemoMode });
+  const projectsQuery = useQuery({ queryKey: ['admin-projects'], queryFn: () => listProjects({ limit: 100 }), enabled: !isDemoMode });
   const [editingProject, setEditingProject] = useState<ProjectEntity | null>(null);
   const [editForm, setEditForm] = useState({ name: '', description: '' });
 
@@ -98,6 +100,10 @@ export function AdminPage() {
     },
     onError: (error) => showToast('error', 'Delete failed', error instanceof Error ? error.message : undefined),
   });
+
+  if (isDemoMode) {
+    return <DemoRestricted feature="The admin console" />;
+  }
 
   if (overviewQuery.isPending) {
     return <LoadingState message="Loading admin console…" className="py-24" />;

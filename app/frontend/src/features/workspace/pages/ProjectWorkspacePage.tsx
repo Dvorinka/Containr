@@ -19,6 +19,7 @@ import {
   type CreateServiceInput,
 } from '@/lib/api-client';
 import { getDemoProjectById, getDemoServicesByProject, getDemoVariablesByProject } from '@/lib/demo-data';
+import { useDemoMode } from '@/lib/demo-mode';
 import { useAuthSession } from '@/lib/use-auth-session';
 import { formatDate, formatRelative } from '@/lib/time';
 import type { ServiceVariable } from '../auto-connections';
@@ -466,7 +467,7 @@ export function ProjectWorkspacePage() {
   const toast = useToast();
 
   const activeView = (searchParams.get('view') as WorkspaceView | null) ?? 'canvas';
-  const isDemoMode = searchParams.get('demo') === '1';
+  const isDemoMode = useDemoMode();
   const sessionQuery = useAuthSession({ enabled: !isDemoMode });
   const signedIn = isDemoMode || Boolean(sessionQuery.data);
   const [createOpen, setCreateOpen] = useState(false);
