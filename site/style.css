@@ -490,6 +490,8 @@
   .cv-tabs i { font-style: normal; font-size: 10.5px; color: var(--text-tertiary); padding: 4px 11px; border-radius: 999px; }
   .cv-tabs i.on { color: var(--text-primary); background: var(--surface-muted); }
   .cv-active { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.08em; color: #5ee6a0; }
+  .cv-cursor { font-style: normal; color: var(--accent); animation: cv-blink 1.1s steps(2, start) infinite; }
+  @keyframes cv-blink { to { visibility: hidden; } }
 
   .cv-stage {
     position: relative;
@@ -618,5 +620,5 @@
     .cv-tabs i:not(.on) { display: none; }
   }
   @media (prefers-reduced-motion: reduce) {
-    .cv-edges .live, .cv-st.dep { animation: none; }
+    .cv-edges .live, .cv-edges-m .live, .cv-st.dep, .cv-cursor { animation: none; }
   }
