@@ -1,8 +1,10 @@
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import type { ServiceEntity } from '@/lib/api-client';
 import { serviceStatusClass } from '@/lib/api-client';
-import { Box, Globe, Database, Terminal, ExternalLink, Copy, Layers } from 'lucide-react';
+import { Box, ExternalLink, Copy, Layers, Loader2 } from 'lucide-react';
 import { useState } from 'react';
+import { serviceIcon, serviceAccent } from './service-visuals';
+import { ServiceIcon } from './ServiceIcon';
 
 export type ServiceNodeData = {
   service: ServiceEntity;
@@ -12,36 +14,12 @@ export type ServiceNodeData = {
 
 export type GroupNodeData = {
   title: string;
+  onRename?: (groupId: string, title: string) => void;
+  renameNonce?: number;
 };
 
 export type ServiceNodeType = Node<ServiceNodeData, 'serviceNode'>;
 export type GroupNodeType = Node<GroupNodeData, 'groupNode'>;
-
-function renderServiceTypeIcon(type: string, size = 18) {
-  switch (type) {
-    case 'web':
-      return <Globe size={size} />;
-    case 'database':
-      return <Database size={size} />;
-    case 'worker':
-      return <Terminal size={size} />;
-    default:
-      return <Box size={size} />;
-  }
-}
-
-function serviceTypeColor(type: string): string {
-  switch (type) {
-    case 'web':
-      return '#7ab8ff';
-    case 'database':
-      return '#b4e34a';
-    case 'worker':
-      return 'var(--accent-primary)';
-    default:
-      return '#9295a4';
-  }
-}
 
 function statusLabel(status: string): string {
   switch (status) {
@@ -72,27 +50,30 @@ function statusColor(status: string): string {
   }
 }
 
+const TRANSIENT_STATUSES = new Set(['building', 'deploying', 'pending', 'rolling_back']);
+
 export function ServiceNode({ data }: NodeProps<ServiceNodeType>) {
   const { service, selected } = data;
-  const typeColor = serviceTypeColor(service.type);
+  const brand = serviceIcon(service);
+  const typeColor = brand?.color ?? serviceAccent(service);
   const replicas = service.replicas ?? 0;
   const stateColor = statusColor(service.status);
+  const isTransient = TRANSIENT_STATUSES.has(service.status);
 
   const publicUrl = service.domain ? `https://${service.domain}` : service.publicUrl;
   const internalAddr = service.port ? `${service.name}:${service.port}` : service.name;
 
   return (
     <div
-      className={`rounded-[var(--radius-lg)] border transition-all duration-200 group relative overflow-hidden ${
+      className={`w-full rounded-[var(--radius-lg)] border transition-[border-color,box-shadow,transform] duration-150 group relative overflow-hidden ${
         selected
-          ? 'border-[var(--accent-primary)] bg-[var(--accent-primary-soft)] shadow-lg shadow-[var(--accent-primary-glow)]'
-          : 'border-[var(--border-subtle)] bg-[var(--surface-card)] hover:border-[var(--border-default)] hover:shadow-lg'
+          ? 'border-[var(--accent-primary)] bg-[var(--accent-primary-soft)] shadow-[0_0_0_1px_var(--accent-primary),0_12px_36px_rgba(0,0,0,0.5)]'
+          : 'border-[var(--border-subtle)] bg-[var(--surface-card)] hover:border-[var(--border-default)] hover:shadow-[0_12px_32px_rgba(0,0,0,0.45)] hover:-translate-y-px'
       }`}
-      style={{ minWidth: 220, maxWidth: 280 }}
     >
       <div
         className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
-        style={{ background: `${typeColor}10` }}
+        style={{ background: `${typeColor}08` }}
       />
 
       <Handle id="t-l" type="target" position={Position.Left} className="!opacity-0 !w-2 !h-2 !border-0" />
@@ -105,22 +86,26 @@ export function ServiceNode({ data }: NodeProps<ServiceNodeType>) {
         style={{ background: stateColor }}
       />
 
-      <div className="relative p-4">
-        <div className="flex items-start gap-3 mb-3">
+      <div className="relative px-3.5 pt-3.5 pb-3">
+        <div className="flex items-center gap-3 mb-2.5">
           <div
-            className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-all duration-200 ${
-              selected ? 'ring-2 ring-white/20' : ''
-            }`}
+            className="w-9 h-9 rounded-[var(--radius-md)] flex items-center justify-center flex-shrink-0 transition-all duration-200"
             style={{
-              background: selected ? typeColor : `${typeColor}20`,
-              color: selected ? 'white' : typeColor,
+              background: selected && !brand ? typeColor : `${typeColor}1c`,
+              color: selected && !brand ? 'var(--bg-void)' : typeColor,
             }}
           >
-            {renderServiceTypeIcon(service.type, 18)}
+            {isTransient ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <ServiceIcon service={service} size={17} />
+            )}
           </div>
-          <div className="min-w-0 flex-1 pt-0.5">
-            <h4 className="font-semibold text-sm text-[var(--text-primary)] truncate tracking-tight">{service.name}</h4>
-            <p className="text-[11px] text-[var(--text-tertiary)] truncate mt-0.5">
+          <div className="min-w-0 flex-1">
+            <h4 className="font-semibold text-[13px] leading-tight text-[var(--text-primary)] truncate tracking-tight">
+              {service.name}
+            </h4>
+            <p className="text-[10.5px] text-[var(--text-tertiary)] truncate mt-0.5">
               {service.type}
               {service.environment && service.environment !== 'production' ? ` · ${service.environment}` : ''}
             </p>
@@ -133,7 +118,7 @@ export function ServiceNode({ data }: NodeProps<ServiceNodeType>) {
           )}
         </div>
 
-        <div className="flex items-center gap-2 mb-3 px-2.5 py-1.5 rounded-lg bg-[var(--surface-muted)]/50 border border-[var(--border-subtle)]/50 group/addr">
+        <div className="flex items-center gap-2 mb-2.5 px-2.5 py-1.5 rounded-[var(--radius-sm)] bg-[var(--surface-muted)]/60 border border-[var(--border-subtle)]/60 group/addr">
           <ExternalLink size={10} className="text-[var(--text-tertiary)] flex-shrink-0" />
           {publicUrl ? (
             <a
@@ -141,12 +126,12 @@ export function ServiceNode({ data }: NodeProps<ServiceNodeType>) {
               target="_blank"
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
-              className="text-[10px] text-[var(--accent-primary)] truncate mono hover:underline"
+              className="text-[10.5px] text-[var(--accent-primary)] truncate mono hover:underline"
             >
               {publicUrl.replace(/^https?:\/\//, '')}
             </a>
           ) : (
-            <span className="text-[10px] text-[var(--text-secondary)] truncate mono" title="Internal network address">
+            <span className="text-[10.5px] text-[var(--text-secondary)] truncate mono" title="Internal network address">
               {internalAddr}
             </span>
           )}
@@ -164,14 +149,14 @@ export function ServiceNode({ data }: NodeProps<ServiceNodeType>) {
         </div>
 
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <span className={`status-dot ${serviceStatusClass(service.status)}`} />
-            <span className="text-[11px] font-semibold tracking-wide uppercase" style={{ color: stateColor }}>
+            <span className="text-[10px] font-semibold tracking-[0.08em] uppercase" style={{ color: stateColor }}>
               {statusLabel(service.status)}
             </span>
           </div>
           {service.image && (
-            <span className="text-[10px] text-[var(--text-tertiary)] truncate mono max-w-[120px]" title={service.image}>
+            <span className="text-[9.5px] text-[var(--text-muted)] truncate mono max-w-[110px]" title={service.image}>
               {service.image}
             </span>
           )}
@@ -181,41 +166,78 @@ export function ServiceNode({ data }: NodeProps<ServiceNodeType>) {
   );
 }
 
-export function GroupNode({ data }: NodeProps<GroupNodeType>) {
+export function GroupNode({ id, data }: NodeProps<GroupNodeType>) {
   const [isHovered, setIsHovered] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(data.title);
+
+  // Context-menu rename requests bump the nonce; enter edit mode when it
+  // changes. Render-phase state adjustment — the React-sanctioned pattern.
+  const [seenRenameNonce, setSeenRenameNonce] = useState(data.renameNonce ?? 0);
+  const incomingNonce = data.renameNonce ?? 0;
+  if (incomingNonce > seenRenameNonce) {
+    setSeenRenameNonce(incomingNonce);
+    setDraft(data.title);
+    setEditing(true);
+  }
+
+  const commit = () => {
+    const next = draft.trim() || data.title;
+    setEditing(false);
+    if (next !== data.title) {
+      data.onRename?.(id, next);
+    }
+  };
 
   return (
     <div
-      className="h-full w-full rounded-[var(--radius-xl)] border-2 border-dashed transition-all duration-200 relative overflow-hidden"
+      className="h-full w-full rounded-[var(--radius-xl)] border-2 border-dashed transition-all duration-200 relative"
       style={{
-        borderColor: isHovered ? 'var(--accent-primary)' : 'var(--border-default)',
-        background: isHovered ? 'rgba(232, 49, 106, 0.03)' : 'var(--surface-muted)/30',
+        borderColor: isHovered ? 'var(--border-strong)' : 'var(--border-default)',
+        background: isHovered ? 'var(--accent-primary-soft)' : 'rgba(255,255,255,0.02)',
       }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <div
-        className="absolute inset-0 opacity-0 transition-opacity duration-300 pointer-events-none"
-        style={{
-          background: 'rgba(232,49,106,0.03)',
-          opacity: isHovered ? 1 : 0,
-        }}
-      />
-
       <div className="relative p-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div
-              className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors duration-200"
-              style={{
-                background: isHovered ? 'var(--accent-primary-soft)' : 'var(--surface-card)',
-                color: isHovered ? 'var(--accent-primary)' : 'var(--text-tertiary)',
-              }}
-            >
-              <Box size={14} />
-            </div>
-            <h3 className="text-sm font-semibold text-[var(--text-primary)] tracking-tight">{data.title}</h3>
+        <div className="flex items-center gap-2.5">
+          <div
+            className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors duration-200"
+            style={{
+              background: isHovered ? 'var(--accent-primary-soft)' : 'var(--surface-card)',
+              color: isHovered ? 'var(--accent-primary)' : 'var(--text-tertiary)',
+            }}
+          >
+            <Box size={14} />
           </div>
+          {editing ? (
+            <input
+              autoFocus
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onBlur={commit}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commit();
+                if (e.key === 'Escape') {
+                  setDraft(data.title);
+                  setEditing(false);
+                }
+              }}
+              className="nodrag h-7 px-2 rounded-[var(--radius-sm)] border border-[var(--border-default)] bg-[var(--surface-card)] text-sm font-semibold text-[var(--text-primary)] outline-none focus:border-[var(--accent-primary)]"
+            />
+          ) : (
+            <h3
+              className="text-sm font-semibold text-[var(--text-primary)] tracking-tight"
+              onDoubleClick={(e) => {
+                e.stopPropagation();
+                setDraft(data.title);
+                setEditing(true);
+              }}
+              title="Double-click to rename"
+            >
+              {data.title}
+            </h3>
+          )}
         </div>
 
         <p

@@ -171,9 +171,13 @@ export function saveCanvasMetadata(projectId: string, metadata: ProjectCanvasMet
   canvasStorage()?.setItem(canvasStorageKey(projectId), JSON.stringify(metadata));
 }
 
-export function loadCanvasMetadata(projectId: string, services: ServiceEntity[]): ProjectCanvasMetadata {
+export function loadCanvasMetadata(
+  projectId: string,
+  services: ServiceEntity[],
+  layout?: Map<string, { x: number; y: number }>,
+): ProjectCanvasMetadata {
   const key = canvasStorageKey(projectId);
-  const fallback = createDefaultCanvasMetadata(services);
+  const fallback = createDefaultCanvasMetadata(services, layout);
   const serviceIds = new Set(services.map((service) => service.id));
 
   const raw = canvasStorage()?.getItem(key);
@@ -195,7 +199,14 @@ export function loadCanvasMetadata(projectId: string, services: ServiceEntity[])
     const nodeMap = new Map(parsed.nodes.map((node) => [node.serviceId, node]));
     const normalizedNodes: CanvasNodeLayout[] = [];
 
-    for (const [index, service] of services.entries()) {
+    // Services added after the layout was saved park in a trailing column to
+    // the right of everything placed so far, instead of overlapping nodes the
+    // user already arranged.
+    const placedXs = parsed.nodes.map((node) => node.position.x);
+    let parkedRow = 0;
+    const parkedX = placedXs.length > 0 ? Math.max(...placedXs) + 320 : 70;
+
+    for (const service of services) {
       const existing = nodeMap.get(service.id);
       if (existing) {
         normalizedNodes.push({
@@ -206,15 +217,14 @@ export function loadCanvasMetadata(projectId: string, services: ServiceEntity[])
         continue;
       }
 
-      const col = index % 3;
-      const row = Math.floor(index / 3);
+      const parked = layout?.get(service.id);
       normalizedNodes.push({
         serviceId: service.id,
-        position: {
-          x: 70 + col * 260,
-          y: 80 + row * 170,
-        },
+        position: parked ?? { x: parkedX, y: 80 + parkedRow * 160 },
       });
+      if (!parked) {
+        parkedRow += 1;
+      }
     }
 
     const seenEdgeIds = new Set<string>();
