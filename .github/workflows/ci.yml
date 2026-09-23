@@ -222,3 +222,93 @@ jobs:
           ignore-unfixed: true
           vuln-type: os,library
           severity: CRITICAL,HIGH
+
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    needs: [docker]
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Conventional-commit bump. Tags pushed with GITHUB_TOKEN do not
+      # retrigger this workflow, so images are retagged below instead.
+      - name: Bump version and push tag
+        if: github.ref == 'refs/heads/main'
+        id: tag_version
+        uses: mathieudutour/github-tag-action@v6.2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          default_bump: false
+
+      - name: Resolve release tag
+        id: release
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            tag="${GITHUB_REF_NAME}"
+          else
+            tag="${{ steps.tag_version.outputs.new_tag }}"
+          fi
+          if [ -z "$tag" ]; then
+            echo "No releasable commits since last tag - skipping release."
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Go
+        if: steps.release.outputs.tag != ''
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: app/backend/go.mod
+          cache: true
+
+      - name: Build CLI binaries
+        if: steps.release.outputs.tag != ''
+        working-directory: app/backend
+        env:
+          VERSION: ${{ steps.release.outputs.tag }}
+        run: bash ../../scripts/build-cli.sh
+
+      - name: Checksums
+        if: steps.release.outputs.tag != ''
+        working-directory: app/backend/bin
+        run: sha256sum containr-* > checksums.txt
+
+      - name: Login to GHCR
+        if: steps.release.outputs.tag != '' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Tag pushes from github-tag-action do not trigger workflows, so the
+      # release job retags the just-published :main images in-registry.
+      - name: Tag release images in GHCR
+        if: steps.release.outputs.tag != '' && github.ref == 'refs/heads/main'
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          repo="${GITHUB_REPOSITORY,,}"
+          for img in backend frontend; do
+            docker buildx imagetools create \
+              --tag "ghcr.io/${repo}-${img}:${TAG}" \
+              --tag "ghcr.io/${repo}-${img}:latest" \
+              "ghcr.io/${repo}-${img}:main"
+          done
+
+      - name: Create GitHub Release
+        if: steps.release.outputs.tag != ''
+        working-directory: app/backend/bin
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          gh release create "$TAG" --title "$TAG" --generate-notes \
+            containr-* checksums.txt \
+          || gh release upload "$TAG" containr-* checksums.txt --clobber

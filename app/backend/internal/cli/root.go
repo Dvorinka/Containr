@@ -27,6 +27,12 @@ func Execute() {
 	cobra.CheckErr(rootCmd.Execute())
 }
 
+// SetVersion overrides the version reported by `containr --version`.
+// Called by main with the value injected via -ldflags at build time.
+func SetVersion(v string) {
+	rootCmd.Version = v
+}
+
 func init() {
 	cobra.OnInitialize(initConfig)
 
