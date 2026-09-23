@@ -634,13 +634,13 @@ textarea {
 .edge-premium .react-flow__edge-path {
   stroke-linecap: round;
   stroke-linejoin: round;
-  filter: drop-shadow(0 0 4px rgba(156, 126, 240, 0.3));
+  filter: drop-shadow(0 0 4px rgba(180, 227, 74, 0.25));
   transition: filter 0.2s ease, stroke-width 0.2s ease;
 }
 
 .edge-premium:hover .react-flow__edge-path {
-  filter: drop-shadow(0 0 8px rgba(156, 126, 240, 0.5));
-  stroke-width: 3px;
+  filter: drop-shadow(0 0 8px rgba(180, 227, 74, 0.45));
+  stroke-width: 2.6px;
 }
 
 /* ============================================
@@ -1685,3 +1685,86 @@ textarea {
   margin: 24px 0;
 }
 .docs-article img { max-width: 100%; border-radius: var(--radius-md); }
+
+/* ============================================
+   CANVAS — fullscreen workspace graph
+   ============================================ */
+
+/* Floating glass pills (zoom controls, env filter, hints) */
+.canvas-pill {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(19, 21, 24, 0.82);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.canvas-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 6px;
+  border-radius: 999px;
+  color: var(--text-tertiary);
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.canvas-pill-btn:hover {
+  color: var(--text-primary);
+  background: var(--surface-muted);
+}
+
+/* React Flow pane affordances */
+.react-flow__pane {
+  cursor: grab;
+}
+.react-flow__pane.dragging {
+  cursor: grabbing;
+}
+.react-flow__node.selectable:focus {
+  outline: none;
+}
+
+/* Marquee selection tint */
+.react-flow__selection {
+  background: var(--accent-primary-soft);
+  border: 1px solid var(--border-strong);
+}
+
+/* MiniMap — match surface card, dimmed nodes */
+.react-flow__minimap {
+  border-radius: var(--radius-md) !important;
+  border: 1px solid var(--border-default);
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.react-flow__minimap-svg {
+  display: block;
+}
+
+/* Inspector panel entrance */
+.canvas-inspector {
+  animation: canvas-panel-in 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes canvas-panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canvas-inspector {
+    animation: none;
+  }
+}

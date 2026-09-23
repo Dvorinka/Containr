@@ -44,14 +44,17 @@ export const DEFAULT_VIEWPORT: CanvasViewport = {
   zoom: 1,
 };
 
-export function createDefaultCanvasMetadata(services: ServiceEntity[]): ProjectCanvasMetadata {
+export function createDefaultCanvasMetadata(
+  services: ServiceEntity[],
+  layout?: Map<string, CanvasPoint>,
+): ProjectCanvasMetadata {
   const nodes = services.map((service, index) => {
     const col = index % 3;
     const row = Math.floor(index / 3);
 
     return {
       serviceId: service.id,
-      position: {
+      position: layout?.get(service.id) ?? {
         x: 70 + col * 260,
         y: 80 + row * 170,
       },

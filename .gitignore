@@ -123,3 +123,4 @@ bin
 ref/
 .playwright-mcp/
 canvas-*.png
+.vercel

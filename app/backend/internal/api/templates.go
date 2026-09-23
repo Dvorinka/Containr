@@ -28,6 +28,7 @@ type ServiceTemplate struct {
 	Variables   string    `json:"variables" db:"variables"`
 	IsOfficial  bool      `json:"is_official" db:"is_official"`
 	OwnerID     string    `json:"owner_id,omitempty" db:"owner_id"`
+	IsPublic    bool      `json:"is_public" db:"is_public"`
 	CreatedAt   time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at" db:"updated_at"`
 }
@@ -383,6 +384,7 @@ type templateWriteRequest struct {
 	Logo        string          `json:"logo"`
 	Config      json.RawMessage `json:"config" binding:"required"`
 	Variables   json.RawMessage `json:"variables"`
+	IsPublic    bool            `json:"is_public"`
 }
 
 var templateCategories = map[string]bool{
@@ -483,6 +485,7 @@ func handleCreateTemplate(c *gin.Context) {
 		Config:      req.Config,
 		Variables:   templateVariablesParam(req.Variables),
 		OwnerID:     uuid.NullUUID{UUID: ownerUUID, Valid: true},
+		IsPublic:    req.IsPublic,
 	}); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create template"})
 		return
@@ -529,6 +532,7 @@ func handleUpdateTemplate(c *gin.Context) {
 		Logo:        nullableText(req.Logo),
 		Config:      req.Config,
 		Variables:   templateVariablesParam(req.Variables),
+		IsPublic:    req.IsPublic,
 		ID:          templateID,
 		OwnerID:     uuid.NullUUID{UUID: ownerUUID, Valid: true},
 	})
@@ -1013,10 +1017,11 @@ func defaultTemplateResources(serviceType string) (cpu, memory string) {
 	}
 }
 
-// templateVisibleTo reports whether the caller may see a template: official
-// templates are public, user templates are owner/admin only.
+// templateVisibleTo reports whether the caller may see a template: official and
+// published (is_public) templates are public, other user templates are
+// owner/admin only.
 func templateVisibleTo(c *gin.Context, t ServiceTemplate) bool {
-	if t.IsOfficial {
+	if t.IsOfficial || t.IsPublic {
 		return true
 	}
 	if contextIsAdmin(c) {
@@ -1047,6 +1052,7 @@ func mapSQLCTemplate(row sqlcdb.ServiceTemplate) ServiceTemplate {
 		Variables:   variables,
 		IsOfficial:  row.IsOfficial.Valid && row.IsOfficial.Bool,
 		OwnerID:     ownerID,
+		IsPublic:    row.IsPublic,
 		CreatedAt:   templateNullTime(row.CreatedAt),
 		UpdatedAt:   templateNullTime(row.UpdatedAt),
 	}
