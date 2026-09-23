@@ -7806,6 +7806,8 @@ export interface components {
             is_official?: boolean;
             /** @description Owning user ID for user-created templates; null for official presets */
             owner_id?: string | null;
+            /** @description Whether a user-created template is published to the public catalog */
+            is_public?: boolean;
             /**
              * Format: date-time
              * @description Creation timestamp
@@ -7830,6 +7832,8 @@ export interface components {
             config: Record<string, never>;
             /** @description Configurable variables exposed at deploy time */
             variables?: components["schemas"]["TemplateVariable"][];
+            /** @description Publish this template to the public catalog (visible anonymously) */
+            is_public?: boolean;
         };
         TemplateConfig: {
             /** @description Service type for created service */

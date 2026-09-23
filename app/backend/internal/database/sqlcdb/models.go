@@ -207,6 +207,7 @@ type ServiceTemplate struct {
 	Variables   pqtype.NullRawMessage `json:"variables"`
 	IsOfficial  sql.NullBool          `json:"is_official"`
 	OwnerID     uuid.NullUUID         `json:"owner_id"`
+	IsPublic    bool                  `json:"is_public"`
 	CreatedAt   sql.NullTime          `json:"created_at"`
 	UpdatedAt   sql.NullTime          `json:"updated_at"`
 }

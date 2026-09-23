@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Template catalog - Containr</title>
+<meta name="description" content="Deploy-ready service templates for Containr. Official presets plus community templates published from live instances.">
+<meta name="theme-color" content="#0c0d0f">
+<link rel="icon" type="image/svg+xml" href="containr.svg">
+<script>document.documentElement.classList.add('js');</script>
+<link rel="stylesheet" href="style.css">
+<style>
+  .tpl-hero { padding: 72px 0 0; }
+  .tpl-hero h1 {
+    font-size: clamp(28px, 4vw, 42px);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    color: var(--text-primary);
+    max-width: 20ch;
+  }
+  .tpl-hero .sub { margin-top: 12px; font-size: 15px; max-width: 56ch; }
+  .source-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: 16px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+  }
+  .source-tag i {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--text-tertiary);
+  }
+  .source-tag.live i { background: var(--accent); }
+
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 36px 0 22px;
+    flex-wrap: wrap;
+  }
+  .search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 220px;
+    max-width: 340px;
+    background: var(--surface-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    padding: 9px 13px;
+    color: var(--text-tertiary);
+  }
+  .search input {
+    flex: 1;
+    background: none;
+    border: none;
+    outline: none;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-family: var(--sans);
+  }
+  .search input::placeholder { color: var(--text-tertiary); }
+  .cats { display: flex; gap: 6px; flex-wrap: wrap; }
+  .cat {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-tertiary);
+    background: transparent;
+    border: 1px solid var(--border-subtle);
+    border-radius: 999px;
+    padding: 7px 13px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .cat:hover { color: var(--text-secondary); border-color: var(--border-default); }
+  .cat.on { color: var(--accent); border-color: rgba(180, 227, 74, 0.4); background: var(--accent-dim); }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    padding-bottom: 96px;
+  }
+  .tcard {
+    text-align: left;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius);
+    background: var(--surface-card);
+    padding: 20px;
+    cursor: pointer;
+    transition: border-color 0.15s, transform 0.15s;
+    font-family: var(--sans);
+    color: inherit;
+    display: flex;
+    flex-direction: column;
+  }
+  .tcard:hover { border-color: var(--border-default); transform: translateY(-2px); }
+  .tcard .top { display: flex; align-items: center; gap: 12px; }
+  .tcard .logo {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background: var(--surface-muted);
+    border: 1px solid var(--border-subtle);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    flex-shrink: 0;
+    font-weight: 800;
+    font-size: 15px;
+    color: var(--accent);
+  }
+  .tcard .logo img { width: 20px; height: 20px; }
+  .tcard h3 { font-size: 14px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.01em; }
+  .badge {
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    border-radius: 999px;
+    padding: 2px 8px;
+    flex-shrink: 0;
+  }
+  .badge-official { background: rgba(242, 201, 76, 0.12); color: #f2c94c; }
+  .badge-community { background: var(--accent-dim); color: var(--accent); }
+  .tcard .desc {
+    margin-top: 12px;
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: var(--text-tertiary);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    flex: 1;
+  }
+  .tcard .meta {
+    margin-top: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--text-tertiary);
+  }
+  .tcard .meta .catname { color: var(--accent); }
+  .tcard .meta .rt { margin-left: auto; }
+
+  .grid .empty {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 60px 0;
+    color: var(--text-tertiary);
+    font-size: 13px;
+  }
+  .publish-card {
+    border: 1px dashed var(--border-default);
+    background: transparent;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 8px;
+  }
+  .publish-card:hover { border-color: rgba(180, 227, 74, 0.4); }
+  .publish-card .plus {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    background: var(--accent-dim);
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .publish-card h3 { color: var(--text-secondary); }
+  .publish-card p { font-size: 12px; color: var(--text-tertiary); max-width: 26ch; }
+
+  /* ---------- detail modal ---------- */
+  .modal-back {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .modal {
+    width: 100%;
+    max-width: 640px;
+    max-height: 86vh;
+    overflow-y: auto;
+    background: var(--bg-base);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius);
+    padding: 26px 28px;
+  }
+  .modal .mhead { display: flex; align-items: flex-start; gap: 14px; }
+  .modal .mhead .logo {
+    width: 46px;
+    height: 46px;
+    border-radius: 12px;
+    background: var(--surface-muted);
+    border: 1px solid var(--border-subtle);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 18px;
+    color: var(--accent);
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .modal .mhead .logo img { width: 24px; height: 24px; }
+  .modal .mhead h2 { font-size: 19px; font-weight: 800; color: var(--text-primary); letter-spacing: -0.02em; }
+  .modal .mhead .badges { display: flex; gap: 6px; margin-top: 6px; }
+  .modal .x {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 6px;
+  }
+  .modal .x:hover { color: var(--text-primary); background: var(--surface-muted); }
+  .modal .mdesc { margin-top: 14px; font-size: 13.5px; line-height: 1.6; color: var(--text-secondary); }
+  .msec { margin-top: 22px; }
+  .msec h4 {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-bottom: 10px;
+  }
+  .kv { display: flex; flex-wrap: wrap; gap: 8px; }
+  .kv span {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-secondary);
+    background: var(--bg-void);
+    border: 1px solid var(--border-subtle);
+    border-radius: 7px;
+    padding: 5px 10px;
+  }
+  .kv span b { color: var(--text-tertiary); font-weight: 500; }
+  .vars { display: grid; gap: 6px; }
+  .vrow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    background: var(--bg-void);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    padding: 8px 12px;
+  }
+  .vrow code { font-family: var(--mono); font-size: 11.5px; color: var(--text-primary); }
+  .vrow .lbl { color: var(--text-tertiary); font-size: 11.5px; }
+  .vrow .tags { margin-left: auto; display: flex; gap: 5px; }
+  .vrow .tags i {
+    font-style: normal;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: var(--surface-muted);
+    color: var(--text-tertiary);
+  }
+  .vrow .tags i.req { color: var(--accent); background: var(--accent-dim); }
+  .vrow .tags i.sec { color: #f2c94c; background: rgba(242, 201, 76, 0.1); }
+  .mfoot { margin-top: 24px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .hint { margin-top: 16px; font-size: 11.5px; color: var(--text-tertiary); line-height: 1.6; }
+  .hint code { font-family: var(--mono); color: var(--text-secondary); }
+
+  [hidden] { display: none !important; }
+
+  @media (max-width: 900px) {
+    .grid { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 560px) {
+    .grid { grid-template-columns: 1fr; }
+    .modal { padding: 20px; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap nav-inner">
+    <a href="index.html" class="brand">
+      <img src="containr.svg" alt="Containr logo">
+      contain<em>r</em>
+    </a>
+    <div class="nav-links">
+      <a href="index.html#features">Features</a>
+      <a href="index.html#product">Product</a>
+      <a href="templates.html">Templates</a>
+      <a href="https://github.com/Dvorinka/Containr/tree/main/docs/guides" target="_blank" rel="noopener">Docs</a>
+    </div>
+    <div class="nav-right">
+      <a class="gh-link" href="https://github.com/Dvorinka/Containr" target="_blank" rel="noopener" aria-label="Containr on GitHub">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+      </a>
+      <a class="btn btn-primary" href="index.html#install">Get started</a>
+    </div>
+  </div>
+</nav>
+
+<header class="tpl-hero">
+  <div class="wrap">
+    <h1>Template catalog</h1>
+    <p class="sub">Deploy-ready service presets plus templates published by the community. Pick one, import it into your instance, deploy.</p>
+    <span class="source-tag" id="source-tag"><i></i><span id="source-label">loading catalog</span></span>
+
+    <div class="toolbar">
+      <label class="search">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="q" type="search" placeholder="Search templates" autocomplete="off">
+      </label>
+      <div class="cats" id="cats"></div>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <div class="grid" id="grid"></div>
+  </div>
+</main>
+
+<div class="modal-back" id="modal-back" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="m-title">
+    <div class="mhead">
+      <span class="logo" id="m-logo"></span>
+      <div>
+        <h2 id="m-title"></h2>
+        <div class="badges" id="m-badges"></div>
+      </div>
+      <button class="x" id="m-close" aria-label="Close">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <p class="mdesc" id="m-desc"></p>
+    <div class="msec" id="m-meta-sec">
+      <h4>Runtime</h4>
+      <div class="kv" id="m-meta"></div>
+    </div>
+    <div class="msec" id="m-vars-sec" hidden>
+      <h4>Variables</h4>
+      <div class="vars" id="m-vars"></div>
+    </div>
+    <div class="mfoot">
+      <button class="btn btn-primary" id="m-copy">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        Copy template JSON
+      </button>
+      <a class="btn btn-ghost" href="https://github.com/Dvorinka/Containr/tree/main/docs/guides" target="_blank" rel="noopener">Deploy guide</a>
+    </div>
+    <p class="hint">In your instance: <code>Templates &rarr; New template &rarr; Upload .json</code> (or paste the copied JSON). Deploy it to any project from there.</p>
+  </div>
+</div>
+
+<footer>
+  <div class="wrap foot">
+    <span class="l"><img src="containr.svg" alt="">Containr - MIT License</span>
+    <nav>
+      <a href="https://github.com/Dvorinka/Containr" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/Dvorinka/Containr/tree/main/docs" target="_blank" rel="noopener">Docs</a>
+      <a href="https://github.com/Dvorinka/Containr/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">Contribute</a>
+      <a href="https://github.com/Dvorinka/Containr/blob/main/SECURITY.md" target="_blank" rel="noopener">Security</a>
+    </nav>
+  </div>
+</footer>
+
+<script>
+  // The catalog comes from a live Containr instance when one is configured.
+  // Point it at an instance once with ?api=https://host (persisted in
+  // localStorage); with no instance configured the bundled official
+  // snapshot renders immediately.
+  const params = new URLSearchParams(location.search);
+  const paramApi = params.get('api');
+  if (paramApi) localStorage.setItem('containr-api', paramApi.replace(/\/$/, ''));
+  const API_BASE = (localStorage.getItem('containr-api') || '').replace(/\/$/, '');
+
+  const grid = document.getElementById('grid');
+  const catsEl = document.getElementById('cats');
+  const qEl = document.getElementById('q');
+  const sourceTag = document.getElementById('source-tag');
+  const sourceLabel = document.getElementById('source-label');
+
+  let templates = [];
+  let activeCat = '';
+  let query = '';
+  let current = null;
+
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  async function loadTemplates() {
+    if (API_BASE) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 4000);
+      try {
+        const res = await fetch(API_BASE + '/api/v1/templates', { signal: ctrl.signal });
+        if (!res.ok) throw new Error('api ' + res.status);
+        const data = await res.json();
+        const list = Array.isArray(data.templates) ? data.templates : [];
+        if (!list.length) throw new Error('empty catalog');
+        setTemplates(list, 'live: ' + API_BASE.replace(/^https?:\/\//, ''), true);
+        return;
+      } catch {
+        // fall through to the bundled snapshot
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+    const res = await fetch('templates.json');
+    const data = await res.json();
+    setTemplates(data.templates || [], 'official snapshot - connect an instance with ?api=', false);
+  }
+
+  function setTemplates(list, label, live) {
+    const seen = new Set();
+    templates = list.filter((t) => t && t.id && !seen.has(t.id) && seen.add(t.id));
+    sourceLabel.textContent = label;
+    sourceTag.classList.toggle('live', live);
+    renderCats();
+    render();
+  }
+
+  function runtime(t) {
+    try { return (JSON.parse(t.config || '{}').runtime || ''); } catch { return ''; }
+  }
+  function cfg(t) {
+    try { return JSON.parse(t.config || '{}'); } catch { return {}; }
+  }
+  function vars(t) {
+    try { const v = JSON.parse(t.variables || '[]'); return Array.isArray(v) ? v : []; } catch { return []; }
+  }
+
+  const CATS = [['', 'All'], ['web', 'Web'], ['frontend', 'Frontend'], ['database', 'Databases'], ['app', 'Apps'], ['worker', 'Workers'], ['cron', 'Cron'], ['custom', 'Custom']];
+
+  function renderCats() {
+    const present = new Set(templates.map((t) => (t.category || 'custom').toLowerCase()));
+    catsEl.innerHTML = CATS.filter(([k]) => k === '' || present.has(k))
+      .map(([k, label]) => `<button class="cat${k === activeCat ? ' on' : ''}" data-cat="${k}">${label}</button>`)
+      .join('');
+    catsEl.querySelectorAll('.cat').forEach((b) =>
+      b.addEventListener('click', () => { activeCat = b.dataset.cat; renderCats(); render(); })
+    );
+  }
+
+  function logoHtml(t, size) {
+    const letter = esc((t.name || '?').trim().charAt(0).toUpperCase());
+    if (t.logo) {
+      return `<img src="${esc(t.logo)}" alt="" loading="lazy" onerror="this.outerHTML='${letter}'">`;
+    }
+    return letter;
+  }
+
+  function badge(t) {
+    if (t.is_official) return '<span class="badge badge-official">Official</span>';
+    return '<span class="badge badge-community">Community</span>';
+  }
+
+  function filtered() {
+    const q = query.toLowerCase();
+    return templates.filter((t) => {
+      if (activeCat && (t.category || '').toLowerCase() !== activeCat) return false;
+      if (!q) return true;
+      return (t.name + ' ' + (t.description || '') + ' ' + (t.category || '')).toLowerCase().includes(q);
+    });
+  }
+
+  function render() {
+    const list = filtered();
+    let html = list.map((t) => `
+      <button class="tcard" data-id="${esc(t.id)}">
+        <div class="top">
+          <span class="logo">${logoHtml(t)}</span>
+          <h3>${esc(t.name)}</h3>
+          ${badge(t)}
+        </div>
+        <p class="desc">${esc(t.description || 'No description.')}</p>
+        <div class="meta"><span class="catname">${esc(t.category || 'custom')}</span><span class="rt">${esc(runtime(t))}</span></div>
+      </button>`).join('');
+
+    html += `
+      <button class="tcard publish-card" id="publish-card">
+        <span class="plus">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        </span>
+        <h3>Publish yours</h3>
+        <p>Any template you mark public in your instance shows up in the catalog.</p>
+      </button>`;
+
+    if (!list.length) {
+      html += '<div class="empty">Nothing matches. Try a different search or category.</div>';
+    }
+
+    grid.innerHTML = html;
+    grid.querySelectorAll('.tcard[data-id]').forEach((card) =>
+      card.addEventListener('click', () => openModal(templates.find((t) => t.id === card.dataset.id)))
+    );
+    document.getElementById('publish-card').addEventListener('click', () => {
+      document.getElementById('modal-back').hidden = false;
+      showPublish();
+    });
+  }
+
+  // ---------- modal ----------
+  const back = document.getElementById('modal-back');
+  const closeModal = () => (back.hidden = true);
+  document.getElementById('m-close').addEventListener('click', closeModal);
+  back.addEventListener('click', (e) => { if (e.target === back) closeModal(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+
+  function openModal(t) {
+    if (!t) return;
+    current = t;
+    document.getElementById('m-logo').innerHTML = logoHtml(t);
+    document.getElementById('m-title').textContent = t.name;
+    document.getElementById('m-badges').innerHTML =
+      badge(t) + `<span class="badge" style="background:var(--surface-muted);color:var(--text-tertiary)">${esc(t.category || 'custom')}</span>`;
+    document.getElementById('m-desc').textContent = t.description || 'No description.';
+
+    const c = cfg(t);
+    const meta = [];
+    if (c.type) meta.push(['type', c.type]);
+    if (c.runtime) meta.push(['runtime', c.runtime]);
+    if (c.port) meta.push(['port', c.port]);
+    if (c.build_command) meta.push(['build', c.build_command]);
+    if (c.start_command) meta.push(['start', c.start_command]);
+    if (c.health_check) meta.push(['health', c.health_check]);
+    document.getElementById('m-meta').innerHTML = meta.length
+      ? meta.map(([k, v]) => `<span><b>${esc(k)}</b> ${esc(String(v))}</span>`).join('')
+      : '<span>self-contained image</span>';
+
+    const vs = vars(t);
+    const varsSec = document.getElementById('m-vars-sec');
+    varsSec.hidden = vs.length === 0;
+    document.getElementById('m-vars').innerHTML = vs.map((v) => `
+      <div class="vrow">
+        <code>${esc(v.key)}</code>
+        <span class="lbl">${esc(v.label || '')}</span>
+        <span class="tags">
+          ${v.required ? '<i class="req">required</i>' : ''}
+          ${v.secret ? '<i class="sec">secret</i>' : ''}
+        </span>
+      </div>`).join('');
+
+    back.hidden = false;
+  }
+
+  function showPublish() {
+    document.getElementById('m-logo').innerHTML = '+';
+    document.getElementById('m-title').textContent = 'Publish a template';
+    document.getElementById('m-badges').innerHTML = '<span class="badge badge-community">Community</span>';
+    document.getElementById('m-desc').textContent =
+      'Templates are published from inside a running Containr instance. Create a template (or edit one you own), tick "List in the public catalog", and it becomes browsable and deployable by anyone who can reach that instance.';
+    document.getElementById('m-meta').innerHTML =
+      '<span><b>1</b> Templates &rarr; New template</span><span><b>2</b> paste or upload JSON</span><span><b>3</b> tick public catalog</span>';
+    document.getElementById('m-vars-sec').hidden = true;
+    current = null;
+  }
+
+  document.getElementById('m-copy').addEventListener('click', async (e) => {
+    if (!current) return;
+    const c = cfg(current);
+    const payload = JSON.stringify({
+      name: current.name,
+      description: current.description || '',
+      category: current.category || 'custom',
+      logo: current.logo || '',
+      config: c,
+      variables: vars(current),
+    }, null, 2);
+    try { await navigator.clipboard.writeText(payload); } catch {}
+    const btn = e.currentTarget;
+    btn.style.color = 'var(--accent)';
+    setTimeout(() => (btn.style.color = ''), 1200);
+  });
+
+  let debounce;
+  qEl.addEventListener('input', () => {
+    clearTimeout(debounce);
+    debounce = setTimeout(() => { query = qEl.value.trim(); render(); }, 120);
+  });
+
+  loadTemplates();
+</script>
+</body>
+</html>

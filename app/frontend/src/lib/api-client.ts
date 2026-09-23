@@ -124,6 +124,7 @@ export type TemplateEntity = {
   variablesRaw: string;
   isOfficial: boolean;
   ownerId: string | null;
+  isPublic: boolean;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -615,6 +616,7 @@ function normalizeTemplate(template: RawServiceTemplate): TemplateEntity | null 
     variablesRaw: template.variables ?? '',
     isOfficial: Boolean(template.is_official),
     ownerId: template.owner_id ?? null,
+    isPublic: Boolean(template.is_public),
     createdAt: template.created_at,
     updatedAt: template.updated_at,
   };
@@ -1358,6 +1360,7 @@ export type TemplateWriteInput = {
   logo?: string;
   config: Record<string, unknown>;
   variables?: TemplateVariableEntity[];
+  isPublic?: boolean;
 };
 
 function templateWriteBody(input: TemplateWriteInput): string {
@@ -1368,6 +1371,7 @@ function templateWriteBody(input: TemplateWriteInput): string {
     logo: input.logo ?? '',
     config: input.config,
     variables: input.variables ?? [],
+    is_public: input.isPublic ?? false,
   });
 }
 

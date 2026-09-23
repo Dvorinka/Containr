@@ -125,7 +125,7 @@ func (q *Queries) CreateServiceFromTemplate(ctx context.Context, arg CreateServi
 }
 
 const createUserTemplate = `-- name: CreateUserTemplate :exec
-INSERT INTO service_templates (id, name, description, category, logo, config, variables, is_official, owner_id)
+INSERT INTO service_templates (id, name, description, category, logo, config, variables, is_official, owner_id, is_public)
 VALUES (
     $1,
     $2,
@@ -135,7 +135,8 @@ VALUES (
     $6,
     $7,
     false,
-    $8
+    $8,
+    $9
 )
 `
 
@@ -148,6 +149,7 @@ type CreateUserTemplateParams struct {
 	Config      json.RawMessage       `json:"config"`
 	Variables   pqtype.NullRawMessage `json:"variables"`
 	OwnerID     uuid.NullUUID         `json:"owner_id"`
+	IsPublic    bool                  `json:"is_public"`
 }
 
 func (q *Queries) CreateUserTemplate(ctx context.Context, arg CreateUserTemplateParams) error {
@@ -160,6 +162,7 @@ func (q *Queries) CreateUserTemplate(ctx context.Context, arg CreateUserTemplate
 		arg.Config,
 		arg.Variables,
 		arg.OwnerID,
+		arg.IsPublic,
 	)
 	return err
 }
@@ -198,7 +201,7 @@ func (q *Queries) GetProjectOwnerID(ctx context.Context, id uuid.UUID) (uuid.UUI
 }
 
 const getServiceTemplateByID = `-- name: GetServiceTemplateByID :one
-SELECT id, name, description, category, logo, config, variables, is_official, owner_id, created_at, updated_at
+SELECT id, name, description, category, logo, config, variables, is_official, owner_id, is_public, created_at, updated_at
 FROM service_templates
 WHERE id = $1
 `
@@ -216,6 +219,7 @@ func (q *Queries) GetServiceTemplateByID(ctx context.Context, id string) (Servic
 		&i.Variables,
 		&i.IsOfficial,
 		&i.OwnerID,
+		&i.IsPublic,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -223,10 +227,10 @@ func (q *Queries) GetServiceTemplateByID(ctx context.Context, id string) (Servic
 }
 
 const listServiceTemplatesByCategoryForUser = `-- name: ListServiceTemplatesByCategoryForUser :many
-SELECT id, name, description, category, logo, config, variables, is_official, owner_id, created_at, updated_at
+SELECT id, name, description, category, logo, config, variables, is_official, owner_id, is_public, created_at, updated_at
 FROM service_templates
 WHERE category = $1
-  AND (is_official = true OR owner_id = $2)
+  AND (is_official = true OR is_public = true OR owner_id = $2)
 ORDER BY is_official DESC, name ASC
 `
 
@@ -254,6 +258,7 @@ func (q *Queries) ListServiceTemplatesByCategoryForUser(ctx context.Context, arg
 			&i.Variables,
 			&i.IsOfficial,
 			&i.OwnerID,
+			&i.IsPublic,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -271,9 +276,9 @@ func (q *Queries) ListServiceTemplatesByCategoryForUser(ctx context.Context, arg
 }
 
 const listServiceTemplatesForUser = `-- name: ListServiceTemplatesForUser :many
-SELECT id, name, description, category, logo, config, variables, is_official, owner_id, created_at, updated_at
+SELECT id, name, description, category, logo, config, variables, is_official, owner_id, is_public, created_at, updated_at
 FROM service_templates
-WHERE is_official = true OR owner_id = $1
+WHERE is_official = true OR is_public = true OR owner_id = $1
 ORDER BY is_official DESC, name ASC
 `
 
@@ -296,6 +301,7 @@ func (q *Queries) ListServiceTemplatesForUser(ctx context.Context, ownerID uuid.
 			&i.Variables,
 			&i.IsOfficial,
 			&i.OwnerID,
+			&i.IsPublic,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -320,9 +326,10 @@ SET name = $1,
     logo = $4,
     config = $5,
     variables = $6,
+    is_public = $7,
     updated_at = NOW()
-WHERE id = $7
-  AND owner_id = $8
+WHERE id = $8
+  AND owner_id = $9
   AND is_official = false
 `
 
@@ -333,6 +340,7 @@ type UpdateUserTemplateParams struct {
 	Logo        sql.NullString        `json:"logo"`
 	Config      json.RawMessage       `json:"config"`
 	Variables   pqtype.NullRawMessage `json:"variables"`
+	IsPublic    bool                  `json:"is_public"`
 	ID          string                `json:"id"`
 	OwnerID     uuid.NullUUID         `json:"owner_id"`
 }
@@ -345,6 +353,7 @@ func (q *Queries) UpdateUserTemplate(ctx context.Context, arg UpdateUserTemplate
 		arg.Logo,
 		arg.Config,
 		arg.Variables,
+		arg.IsPublic,
 		arg.ID,
 		arg.OwnerID,
 	)
