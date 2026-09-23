@@ -644,7 +644,7 @@ export function ProjectWorkspacePage() {
             This project may have been deleted or you don't have access.
           </p>
           <button
-            onClick={() => navigate('/projects')}
+            onClick={() => navigate(isDemoMode ? '/projects?demo=1' : '/projects')}
             className="mt-6 px-4 py-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-sm font-medium hover:border-[var(--border-default)] transition-colors"
           >
             Back to Projects
@@ -656,12 +656,14 @@ export function ProjectWorkspacePage() {
 
   const canvasView = activeView === 'canvas';
 
+  const projectsHref = isDemoMode ? '/projects?demo=1' : '/projects';
+
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-dvh min-h-0 flex-col bg-[var(--bg-void)]">
       {/* Slim workspace bar — tabs + project meta, canvas fills everything below */}
       <div className="flex h-12 shrink-0 items-center gap-3 border-b border-[var(--border-subtle)] bg-[var(--bg-base)]/80 px-4 backdrop-blur-sm">
         <button
-          onClick={() => navigate('/projects')}
+          onClick={() => navigate(projectsHref)}
           className="flex items-center gap-1.5 text-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors shrink-0"
         >
           <ArrowLeft size={14} />

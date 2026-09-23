@@ -384,7 +384,7 @@ export function ServiceDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['project-services', projectId] });
       queryClient.invalidateQueries({ queryKey: ['projects'] });
-      navigate(`/projects/${projectId}`);
+      navigate(isDemoMode ? `/projects/${projectId}?demo=1` : `/projects/${projectId}`);
     },
   });
 

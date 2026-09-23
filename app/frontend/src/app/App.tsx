@@ -116,10 +116,12 @@ export default function App() {
         <Route path="/auth/sign-up" element={<SignUpPage />} />
 
         {/* Public browsing — approved projects, templates, docs. */}
+        {/* Project workspace renders outside the shell — fullscreen canvas, no nav chrome */}
+        <Route path="/projects/:projectId" element={<ProjectWorkspacePage />} />
+        <Route path="/projects/:projectId/services/:serviceId" element={<ServiceDetailPage />} />
+
         <Route element={<PlatformShell />}>
           <Route path="/projects" element={<ProjectsPage />} />
-          <Route path="/projects/:projectId" element={<ProjectWorkspacePage />} />
-          <Route path="/projects/:projectId/services/:serviceId" element={<ServiceDetailPage />} />
           <Route path="/templates" element={<TemplatesPage />} />
           <Route path="/databases" element={<DatabasesPage />} />
           <Route path="/ha" element={<HighAvailabilityPage />} />
