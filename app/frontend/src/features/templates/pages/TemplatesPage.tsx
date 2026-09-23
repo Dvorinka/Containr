@@ -48,6 +48,7 @@ const demoTemplates: TemplateEntity[] = [
     variablesRaw: '[]',
     isOfficial: true,
     ownerId: null,
+    isPublic: false,
   },
   {
     id: 'tpl-go',
@@ -59,6 +60,7 @@ const demoTemplates: TemplateEntity[] = [
     variablesRaw: '[]',
     isOfficial: true,
     ownerId: null,
+    isPublic: false,
   },
   {
     id: 'tpl-postgres',
@@ -70,6 +72,7 @@ const demoTemplates: TemplateEntity[] = [
     variablesRaw: '[]',
     isOfficial: true,
     ownerId: null,
+    isPublic: false,
   },
   {
     id: 'tpl-mysql',
@@ -81,6 +84,7 @@ const demoTemplates: TemplateEntity[] = [
     variablesRaw: '[]',
     isOfficial: true,
     ownerId: null,
+    isPublic: false,
   },
   {
     id: 'tpl-mariadb',
@@ -92,6 +96,7 @@ const demoTemplates: TemplateEntity[] = [
     variablesRaw: '[]',
     isOfficial: true,
     ownerId: null,
+    isPublic: false,
   },
   {
     id: 'tpl-clickhouse',
@@ -103,6 +108,7 @@ const demoTemplates: TemplateEntity[] = [
     variablesRaw: '[]',
     isOfficial: true,
     ownerId: null,
+    isPublic: false,
   },
   {
     id: 'tpl-dragonfly',
@@ -114,6 +120,7 @@ const demoTemplates: TemplateEntity[] = [
     variablesRaw: '[]',
     isOfficial: true,
     ownerId: null,
+    isPublic: false,
   },
 ];
 
@@ -445,6 +452,7 @@ export function TemplatesPage() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorJson, setEditorJson] = useState(EMPTY_TEMPLATE_JSON);
   const [editingTemplate, setEditingTemplate] = useState<TemplateEntity | null>(null);
+  const [editorIsPublic, setEditorIsPublic] = useState(false);
   const [editorError, setEditorError] = useState<string | null>(null);
 
   const [categoryFilter, setCategoryFilter] = useState('');
@@ -655,6 +663,7 @@ export function TemplatesPage() {
   const openCreateEditor = () => {
     setEditingTemplate(null);
     setEditorJson(EMPTY_TEMPLATE_JSON);
+    setEditorIsPublic(false);
     setEditorError(null);
     setEditorOpen(true);
   };
@@ -687,6 +696,7 @@ export function TemplatesPage() {
         2,
       ),
     );
+    setEditorIsPublic(template.isPublic);
     setEditorError(null);
     setEditorOpen(true);
   };
@@ -711,6 +721,7 @@ export function TemplatesPage() {
       logo: body.logo ?? '',
       config: body.config as Record<string, unknown>,
       variables: Array.isArray(body.variables) ? body.variables : [],
+      isPublic: editorIsPublic,
     });
   };
 
@@ -880,6 +891,11 @@ export function TemplatesPage() {
                                   Mine
                                 </span>
                               ) : null}
+                              {!template.isOfficial && template.isPublic ? (
+                                <span className="px-1.5 py-0.5 rounded bg-[var(--info-soft)] text-[var(--info)] text-[10px] font-semibold">
+                                  Public
+                                </span>
+                              ) : null}
                             </div>
                             <div className="flex items-center gap-2 mt-1">
                               <span 
@@ -953,6 +969,11 @@ export function TemplatesPage() {
                           <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--warning-soft)] text-[var(--warning)] text-xs font-medium">
                             <Star size={10} className="fill-[var(--warning)]" />
                             Official
+                          </span>
+                        )}
+                        {!selectedDetail.template.isOfficial && selectedDetail.template.isPublic && (
+                          <span className="px-2 py-0.5 rounded-full bg-[var(--info-soft)] text-[var(--info)] text-xs font-medium">
+                            Public
                           </span>
                         )}
                       </div>
@@ -1230,9 +1251,15 @@ export function TemplatesPage() {
               </div>
             ) : null}
             <div className="flex items-center justify-between border-t border-[var(--border-subtle)] px-5 py-3.5">
-              <p className="text-[11px] text-[var(--text-tertiary)]">
-                Saved as a user template — only you (and admins) can edit or delete it.
-              </p>
+              <label className="inline-flex cursor-pointer items-center gap-2 text-[11px] text-[var(--text-secondary)]">
+                <input
+                  type="checkbox"
+                  checked={editorIsPublic}
+                  onChange={(e) => setEditorIsPublic(e.target.checked)}
+                  className="h-3.5 w-3.5 accent-[var(--accent-primary)]"
+                />
+                List in the public catalog - anyone browsing this instance can see and deploy it.
+              </label>
               <div className="flex items-center gap-2">
                 <button
                   type="button"

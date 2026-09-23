@@ -1,18 +1,18 @@
 -- name: ListServiceTemplatesForUser :many
-SELECT id, name, description, category, logo, config, variables, is_official, owner_id, created_at, updated_at
+SELECT id, name, description, category, logo, config, variables, is_official, owner_id, is_public, created_at, updated_at
 FROM service_templates
-WHERE is_official = true OR owner_id = sqlc.narg(owner_id)
+WHERE is_official = true OR is_public = true OR owner_id = sqlc.narg(owner_id)
 ORDER BY is_official DESC, name ASC;
 
 -- name: ListServiceTemplatesByCategoryForUser :many
-SELECT id, name, description, category, logo, config, variables, is_official, owner_id, created_at, updated_at
+SELECT id, name, description, category, logo, config, variables, is_official, owner_id, is_public, created_at, updated_at
 FROM service_templates
 WHERE category = sqlc.arg(category)
-  AND (is_official = true OR owner_id = sqlc.narg(owner_id))
+  AND (is_official = true OR is_public = true OR owner_id = sqlc.narg(owner_id))
 ORDER BY is_official DESC, name ASC;
 
 -- name: GetServiceTemplateByID :one
-SELECT id, name, description, category, logo, config, variables, is_official, owner_id, created_at, updated_at
+SELECT id, name, description, category, logo, config, variables, is_official, owner_id, is_public, created_at, updated_at
 FROM service_templates
 WHERE id = $1;
 
@@ -39,7 +39,7 @@ SET name = EXCLUDED.name,
     updated_at = NOW();
 
 -- name: CreateUserTemplate :exec
-INSERT INTO service_templates (id, name, description, category, logo, config, variables, is_official, owner_id)
+INSERT INTO service_templates (id, name, description, category, logo, config, variables, is_official, owner_id, is_public)
 VALUES (
     sqlc.arg(id),
     sqlc.arg(name),
@@ -49,7 +49,8 @@ VALUES (
     sqlc.arg(config),
     sqlc.narg(variables),
     false,
-    sqlc.arg(owner_id)
+    sqlc.arg(owner_id),
+    sqlc.arg(is_public)
 );
 
 -- name: UpdateUserTemplate :execrows
@@ -60,6 +61,7 @@ SET name = sqlc.arg(name),
     logo = sqlc.narg(logo),
     config = sqlc.arg(config),
     variables = sqlc.narg(variables),
+    is_public = sqlc.arg(is_public),
     updated_at = NOW()
 WHERE id = sqlc.arg(id)
   AND owner_id = sqlc.arg(owner_id)

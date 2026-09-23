@@ -84,6 +84,7 @@ CREATE TABLE service_templates (
     variables JSONB DEFAULT '[]',
     is_official BOOLEAN DEFAULT false,
     owner_id UUID,
+    is_public BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
