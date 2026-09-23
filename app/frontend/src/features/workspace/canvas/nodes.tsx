@@ -3,7 +3,8 @@ import type { ServiceEntity } from '@/lib/api-client';
 import { serviceStatusClass } from '@/lib/api-client';
 import { Box, ExternalLink, Copy, Layers, Loader2 } from 'lucide-react';
 import { useState } from 'react';
-import { serviceTypeColor, serviceTypeIcon } from './service-visuals';
+import { serviceIcon, serviceAccent } from './service-visuals';
+import { ServiceIcon } from './ServiceIcon';
 
 export type ServiceNodeData = {
   service: ServiceEntity;
@@ -52,7 +53,8 @@ const TRANSIENT_STATUSES = new Set(['building', 'deploying', 'pending', 'rolling
 
 export function ServiceNode({ data }: NodeProps<ServiceNodeType>) {
   const { service, selected } = data;
-  const typeColor = serviceTypeColor(service.type);
+  const brand = serviceIcon(service);
+  const typeColor = brand?.color ?? serviceAccent(service);
   const replicas = service.replicas ?? 0;
   const stateColor = statusColor(service.status);
   const isTransient = TRANSIENT_STATUSES.has(service.status);
@@ -88,11 +90,15 @@ export function ServiceNode({ data }: NodeProps<ServiceNodeType>) {
           <div
             className="w-9 h-9 rounded-[var(--radius-md)] flex items-center justify-center flex-shrink-0 transition-all duration-200"
             style={{
-              background: selected ? typeColor : `${typeColor}1c`,
-              color: selected ? 'var(--bg-void)' : typeColor,
+              background: selected && !brand ? typeColor : `${typeColor}1c`,
+              color: selected && !brand ? 'var(--bg-void)' : typeColor,
             }}
           >
-            {isTransient ? <Loader2 size={16} className="animate-spin" /> : serviceTypeIcon(service.type, 16)}
+            {isTransient ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <ServiceIcon service={service} size={17} />
+            )}
           </div>
           <div className="min-w-0 flex-1">
             <h4 className="font-semibold text-[13px] leading-tight text-[var(--text-primary)] truncate tracking-tight">

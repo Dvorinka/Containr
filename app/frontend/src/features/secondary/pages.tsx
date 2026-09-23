@@ -51,6 +51,8 @@ import {
   type FailoverPolicy,
 } from '@/lib/api-client';
 import { demoDatabases } from '@/lib/demo-data';
+import { ServiceIcon } from '@/features/workspace/canvas/ServiceIcon';
+import { serviceAccent } from '@/features/workspace/canvas/service-visuals';
 import { DocsBrowser } from '@/features/docs/DocsBrowser';
 import { useAuthSession } from '@/lib/use-auth-session';
 import { formatRelative } from '@/lib/time';
@@ -1668,8 +1670,14 @@ export function DatabasesPage() {
                     onClick={() => setExpandedId(expanded ? null : (db.id ?? null))}
                     className="flex w-full items-center gap-3 p-4 text-left"
                   >
-                    <div className="w-9 h-9 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center shrink-0">
-                      <Database size={17} className="text-[var(--accent-primary)]" />
+                    <div
+                      className="w-9 h-9 rounded-[var(--radius-md)] flex items-center justify-center shrink-0"
+                      style={{
+                        background: `${serviceAccent({ name: db.type })}1c`,
+                        color: serviceAccent({ name: db.type }),
+                      }}
+                    >
+                      <ServiceIcon service={{ name: db.type, type: 'database' }} size={17} />
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">

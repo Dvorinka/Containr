@@ -36,6 +36,8 @@ import {
   type CronJobEntity,
 } from '@/lib/api-client';
 import { getDemoProjectById, getDemoServiceById, getDemoCronJobsByService } from '@/lib/demo-data';
+import { ServiceIcon } from '@/features/workspace/canvas/ServiceIcon';
+import { serviceAccent } from '@/features/workspace/canvas/service-visuals';
 import { useAuthSession } from '@/lib/use-auth-session';
 import { getCurrentUserProfile } from '@/lib/api-client';
 import { parseDotenv, validateVariableRows, type VariableDraft } from '../variable-utils';
@@ -590,18 +592,17 @@ export function ServiceDetailPage() {
 
       {/* Project Header - self.html exact match */}
       <div className="flex items-center" style={{ padding: '0 24px 18px' }}>
-        <div 
+        <div
           className="rounded-[13px] flex items-center justify-center flex-shrink-0"
-          style={{ 
-            width: '46px', 
-            height: '46px', 
-            background: 'var(--accent-primary)',
+          style={{
+            width: '46px',
+            height: '46px',
+            background: `${serviceAccent(service)}1f`,
+            color: serviceAccent(service),
             marginRight: '14px'
           }}
         >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="white">
-            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"/>
-          </svg>
+          <ServiceIcon service={service} size={22} />
         </div>
         <div>
           <div className="flex items-center" style={{ gap: '10px' }}>

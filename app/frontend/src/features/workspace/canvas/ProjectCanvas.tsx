@@ -34,7 +34,8 @@ import {
 import { hasCanvasMetadata, loadCanvasMetadata, saveCanvasMetadata } from '../storage';
 import { computeLayeredLayout, layoutFromVariables, NODE_HEIGHT, NODE_WIDTH } from './auto-layout';
 import { GroupNode, ServiceNode, type GroupNodeData, type ServiceNodeData } from './nodes';
-import { serviceTypeColor, serviceTypeIcon } from './service-visuals';
+import { ServiceIcon } from './ServiceIcon';
+import { serviceAccent } from './service-visuals';
 import {
   Plus,
   Layers,
@@ -656,7 +657,7 @@ function CanvasInner({ projectId, services, variablesByService, onAddService, on
       if (node.type === 'groupNode') {
         return 'rgba(255,255,255,0.08)';
       }
-      return serviceTypeColor((node.data as ServiceNodeData).service.type);
+      return serviceAccent((node.data as ServiceNodeData).service);
     },
     [],
   );
@@ -762,9 +763,9 @@ function CanvasInner({ projectId, services, variablesByService, onAddService, on
           <div className="flex items-center gap-3 px-4 pt-4 pb-3 border-b border-[var(--border-subtle)]">
             <div
               className="w-9 h-9 rounded-[var(--radius-md)] flex items-center justify-center flex-shrink-0"
-              style={{ background: `${serviceTypeColor(selectedService.type)}1c`, color: serviceTypeColor(selectedService.type) }}
+              style={{ background: `${serviceAccent(selectedService)}1c`, color: serviceAccent(selectedService) }}
             >
-              {serviceTypeIcon(selectedService.type, 16)}
+              <ServiceIcon service={selectedService} size={16} />
             </div>
             <div className="min-w-0 flex-1">
               <h3 className="text-sm font-semibold text-[var(--text-primary)] truncate">{selectedService.name}</h3>
