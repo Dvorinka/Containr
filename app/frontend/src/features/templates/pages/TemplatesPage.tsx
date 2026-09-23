@@ -470,7 +470,7 @@ export function TemplatesPage() {
   const projectsQuery = useQuery({
     queryKey: ['template-projects'],
     enabled: !isDemoMode,
-    queryFn: listProjects,
+    queryFn: () => listProjects(),
   });
 
   const templates = useMemo(

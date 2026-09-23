@@ -160,7 +160,7 @@ export function ProjectsPage() {
   const projectsQuery = useQuery({
     queryKey: ['projects'],
     enabled: !isDemoMode,
-    queryFn: listProjects,
+    queryFn: () => listProjects(),
   });
   const hostQuery = useQuery({
     queryKey: ['host-monitoring'],

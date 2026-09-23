@@ -1,13 +1,26 @@
 // Bundles the repository docs/ tree into a generated TS module so the docs
 // browser renders instantly and offline. The GitHub sync layer refreshes it
 // at runtime when network is available.
-import { readdirSync, readFileSync, statSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = join(fileURLToPath(new URL('.', import.meta.url)), '..', '..', '..');
+const frontendRoot = join(fileURLToPath(new URL('.', import.meta.url)), '..');
+const root = join(frontendRoot, '..', '..');
 const docsDir = join(root, 'docs');
-const outFile = join(root, 'app/frontend/src/generated/docs-snapshot.ts');
+const outFile = join(frontendRoot, 'src/generated/docs-snapshot.ts');
+
+// The published frontend image builds with only app/frontend as its Docker
+// context, so the repo docs tree is absent there — reuse the committed
+// snapshot instead of failing on ENOENT.
+if (!existsSync(docsDir)) {
+  if (!existsSync(outFile)) {
+    console.error('docs snapshot: docs/ missing and no committed snapshot to reuse');
+    process.exit(1);
+  }
+  console.warn('docs snapshot: docs/ not found, reusing committed snapshot');
+  process.exit(0);
+}
 
 // Directories that are internal working notes rather than user documentation.
 const SKIP_DIRS = new Set(['archive', 'design', 'superpowers']);

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   getApiBaseUrl,
   getAgentPublicBaseUrl,
@@ -698,7 +698,7 @@ export function PeoplePage() {
 
   const projectsQuery = useQuery({
     queryKey: ['people-projects'],
-    queryFn: listProjects,
+    queryFn: () => listProjects(),
   });
   const auditLogsQuery = useQuery({
     queryKey: ['people-audit-logs'],
@@ -1926,7 +1926,7 @@ function BindDatabasePanel({
   const [varKey, setVarKey] = useState('DATABASE_URL');
   const [bound, setBound] = useState(false);
 
-  const projectsQuery = useQuery({ queryKey: ['projects'], queryFn: listProjects });
+  const projectsQuery = useQuery({ queryKey: ['projects'], queryFn: () => listProjects() });
   const servicesQuery = useQuery({
     queryKey: ['services', projectId],
     queryFn: () => listServicesByProject(projectId),
@@ -2097,7 +2097,7 @@ export function HighAvailabilityPage() {
   const policiesQuery = useQuery({ queryKey: ['ha-policies'], queryFn: listFailoverPolicies });
   const alertsQuery = useQuery({ queryKey: ['ha-alerts'], queryFn: listActiveAlerts, refetchInterval: 15_000 });
   const healthQuery = useQuery({ queryKey: ['ha-health'], queryFn: listHealthResults, refetchInterval: 30_000 });
-  const projectsQuery = useQuery({ queryKey: ['projects'], queryFn: listProjects });
+  const projectsQuery = useQuery({ queryKey: ['projects'], queryFn: () => listProjects() });
   const servicesQuery = useQuery({
     queryKey: ['services', policyProjectId],
     queryFn: () => listServicesByProject(policyProjectId),
@@ -2515,7 +2515,7 @@ export function SecurityPage() {
   const [scanType, setScanType] = useState<string>('comprehensive');
   const [scanServiceId, setScanServiceId] = useState('');
 
-  const projectsQuery = useQuery({ queryKey: ['projects'], queryFn: listProjects });
+  const projectsQuery = useQuery({ queryKey: ['projects'], queryFn: () => listProjects() });
   const servicesQuery = useQuery({
     queryKey: ['services', projectId],
     queryFn: () => listServicesByProject(projectId),
