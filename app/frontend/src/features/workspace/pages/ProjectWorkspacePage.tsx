@@ -620,6 +620,8 @@ export function ProjectWorkspacePage() {
     isDemoMode
       ? `/projects/${projectId}/services/${serviceId}?demo=1`
       : `/projects/${projectId}/services/${serviceId}`;
+  const serviceSectionHref = (serviceId: string, section: string) =>
+    `${serviceHref(serviceId)}${isDemoMode ? '&' : '?'}section=${section}`;
 
   if (!isDemoMode && projectQuery.isLoading) {
     return (
@@ -738,6 +740,7 @@ export function ProjectWorkspacePage() {
             variablesByService={variablesByService}
             onAddService={openAddService}
             onOpenService={(serviceId) => navigate(serviceHref(serviceId))}
+            onOpenSection={(serviceId, section) => navigate(serviceSectionHref(serviceId, section))}
             readOnly={isDemoMode}
           />
           {isDemoMode && (

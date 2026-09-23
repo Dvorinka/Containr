@@ -34,24 +34,24 @@ import {
 import { hasCanvasMetadata, loadCanvasMetadata, saveCanvasMetadata } from '../storage';
 import { computeLayeredLayout, layoutFromVariables, NODE_HEIGHT, NODE_WIDTH } from './auto-layout';
 import { GroupNode, ServiceNode, type GroupNodeData, type ServiceNodeData } from './nodes';
-import { ServiceIcon } from './ServiceIcon';
+import { ServiceInspector, type InspectorGroup } from './inspector';
 import { serviceAccent } from './service-visuals';
 import {
   Plus,
   Layers,
   Maximize2,
   Minus,
-  Link2,
   Play,
   Square,
   Rocket,
   Trash2,
   ArrowUpRight,
   Globe,
-  X,
-  Loader2,
   Wand2,
+  Pencil,
+  Ungroup,
 } from 'lucide-react';
+
 
 type CanvasProps = {
   projectId: string;
@@ -59,6 +59,7 @@ type CanvasProps = {
   variablesByService: Record<string, ServiceVariable[]>;
   onAddService: () => void;
   onOpenService: (serviceId: string) => void;
+  onOpenSection?: (serviceId: string, section: string) => void;
   readOnly?: boolean;
 };
 
@@ -77,9 +78,12 @@ const nodeTypes: NodeTypes = {
 };
 
 type ContextMenuState = {
-  serviceId: string;
+  kind: 'service' | 'group' | 'pane';
+  targetId?: string;
   x: number;
   y: number;
+  flowX?: number;
+  flowY?: number;
 } | null;
 
 function toFlowNodes(
@@ -172,6 +176,53 @@ function toFlowEdges(
   });
 }
 
+const GROUP_PAD_X = 28;
+const GROUP_PAD_TOP = 56;
+const GROUP_PAD_BOTTOM = 24;
+const GROUP_ROW_GAP = 16;
+
+// Where an incoming service lands inside a group frame. If the point already
+// fits inside the padded area, honour it. Otherwise append beneath the lowest
+// member and grow the frame just enough — keeps groups compact instead of
+// ballooning the frame to wherever the node used to sit.
+function groupSlot(
+  nodes: CanvasNode[],
+  groupId: string,
+  group: CanvasNode,
+  desiredX: number,
+  desiredY: number,
+  ignoreServiceId?: string,
+): { x: number; y: number; width: number; height: number } {
+  const width = typeof group.style?.width === 'number' ? group.style.width : GROUP_DEFAULT_WIDTH;
+  const height = typeof group.style?.height === 'number' ? group.style.height : GROUP_DEFAULT_HEIGHT;
+
+  const fits =
+    desiredX >= GROUP_PAD_X &&
+    desiredY >= GROUP_PAD_TOP &&
+    desiredX + NODE_WIDTH <= width - GROUP_PAD_X &&
+    desiredY + NODE_HEIGHT <= height - GROUP_PAD_BOTTOM;
+
+  if (fits) {
+    return { x: desiredX, y: desiredY, width, height };
+  }
+
+  let bottom = GROUP_PAD_TOP - GROUP_ROW_GAP;
+  for (const node of nodes) {
+    if (node.type === 'serviceNode' && node.parentId === groupId && node.id !== ignoreServiceId) {
+      bottom = Math.max(bottom, node.position.y + NODE_HEIGHT);
+    }
+  }
+
+  const x = GROUP_PAD_X;
+  const y = bottom + GROUP_ROW_GAP;
+  return {
+    x,
+    y,
+    width: Math.max(width, x + NODE_WIDTH + GROUP_PAD_X),
+    height: Math.max(height, y + NODE_HEIGHT + GROUP_PAD_BOTTOM),
+  };
+}
+
 function buildMetadataFromFlow(nodes: CanvasNode[], viewport: { x: number; y: number; zoom: number }): ProjectCanvasMetadata {
   const groups: CanvasGroup[] = [];
   const layouts: CanvasNodeLayout[] = [];
@@ -258,7 +309,7 @@ function ZoomControls({ onTidy }: { onTidy: () => void }) {
   );
 }
 
-function CanvasInner({ projectId, services, variablesByService, onAddService, onOpenService, readOnly }: CanvasProps) {
+function CanvasInner({ projectId, services, variablesByService, onAddService, onOpenService, onOpenSection, readOnly }: CanvasProps) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const persistTimeout = useRef<number | null>(null);
   const hydratedRef = useRef(false);
@@ -523,32 +574,54 @@ function CanvasInner({ projectId, services, variablesByService, onAddService, on
 
       if (targetGroup) {
         const groupBase = getInternalNode(targetGroup.id)?.internals.positionAbsolute ?? targetGroup.position;
-        const targetWidth = typeof targetGroup.style?.width === 'number' ? targetGroup.style.width : GROUP_DEFAULT_WIDTH;
-        const targetHeight = typeof targetGroup.style?.height === 'number' ? targetGroup.style.height : GROUP_DEFAULT_HEIGHT;
 
-        const relativeX = Math.max(12, Math.min(targetWidth - NODE_WIDTH - 12, basePosition.x - groupBase.x));
-        const relativeY = Math.max(30, Math.min(targetHeight - NODE_HEIGHT - 12, basePosition.y - groupBase.y));
+        setNodes((current) => {
+          const slot = groupSlot(
+            current,
+            targetGroup.id,
+            targetGroup,
+            basePosition.x - groupBase.x,
+            basePosition.y - groupBase.y,
+            movedNode.id,
+          );
 
-        setNodes((current) =>
-          current.map((node) => {
-            if (node.id !== movedNode.id || node.type !== 'serviceNode') {
-              return node;
+          return current.map((node) => {
+            if (node.id === targetGroup.id && node.type === 'groupNode') {
+              return { ...node, style: { ...node.style, width: slot.width, height: slot.height } };
             }
-
-            return {
-              ...node,
-              parentId: targetGroup.id,
-              extent: 'parent',
-              position: { x: relativeX, y: relativeY },
-            };
-          }),
-        );
+            if (node.id === movedNode.id && node.type === 'serviceNode') {
+              return {
+                ...node,
+                parentId: targetGroup.id,
+                extent: 'parent' as const,
+                position: { x: slot.x, y: slot.y },
+              };
+            }
+            return node;
+          });
+        });
 
         return;
       }
 
       if (!movedNode.parentId) {
         return;
+      }
+
+      // Still inside its own frame — keep membership, the relative move stands.
+      const parent = nodes.find((entry) => entry.id === movedNode.parentId && entry.type === 'groupNode');
+      if (parent) {
+        const parentAbs = getInternalNode(parent.id)?.internals.positionAbsolute ?? parent.position;
+        const parentW = typeof parent.style?.width === 'number' ? parent.style.width : GROUP_DEFAULT_WIDTH;
+        const parentH = typeof parent.style?.height === 'number' ? parent.style.height : GROUP_DEFAULT_HEIGHT;
+        const inside =
+          centerX >= parentAbs.x &&
+          centerX <= parentAbs.x + parentW &&
+          centerY >= parentAbs.y &&
+          centerY <= parentAbs.y + parentH;
+        if (inside) {
+          return;
+        }
       }
 
       setNodes((current) =>
@@ -569,39 +642,163 @@ function CanvasInner({ projectId, services, variablesByService, onAddService, on
         }),
       );
     },
-    [getGroupUnderPoint, getInternalNode, setNodes],
+    [getGroupUnderPoint, getInternalNode, nodes, setNodes],
   );
 
-  const addGroup = useCallback(() => {
-    const bounds = wrapperRef.current?.getBoundingClientRect();
-    const center = bounds
-      ? screenToFlowPosition({
-          x: bounds.left + bounds.width / 2,
-          y: bounds.top + bounds.height / 2,
-        })
-      : { x: 180, y: 140 };
+  const addGroup = useCallback(
+    (at?: { x: number; y: number }) => {
+      const bounds = wrapperRef.current?.getBoundingClientRect();
+      const center =
+        at ??
+        (bounds
+          ? screenToFlowPosition({
+              x: bounds.left + bounds.width / 2,
+              y: bounds.top + bounds.height / 2,
+            })
+          : { x: 180, y: 140 });
 
-    const id = `group-${Date.now()}`;
+      const id = `group-${Date.now()}`;
 
-    setNodes((current) => [
-      ...current,
-      {
-        id,
-        type: 'groupNode',
-        position: {
-          x: center.x - GROUP_DEFAULT_WIDTH / 2,
-          y: center.y - GROUP_DEFAULT_HEIGHT / 2,
-        },
-        data: { title: `Group ${current.filter((node) => node.type === 'groupNode').length + 1}`, onRename: renameGroup },
-        draggable: true,
-        selectable: true,
-        style: {
-          width: GROUP_DEFAULT_WIDTH,
-          height: GROUP_DEFAULT_HEIGHT,
-        },
-      } satisfies GroupCanvasNode,
-    ]);
-  }, [screenToFlowPosition, setNodes, renameGroup]);
+      setNodes((current) => [
+        {
+          id,
+          type: 'groupNode',
+          position: {
+            x: center.x - GROUP_DEFAULT_WIDTH / 2,
+            y: center.y - GROUP_DEFAULT_HEIGHT / 2,
+          },
+          data: { title: `Group ${current.filter((node) => node.type === 'groupNode').length + 1}`, onRename: renameGroup },
+          draggable: true,
+          selectable: true,
+          style: {
+            width: GROUP_DEFAULT_WIDTH,
+            height: GROUP_DEFAULT_HEIGHT,
+          },
+        } satisfies GroupCanvasNode,
+        // Groups must precede their children in the array — keep it first.
+        ...current,
+      ]);
+
+      return id;
+    },
+    [screenToFlowPosition, setNodes, renameGroup],
+  );
+
+  // Move a service node in/out of a group — mirrors the drag-drop math so
+  // assignment via the inspector lands identically to dropping the node on a
+  // group frame.
+  const assignToGroup = useCallback(
+    (serviceId: string, groupId: string | null) => {
+      const node = nodes.find((entry) => entry.id === serviceId && entry.type === 'serviceNode');
+      if (!node || node.parentId === (groupId ?? undefined)) {
+        return;
+      }
+      const abs = getInternalNode(serviceId)?.internals.positionAbsolute ?? node.position;
+
+      if (groupId === null) {
+        setNodes((current) =>
+          current.map((entry) =>
+            entry.id === serviceId && entry.type === 'serviceNode'
+              ? { ...entry, parentId: undefined, extent: undefined, position: abs }
+              : entry,
+          ),
+        );
+        return;
+      }
+
+      setNodes((current) => {
+        const group = current.find((entry) => entry.id === groupId && entry.type === 'groupNode');
+        if (!group) {
+          return current;
+        }
+        const groupAbs = getInternalNode(groupId)?.internals.positionAbsolute ?? group.position;
+        const slot = groupSlot(current, groupId, group, abs.x - groupAbs.x, abs.y - groupAbs.y);
+
+        return current.map((entry) => {
+          if (entry.id === groupId && entry.type === 'groupNode') {
+            return { ...entry, style: { ...entry.style, width: slot.width, height: slot.height } };
+          }
+          if (entry.id === serviceId && entry.type === 'serviceNode') {
+            return { ...entry, parentId: groupId, extent: 'parent' as const, position: { x: slot.x, y: slot.y } };
+          }
+          return entry;
+        });
+      });
+    },
+    [getInternalNode, nodes, setNodes],
+  );
+
+  // Create a group frame wrapped around the service and adopt the node into it.
+  const newGroupForService = useCallback(
+    (serviceId: string) => {
+      const node = nodes.find((entry) => entry.id === serviceId && entry.type === 'serviceNode');
+      if (!node) {
+        return;
+      }
+      const abs = getInternalNode(serviceId)?.internals.positionAbsolute ?? node.position;
+      const groupId = `group-${Date.now()}`;
+
+      setNodes((current) => [
+        // Parent precedes the child in the array.
+        {
+          id: groupId,
+          type: 'groupNode',
+          position: { x: abs.x - GROUP_PAD_X, y: abs.y - GROUP_PAD_TOP },
+          data: {
+            title: `Group ${current.filter((entry) => entry.type === 'groupNode').length + 1}`,
+            onRename: renameGroup,
+          },
+          draggable: true,
+          selectable: true,
+          style: {
+            width: NODE_WIDTH + GROUP_PAD_X * 2,
+            height: NODE_HEIGHT + GROUP_PAD_TOP + GROUP_PAD_BOTTOM,
+          },
+        } satisfies GroupCanvasNode,
+        ...current.map((entry) =>
+          entry.id === serviceId && entry.type === 'serviceNode'
+            ? {
+                ...entry,
+                parentId: groupId,
+                extent: 'parent' as const,
+                position: { x: GROUP_PAD_X, y: GROUP_PAD_TOP },
+              }
+            : entry,
+        ),
+      ]);
+    },
+    [getInternalNode, nodes, renameGroup, setNodes],
+  );
+
+  const deleteGroup = useCallback(
+    (groupId: string) => {
+      setNodes((current) => {
+        const unparented = current.map((entry) => {
+          if (entry.type !== 'serviceNode' || entry.parentId !== groupId) {
+            return entry;
+          }
+          const abs = getInternalNode(entry.id)?.internals.positionAbsolute ?? entry.position;
+          return { ...entry, parentId: undefined, extent: undefined, position: abs };
+        });
+        return unparented.filter((entry) => entry.id !== groupId);
+      });
+      setContextMenu(null);
+    },
+    [getInternalNode, setNodes],
+  );
+
+  const requestGroupRename = useCallback(
+    (groupId: string) => {
+      setNodes((current) =>
+        current.map((entry) =>
+          entry.id === groupId && entry.type === 'groupNode'
+            ? { ...entry, data: { ...entry.data, renameNonce: (entry.data.renameNonce ?? 0) + 1 } }
+            : entry,
+        ),
+      );
+    },
+    [setNodes],
+  );
 
   // Env filter hides nodes via React Flow's `hidden` flag — positions and
   // persisted layout stay intact for services outside the current filter.
@@ -613,24 +810,53 @@ function CanvasInner({ projectId, services, variablesByService, onAddService, on
     [nodes, visibleIds],
   );
 
+  const menuPosition = useCallback((clientX: number, clientY: number, menuW = 190, menuH = 240) => {
+    const bounds = wrapperRef.current?.getBoundingClientRect();
+    const x = Math.min(clientX - (bounds?.left ?? 0), Math.max(0, (bounds?.width ?? 0) - menuW));
+    const y = Math.min(clientY - (bounds?.top ?? 0), Math.max(0, (bounds?.height ?? 0) - menuH));
+    return { x, y };
+  }, []);
+
   const onNodeContextMenu = useCallback(
     (event: MouseEvent, node: CanvasNode) => {
-      if (node.type !== 'serviceNode') {
-        return;
-      }
       event.preventDefault();
-      const bounds = wrapperRef.current?.getBoundingClientRect();
-      setSelectedServiceId(node.id);
-      const menuW = 190;
-      const menuH = 230;
-      const x = Math.min(event.clientX - (bounds?.left ?? 0), Math.max(0, (bounds?.width ?? 0) - menuW));
-      const y = Math.min(event.clientY - (bounds?.top ?? 0), Math.max(0, (bounds?.height ?? 0) - menuH));
-      setContextMenu({ serviceId: node.id, x, y });
+      if (node.type === 'serviceNode') {
+        setSelectedServiceId(node.id);
+        setContextMenu({ kind: 'service', targetId: node.id, ...menuPosition(event.clientX, event.clientY) });
+      } else if (node.type === 'groupNode') {
+        setContextMenu({ kind: 'group', targetId: node.id, ...menuPosition(event.clientX, event.clientY, 190, 140) });
+      }
     },
-    [],
+    [menuPosition],
   );
 
-  const contextService = contextMenu ? services.find((service) => service.id === contextMenu.serviceId) ?? null : null;
+  const onPaneContextMenu = useCallback(
+    (event: MouseEvent | globalThis.MouseEvent) => {
+      event.preventDefault();
+      const flow = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+      setContextMenu({ kind: 'pane', ...menuPosition(event.clientX, event.clientY, 200, 170), flowX: flow.x, flowY: flow.y });
+    },
+    [menuPosition, screenToFlowPosition],
+  );
+
+  const contextService =
+    contextMenu?.kind === 'service' && contextMenu.targetId
+      ? services.find((service) => service.id === contextMenu.targetId) ?? null
+      : null;
+  const contextGroup =
+    contextMenu?.kind === 'group' && contextMenu.targetId
+      ? nodes.find(
+          (node): node is GroupCanvasNode => node.id === contextMenu.targetId && node.type === 'groupNode',
+        ) ?? null
+      : null;
+  const inspectorGroups: InspectorGroup[] = useMemo(
+    () =>
+      nodes
+        .filter((node): node is GroupCanvasNode => node.type === 'groupNode')
+        .map((node) => ({ id: node.id, title: node.data.title })),
+    [nodes],
+  );
+  const selectedNode = selectedServiceId ? nodes.find((node) => node.id === selectedServiceId) : undefined;
 
   const selectedService = services.find((service) => service.id === selectedServiceId) ?? null;
   const selectedConnections = useMemo(() => {
@@ -686,6 +912,7 @@ function CanvasInner({ projectId, services, variablesByService, onAddService, on
           }
         }}
         onNodeContextMenu={onNodeContextMenu}
+        onPaneContextMenu={onPaneContextMenu}
         onNodeDragStop={onNodeDragStop}
         onMoveEnd={() => setViewportTick((value) => value + 1)}
         panOnDrag
@@ -734,7 +961,7 @@ function CanvasInner({ projectId, services, variablesByService, onAddService, on
         )}
         <button
           type="button"
-          onClick={addGroup}
+          onClick={() => addGroup()}
           className="canvas-pill canvas-pill-btn h-8 px-3 flex items-center gap-1.5 text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
           title="Add group"
         >
@@ -759,155 +986,36 @@ function CanvasInner({ projectId, services, variablesByService, onAddService, on
 
       {/* Inspector (right) */}
       {selectedService && (
-        <aside className="canvas-inspector absolute right-4 top-4 bottom-4 w-[300px] panel-glass flex flex-col overflow-hidden">
-          <div className="flex items-center gap-3 px-4 pt-4 pb-3 border-b border-[var(--border-subtle)]">
-            <div
-              className="w-9 h-9 rounded-[var(--radius-md)] flex items-center justify-center flex-shrink-0"
-              style={{ background: `${serviceAccent(selectedService)}1c`, color: serviceAccent(selectedService) }}
-            >
-              <ServiceIcon service={selectedService} size={16} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <h3 className="text-sm font-semibold text-[var(--text-primary)] truncate">{selectedService.name}</h3>
-              <p className="text-[11px] text-[var(--text-tertiary)]">
-                {selectedService.type} · {selectedService.environment ?? 'production'}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setSelectedServiceId(null)}
-              className="w-7 h-7 rounded-md flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-muted)]"
-              title="Close (Esc)"
-            >
-              <X size={14} />
-            </button>
-          </div>
-
-          <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
-            {selectedService.image && (
-              <div>
-                <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] mb-1">Image</p>
-                <p className="mono text-[11px] text-[var(--text-secondary)] break-all">{selectedService.image}</p>
-              </div>
-            )}
-            {(selectedService.domain || selectedService.publicUrl || selectedService.port) && (
-              <div>
-                <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] mb-1">Address</p>
-                {selectedService.domain || selectedService.publicUrl ? (
-                  <a
-                    href={selectedService.domain ? `https://${selectedService.domain}` : selectedService.publicUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mono text-[11px] text-[var(--accent-primary)] hover:underline break-all"
-                  >
-                    {(selectedService.domain ?? selectedService.publicUrl ?? '').replace(/^https?:\/\//, '')}
-                  </a>
-                ) : null}
-                {selectedService.port ? (
-                  <p className="mono text-[11px] text-[var(--text-secondary)] mt-0.5">
-                    {selectedService.name}:{selectedService.port}
-                  </p>
-                ) : null}
-              </div>
-            )}
-
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] mb-1.5">
-                Connections ({selectedConnections.length})
-              </p>
-              {selectedConnections.length === 0 ? (
-                <p className="text-[11px] text-[var(--text-muted)]">
-                  No inferred connections. Reference another service via <span className="mono">{'{{variable}}'}</span> placeholders in env vars.
-                </p>
-              ) : (
-                <div className="space-y-1.5">
-                  {selectedConnections.map((conn) => (
-                    <button
-                      key={conn.id}
-                      type="button"
-                      onClick={() => setSelectedServiceId(conn.peerId)}
-                      className="w-full text-left px-2.5 py-2 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--surface-muted)]/40 hover:bg-[var(--surface-muted)] transition-colors"
-                    >
-                      <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-primary)]">
-                        <Link2 size={10} className="text-[var(--accent-primary)] flex-shrink-0" />
-                        <span className="truncate font-medium">{conn.outbound ? `→ ${conn.peer}` : `← ${conn.peer}`}</span>
-                      </div>
-                      <p className="mono text-[9.5px] text-[var(--text-tertiary)] truncate mt-0.5 pl-4">
-                        {conn.reasons.join(' · ')}
-                      </p>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="border-t border-[var(--border-subtle)] px-4 py-3 space-y-2">
-            <button
-              type="button"
-              onClick={() => onOpenService(selectedService.id)}
-              className="w-full flex items-center justify-center gap-2 h-9 rounded-[var(--radius-md)] text-[var(--accent-on)] text-[13px] font-medium"
-              style={{ background: 'var(--accent-primary)' }}
-            >
-              <ArrowUpRight size={14} />
-              Open service
-            </button>
-            <div className="grid grid-cols-3 gap-1.5">
-              <button
-                type="button"
-                disabled={actionPending || readOnly}
-                onClick={() => deployMutation.mutate(selectedService.id)}
-                className="flex items-center justify-center gap-1 h-8 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-default)] transition-colors disabled:opacity-40"
-              >
-                {deployMutation.isPending ? <Loader2 size={11} className="animate-spin" /> : <Rocket size={11} />}
-                Deploy
-              </button>
-              {selectedService.status !== 'running' ? (
-                <button
-                  type="button"
-                  disabled={actionPending || readOnly}
-                  onClick={() => startMutation.mutate(selectedService.id)}
-                  className="flex items-center justify-center gap-1 h-8 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-default)] transition-colors disabled:opacity-40"
-                >
-                  <Play size={11} />
-                  Start
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  disabled={actionPending || readOnly}
-                  onClick={() => restartMutation.mutate(selectedService.id)}
-                  className="flex items-center justify-center gap-1 h-8 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-default)] transition-colors disabled:opacity-40"
-                >
-                  {restartMutation.isPending ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
-                  Restart
-                </button>
-              )}
-              <button
-                type="button"
-                disabled={actionPending || readOnly || selectedService.status !== 'running'}
-                onClick={() => stopMutation.mutate(selectedService.id)}
-                className="flex items-center justify-center gap-1 h-8 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-default)] transition-colors disabled:opacity-40"
-              >
-                <Square size={11} />
-                Stop
-              </button>
-            </div>
-            <button
-              type="button"
-              disabled={actionPending || readOnly}
-              onClick={() => {
-                if (window.confirm(`Delete service "${selectedService.name}"? Its containers will be removed.`)) {
-                  deleteMutation.mutate(selectedService.id);
-                }
-              }}
-              className="w-full flex items-center justify-center gap-1.5 h-8 rounded-[var(--radius-sm)] text-[11px] font-medium text-[var(--error)] hover:bg-[var(--error-soft)] transition-colors disabled:opacity-40"
-            >
-              <Trash2 size={11} />
-              Delete service
-            </button>
-          </div>
-        </aside>
+        <ServiceInspector
+          service={selectedService}
+          variables={variablesByService[selectedService.id] ?? []}
+          connections={selectedConnections}
+          groups={inspectorGroups}
+          groupId={selectedNode?.parentId}
+          readOnly={readOnly}
+          actions={{
+            deploy: () => deployMutation.mutate(selectedService.id),
+            start: () => startMutation.mutate(selectedService.id),
+            restart: () => restartMutation.mutate(selectedService.id),
+            stop: () => stopMutation.mutate(selectedService.id),
+            remove: () => {
+              if (window.confirm(`Delete service "${selectedService.name}"? Its containers will be removed.`)) {
+                deleteMutation.mutate(selectedService.id);
+              }
+            },
+            pending: actionPending,
+            deployPending: deployMutation.isPending,
+            restartPending: restartMutation.isPending,
+          }}
+          onClose={() => setSelectedServiceId(null)}
+          onOpenService={onOpenService}
+          onOpenSection={(serviceId, section) =>
+            onOpenSection ? onOpenSection(serviceId, section) : onOpenService(serviceId)
+          }
+          onSelectPeer={setSelectedServiceId}
+          onAssignGroup={assignToGroup}
+          onNewGroupFor={newGroupForService}
+        />
       )}
 
       {/* Empty state */}
@@ -935,12 +1043,100 @@ function CanvasInner({ projectId, services, variablesByService, onAddService, on
         </div>
       )}
 
-      {/* Node context menu */}
-      {contextMenu && contextService && (
+      {/* Context menus — service node, group frame, or empty pane */}
+      {contextMenu && (
         <div
           className="absolute z-50 min-w-[180px] rounded-[var(--radius-md)] border border-[var(--border-default)] panel-glass py-1"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
+          {contextMenu.kind === 'pane' && (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setContextMenu(null);
+                  onAddService();
+                }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)] transition-colors"
+              >
+                <Plus size={13} />
+                Add service
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const at =
+                    contextMenu.flowX !== undefined && contextMenu.flowY !== undefined
+                      ? { x: contextMenu.flowX, y: contextMenu.flowY }
+                      : undefined;
+                  setContextMenu(null);
+                  addGroup(at);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)] transition-colors"
+              >
+                <Layers size={13} />
+                Add group here
+              </button>
+              <div className="border-t border-[var(--border-subtle)] mt-1 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setContextMenu(null);
+                    tidyLayout();
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)] transition-colors"
+                >
+                  <Wand2 size={13} />
+                  Tidy layout
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setContextMenu(null);
+                    void fitView({ padding: 0.18, duration: 240 });
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)] transition-colors"
+                >
+                  <Maximize2 size={13} />
+                  Fit view
+                </button>
+              </div>
+            </>
+          )}
+
+          {contextMenu.kind === 'group' && contextGroup && (
+            <>
+              <div className="px-3 py-1.5 border-b border-[var(--border-subtle)] mb-1">
+                <p className="text-xs font-semibold text-[var(--text-primary)] truncate">{contextGroup.data.title}</p>
+                <p className="text-[10px] text-[var(--text-tertiary)]">Group</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const id = contextGroup.id;
+                  setContextMenu(null);
+                  requestGroupRename(id);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)] transition-colors"
+              >
+                <Pencil size={13} />
+                Rename
+              </button>
+              <div className="border-t border-[var(--border-subtle)] mt-1 pt-1">
+                <button
+                  type="button"
+                  onClick={() => deleteGroup(contextGroup.id)}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-[var(--error)] hover:bg-[var(--error-soft)] transition-colors"
+                >
+                  <Ungroup size={13} />
+                  Ungroup (keep services)
+                </button>
+              </div>
+            </>
+          )}
+
+          {contextMenu.kind === 'service' && contextService && (
+            <>
           <div className="px-3 py-1.5 border-b border-[var(--border-subtle)] mb-1">
             <p className="text-xs font-semibold text-[var(--text-primary)] truncate">{contextService.name}</p>
             <p className="text-[10px] text-[var(--text-tertiary)]">{contextService.status}</p>
@@ -1035,6 +1231,8 @@ function CanvasInner({ projectId, services, variablesByService, onAddService, on
                   Delete
                 </button>
               </div>
+            </>
+          )}
             </>
           )}
         </div>

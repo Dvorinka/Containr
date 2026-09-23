@@ -15,6 +15,7 @@ export type ServiceNodeData = {
 export type GroupNodeData = {
   title: string;
   onRename?: (groupId: string, title: string) => void;
+  renameNonce?: number;
 };
 
 export type ServiceNodeType = Node<ServiceNodeData, 'serviceNode'>;
@@ -169,6 +170,16 @@ export function GroupNode({ id, data }: NodeProps<GroupNodeType>) {
   const [isHovered, setIsHovered] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(data.title);
+
+  // Context-menu rename requests bump the nonce; enter edit mode when it
+  // changes. Render-phase state adjustment — the React-sanctioned pattern.
+  const [seenRenameNonce, setSeenRenameNonce] = useState(data.renameNonce ?? 0);
+  const incomingNonce = data.renameNonce ?? 0;
+  if (incomingNonce > seenRenameNonce) {
+    setSeenRenameNonce(incomingNonce);
+    setDraft(data.title);
+    setEditing(true);
+  }
 
   const commit = () => {
     const next = draft.trim() || data.title;

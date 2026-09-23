@@ -136,7 +136,10 @@ export function ServiceDetailPage() {
   });
   const isAdmin = Boolean(profileQuery.data?.isAdmin);
 
-  const [activeSection, setActiveSection] = useState<ServiceSection>('metrics');
+  const [activeSection, setActiveSection] = useState<ServiceSection>(() => {
+    const requested = searchParams.get('section');
+    return sectionItems.some((item) => item.key === requested) ? (requested as ServiceSection) : 'metrics';
+  });
   const [logTail, setLogTail] = useState('100');
   const [varDrafts, setVarDrafts] = useState<VariableDraft[] | null>(null);
   const [bulkOpen, setBulkOpen] = useState(false);
