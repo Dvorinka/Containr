@@ -6052,6 +6052,12 @@ components:
               type: string
             server:
               type: string
+            os:
+              type: string
+        scope:
+          type: string
+          description: What the telemetry measures — `host` for a native daemon, `docker-desktop-vm` when Docker runs inside a Desktop VM.
+          enum: [host, docker-desktop-vm]
         collected_at:
           type: string
           format: date-time

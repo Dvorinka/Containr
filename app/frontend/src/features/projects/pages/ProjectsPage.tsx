@@ -181,6 +181,7 @@ export function ProjectsPage() {
   const totalServices = projects.reduce((sum, p) => sum + p.stats.service_count, 0);
   const runningServices = projects.reduce((sum, p) => sum + p.stats.running_services, 0);
   const host = hostQuery.data;
+  const hostLabel = host?.scope === 'docker-desktop-vm' ? 'VM' : 'HOST';
   const cpuPct = isDemoMode ? 14 : host && host.cpu.cores > 0
     ? Math.min(100, Math.round((host.load.load1m / host.cpu.cores) * 100))
     : null;
@@ -243,7 +244,7 @@ export function ProjectsPage() {
         {/* Host stat row */}
         <div className="mb-7 grid grid-cols-2 gap-3 lg:grid-cols-4">
           <div className="v-stat">
-            <div className="v-k"><span>HOST.CPU</span><span className="v-live" /></div>
+            <div className="v-k"><span>{hostLabel}.CPU</span><span className="v-live" /></div>
             <div className="v-v">{cpuPct ?? '—'}<span>%</span></div>
             {isDemoMode ? (
               <div className="v-spark">
@@ -259,13 +260,13 @@ export function ProjectsPage() {
             </div>
           </div>
           <div className="v-stat">
-            <div className="v-k"><span>HOST.MEM</span><span className="v-live" /></div>
+            <div className="v-k"><span>{hostLabel}.MEM</span><span className="v-live" /></div>
             <div className="v-v">{memPct ?? '—'}<span>%</span></div>
             <div className="v-meter"><i className={memPct !== null && memPct > 85 ? 'r' : 'y'} style={{ width: `${memPct ?? 0}%` }} /></div>
             <div className="v-d">{isDemoMode ? '9.8G / 13G' : host ? `${fmtGB(host.memory.used)} / ${fmtGB(host.memory.total)}` : 'no telemetry'}</div>
           </div>
           <div className="v-stat">
-            <div className="v-k"><span>HOST.DISK</span><span className="v-live" /></div>
+            <div className="v-k"><span>{hostLabel}.DISK</span><span className="v-live" /></div>
             <div className="v-v">{diskPct ?? '—'}<span>%</span></div>
             <div className="v-meter"><i className="r" style={{ width: `${diskPct ?? 0}%` }} /></div>
             <div className="v-d">{isDemoMode ? '338G of 465G · high' : host ? `${fmtGB(host.storage.used)} of ${fmtGB(host.storage.total)}` : 'no telemetry'}</div>

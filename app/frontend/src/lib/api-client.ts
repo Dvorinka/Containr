@@ -225,7 +225,9 @@ export type HostMonitoring = {
     images?: number;
     driver?: string;
     server?: string;
+    os?: string;
   };
+  scope: 'host' | 'docker-desktop-vm';
   collectedAt: string;
 };
 
@@ -888,6 +890,7 @@ function normalizeHostMonitoring(payload: RawHostMonitoring): HostMonitoring {
     uptimeSeconds: payload.uptime_seconds ?? 0,
     dockerAvailable: Boolean(payload.docker_available),
     docker: payload.docker,
+    scope: payload.scope === 'docker-desktop-vm' ? 'docker-desktop-vm' : 'host',
     collectedAt: payload.collected_at ?? '',
   };
 }

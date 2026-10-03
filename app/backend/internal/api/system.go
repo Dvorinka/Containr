@@ -40,6 +40,9 @@ type hostMonitoringResponse struct {
 	UptimeSeconds   int64          `json:"uptime_seconds"`
 	DockerAvailable bool           `json:"docker_available"`
 	Docker          map[string]any `json:"docker,omitempty"`
+	// Scope names what the telemetry actually measures: the physical host for
+	// native dockerd, or the Docker Desktop VM when the daemon runs in one.
+	Scope           string         `json:"scope"`
 	CollectedAt     string         `json:"collected_at"`
 }
 
@@ -159,6 +162,7 @@ func handleGetHostMonitoring(c *gin.Context) {
 		Storage:       storage,
 		Load:          load,
 		UptimeSeconds: uptime,
+		Scope:         "host",
 		CollectedAt:   time.Now().UTC().Format(time.RFC3339),
 	}
 
@@ -173,6 +177,10 @@ func handleGetHostMonitoring(c *gin.Context) {
 					"images":     info.Images,
 					"driver":     info.Driver,
 					"server":     info.ServerVersion,
+					"os":         info.OperatingSystem,
+				}
+				if strings.Contains(strings.ToLower(info.OperatingSystem), "docker desktop") {
+					response.Scope = "docker-desktop-vm"
 				}
 			}
 		}
