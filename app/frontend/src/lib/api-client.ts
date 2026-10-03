@@ -68,6 +68,8 @@ export type ServiceRuntime = {
   desired: number;
   status: 'running' | 'degraded' | 'stopped';
   urls: string[];
+  ports: number[];
+  health?: 'healthy' | 'unhealthy' | 'unreachable' | '';
   containers: RuntimeContainer[];
 };
 
@@ -1080,16 +1082,15 @@ export async function deleteService(serviceId: string): Promise<void> {
   });
 }
 
+function normalizeRuntime(runtime?: ServiceRuntime): ServiceRuntime {
+  const state = runtime ?? { desired: 0, status: 'stopped' as const, urls: [], ports: [], containers: [] };
+  // The API emits null (not []) for empty collections — coerce at the boundary.
+  return { ...state, urls: state.urls ?? [], ports: state.ports ?? [], containers: state.containers ?? [] };
+}
+
 export async function getServiceRuntime(serviceId: string): Promise<ServiceRuntime> {
   const payload = await requestJson<{ runtime?: ServiceRuntime }>(`/services/${serviceId}/runtime`);
-  return (
-    payload.runtime ?? {
-      desired: 0,
-      status: 'stopped',
-      urls: [],
-      containers: [],
-    }
-  );
+  return normalizeRuntime(payload.runtime);
 }
 
 async function serviceAction(serviceId: string, action: 'start' | 'stop' | 'restart'): Promise<void> {
@@ -1104,7 +1105,7 @@ export async function redeployService(serviceId: string): Promise<ServiceRuntime
   const payload = await requestJson<{ runtime?: ServiceRuntime }>(`/services/${serviceId}/redeploy`, {
     method: 'POST',
   });
-  return payload.runtime ?? { desired: 0, status: 'stopped', urls: [], containers: [] };
+  return normalizeRuntime(payload.runtime);
 }
 
 function normalizeServiceVariables(rows: RawServiceVariable[] | undefined): ServiceVariable[] {

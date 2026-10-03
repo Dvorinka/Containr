@@ -1099,15 +1099,17 @@ function CanvasInner({ projectId, services, variablesByService, onAddService, on
             ))}
           </div>
         )}
-        <button
-          type="button"
-          onClick={() => addGroup()}
-          className="canvas-pill canvas-pill-btn h-8 px-3 flex items-center gap-1.5 text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-          title="Add group"
-        >
-          <Layers size={13} />
-          Group
-        </button>
+        {!readOnly && (
+          <button
+            type="button"
+            onClick={() => addGroup()}
+            className="canvas-pill canvas-pill-btn h-8 px-3 flex items-center gap-1.5 text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+            title="Add group"
+          >
+            <Layers size={13} />
+            Group
+          </button>
+        )}
       </div>
 
       {/* Floating: zoom controls (bottom-left) */}
@@ -1170,15 +1172,17 @@ function CanvasInner({ projectId, services, variablesByService, onAddService, on
               Add a service from a git repo or Docker image - it runs on a private network with the rest of this
               project.
             </p>
-            <button
-              type="button"
-              onClick={onAddService}
-              className="inline-flex items-center gap-2 h-9 px-4 rounded-lg text-[var(--accent-on)] text-sm font-medium shadow-lg"
-              style={{ background: 'var(--accent-primary)' }}
-            >
-              <Plus size={15} />
-              Add Service
-            </button>
+            {!readOnly && (
+              <button
+                type="button"
+                onClick={onAddService}
+                className="inline-flex items-center gap-2 h-9 px-4 rounded-lg text-[var(--accent-on)] text-sm font-medium shadow-lg"
+                style={{ background: 'var(--accent-primary)' }}
+              >
+                <Plus size={15} />
+                Add Service
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -1191,32 +1195,36 @@ function CanvasInner({ projectId, services, variablesByService, onAddService, on
         >
           {contextMenu.kind === 'pane' && (
             <>
-              <button
-                type="button"
-                onClick={() => {
-                  setContextMenu(null);
-                  onAddService();
-                }}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)] transition-colors"
-              >
-                <Plus size={13} />
-                Add service
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const at =
-                    contextMenu.flowX !== undefined && contextMenu.flowY !== undefined
-                      ? { x: contextMenu.flowX, y: contextMenu.flowY }
-                      : undefined;
-                  setContextMenu(null);
-                  addGroup(at);
-                }}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)] transition-colors"
-              >
-                <Layers size={13} />
-                Add group here
-              </button>
+              {!readOnly && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setContextMenu(null);
+                      onAddService();
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)] transition-colors"
+                  >
+                    <Plus size={13} />
+                    Add service
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const at =
+                        contextMenu.flowX !== undefined && contextMenu.flowY !== undefined
+                          ? { x: contextMenu.flowX, y: contextMenu.flowY }
+                          : undefined;
+                      setContextMenu(null);
+                      addGroup(at);
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)] transition-colors"
+                  >
+                    <Layers size={13} />
+                    Add group here
+                  </button>
+                </>
+              )}
               <div className="border-t border-[var(--border-subtle)] mt-1 pt-1">
                 <button
                   type="button"

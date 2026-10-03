@@ -25,10 +25,10 @@ const demoDeploys = [
   { id: 'd4', name: 'Marketing Site', project: 'Growth Surface', status: 'DEPLOYED', when: '2h' },
 ];
 
-function getHealthStatus(stats: ProjectStats): 'healthy' | 'degraded' | 'critical' {
-  if (stats.service_count === 0) return 'healthy';
+function getHealthStatus(stats: ProjectStats): 'healthy' | 'idle' | 'degraded' | 'critical' {
+  if (stats.service_count === 0) return 'idle';
   if (stats.running_services === stats.service_count) return 'healthy';
-  if (stats.running_services >= stats.service_count / 2) return 'degraded';
+  if (stats.running_services > 0) return 'degraded';
   return 'critical';
 }
 
@@ -36,6 +36,8 @@ function healthBadge(health: ReturnType<typeof getHealthStatus>) {
   switch (health) {
     case 'healthy':
       return { label: 'RUNNING', cls: 'v-st-ok' };
+    case 'idle':
+      return { label: 'IDLE', cls: '' };
     case 'degraded':
       return { label: 'DEGRADED', cls: 'v-st-warn' };
     case 'critical':
@@ -70,7 +72,6 @@ function MiniCanvas({ project }: { project: ProjectEntity }) {
       {Array.from({ length: shown }).map((_, i) => (
         <div key={i} className="v-node" style={positions[i]}>
           <b className={`v-nd ${i < running ? '' : 'r'}`} />
-          svc{i + 1}
         </div>
       ))}
       {extra > 0 ? (
@@ -85,6 +86,7 @@ function ProjectCard({ project, href }: { project: ProjectEntity; href: string }
   const health = getHealthStatus(project.stats);
   const badge = healthBadge(health);
   const envOk = health === 'healthy';
+  const envLabel = envOk ? 'production' : health === 'idle' ? 'idle' : health === 'critical' ? 'down' : 'degraded';
 
   return (
     <article
@@ -101,10 +103,10 @@ function ProjectCard({ project, href }: { project: ProjectEntity; href: string }
       <div className="v-mono mt-3 flex items-center gap-2 text-[10.5px] text-[var(--text-tertiary)]">
         <i
           className="inline-block h-1.5 w-1.5 rounded-full"
-          style={{ background: envOk ? 'var(--success)' : 'var(--warning)' }}
+          style={{ background: envOk ? 'var(--success)' : health === 'idle' ? 'var(--text-tertiary)' : health === 'critical' ? 'var(--error)' : 'var(--warning)' }}
         />
         <span className="text-[var(--text-secondary)]">
-          {envOk ? 'production' : 'degraded'}
+          {envLabel}
         </span>
         <span>·</span>
         <span>
@@ -220,7 +222,7 @@ export function ProjectsPage() {
             </p>
           </div>
           <div className="flex items-center gap-2.5">
-            <div className="search-box" style={{ width: 240 }}>
+            <div className="search-box" style={{ width: 'min(240px, 42vw)' }}>
               <Search size={13} />
               <input
                 value={search}
@@ -230,9 +232,11 @@ export function ProjectsPage() {
                 style={{ fontSize: 11.5 }}
               />
             </div>
-            <button onClick={openCreate} className="v-btn">
-              + new project
-            </button>
+            {signedIn && (
+              <button onClick={openCreate} className="v-btn">
+                + new project
+              </button>
+            )}
           </div>
         </div>
 

@@ -1,6 +1,6 @@
 import { Link, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ShieldCheck } from 'lucide-react';
+import { Compass, ShieldCheck } from 'lucide-react';
 import { PlatformShell } from './layout/PlatformShell';
 import { ProjectsPage } from '@/features/projects/pages/ProjectsPage';
 import { ProjectWorkspacePage } from '@/features/workspace/pages/ProjectWorkspacePage';
@@ -103,6 +103,26 @@ function AdminRequired() {
   return <Outlet />;
 }
 
+function NotFoundPage() {
+  return (
+    <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 px-6 text-center">
+      <Compass size={32} className="text-[var(--text-tertiary)]" />
+      <div>
+        <h1 className="text-lg font-semibold text-[var(--text-primary)]">Page not found</h1>
+        <p className="mt-1 max-w-sm text-sm text-[var(--text-secondary)]">
+          The page you are looking for does not exist or was moved.
+        </p>
+      </div>
+      <Link
+        to="/"
+        className="rounded-[var(--radius-md)] border border-[var(--border-default)] px-4 py-2 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+      >
+        Back to home
+      </Link>
+    </div>
+  );
+}
+
 export default function App() {
   return (
     <ErrorBoundary>
@@ -138,14 +158,14 @@ export default function App() {
           <Route element={<AdminRequired />}>
             <Route path="/admin" element={<AdminPage />} />
           </Route>
+
+          <Route path="*" element={<NotFoundPage />} />
         </Route>
 
         {/* Full-bleed design demo — renders its own chrome, no app shell */}
         <Route element={<AuthRequired />}>
           <Route path="/metrics-demo" element={<ServiceMetricsDashboard />} />
         </Route>
-
-        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </ErrorBoundary>
   );

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"sort"
 	"strings"
 	"time"
@@ -58,7 +59,9 @@ type RuntimeState struct {
 	Desired    int                `json:"desired"`
 	Containers []RuntimeContainer `json:"containers"`
 	URLs       []string           `json:"urls"`
-	Status     string             `json:"status"` // running, degraded, stopped
+	Ports      []uint16           `json:"ports"`
+	Health     string             `json:"health,omitempty"` // healthy, unhealthy, unreachable
+	Status     string             `json:"status"`           // running, degraded, stopped
 }
 
 func projectNetworkName(projectID string) string {
@@ -243,15 +246,6 @@ func (de *DeploymentEngine) createReplica(ctx context.Context, spec RuntimeSpec,
 		// Always publish an ephemeral host port for direct access; a configured
 		// domain is additionally routed via Traefik when the edge network exists.
 		cfg.PortBindings = nat.PortMap{port: []nat.PortBinding{{HostIP: "0.0.0.0", HostPort: ""}}}
-		if spec.HealthPath != "" {
-			cfg.Healthcheck = &container.HealthConfig{
-				Test:        []string{"CMD-SHELL", fmt.Sprintf("wget -q -O /dev/null http://127.0.0.1:%d%s || exit 1", spec.Port, spec.HealthPath)},
-				Interval:    30 * time.Second,
-				Timeout:     5 * time.Second,
-				Retries:     3,
-				StartPeriod: 10 * time.Second,
-			}
-		}
 	}
 
 	id, err := de.dockerClient.CreateContainer(ctx, cfg)
@@ -282,6 +276,7 @@ func (de *DeploymentEngine) RuntimeState(ctx context.Context, serviceID string, 
 		for _, p := range c.Ports {
 			if p.PublicPort != 0 {
 				state.URLs = append(state.URLs, fmt.Sprintf("http://localhost:%d", p.PublicPort))
+				state.Ports = append(state.Ports, p.PublicPort)
 			}
 		}
 	}
@@ -297,6 +292,57 @@ func (de *DeploymentEngine) RuntimeState(ctx context.Context, serviceID string, 
 		state.Status = "running"
 	}
 	return state, nil
+}
+
+// ProbeServiceHealth performs an HTTP GET on healthPath and records the
+// outcome on state.Health. When the backend runs containerized it first
+// attaches to the service's project network and probes the service by DNS
+// name — this works for every image (no shell or wget required inside the
+// container) and checks the service itself, not the published edge. A
+// host-run backend falls back to probing the published host port.
+func (de *DeploymentEngine) ProbeServiceHealth(ctx context.Context, state *RuntimeState, projectID, serviceName string, port int, healthPath string) {
+	if state == nil {
+		return
+	}
+	state.Health = ""
+	if healthPath == "" || port <= 0 {
+		return
+	}
+	if !strings.HasPrefix(healthPath, "/") {
+		healthPath = "/" + healthPath
+	}
+
+	probeURL := ""
+	if networkName := projectNetworkName(projectID); networkName != "" {
+		if err := de.dockerClient.ConnectSelfToNetwork(ctx, networkName); err == nil {
+			probeURL = fmt.Sprintf("http://%s:%d%s", serviceName, port, healthPath)
+		}
+	}
+	if probeURL == "" && len(state.Ports) > 0 {
+		probeURL = fmt.Sprintf("http://%s:%d%s", de.dockerClient.HostProbeHost(ctx), state.Ports[0], healthPath)
+	}
+	if probeURL == "" {
+		return
+	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, probeURL, nil)
+	if err != nil {
+		state.Health = "unreachable"
+		return
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		state.Health = "unreachable"
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 200 && resp.StatusCode < 400 {
+		state.Health = "healthy"
+		return
+	}
+	state.Health = "unhealthy"
 }
 
 // StopService stops (but keeps) all replicas of a service.

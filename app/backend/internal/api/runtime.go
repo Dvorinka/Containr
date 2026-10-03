@@ -283,6 +283,12 @@ func handleGetServiceRuntime(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	engine.ProbeServiceHealth(c.Request.Context(), state, service.ProjectID.String(), service.Name, service.Port, service.HealthCheckPath)
+	if host := requestHostname(c); host != "" {
+		for i, u := range state.URLs {
+			state.URLs[i] = rewriteLoopbackURL(u, host)
+		}
+	}
 	c.JSON(http.StatusOK, gin.H{"runtime": state})
 }
 
@@ -418,7 +424,7 @@ func liveServiceStatus(c *gin.Context, db *database.DB, service *Service) {
 	if service.Domain != "" {
 		service.PublicURL = "https://" + service.Domain
 	} else if len(state.URLs) > 0 {
-		service.PublicURL = state.URLs[0]
+		service.PublicURL = rewriteLoopbackURL(state.URLs[0], requestHostname(c))
 	}
 }
 

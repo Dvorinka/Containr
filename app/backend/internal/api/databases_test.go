@@ -51,21 +51,33 @@ func TestDatabaseConnectionURLAndDefaultVersion(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		url := handler.generateConnectionURL(DatabaseService{
-			Type: tc.dbType,
-			Name: "example",
-		})
-		if url == "" {
-			t.Fatalf("generateConnectionURL returned empty for type %q", tc.dbType)
+		plan, err := buildDatabaseRuntimePlan(tc.dbType, "example", nil)
+		if err != nil {
+			t.Fatalf("buildDatabaseRuntimePlan(%q) failed: %v", tc.dbType, err)
 		}
+		url := plan.ConnectionURL("15432")
 		if len(tc.urlContains) > 0 && !strings.HasPrefix(url, tc.urlContains) {
-			t.Fatalf("generateConnectionURL(%q) = %q, expected prefix %q", tc.dbType, url, tc.urlContains)
+			t.Fatalf("ConnectionURL(%q) = %q, expected prefix %q", tc.dbType, url, tc.urlContains)
+		}
+		if !strings.Contains(url, ":15432") {
+			t.Fatalf("ConnectionURL(%q) = %q, expected published port", tc.dbType, url)
 		}
 
 		gotVersion := handler.getDefaultVersion(tc.dbType)
 		if gotVersion != tc.version {
 			t.Fatalf("getDefaultVersion(%q) = %q, want %q", tc.dbType, gotVersion, tc.version)
 		}
+	}
+}
+
+func TestResolveConnectionURLNeverFabricates(t *testing.T) {
+	handler := &DatabaseHandler{}
+
+	if got := handler.resolveConnectionURL(DatabaseService{Type: "postgresql", Name: "example"}); got != "" {
+		t.Fatalf("resolveConnectionURL with no stored URL = %q, want empty", got)
+	}
+	if got := handler.resolveConnectionURL(DatabaseService{ConnectionURL: "postgresql://u:p@localhost:15432/db"}); got != "postgresql://u:p@localhost:15432/db" {
+		t.Fatalf("resolveConnectionURL = %q, want stored URL", got)
 	}
 }
 
@@ -196,6 +208,26 @@ func TestHumanReadableBytes(t *testing.T) {
 		got := humanReadableBytes(tt.size)
 		if got != tt.want {
 			t.Fatalf("humanReadableBytes(%d) = %q, want %q", tt.size, got, tt.want)
+		}
+	}
+}
+
+func TestRewriteLoopbackURL(t *testing.T) {
+	tests := []struct {
+		name, raw, host, want string
+	}{
+		{"service url", "http://localhost:35981", "10.0.0.182", "http://10.0.0.182:35981"},
+		{"db url keeps creds", "postgresql://u:p@localhost:35432/db?sslmode=disable", "10.0.0.182", "postgresql://u:p@10.0.0.182:35432/db?sslmode=disable"},
+		{"ipv4 loopback", "redis://:pw@127.0.0.1:36379/0", "host.lan", "redis://:pw@host.lan:36379/0"},
+		{"unspecified", "http://0.0.0.0:9000/x", "10.0.0.182", "http://10.0.0.182:9000/x"},
+		{"external host untouched", "https://example.com:443/x", "10.0.0.182", "https://example.com:443/x"},
+		{"empty raw", "", "10.0.0.182", ""},
+		{"empty host", "http://localhost:35981", "", "http://localhost:35981"},
+		{"no port", "http://localhost/path", "10.0.0.182", "http://10.0.0.182/path"},
+	}
+	for _, tt := range tests {
+		if got := rewriteLoopbackURL(tt.raw, tt.host); got != tt.want {
+			t.Errorf("%s: rewriteLoopbackURL(%q,%q) = %q, want %q", tt.name, tt.raw, tt.host, got, tt.want)
 		}
 	}
 }
