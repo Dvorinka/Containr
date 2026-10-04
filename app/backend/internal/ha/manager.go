@@ -3,6 +3,7 @@ package ha
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -75,11 +76,13 @@ type HealthCheckConfig struct {
 
 // HealthChecker performs health checks on services and nodes
 type HealthChecker struct {
-	scheduler     *deployment.Scheduler
-	checks        map[string]*HealthCheck
-	results       map[string]*HealthCheckResult
-	mu            sync.RWMutex
-	checkInterval time.Duration
+	scheduler        *deployment.Scheduler
+	checks           map[string]*HealthCheck
+	results          map[string]*HealthCheckResult
+	mu               sync.RWMutex
+	checkInterval    time.Duration
+	serviceResolver  func(ctx context.Context, serviceID string) (host string, port int, err error)
+	db               *sql.DB
 }
 
 // HealthCheck represents a health check configuration
@@ -596,7 +599,11 @@ func (hc *HealthChecker) performHealthChecks(ctx context.Context) error {
 		result := hc.performHealthCheck(ctx, check)
 		hc.mu.Lock()
 		hc.results[check.ID] = result
+		check.Status = result.Status
+		check.LastCheck = result.Timestamp
 		hc.mu.Unlock()
+		// Persist last-known state so a restart resumes with honest history.
+		hc.persistCheck(check)
 	}
 
 	return nil
@@ -617,12 +624,20 @@ func (hc *HealthChecker) performHealthCheck(ctx context.Context, check *HealthCh
 	checkCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	var err error
+	host, port, err := hc.resolveTarget(ctx, check)
+	if err != nil {
+		result.Status = HealthStatusUnhealthy
+		result.Message = err.Error()
+		result.ErrorCode = "TARGET_UNRESOLVED"
+		result.Latency = time.Since(start)
+		return result
+	}
+
 	switch check.Type {
 	case HealthCheckTypeHTTP:
-		err = hc.performHTTPCheck(checkCtx, check)
+		err = hc.performHTTPCheck(checkCtx, check, host, port)
 	case HealthCheckTypeTCP:
-		err = hc.performTCPCheck(checkCtx, check)
+		err = hc.performTCPCheck(checkCtx, check, host, port)
 	case HealthCheckTypeCommand:
 		err = hc.performCommandCheck(checkCtx, check)
 	default:
@@ -642,13 +657,11 @@ func (hc *HealthChecker) performHealthCheck(ctx context.Context, check *HealthCh
 	return result
 }
 
-func (hc *HealthChecker) performHTTPCheck(ctx context.Context, check *HealthCheck) error {
-	host := hc.resolveHealthCheckHost(check)
+func (hc *HealthChecker) performHTTPCheck(ctx context.Context, check *HealthCheck, host string, port int) error {
 	protocol := strings.ToLower(strings.TrimSpace(check.Config.Protocol))
 	if protocol == "" {
 		protocol = "http"
 	}
-	port := check.Config.Port
 	if port <= 0 {
 		if protocol == "https" {
 			port = 443
@@ -684,9 +697,7 @@ func (hc *HealthChecker) performHTTPCheck(ctx context.Context, check *HealthChec
 	return nil
 }
 
-func (hc *HealthChecker) performTCPCheck(ctx context.Context, check *HealthCheck) error {
-	host := hc.resolveHealthCheckHost(check)
-	port := check.Config.Port
+func (hc *HealthChecker) performTCPCheck(ctx context.Context, check *HealthCheck, host string, port int) error {
 	if port <= 0 {
 		port = 80
 	}
@@ -723,6 +734,27 @@ func (hc *HealthChecker) performCommandCheck(ctx context.Context, check *HealthC
 	return nil
 }
 
+// WithServiceResolver lets the API layer plug in service-aware targeting: a
+// ServiceID-bound check resolves to the service's DNS name on its project
+// network instead of the backend container's loopback, where dialing
+// 127.0.0.1:<host port> can never succeed.
+func (m *HighAvailabilityManager) WithServiceResolver(fn func(ctx context.Context, serviceID string) (host string, port int, err error)) *HighAvailabilityManager {
+	m.healthChecker.serviceResolver = fn
+	return m
+}
+
+// WithPersistence attaches Postgres so configured checks survive restarts.
+// Call LoadHealthChecks once during startup to hydrate state.
+func (m *HighAvailabilityManager) WithPersistence(db *sql.DB) *HighAvailabilityManager {
+	m.healthChecker.db = db
+	return m
+}
+
+// LoadHealthChecks hydrates persisted health checks during startup.
+func (m *HighAvailabilityManager) LoadHealthChecks(ctx context.Context) error {
+	return m.healthChecker.LoadHealthChecks(ctx)
+}
+
 func (hc *HealthChecker) resolveHealthCheckHost(check *HealthCheck) string {
 	if strings.TrimSpace(check.NodeID) != "" && hc.scheduler != nil {
 		nodes := hc.scheduler.GetNodes()
@@ -739,19 +771,109 @@ func (hc *HealthChecker) resolveHealthCheckHost(check *HealthCheck) string {
 	return "127.0.0.1"
 }
 
+// resolveTarget picks the dial target for a check: service-bound checks go to
+// the service DNS name on the project network; node-bound and free-standing
+// checks keep the old host behavior. A service-bound resolver failure is
+// surfaced as an error — falling back to loopback would only produce a
+// misleading "service down" result.
+func (hc *HealthChecker) resolveTarget(ctx context.Context, check *HealthCheck) (string, int, error) {
+	port := check.Config.Port
+	if strings.TrimSpace(check.NodeID) == "" && check.ServiceID != "" && hc.serviceResolver != nil {
+		resolveCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		h, p, err := hc.serviceResolver(resolveCtx, check.ServiceID)
+		if err != nil {
+			return "", 0, fmt.Errorf("resolve service target: %w", err)
+		}
+		if h == "" {
+			return "", 0, fmt.Errorf("resolve service target: service %s not found", check.ServiceID)
+		}
+		if port <= 0 {
+			port = p
+		}
+		return h, port, nil
+	}
+	return hc.resolveHealthCheckHost(check), port, nil
+}
+
 // AddHealthCheck adds a new health check
 func (hc *HealthChecker) AddHealthCheck(check *HealthCheck) {
 	hc.mu.Lock()
-	defer hc.mu.Unlock()
 	hc.checks[check.ID] = check
+	hc.mu.Unlock()
+	hc.persistCheck(check)
 }
 
 // RemoveHealthCheck removes a health check
 func (hc *HealthChecker) RemoveHealthCheck(checkID string) {
 	hc.mu.Lock()
-	defer hc.mu.Unlock()
 	delete(hc.checks, checkID)
 	delete(hc.results, checkID)
+	hc.mu.Unlock()
+	if hc.db != nil {
+		_, _ = hc.db.ExecContext(context.Background(), `DELETE FROM ha_health_checks WHERE id = $1`, checkID)
+	}
+}
+
+// persistCheck upserts one check. Best effort — a write failure never blocks
+// the in-memory path, matching the scaling-policy persistence style.
+func (hc *HealthChecker) persistCheck(check *HealthCheck) {
+	if hc.db == nil {
+		return
+	}
+	cfg, _ := json.Marshal(check.Config)
+	var lastCheck interface{}
+	if !check.LastCheck.IsZero() {
+		lastCheck = check.LastCheck
+	}
+	_, _ = hc.db.ExecContext(context.Background(),
+		`INSERT INTO ha_health_checks (id, service_id, node_id, type, config, status, last_check, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, now())
+		 ON CONFLICT (id) DO UPDATE
+		 SET service_id = EXCLUDED.service_id, node_id = EXCLUDED.node_id,
+		     type = EXCLUDED.type, config = EXCLUDED.config,
+		     status = EXCLUDED.status, last_check = EXCLUDED.last_check,
+		     updated_at = now()`,
+		check.ID, check.ServiceID, check.NodeID, string(check.Type), cfg, string(check.Status), lastCheck,
+	)
+}
+
+// LoadHealthChecks hydrates checks persisted across restarts.
+func (hc *HealthChecker) LoadHealthChecks(ctx context.Context) error {
+	if hc.db == nil {
+		return nil
+	}
+	rows, err := hc.db.QueryContext(ctx,
+		`SELECT id, service_id, node_id, type, config, status, last_check FROM ha_health_checks`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	loaded := 0
+	for rows.Next() {
+		var check HealthCheck
+		var cfg []byte
+		var status, checkType string
+		var lastCheck sql.NullTime
+		if err := rows.Scan(&check.ID, &check.ServiceID, &check.NodeID, &checkType, &cfg, &status, &lastCheck); err != nil {
+			continue
+		}
+		check.Type = HealthCheckType(checkType)
+		check.Status = HealthStatus(status)
+		if lastCheck.Valid {
+			check.LastCheck = lastCheck.Time
+		}
+		_ = json.Unmarshal(cfg, &check.Config)
+		hc.mu.Lock()
+		hc.checks[check.ID] = &check
+		hc.mu.Unlock()
+		loaded++
+	}
+	if loaded > 0 {
+		log.Printf("Restored %d health checks", loaded)
+	}
+	return rows.Err()
 }
 
 // GetHealthCheck returns one configured health check.

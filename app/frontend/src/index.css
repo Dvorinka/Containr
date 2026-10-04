@@ -1523,6 +1523,7 @@ textarea {
   background: var(--accent-primary); color: var(--accent-on);
   border: none; border-radius: 8px; padding: 9px 17px;
   font: 700 12px 'JetBrains Mono', monospace; cursor: pointer;
+  white-space: nowrap; flex-shrink: 0;
   transition: background 0.15s, transform 0.15s;
   box-shadow: 0 2px 12px rgba(180, 227, 74, 0.22);
 }
@@ -1534,6 +1535,7 @@ textarea {
   background: var(--surface-card); color: var(--text-secondary);
   border: 1px solid var(--border-subtle); border-radius: 8px; padding: 8px 16px;
   font: 600 12px 'JetBrains Mono', monospace; cursor: pointer; transition: 0.15s;
+  white-space: nowrap; flex-shrink: 0;
 }
 .v-btn-ghost:hover { color: var(--text-primary); border-color: var(--border-default); }
 

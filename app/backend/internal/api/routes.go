@@ -57,6 +57,33 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 		}
 	}
 	haManager := ha.NewHighAvailabilityManager(scheduler, metricsCollector)
+	if db != nil && db.DB != nil {
+		haManager.WithPersistence(db.DB)
+		if err := haManager.LoadHealthChecks(context.Background()); err != nil {
+			log.Printf("Failed to restore health checks: %v", err)
+		}
+	}
+	if dockerClient != nil && db != nil {
+		// Service-bound checks probe the service DNS name on the project
+		// network — the backend container joins it on demand. The old
+		// 127.0.0.1 fallback stays for node-bound checks.
+		docker := dockerClient
+		haManager.WithServiceResolver(func(ctx context.Context, serviceID string) (string, int, error) {
+			var name, projectID string
+			var port int
+			err := db.QueryRowContext(ctx,
+				`SELECT name, project_id::text, COALESCE(port, 0) FROM services WHERE id = $1`,
+				serviceID,
+			).Scan(&name, &projectID, &port)
+			if err != nil {
+				return "", 0, err
+			}
+			if err := docker.ConnectSelfToNetwork(ctx, deployment.ProjectNetworkName(projectID)); err != nil {
+				return "", 0, err
+			}
+			return name, port, nil
+		})
+	}
 	haAPIManager := NewHAManager(haManager)
 
 	// Initialize scaling handler

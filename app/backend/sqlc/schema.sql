@@ -52,7 +52,13 @@ CREATE TABLE services (
     git_branch VARCHAR(100),
     build_path VARCHAR(500),
     cpu VARCHAR(50),
-    memory VARCHAR(50)
+    memory VARCHAR(50),
+    replicas INTEGER NOT NULL DEFAULT 1,
+    port INTEGER NOT NULL DEFAULT 0,
+    domain VARCHAR(255) NOT NULL DEFAULT '',
+    healthcheck_path VARCHAR(255) NOT NULL DEFAULT '',
+    restart_policy VARCHAR(50) NOT NULL DEFAULT 'unless-stopped',
+    published_port INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE deployments (
