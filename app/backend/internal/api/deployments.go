@@ -356,6 +356,12 @@ func runDeploymentAndSyncWithImage(
 		replicas = 1
 	}
 
+	var publishedPort int32
+	// Best effort: reuse the host port from the last live deployment so public
+	// URLs survive redeploys. Column exists post-migration; older DBs get
+	// ephemeral ports.
+	_ = db.QueryRow(`SELECT published_port FROM services WHERE id = $1`, service.ID).Scan(&publishedPort)
+
 	deployReq := &deployment.DeploymentRequest{
 		ProjectID:   service.ProjectID.String(),
 		ServiceID:   service.ID.String(),
@@ -367,6 +373,7 @@ func runDeploymentAndSyncWithImage(
 			Environment:   env,
 			Replicas:      replicas,
 			PublicPort:    int32(service.Port),
+			PublishedPort: publishedPort,
 			Domain:        service.Domain,
 			HealthPath:    service.HealthCheckPath,
 			RestartPolicy: service.RestartPolicy,

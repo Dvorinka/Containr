@@ -5,9 +5,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -39,6 +41,7 @@ type RuntimeSpec struct {
 	Env           map[string]string // already resolved
 	Replicas      int
 	Port          int32  // container port to expose publicly; 0 = none
+	PublishedPort int32  // preferred host port for replica 0; 0 = pick ephemeral
 	Domain        string // public hostname routed via Traefik; empty = none
 	HealthPath    string // http path probed on Port for container healthcheck
 	RestartPolicy string
@@ -240,22 +243,70 @@ func (de *DeploymentEngine) createReplica(ctx context.Context, spec RuntimeSpec,
 		Networks:      endpoints,
 	}
 
+	var wantPort nat.Port
 	if spec.Port > 0 {
-		port := nat.Port(fmt.Sprintf("%d/tcp", spec.Port))
-		cfg.ExposedPorts = nat.PortSet{port: struct{}{}}
-		// Always publish an ephemeral host port for direct access; a configured
-		// domain is additionally routed via Traefik when the edge network exists.
-		cfg.PortBindings = nat.PortMap{port: []nat.PortBinding{{HostIP: "0.0.0.0", HostPort: ""}}}
+		wantPort = nat.Port(fmt.Sprintf("%d/tcp", spec.Port))
+		cfg.ExposedPorts = nat.PortSet{wantPort: struct{}{}}
 	}
 
-	id, err := de.dockerClient.CreateContainer(ctx, cfg)
+	// tryBind creates and starts a container publishing wantPort on hostPort
+	// ("" = ephemeral). A requested port is verified after start: Docker
+	// Desktop accepts a conflicting binding at create/start but publishes
+	// nothing, which would leave the service running with no endpoint.
+	tryBind := func(hostPort string) (string, error) {
+		if spec.Port > 0 {
+			cfg.PortBindings = nat.PortMap{wantPort: []nat.PortBinding{{HostIP: "0.0.0.0", HostPort: hostPort}}}
+		}
+		id, err := de.dockerClient.CreateContainer(ctx, cfg)
+		if err != nil {
+			return "", err
+		}
+		if err := de.dockerClient.StartContainer(ctx, id); err != nil {
+			_ = de.dockerClient.RemoveContainer(ctx, id, true)
+			return "", fmt.Errorf("start: %w", err)
+		}
+		if hostPort != "" {
+			info, err := de.dockerClient.GetContainer(ctx, id)
+			if err != nil {
+				_ = de.dockerClient.RemoveContainer(ctx, id, true)
+				return "", fmt.Errorf("inspect: %w", err)
+			}
+			if info.NetworkSettings == nil || len(info.NetworkSettings.Ports[wantPort]) == 0 {
+				_ = de.dockerClient.RemoveContainer(ctx, id, true)
+				return "", errPortNotBound
+			}
+		}
+		return id, nil
+	}
+
+	preferred := ""
+	if index == 0 && spec.PublishedPort > 0 {
+		preferred = strconv.Itoa(int(spec.PublishedPort))
+	}
+	id, err := tryBind(preferred)
+	if err != nil && preferred != "" && (isPortConflict(err) || errors.Is(err, errPortNotBound)) {
+		// Stored port got taken since last deploy — fall back to ephemeral; the
+		// new assignment is persisted on the next runtime read.
+		id, err = tryBind("")
+	}
 	if err != nil {
 		return "", err
 	}
-	if err := de.dockerClient.StartContainer(ctx, id); err != nil {
-		return "", fmt.Errorf("start: %w", err)
-	}
 	return id, nil
+}
+
+// errPortNotBound marks a container that started but failed to publish the
+// requested host port (seen on Docker Desktop, which reports success while
+// vpnkit drops a conflicting binding).
+var errPortNotBound = errors.New("requested host port not bound")
+
+// isPortConflict reports whether a container create failed because the
+// requested host port was already bound.
+func isPortConflict(err error) bool {
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "port is already allocated") ||
+		strings.Contains(msg, "address already in use") ||
+		strings.Contains(msg, "cannot assign requested address")
 }
 
 // RuntimeState reads live container state for a service.
