@@ -67,7 +67,9 @@ type RuntimeState struct {
 	Status     string             `json:"status"`           // running, degraded, stopped
 }
 
-func projectNetworkName(projectID string) string {
+// ProjectNetworkName is the deterministic docker network every service in a
+// project joins — containr-proj-<first 12 hex chars of the project uuid>.
+func ProjectNetworkName(projectID string) string {
 	short := strings.ReplaceAll(projectID, "-", "")
 	if len(short) > 12 {
 		short = short[:12]
@@ -82,7 +84,7 @@ func serviceNamePrefix(serviceID string) string {
 // EnsureProjectNetwork creates the per-project bridge network if missing.
 // Containers on it resolve each other by service name (private networking).
 func (de *DeploymentEngine) EnsureProjectNetwork(ctx context.Context, projectID string) (string, error) {
-	name := projectNetworkName(projectID)
+	name := ProjectNetworkName(projectID)
 
 	networks, err := de.dockerClient.ListNetworks(ctx)
 	if err != nil {
@@ -364,7 +366,7 @@ func (de *DeploymentEngine) ProbeServiceHealth(ctx context.Context, state *Runti
 	}
 
 	probeURL := ""
-	if networkName := projectNetworkName(projectID); networkName != "" {
+	if networkName := ProjectNetworkName(projectID); networkName != "" {
 		if err := de.dockerClient.ConnectSelfToNetwork(ctx, networkName); err == nil {
 			probeURL = fmt.Sprintf("http://%s:%d%s", serviceName, port, healthPath)
 		}
@@ -456,7 +458,7 @@ func (de *DeploymentEngine) RemoveProjectContainers(ctx context.Context, project
 
 // RemoveProjectNetwork removes the per-project bridge network if present.
 func (de *DeploymentEngine) RemoveProjectNetwork(ctx context.Context, projectID string) error {
-	return de.dockerClient.RemoveNetwork(ctx, projectNetworkName(projectID))
+	return de.dockerClient.RemoveNetwork(ctx, ProjectNetworkName(projectID))
 }
 
 func replicaIndex(c container.Summary) int {

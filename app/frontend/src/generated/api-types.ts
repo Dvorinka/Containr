@@ -637,7 +637,15 @@ export interface paths {
                                 desired?: number;
                                 /** @enum {string} */
                                 status?: "running" | "degraded" | "stopped";
+                                /** @description Reachable service URLs; rewritten to the request Host for remote clients. Null/empty when nothing is published. */
                                 urls?: string[];
+                                /** @description Host ports actually bound for replica 0+; persisted on the service so restarts reuse the same public port. Null/empty when nothing is published. */
+                                ports?: number[];
+                                /**
+                                 * @description Result of the backend's HTTP probe of the service on its project network. Omitted when the service declares no healthcheck path.
+                                 * @enum {string}
+                                 */
+                                health?: "healthy" | "unhealthy" | "unreachable";
                                 containers?: {
                                     id?: string;
                                     name?: string;
