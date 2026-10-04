@@ -8299,7 +8299,13 @@ export interface components {
                 images?: number;
                 driver?: string;
                 server?: string;
+                os?: string;
             };
+            /**
+             * @description What the telemetry measures — `host` for a native daemon, `docker-desktop-vm` when Docker runs inside a Desktop VM.
+             * @enum {string}
+             */
+            scope?: "host" | "docker-desktop-vm";
             /** Format: date-time */
             collected_at?: string;
         };

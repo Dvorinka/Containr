@@ -972,31 +972,60 @@ export function ServiceDetailPage() {
                     <p className="text-sm font-medium text-[var(--text-primary)]">Networking</p>
                     <p className="text-xs text-[var(--text-tertiary)]">Public endpoints and ports</p>
                   </div>
+                  {runtimeQuery.data?.health === 'healthy' && (
+                    <span className="ml-auto v-st v-st-ok">HEALTHY</span>
+                  )}
+                  {runtimeQuery.data?.health === 'unhealthy' && (
+                    <span className="ml-auto v-st v-st-fail">UNHEALTHY</span>
+                  )}
                 </div>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="flex items-center justify-between p-3 rounded-lg bg-[var(--surface-muted)] border border-[var(--border-subtle)]">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-[var(--success)]" />
-                      <span className="text-xs text-[var(--text-secondary)]">HTTPS</span>
+                  {service.domain && (
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-[var(--surface-muted)] border border-[var(--border-subtle)]">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-[var(--success)]" />
+                        <span className="text-xs text-[var(--text-secondary)]">Domain</span>
+                      </div>
+                      <a
+                        href={`https://${service.domain}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mono text-xs text-[var(--accent-primary)] hover:underline"
+                      >
+                        {service.domain}
+                      </a>
                     </div>
-                    <a 
-                      href={`https://${service.name}.containr.dev`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mono text-xs text-[var(--accent-primary)] hover:underline"
-                    >
-                      {service.name}.containr.dev
-                    </a>
-                  </div>
+                  )}
+                  {(runtimeQuery.data?.urls ?? []).map((url) => (
+                    <div key={url} className="flex items-center justify-between p-3 rounded-lg bg-[var(--surface-muted)] border border-[var(--border-subtle)]">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-[var(--success)]" />
+                        <span className="text-xs text-[var(--text-secondary)]">HTTP</span>
+                      </div>
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mono text-xs text-[var(--accent-primary)] hover:underline"
+                      >
+                        {url.replace(/^https?:\/\//, '')}
+                      </a>
+                    </div>
+                  ))}
                   <div className="flex items-center justify-between p-3 rounded-lg bg-[var(--surface-muted)] border border-[var(--border-subtle)]">
                     <div className="flex items-center gap-2">
                       <div className="w-2 h-2 rounded-full bg-[var(--accent-secondary)]" />
-                      <span className="text-xs text-[var(--text-secondary)]">Port</span>
+                      <span className="text-xs text-[var(--text-secondary)]">Internal</span>
                     </div>
-                    <span className="mono text-xs text-[var(--text-primary)]">8080 → 443</span>
+                    <span className="mono text-xs text-[var(--text-primary)]">{service.name}{service.port ? `:${service.port}` : ''}</span>
                   </div>
                 </div>
+                {!service.domain && (runtimeQuery.data?.urls ?? []).length === 0 && (
+                  <p className="mt-3 text-xs text-[var(--text-tertiary)]">
+                    No public endpoint. Publish a port or set a domain in Settings → Networking to expose this service.
+                  </p>
+                )}
               </div>
             )}
           </div>

@@ -719,7 +719,7 @@ export function ProjectWorkspacePage() {
             <Search size={12} />
             <kbd className="px-1 py-0.5 rounded bg-[var(--surface-card)] text-[10px] font-mono">⌘K</kbd>
           </button>
-          {!isDemoMode && (
+          {!isDemoMode && signedIn && (
             <button
               onClick={openAddService}
               className="flex items-center gap-1.5 h-8 px-3 rounded-[var(--radius-md)] text-[var(--accent-on)] text-xs font-semibold shadow-lg hover:shadow-xl transition-all"
@@ -742,7 +742,7 @@ export function ProjectWorkspacePage() {
             onAddService={openAddService}
             onOpenService={(serviceId) => navigate(serviceHref(serviceId))}
             onOpenSection={(serviceId, section) => navigate(serviceSectionHref(serviceId, section))}
-            readOnly={isDemoMode}
+            readOnly={isDemoMode || !signedIn}
           />
           {isDemoMode && (
             <div className="absolute top-4 left-1/2 -translate-x-1/2 pointer-events-none">

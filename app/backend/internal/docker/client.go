@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/docker/docker/api/types"
@@ -23,7 +26,8 @@ import (
 
 // Client wraps the Docker client with additional functionality
 type Client struct {
-	cli *client.Client
+	cli       *client.Client
+	probeHost string
 }
 
 // NewClient creates a new Docker client
@@ -43,6 +47,75 @@ func NewClient() (*Client, error) {
 	}
 
 	return &Client{cli: cli}, nil
+}
+
+// HostProbeHost returns an address through which host-published container
+// ports are reachable. When this process runs inside a container, host
+// loopback is unreachable; the bridge gateway IP routes to ports published
+// on 0.0.0.0. Result is cached for the process lifetime.
+func (c *Client) HostProbeHost(ctx context.Context) string {
+	if c.probeHost != "" {
+		return c.probeHost
+	}
+	host := "127.0.0.1"
+	if self, err := c.self(ctx); err == nil && self.NetworkSettings != nil {
+		for _, n := range self.NetworkSettings.Networks {
+			if n != nil && n.Gateway != "" {
+				host = n.Gateway
+				break
+			}
+		}
+	}
+	c.probeHost = host
+	return host
+}
+
+// OwnNetworkName returns the name of the platform network this process's
+// container is attached to, or "" when not running containerized. Per-project
+// and default Docker networks are never selected; among remaining networks
+// the lexicographically first wins so the choice is deterministic.
+func (c *Client) OwnNetworkName(ctx context.Context) string {
+	self, err := c.self(ctx)
+	if err != nil || self.NetworkSettings == nil {
+		return ""
+	}
+	names := make([]string, 0, len(self.NetworkSettings.Networks))
+	for name := range self.NetworkSettings.Networks {
+		switch {
+		case name == "bridge" || name == "host" || name == "none":
+		case strings.HasPrefix(name, "containr-proj-"):
+		default:
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	if len(names) == 0 {
+		return ""
+	}
+	return names[0]
+}
+
+// self inspects the container this process runs in (hostname == container ID).
+func (c *Client) self(ctx context.Context) (types.ContainerJSON, error) {
+	hostname, err := os.Hostname()
+	if err != nil || hostname == "" {
+		return types.ContainerJSON{}, fmt.Errorf("hostname unavailable")
+	}
+	return c.cli.ContainerInspect(ctx, hostname)
+}
+
+// ConnectSelfToNetwork attaches this process's container to the given network.
+// No-op when already attached or when not running containerized.
+func (c *Client) ConnectSelfToNetwork(ctx context.Context, networkName string) error {
+	hostname, err := os.Hostname()
+	if err != nil || hostname == "" {
+		return fmt.Errorf("hostname unavailable")
+	}
+	err = c.cli.NetworkConnect(ctx, networkName, hostname, &network.EndpointSettings{})
+	if err != nil && strings.Contains(strings.ToLower(err.Error()), "already exists") {
+		return nil
+	}
+	return err
 }
 
 // ListContainers returns all containers

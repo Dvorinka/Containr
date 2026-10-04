@@ -23,6 +23,7 @@ import (
 
 	dockercontainer "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/mount"
+	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/api/types/registry"
 	"github.com/docker/go-connections/nat"
 	"github.com/gin-gonic/gin"
@@ -196,7 +197,7 @@ func (h *DatabaseHandler) GetDatabases(c *gin.Context) {
 				db.Backups = DatabaseBackupConfig{Backups: []DatabaseBackup{}}
 			}
 			db.Settings = h.generateMockSettings()
-			db.ConnectionURL = h.resolveConnectionURL(db)
+			db.ConnectionURL = rewriteLoopbackURL(h.resolveConnectionURL(db), requestHostname(c))
 		} else {
 			db.Backups = DatabaseBackupConfig{Backups: []DatabaseBackup{}}
 			db.ConnectionURL = ""
@@ -235,7 +236,7 @@ func (h *DatabaseHandler) GetDatabase(c *gin.Context) {
 			db.Backups = DatabaseBackupConfig{Backups: []DatabaseBackup{}}
 		}
 		db.Settings = h.generateMockSettings()
-		db.ConnectionURL = h.resolveConnectionURL(db)
+		db.ConnectionURL = rewriteLoopbackURL(h.resolveConnectionURL(db), requestHostname(c))
 	} else {
 		db.Backups = DatabaseBackupConfig{Backups: []DatabaseBackup{}}
 		db.ConnectionURL = ""
@@ -942,33 +943,47 @@ func (h *DatabaseHandler) generateMockSettings() DatabaseSettings {
 	}
 }
 
+// resolveConnectionURL returns the stored connection URL for privileged
+// viewers, or "" when the runtime has not produced one (not provisioned yet).
 func (h *DatabaseHandler) resolveConnectionURL(db DatabaseService) string {
-	if strings.TrimSpace(db.ConnectionURL) != "" {
-		return db.ConnectionURL
-	}
-	return h.generateConnectionURL(db)
+	return strings.TrimSpace(db.ConnectionURL)
 }
 
-func (h *DatabaseHandler) generateConnectionURL(db DatabaseService) string {
-	safeName := sanitizeDBIdentifier(db.Name, "app")
-	switch db.Type {
-	case "postgresql":
-		return fmt.Sprintf("postgresql://user:password@%s.containr.local:5432/%s", safeName, safeName)
-	case "redis":
-		return fmt.Sprintf("redis://%s.containr.local:6379", safeName)
-	case "dragonfly":
-		return fmt.Sprintf("redis://%s.containr.local:6379", safeName)
-	case "mysql":
-		return fmt.Sprintf("mysql://user:password@%s.containr.local:3306/%s", safeName, safeName)
-	case "mariadb":
-		return fmt.Sprintf("mysql://user:password@%s.containr.local:3306/%s", safeName, safeName)
-	case "mongodb":
-		return fmt.Sprintf("mongodb://user:password@%s.containr.local:27017/%s", safeName, safeName)
-	case "clickhouse":
-		return fmt.Sprintf("http://%s.containr.local:8123", safeName)
-	default:
+// requestHostname returns the host the client used to reach the API, without
+// the port. Empty when it cannot be determined.
+func requestHostname(c *gin.Context) string {
+	host := strings.TrimSpace(c.Request.Host)
+	if host == "" {
 		return ""
 	}
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		return strings.Trim(h, "[]")
+	}
+	return strings.Trim(host, "[]")
+}
+
+// rewriteLoopbackURL swaps loopback/unspecified hosts in rawURL for the host
+// the caller actually used, so URLs handed to remote browsers are usable.
+func rewriteLoopbackURL(rawURL, host string) string {
+	if rawURL == "" || host == "" {
+		return rawURL
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL
+	}
+	switch strings.ToLower(u.Hostname()) {
+	case "localhost", "127.0.0.1", "0.0.0.0", "::1", "":
+	default:
+		return rawURL
+	}
+	port := u.Port()
+	if port == "" {
+		u.Host = host
+	} else {
+		u.Host = net.JoinHostPort(host, port)
+	}
+	return u.String()
 }
 
 func (h *DatabaseHandler) reconcileManagedDatabaseState(ctx context.Context, db DatabaseService) DatabaseService {
@@ -1223,13 +1238,13 @@ func (h *DatabaseHandler) provisionDatabaseWithVariables(databaseID, databaseNam
 	defer cancel()
 
 	if h.dockerClient == nil {
-		fallbackURL := h.generateConnectionURL(DatabaseService{Name: databaseName, Type: dbType})
-		_ = h.setDatabaseStatusAndConnection(databaseID, "running", sql.NullString{String: fallbackURL, Valid: fallbackURL != ""})
+		_ = h.setDatabaseStatusAndConnection(databaseID, "running", sql.NullString{})
 		return
 	}
 
 	connectionURL, err := h.provisionDatabaseRuntime(ctx, databaseID, databaseName, dbType, runtimeVariables)
 	if err != nil {
+		log.Printf("containr: managed database %s (%s) provisioning failed: %v", databaseID, dbType, err)
 		_ = h.setDatabaseStatusAndConnection(databaseID, "error", sql.NullString{})
 		return
 	}
@@ -1337,7 +1352,7 @@ func (h *DatabaseHandler) provisionDatabaseRuntime(ctx context.Context, database
 	if err != nil {
 		return "", err
 	}
-	if err := waitForRuntimePortReadiness(ctx, hostPort); err != nil {
+	if err := h.waitForDatabaseReadiness(ctx, containerID, hostPort, plan.Port.Port()); err != nil {
 		return "", err
 	}
 
@@ -1371,12 +1386,24 @@ func (h *DatabaseHandler) resolvePublishedHostPort(ctx context.Context, containe
 	return "", fmt.Errorf("published host port not available")
 }
 
-func waitForRuntimePortReadiness(ctx context.Context, hostPort string) error {
-	addr := net.JoinHostPort("127.0.0.1", strings.TrimSpace(hostPort))
-	deadline := time.Now().Add(30 * time.Second)
+// waitForDatabaseReadiness probes the database's TCP port until it accepts a
+// connection. The published port lives on host loopback, which a containerized
+// backend cannot reach; in that case the database is additionally attached to
+// the backend's own network and probed by container IP.
+func (h *DatabaseHandler) waitForDatabaseReadiness(ctx context.Context, containerID, hostPort, containerPort string) error {
+	probeAddr := net.JoinHostPort("127.0.0.1", strings.TrimSpace(hostPort))
+	if backendNet := h.dockerClient.OwnNetworkName(ctx); backendNet != "" {
+		if err := h.dockerClient.ConnectNetwork(ctx, backendNet, containerID, network.EndpointSettings{}); err != nil {
+			log.Printf("containr: attach database %s to %s failed: %v", containerID, backendNet, err)
+		}
+		if ip := h.containerIPOnNetwork(ctx, containerID, backendNet); ip != "" {
+			probeAddr = net.JoinHostPort(ip, containerPort)
+		}
+	}
 
+	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
-		conn, err := net.DialTimeout("tcp", addr, 1500*time.Millisecond)
+		conn, err := net.DialTimeout("tcp", probeAddr, 1500*time.Millisecond)
 		if err == nil {
 			_ = conn.Close()
 			return nil
@@ -1389,7 +1416,18 @@ func waitForRuntimePortReadiness(ctx context.Context, hostPort string) error {
 		}
 	}
 
-	return fmt.Errorf("database runtime did not become reachable on %s", addr)
+	return fmt.Errorf("database runtime did not become reachable on %s", probeAddr)
+}
+
+func (h *DatabaseHandler) containerIPOnNetwork(ctx context.Context, containerID, networkName string) string {
+	inspect, err := h.dockerClient.GetContainer(ctx, containerID)
+	if err != nil || inspect.NetworkSettings == nil {
+		return ""
+	}
+	if ep, ok := inspect.NetworkSettings.Networks[networkName]; ok && ep != nil {
+		return strings.TrimSpace(ep.IPAddress)
+	}
+	return ""
 }
 
 func (h *DatabaseHandler) ensureImage(ctx context.Context, imageRef string) error {

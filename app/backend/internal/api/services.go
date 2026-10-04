@@ -520,7 +520,9 @@ func handleUpdateService(c *gin.Context) {
 				}
 				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 				defer cancel()
-				_, _ = engine.ReconcileService(ctx, spec)
+				if state, err := engine.ReconcileService(ctx, spec); err == nil && state != nil {
+					persistPublishedPort(db.(*database.DB), serviceCopy.ID, state.Ports)
+				}
 			}()
 		}
 	}

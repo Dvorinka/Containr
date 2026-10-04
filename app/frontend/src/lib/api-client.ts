@@ -68,6 +68,8 @@ export type ServiceRuntime = {
   desired: number;
   status: 'running' | 'degraded' | 'stopped';
   urls: string[];
+  ports: number[];
+  health?: 'healthy' | 'unhealthy' | 'unreachable' | '';
   containers: RuntimeContainer[];
 };
 
@@ -223,7 +225,9 @@ export type HostMonitoring = {
     images?: number;
     driver?: string;
     server?: string;
+    os?: string;
   };
+  scope: 'host' | 'docker-desktop-vm';
   collectedAt: string;
 };
 
@@ -886,6 +890,7 @@ function normalizeHostMonitoring(payload: RawHostMonitoring): HostMonitoring {
     uptimeSeconds: payload.uptime_seconds ?? 0,
     dockerAvailable: Boolean(payload.docker_available),
     docker: payload.docker,
+    scope: payload.scope === 'docker-desktop-vm' ? 'docker-desktop-vm' : 'host',
     collectedAt: payload.collected_at ?? '',
   };
 }
@@ -1080,16 +1085,15 @@ export async function deleteService(serviceId: string): Promise<void> {
   });
 }
 
+function normalizeRuntime(runtime?: ServiceRuntime): ServiceRuntime {
+  const state = runtime ?? { desired: 0, status: 'stopped' as const, urls: [], ports: [], containers: [] };
+  // The API emits null (not []) for empty collections — coerce at the boundary.
+  return { ...state, urls: state.urls ?? [], ports: state.ports ?? [], containers: state.containers ?? [] };
+}
+
 export async function getServiceRuntime(serviceId: string): Promise<ServiceRuntime> {
   const payload = await requestJson<{ runtime?: ServiceRuntime }>(`/services/${serviceId}/runtime`);
-  return (
-    payload.runtime ?? {
-      desired: 0,
-      status: 'stopped',
-      urls: [],
-      containers: [],
-    }
-  );
+  return normalizeRuntime(payload.runtime);
 }
 
 async function serviceAction(serviceId: string, action: 'start' | 'stop' | 'restart'): Promise<void> {
@@ -1104,7 +1108,7 @@ export async function redeployService(serviceId: string): Promise<ServiceRuntime
   const payload = await requestJson<{ runtime?: ServiceRuntime }>(`/services/${serviceId}/redeploy`, {
     method: 'POST',
   });
-  return payload.runtime ?? { desired: 0, status: 'stopped', urls: [], containers: [] };
+  return normalizeRuntime(payload.runtime);
 }
 
 function normalizeServiceVariables(rows: RawServiceVariable[] | undefined): ServiceVariable[] {

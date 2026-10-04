@@ -5,8 +5,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -38,6 +41,7 @@ type RuntimeSpec struct {
 	Env           map[string]string // already resolved
 	Replicas      int
 	Port          int32  // container port to expose publicly; 0 = none
+	PublishedPort int32  // preferred host port for replica 0; 0 = pick ephemeral
 	Domain        string // public hostname routed via Traefik; empty = none
 	HealthPath    string // http path probed on Port for container healthcheck
 	RestartPolicy string
@@ -58,7 +62,9 @@ type RuntimeState struct {
 	Desired    int                `json:"desired"`
 	Containers []RuntimeContainer `json:"containers"`
 	URLs       []string           `json:"urls"`
-	Status     string             `json:"status"` // running, degraded, stopped
+	Ports      []uint16           `json:"ports"`
+	Health     string             `json:"health,omitempty"` // healthy, unhealthy, unreachable
+	Status     string             `json:"status"`           // running, degraded, stopped
 }
 
 func projectNetworkName(projectID string) string {
@@ -237,31 +243,70 @@ func (de *DeploymentEngine) createReplica(ctx context.Context, spec RuntimeSpec,
 		Networks:      endpoints,
 	}
 
+	var wantPort nat.Port
 	if spec.Port > 0 {
-		port := nat.Port(fmt.Sprintf("%d/tcp", spec.Port))
-		cfg.ExposedPorts = nat.PortSet{port: struct{}{}}
-		// Always publish an ephemeral host port for direct access; a configured
-		// domain is additionally routed via Traefik when the edge network exists.
-		cfg.PortBindings = nat.PortMap{port: []nat.PortBinding{{HostIP: "0.0.0.0", HostPort: ""}}}
-		if spec.HealthPath != "" {
-			cfg.Healthcheck = &container.HealthConfig{
-				Test:        []string{"CMD-SHELL", fmt.Sprintf("wget -q -O /dev/null http://127.0.0.1:%d%s || exit 1", spec.Port, spec.HealthPath)},
-				Interval:    30 * time.Second,
-				Timeout:     5 * time.Second,
-				Retries:     3,
-				StartPeriod: 10 * time.Second,
-			}
-		}
+		wantPort = nat.Port(fmt.Sprintf("%d/tcp", spec.Port))
+		cfg.ExposedPorts = nat.PortSet{wantPort: struct{}{}}
 	}
 
-	id, err := de.dockerClient.CreateContainer(ctx, cfg)
+	// tryBind creates and starts a container publishing wantPort on hostPort
+	// ("" = ephemeral). A requested port is verified after start: Docker
+	// Desktop accepts a conflicting binding at create/start but publishes
+	// nothing, which would leave the service running with no endpoint.
+	tryBind := func(hostPort string) (string, error) {
+		if spec.Port > 0 {
+			cfg.PortBindings = nat.PortMap{wantPort: []nat.PortBinding{{HostIP: "0.0.0.0", HostPort: hostPort}}}
+		}
+		id, err := de.dockerClient.CreateContainer(ctx, cfg)
+		if err != nil {
+			return "", err
+		}
+		if err := de.dockerClient.StartContainer(ctx, id); err != nil {
+			_ = de.dockerClient.RemoveContainer(ctx, id, true)
+			return "", fmt.Errorf("start: %w", err)
+		}
+		if hostPort != "" {
+			info, err := de.dockerClient.GetContainer(ctx, id)
+			if err != nil {
+				_ = de.dockerClient.RemoveContainer(ctx, id, true)
+				return "", fmt.Errorf("inspect: %w", err)
+			}
+			if info.NetworkSettings == nil || len(info.NetworkSettings.Ports[wantPort]) == 0 {
+				_ = de.dockerClient.RemoveContainer(ctx, id, true)
+				return "", errPortNotBound
+			}
+		}
+		return id, nil
+	}
+
+	preferred := ""
+	if index == 0 && spec.PublishedPort > 0 {
+		preferred = strconv.Itoa(int(spec.PublishedPort))
+	}
+	id, err := tryBind(preferred)
+	if err != nil && preferred != "" && (isPortConflict(err) || errors.Is(err, errPortNotBound)) {
+		// Stored port got taken since last deploy — fall back to ephemeral; the
+		// new assignment is persisted on the next runtime read.
+		id, err = tryBind("")
+	}
 	if err != nil {
 		return "", err
 	}
-	if err := de.dockerClient.StartContainer(ctx, id); err != nil {
-		return "", fmt.Errorf("start: %w", err)
-	}
 	return id, nil
+}
+
+// errPortNotBound marks a container that started but failed to publish the
+// requested host port (seen on Docker Desktop, which reports success while
+// vpnkit drops a conflicting binding).
+var errPortNotBound = errors.New("requested host port not bound")
+
+// isPortConflict reports whether a container create failed because the
+// requested host port was already bound.
+func isPortConflict(err error) bool {
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "port is already allocated") ||
+		strings.Contains(msg, "address already in use") ||
+		strings.Contains(msg, "cannot assign requested address")
 }
 
 // RuntimeState reads live container state for a service.
@@ -282,6 +327,7 @@ func (de *DeploymentEngine) RuntimeState(ctx context.Context, serviceID string, 
 		for _, p := range c.Ports {
 			if p.PublicPort != 0 {
 				state.URLs = append(state.URLs, fmt.Sprintf("http://localhost:%d", p.PublicPort))
+				state.Ports = append(state.Ports, p.PublicPort)
 			}
 		}
 	}
@@ -297,6 +343,57 @@ func (de *DeploymentEngine) RuntimeState(ctx context.Context, serviceID string, 
 		state.Status = "running"
 	}
 	return state, nil
+}
+
+// ProbeServiceHealth performs an HTTP GET on healthPath and records the
+// outcome on state.Health. When the backend runs containerized it first
+// attaches to the service's project network and probes the service by DNS
+// name — this works for every image (no shell or wget required inside the
+// container) and checks the service itself, not the published edge. A
+// host-run backend falls back to probing the published host port.
+func (de *DeploymentEngine) ProbeServiceHealth(ctx context.Context, state *RuntimeState, projectID, serviceName string, port int, healthPath string) {
+	if state == nil {
+		return
+	}
+	state.Health = ""
+	if healthPath == "" || port <= 0 {
+		return
+	}
+	if !strings.HasPrefix(healthPath, "/") {
+		healthPath = "/" + healthPath
+	}
+
+	probeURL := ""
+	if networkName := projectNetworkName(projectID); networkName != "" {
+		if err := de.dockerClient.ConnectSelfToNetwork(ctx, networkName); err == nil {
+			probeURL = fmt.Sprintf("http://%s:%d%s", serviceName, port, healthPath)
+		}
+	}
+	if probeURL == "" && len(state.Ports) > 0 {
+		probeURL = fmt.Sprintf("http://%s:%d%s", de.dockerClient.HostProbeHost(ctx), state.Ports[0], healthPath)
+	}
+	if probeURL == "" {
+		return
+	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, probeURL, nil)
+	if err != nil {
+		state.Health = "unreachable"
+		return
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		state.Health = "unreachable"
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 200 && resp.StatusCode < 400 {
+		state.Health = "healthy"
+		return
+	}
+	state.Health = "unhealthy"
 }
 
 // StopService stops (but keeps) all replicas of a service.

@@ -36,6 +36,10 @@ func serviceRuntimeSpec(db *database.DB, service Service) (deployment.RuntimeSpe
 		HealthPath:    service.HealthCheckPath,
 		RestartPolicy: service.RestartPolicy,
 	}
+	// Best effort: reuse the host port from the last live deployment so the
+	// public URL survives restarts. Column exists post-migration; older DBs
+	// silently get ephemeral ports.
+	_ = db.QueryRow(`SELECT published_port FROM services WHERE id = $1`, service.ID).Scan(&spec.PublishedPort)
 	if cmd := strings.TrimSpace(service.Command); cmd != "" {
 		spec.Command = strings.Fields(cmd)
 	}
@@ -283,6 +287,13 @@ func handleGetServiceRuntime(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	engine.ProbeServiceHealth(c.Request.Context(), state, service.ProjectID.String(), service.Name, service.Port, service.HealthCheckPath)
+	persistPublishedPort(db, service.ID, state.Ports)
+	if host := requestHostname(c); host != "" {
+		for i, u := range state.URLs {
+			state.URLs[i] = rewriteLoopbackURL(u, host)
+		}
+	}
 	c.JSON(http.StatusOK, gin.H{"runtime": state})
 }
 
@@ -302,6 +313,7 @@ func reconcileNow(c *gin.Context, engine *deployment.DeploymentEngine, db *datab
 	status := "stopped"
 	if state != nil {
 		status = state.Status
+		persistPublishedPort(db, service.ID, state.Ports)
 	}
 	_, _ = db.Exec(`UPDATE services SET status = $1, updated_at = $2 WHERE id = $3`, status, time.Now(), service.ID)
 	c.JSON(http.StatusOK, gin.H{"runtime": state})
@@ -397,6 +409,18 @@ func handleServiceRedeploy(c *gin.Context) {
 	reconcileNow(c, engine, db, service)
 }
 
+// persistPublishedPort records the host port Docker actually bound so later
+// redeploys can reuse it. Idempotent — only writes when the value changed.
+func persistPublishedPort(db *database.DB, serviceID uuid.UUID, ports []uint16) {
+	if len(ports) == 0 {
+		return
+	}
+	_, _ = db.Exec(
+		`UPDATE services SET published_port = $1 WHERE id = $2 AND published_port <> $1`,
+		int(ports[0]), serviceID,
+	)
+}
+
 // liveServiceStatus reconciles the stored status with real container state.
 // No-op when Docker is unavailable — the stored status is returned as-is.
 func liveServiceStatus(c *gin.Context, db *database.DB, service *Service) {
@@ -415,10 +439,11 @@ func liveServiceStatus(c *gin.Context, db *database.DB, service *Service) {
 		service.Status = state.Status
 		_, _ = db.Exec(`UPDATE services SET status = $1, updated_at = $2 WHERE id = $3`, state.Status, time.Now(), service.ID)
 	}
+	persistPublishedPort(db, service.ID, state.Ports)
 	if service.Domain != "" {
 		service.PublicURL = "https://" + service.Domain
 	} else if len(state.URLs) > 0 {
-		service.PublicURL = state.URLs[0]
+		service.PublicURL = rewriteLoopbackURL(state.URLs[0], requestHostname(c))
 	}
 }
 
@@ -475,8 +500,12 @@ func runtimeScaleService(c *gin.Context, serviceID string, replicas int) error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	if _, err := engine.ReconcileService(ctx, spec); err != nil {
+	state, err := engine.ReconcileService(ctx, spec)
+	if err != nil {
 		return err
+	}
+	if state != nil {
+		persistPublishedPort(db, service.ID, state.Ports)
 	}
 	_, _ = db.Exec(`UPDATE services SET replicas = $1, updated_at = $2 WHERE id = $3`, replicas, time.Now(), service.ID)
 	return nil

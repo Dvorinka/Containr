@@ -30,7 +30,9 @@ export default defineConfig({
           // Split vendor libraries
           vendor: ['react', 'react-dom', '@tanstack/react-query'],
           ui: ['@radix-ui/react-dialog', '@radix-ui/react-dropdown-menu', 'lucide-react'],
-          utils: ['date-fns', 'clsx', 'tailwind-merge']
+          utils: ['date-fns', 'clsx', 'tailwind-merge'],
+          canvas: ['@xyflow/react'],
+          charts: ['recharts']
         },
         // Optimize chunk naming for better caching
         chunkFileNames: 'assets/js/[name]-[hash].js',

@@ -336,6 +336,16 @@ func handleCreateFromTemplate(c *gin.Context) {
 		return
 	}
 
+	// sqlc's schema predates the runtime columns; port and healthcheck_path are
+	// written via raw SQL like every other service mutation path.
+	if _, err = tx.ExecContext(ctx,
+		`UPDATE services SET port = $1, healthcheck_path = $2 WHERE id = $3`,
+		config.Port, strings.TrimSpace(config.HealthCheck), serviceID,
+	); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create service from template"})
+		return
+	}
+
 	for key, value := range envVars {
 		if strings.TrimSpace(key) == "" {
 			continue
@@ -731,7 +741,7 @@ func SeedTemplates() []ServiceTemplate {
 			Name:        "Background Worker",
 			Description: "Background job processing service",
 			Category:    "worker",
-			Logo:        "https://cdn.simpleicons.org/terminal",
+			Logo:        "https://cdn.simpleicons.org/gnubash",
 			Config:      `{"type":"worker","runtime":"node","build_command":"npm install","start_command":"npm run worker"}`,
 			Variables:   `[{"key":"WORKER_CONCURRENCY","label":"Concurrency","default":"4","required":false,"secret":false}]`,
 			IsOfficial:  true,
@@ -741,7 +751,7 @@ func SeedTemplates() []ServiceTemplate {
 			Name:        "Cron Job",
 			Description: "Scheduled task runner",
 			Category:    "cron",
-			Logo:        "https://cdn.simpleicons.org/clock",
+			Logo:        "https://cdn.simpleicons.org/clockify",
 			Config:      `{"type":"cron","runtime":"node","build_command":"npm install","start_command":"npm run cron"}`,
 			Variables:   `[{"key":"CRON_SCHEDULE","label":"Schedule","default":"0 * * * *","required":true,"secret":false}]`,
 			IsOfficial:  true,

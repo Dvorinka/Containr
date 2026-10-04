@@ -456,6 +456,7 @@ export const demoHostMonitoring: HostMonitoring = {
   uptimeSeconds: 1_828_800,
   dockerAvailable: true,
   docker: { containers: 11, images: 34, driver: 'overlay2', server: '27.3.1' },
+  scope: 'host',
   collectedAt: new Date().toISOString(),
 };
 

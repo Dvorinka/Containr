@@ -59,6 +59,9 @@ type ServiceConfig struct {
 	Domain string `json:"domain,omitempty"`
 	// HealthPath is an HTTP path probed on PublicPort for container health.
 	HealthPath string `json:"health_path,omitempty"`
+	// PublishedPort is the host port bound by the previous deployment; replica 0
+	// reuses it so public URLs survive restarts. 0 = pick ephemeral.
+	PublishedPort int32 `json:"published_port,omitempty"`
 }
 
 type PortMapping struct {
@@ -315,6 +318,7 @@ func (de *DeploymentEngine) deployService(ctx context.Context, deployment *Deplo
 		Env:           cfg.Environment,
 		Replicas:      cfg.Replicas,
 		Port:          cfg.PublicPort,
+		PublishedPort: cfg.PublishedPort,
 		Domain:        cfg.Domain,
 		HealthPath:    cfg.HealthPath,
 		RestartPolicy: cfg.RestartPolicy,
