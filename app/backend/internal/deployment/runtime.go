@@ -34,21 +34,25 @@ const (
 
 // RuntimeSpec is everything needed to run a service's containers.
 type RuntimeSpec struct {
-	ProjectID     string
-	ServiceID     string
-	Name          string // DNS alias on the project network
-	Image         string
-	Command       []string
-	Env           map[string]string // already resolved
-	Replicas      int
-	Port          int32  // container port to expose publicly; 0 = none
-	PublishedPort int32  // preferred host port for replica 0; 0 = pick ephemeral
-	Domain        string // public hostname routed via Traefik; empty = none
-	HealthPath    string // http path probed on Port for container healthcheck
-	RestartPolicy string
-	MemoryBytes   int64
-	NanoCPUs      int64
-	Volumes       []VolumeMount // applied to every replica
+	ProjectID      string
+	ServiceID      string
+	Name           string // DNS alias on the project network
+	Image          string
+	Command        []string
+	Env            map[string]string // already resolved
+	Replicas       int
+	Port           int32  // container port to expose publicly; 0 = none
+	PublishedPort  int32  // preferred host port for replica 0; 0 = pick ephemeral
+	Domain         string // public hostname routed via Traefik; empty = none
+	HealthPath     string // http path probed on Port for container healthcheck
+	RestartPolicy  string
+	MemoryBytes    int64
+	NanoCPUs       int64
+	Volumes        []VolumeMount // applied to every replica
+	Domains        []string      // all public hostnames; Domain is the default
+	Maintenance    bool          // redirect traffic to MaintenanceURL
+	MaintenanceURL string        // absolute URL; empty = serve empty response
+	BasicAuthUsers string        // htpasswd-format user:hash pairs, comma-separated
 }
 
 // RuntimeContainer describes one live replica.
@@ -227,12 +231,45 @@ func (de *DeploymentEngine) createReplica(ctx context.Context, spec RuntimeSpec,
 		projectNet: {Aliases: []string{spec.Name}},
 	}
 	if edgeNet != "" {
+		router := "svc-" + spec.ServiceID[:8]
+		domains := spec.Domains
+		if len(domains) == 0 && spec.Domain != "" {
+			domains = []string{spec.Domain}
+		}
+		sort.Strings(domains)
+		rules := make([]string, 0, len(domains))
+		for _, d := range domains {
+			rules = append(rules, "Host(`"+d+"`)")
+		}
 		endpoints[edgeNet] = &network.EndpointSettings{}
 		labels["traefik.enable"] = "true"
 		labels["traefik.docker.network"] = edgeNet
-		labels["traefik.http.routers.svc-"+spec.ServiceID[:8]+".rule"] = "Host(`" + spec.Domain + "`)"
-		labels["traefik.http.routers.svc-"+spec.ServiceID[:8]+".entrypoints"] = "web"
-		labels["traefik.http.services.svc-"+spec.ServiceID[:8]+".loadbalancer.server.port"] = fmt.Sprintf("%d", spec.Port)
+		labels["traefik.http.routers."+router+".rule"] = strings.Join(rules, " || ")
+		labels["traefik.http.routers."+router+".entrypoints"] = "web"
+		labels["traefik.http.services."+router+".loadbalancer.server.port"] = fmt.Sprintf("%d", spec.Port)
+
+		var middlewares []string
+		if spec.Maintenance {
+			if spec.MaintenanceURL != "" {
+				mw := router + "-maint"
+				labels["traefik.http.middlewares."+mw+".redirectregex.regex"] = "^https?://[^/]+/.*"
+				labels["traefik.http.middlewares."+mw+".redirectregex.replacement"] = spec.MaintenanceURL
+				labels["traefik.http.middlewares."+mw+".redirectregex.permanent"] = "false"
+				middlewares = append(middlewares, mw)
+			} else {
+				// No redirect target configured — take the site offline with
+				// empty responses instead of leaking traffic to the app.
+				labels["traefik.http.routers."+router+".service"] = "noop@internal"
+			}
+		}
+		if spec.BasicAuthUsers != "" {
+			mw := router + "-auth"
+			labels["traefik.http.middlewares."+mw+".basicauth.users"] = spec.BasicAuthUsers
+			middlewares = append(middlewares, mw)
+		}
+		if len(middlewares) > 0 {
+			labels["traefik.http.routers."+router+".middlewares"] = strings.Join(middlewares, ",")
+		}
 	}
 
 	cfg := docker.ContainerConfig{
@@ -490,8 +527,12 @@ func specHash(spec RuntimeSpec) string {
 		Port                                           int32
 		MemoryBytes, NanoCPUs                          int64
 		Volumes                                        []VolumeMount
+		Domains                                        []string
+		Maintenance                                    bool
+		BasicAuth                                      string
 	}{spec.Image, spec.Name, spec.Domain, spec.HealthPath, spec.RestartPolicy,
-		spec.Command, spec.Env, spec.Port, spec.MemoryBytes, spec.NanoCPUs, spec.Volumes})
+		spec.Command, spec.Env, spec.Port, spec.MemoryBytes, spec.NanoCPUs, spec.Volumes,
+		spec.Domains, spec.Maintenance, spec.BasicAuthUsers})
 	sum := sha256.Sum256(payload)
 	return hex.EncodeToString(sum[:8])
 }

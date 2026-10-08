@@ -202,6 +202,19 @@ type Service struct {
 	RestartPolicy   string          `json:"restart_policy"`
 	PublishedPort   int32           `json:"published_port"`
 	Volumes         json.RawMessage `json:"volumes"`
+	MaintenanceMode bool            `json:"maintenance_mode"`
+	BasicAuthUsers  string          `json:"basic_auth_users"`
+}
+
+type ServiceDomain struct {
+	ID            uuid.UUID    `json:"id"`
+	ServiceID     uuid.UUID    `json:"service_id"`
+	Domain        string       `json:"domain"`
+	IsDefault     bool         `json:"is_default"`
+	CertType      string       `json:"cert_type"`
+	CertStatus    string       `json:"cert_status"`
+	LastCheckedAt sql.NullTime `json:"last_checked_at"`
+	CreatedAt     time.Time    `json:"created_at"`
 }
 
 type ServiceTemplate struct {

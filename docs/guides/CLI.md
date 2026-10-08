@@ -38,6 +38,7 @@ auth login|logout|status         token auth and profiles
 tokens list|create|revoke        personal access tokens
 projects list|get|create|delete
 services list|get|create|update|delete|start|stop|restart|redeploy
+services domains list|add|remove|default|check   multi-domain + DNS preflight
 volumes list|delete              docker volume inventory + cleanup (admin)
 deploy <service-id>              trigger a deployment (--no-cache, --commit-hash, --branch)
 deployments list|get|logs|rollback|cancel
@@ -86,6 +87,33 @@ redeploy — `containr deploy <id>` to apply immediately.
 
 `volumes list` shows the node's docker volume inventory with in-use
 flags; `volumes delete <name>` removes an unused volume (admin scope).
+
+## Service domains and access
+
+A service can carry multiple hostnames; the default is mirrored to
+`services.domain`:
+
+```bash
+containr services domains add <id> app.example.com --default
+containr services domains check <id>      # DNS preflight per domain
+containr services domains remove <id> <domain-id>
+```
+
+DNS check compares each domain to the expected target — set
+`app_settings.public_ip` (or `PUBLIC_IP` env) so `wrong-target` is
+meaningful; without it any resolvable domain reports `ok`.
+
+Access gates apply via Traefik middlewares (no extra proxy):
+
+```bash
+containr services update <id> --maintenance on
+containr services update <id> --basic-auth admin:secret --basic-auth ops:pw2
+```
+
+Maintenance mode redirects all traffic to `<BASE_URL>/api/v1/maintenance`
+— set `app_settings.base_url` or `BASE_URL`; without it the service is
+taken offline with empty responses. Basic-auth credentials are stored
+bcrypt-hashed (htpasswd) and gate every request.
 
 ## MCP server
 

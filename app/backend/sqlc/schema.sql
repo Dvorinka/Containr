@@ -59,7 +59,21 @@ CREATE TABLE services (
     healthcheck_path VARCHAR(255) NOT NULL DEFAULT '',
     restart_policy VARCHAR(50) NOT NULL DEFAULT 'unless-stopped',
     published_port INTEGER NOT NULL DEFAULT 0,
-    volumes JSONB NOT NULL DEFAULT '[]'::jsonb
+    volumes JSONB NOT NULL DEFAULT '[]'::jsonb,
+    maintenance_mode BOOLEAN NOT NULL DEFAULT false,
+    basic_auth_users TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE service_domains (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    service_id UUID NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+    domain VARCHAR(255) NOT NULL,
+    is_default BOOLEAN NOT NULL DEFAULT false,
+    cert_type VARCHAR(32) NOT NULL DEFAULT 'letsencrypt',
+    cert_status VARCHAR(32) NOT NULL DEFAULT 'pending',
+    last_checked_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (service_id, domain)
 );
 
 CREATE TABLE deployments (

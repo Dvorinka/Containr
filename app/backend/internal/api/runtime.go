@@ -54,6 +54,11 @@ func serviceRuntimeSpec(db *database.DB, service Service) (deployment.RuntimeSpe
 	spec.NanoCPUs = parseCPULimit(service.CPU)
 	spec.MemoryBytes = parseMemoryLimit(service.Memory)
 	spec.Volumes = loadServiceVolumes(db, service.ID)
+	spec.Domains = serviceDomainNames(db, service.ID, service.Domain)
+	spec.Maintenance, spec.BasicAuthUsers = serviceAccess(db, service.ID)
+	if spec.Maintenance {
+		spec.MaintenanceURL = maintenanceURL(db)
+	}
 	if spec.Port > 0 {
 		env["PORT"] = strconv.Itoa(service.Port)
 	}

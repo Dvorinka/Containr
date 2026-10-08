@@ -179,6 +179,21 @@ var servicesUpdateCmd = &cobra.Command{
 			}
 			body["volumes"] = volumes
 		}
+		if cmd.Flags().Changed("maintenance") {
+			v, _ := cmd.Flags().GetString("maintenance")
+			body["maintenance_mode"] = v == "on" || v == "true"
+		}
+		if cmd.Flags().Changed("basic-auth") {
+			creds := []map[string]interface{}{}
+			pairs, _ := cmd.Flags().GetStringArray("basic-auth")
+			for _, p := range pairs {
+				user, pass, ok := strings.Cut(p, ":")
+				if ok {
+					creds = append(creds, map[string]interface{}{"username": user, "password": pass})
+				}
+			}
+			body["basic_auth"] = creds
+		}
 		if len(body) == 0 {
 			return &APIError{Message: "nothing to update — pass a flag", ExitCode: ExitError}
 		}
@@ -218,6 +233,141 @@ func volumeFlagValues(cmd *cobra.Command, flags ...string) []map[string]interfac
 		}
 	}
 	return out
+}
+
+var servicesDomainsCmd = &cobra.Command{
+	Use:   "domains",
+	Short: "Manage service domains",
+}
+
+var domainsListCmd = &cobra.Command{
+	Use:   "list <service-id>",
+	Short: "List domains attached to a service",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := client()
+		if err != nil {
+			return err
+		}
+		data, err := c.Do("GET", "/services/"+args[0]+"/domains", nil)
+		if err != nil {
+			return err
+		}
+		items, err := unwrapList(data, "domains")
+		if err != nil {
+			return err
+		}
+		rows := make([][]string, 0, len(items))
+		for _, d := range items {
+			def := ""
+			if b, ok := d["is_default"].(bool); ok && b {
+				def = "*"
+			}
+			rows = append(rows, []string{str(d, "id"), str(d, "domain"), def, str(d, "cert_status")})
+		}
+		printRows(data, []string{"ID", "DOMAIN", "DEFAULT", "CERT"}, rows)
+		return nil
+	},
+}
+
+var domainsAddCmd = &cobra.Command{
+	Use:   "add <service-id> <domain>",
+	Short: "Attach a domain to a service",
+	Args:  cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := client()
+		if err != nil {
+			return err
+		}
+		def, _ := cmd.Flags().GetBool("default")
+		data, err := c.Do("POST", "/services/"+args[0]+"/domains", map[string]interface{}{
+			"domain": args[1], "is_default": def,
+		})
+		if err != nil {
+			return err
+		}
+		if JSONMode() {
+			PrintRaw(data)
+			return nil
+		}
+		fmt.Printf("Added domain %s\n", args[1])
+		return nil
+	},
+}
+
+var domainsRemoveCmd = &cobra.Command{
+	Use:   "remove <service-id> <domain-id>",
+	Short: "Detach a domain",
+	Args:  cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := client()
+		if err != nil {
+			return err
+		}
+		if _, err := c.Do("DELETE", fmt.Sprintf("/services/%s/domains/%s", args[0], args[1]), nil); err != nil {
+			return err
+		}
+		if JSONMode() {
+			return PrintJSON(map[string]string{"status": "deleted", "id": args[1]})
+		}
+		fmt.Printf("Removed domain %s\n", args[1])
+		return nil
+	},
+}
+
+var domainsDefaultCmd = &cobra.Command{
+	Use:   "default <service-id> <domain-id>",
+	Short: "Set the default domain",
+	Args:  cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := client()
+		if err != nil {
+			return err
+		}
+		data, err := c.Do("POST", fmt.Sprintf("/services/%s/domains/%s/default", args[0], args[1]), map[string]interface{}{})
+		if err != nil {
+			return err
+		}
+		if JSONMode() {
+			PrintRaw(data)
+			return nil
+		}
+		fmt.Printf("Default domain updated\n")
+		return nil
+	},
+}
+
+var domainsCheckCmd = &cobra.Command{
+	Use:   "check <service-id>",
+	Short: "DNS preflight for all service domains",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := client()
+		if err != nil {
+			return err
+		}
+		data, err := c.Do("GET", "/services/"+args[0]+"/domains/check", nil)
+		if err != nil {
+			return err
+		}
+		items, err := unwrapList(data, "domains")
+		if err != nil {
+			return err
+		}
+		rows := make([][]string, 0, len(items))
+		for _, d := range items {
+			resolved, _ := d["resolved"].([]interface{})
+			addrs := make([]string, 0, len(resolved))
+			for _, a := range resolved {
+				if s, ok := a.(string); ok {
+					addrs = append(addrs, s)
+				}
+			}
+			rows = append(rows, []string{str(d, "domain"), str(d, "status"), strings.Join(addrs, ", ")})
+		}
+		printRows(data, []string{"DOMAIN", "STATUS", "RESOLVED"}, rows)
+		return nil
+	},
 }
 
 // serviceAction returns a RunE for the simple POST action endpoints.
@@ -271,6 +421,8 @@ func init() {
 	uf.StringArray("volume", nil, "named volume mount name:path[:ro] (repeatable, replaces all mounts)")
 	uf.StringArray("bind", nil, "bind mount src:path[:ro] (repeatable)")
 	uf.Bool("clear-volumes", false, "remove all volume mounts")
+	uf.String("maintenance", "", "maintenance mode: on|off")
+	uf.StringArray("basic-auth", nil, "basic-auth credential user:password (repeatable, replaces all)")
 
 	for _, a := range []string{"start", "stop", "restart", "redeploy"} {
 		verb := a
@@ -281,5 +433,7 @@ func init() {
 			RunE:  serviceAction(verb),
 		})
 	}
-	ServicesCmd.AddCommand(servicesListCmd, servicesGetCmd, servicesCreateCmd, servicesUpdateCmd, servicesDeleteCmd)
+	domainsAddCmd.Flags().Bool("default", false, "set as the default domain")
+	servicesDomainsCmd.AddCommand(domainsListCmd, domainsAddCmd, domainsRemoveCmd, domainsDefaultCmd, domainsCheckCmd)
+	ServicesCmd.AddCommand(servicesListCmd, servicesGetCmd, servicesCreateCmd, servicesUpdateCmd, servicesDeleteCmd, servicesDomainsCmd)
 }
