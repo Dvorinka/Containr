@@ -121,16 +121,16 @@ Legend: ✅ done · 🟡 partial/different · ❌ missing · ➖ not applicable 
 - `openapi.yaml` stays the single source of truth; UI, CLI, MCP are thin
   clients.
 
-### Phase A — Agent surface (do this FIRST; everything after inherits it)
+### Phase A — Agent surface (do this FIRST; everything after inherits it) ✅ SHIPPED (PRs #14–#18)
 
-- [ ] **Personal access tokens.** `user_tokens` table — `id`, `user_id`,
+- [x] **Personal access tokens.** `user_tokens` table — `id`, `user_id`,
   `name`, `key_prefix` (`cnp_…`), `key_hash` (sha256), `scopes`
   (`read`/`write`/`admin`, later resource-scoped), `expires_at`,
   `last_used_at`. Model on `agent_auth_tokens` (raw shown once, hash stored).
   `POST/GET/DELETE /api/v1/user/tokens`; `middleware.Auth` accepts
   `Bearer cnp_…`; Settings → Access tokens UI with one-time display +
   copyable CLI/MCP config snippets.
-- [ ] **CLI v2.** Current `cmd/cli` is auth + projects only. Full client:
+- [x] **CLI v2.** Current `cmd/cli` is auth + projects only. Full client:
   - `auth login [--token] [--url] [--profile]` (multi-instance profiles).
   - Resources: `projects services deploy logs exec variables databases
     cron templates nodes scaling ha security gateway notifications
@@ -143,16 +143,16 @@ Legend: ✅ done · 🟡 partial/different · ❌ missing · ➖ not applicable 
     0/1/2/3/4 (ok/err/not-found/unauthorized/conflict).
   - GoReleaser → GH releases + `install.sh`; `version` command.
   - Conventions from docsync/envdiff/cix/repolint.
-- [ ] **MCP server** (`cmd/mcp`, same module, stdio). Tools mirror the
+- [x] **MCP server** (`cmd/mcp`, same module, stdio). Tools mirror the
   CLI: `list_projects create_service deploy get_logs set_variable
   restart rollback create_database trigger_cron deploy_template exec
   get_metrics security_scan …`. Auth: `CONTAINR_URL` + `CONTAINR_TOKEN`
   or shared `~/.containr/config`. `containr mcp serve` + install snippets
   for Devin/Claude/Cursor.
-- [ ] **API agent ergonomics.** `Idempotency-Key` on mutating endpoints;
+- [x] **API agent ergonomics.** `Idempotency-Key` on mutating endpoints;
   uniform `{error, code, details}` envelope (audit bare-string returns);
   cursor pagination on growing lists; name-or-id lookup everywhere.
-- [ ] **Agent docs.** Root `AGENTS.md`, `/docs` serves `llms.txt` +
+- [x] **Agent docs.** Root `AGENTS.md`, `/docs` serves `llms.txt` +
   `llms-full.txt`, MCP tool list generated from OpenAPI where possible.
 
 **Gate**: an agent holding only a PAT registers a project, deploys from a
@@ -161,78 +161,68 @@ for a human.
 
 ---
 
-## 3. Phase B — Deployment pipeline maturity
+## 3. Phase B — Deployment pipeline maturity ✅ SHIPPED (PR #19)
 
 dflow's one real architectural edge. Containr deploys are fire-and-forget
 goroutines; this fixes correctness *and* unlocks the ops surface.
 
-- [ ] **Deploy job queue.** Lightweight internal queue (Postgres
-  `deployment_queue` table + single worker loop — no new infra; Redis
-  exists but don't add BullMQ-style sprawl). Serialize per service;
-  optional per-node serialization. Status gains `queued`.
-- [ ] **Cancel deployments.** Route `POST /deployments/:id/cancel` →
-  engine `CancelDeployment` (exists, unrouted). Queued jobs cancel
-  cleanly; building jobs cancel context where safe.
-- [ ] **Cache modes.** `?cache=full` on redeploy → rebuild from existing
-  image layers vs clean pull/checkout. Webhook-triggered deploys default
-  to no-cache (dflow convention — prevents stale-layer surprises).
-- [ ] **Queued→building→running status + persisted step logs.** Already
-  mostly there; add `queued`, stream over existing `/ws`.
-- [ ] **Env var apply → redeploy.** Saving variables asks "restart to
-  apply?" (or `--apply` flag in CLI); backend triggers redeploy honoring
-  running state. Currently rows update but containers keep stale env —
-  silent-drift bug class, not just UX.
-- [ ] **Encrypt variables at rest.** `environment_variables.value` is
-  plaintext today (verified). Envelope-encrypt `is_secret` values
-  (AES-GCM, key from `JWT_SECRET` or dedicated `SECRETS_KEY`); dflow
-  encrypts every var, we encrypt secrets — migration = transparent
-  encrypt-on-write + decrypt-on-read.
+- [x] **Deploy job queue.** Lightweight internal queue — per-service
+  FIFO in `internal/deployqueue`; status gains `queued`.
+- [x] **Cancel deployments.** `POST /deployments/:id/cancel` — queued
+  jobs cancel immediately, active jobs cancel context; `cancelled` status.
+- [x] **Cache modes.** `no_cache` on deploys; webhook-triggered deploys
+  default to no-cache (dflow convention — prevents stale-layer surprises).
+- [x] **Queued→building→running status + persisted step logs.** `queued`
+  state lands; streaming over existing log surface.
+- [x] **Env var apply → redeploy.** `--redeploy` flag on variable writes;
+  backend requeues honoring running state.
+- [x] **Encrypt variables at rest.** `is_secret` values encrypted
+  AES-GCM `enc:v1:` (key from `SECRETS_KEY`); masked-echo preserves
+  ciphertext.
 
-## 4. Phase C — Service configuration parity
+## 4. Phase C — Service configuration parity ✅ SHIPPED (PRs #20–#23)
 
-- [ ] **Volumes on services** — `services.volumes` jsonb
-  `[{volume|host_path, container_path, read_only}]`; engine accepts
-  `VolumeMounts` already. Volumes tab + orphan-volume listing
-  (`docker volume ls -f dangling`) with delete/attach.
-- [ ] **Multi-domain** — `service_domains(service_id, domain, is_default,
-  cert_type, status, last_checked_at)`. Domains tab: add/remove/
-  set-default/DNS-status badge. Keep `services.domain` as derived
-  default for compat.
-- [ ] **DNS preflight** — `GET /services/:id/domains/check` resolves and
+- [x] **Volumes on services** — `services.volumes` jsonb
+  `[{volume|host_path, container_path, read_only}]`; Volumes tab +
+  admin volume inventory.
+- [x] **Multi-domain** — `service_domains(service_id, domain, is_default,
+  cert_type, status, last_checked_at)`. Domains UI: add/remove/
+  set-default/DNS-status badge. `services.domain` stays derived default.
+- [x] **DNS preflight** — `GET /services/:id/domains/check` resolves and
   compares vs edge IP → `ok|wrong-target|pending`.
-- [ ] **Maintenance mode + basic-auth gate** — Traefik middleware labels;
+- [x] **Maintenance mode + basic-auth gate** — Traefik middleware labels;
   no proxy code needed.
 - [ ] **Routing overrides** — `services.traefik_labels` jsonb with
   allowlist validation (middlewares, headers, redirects).
-- [ ] **Builder override** — `services.builder` enum
-  `auto|railpack|nixpacks|dockerfile|static`; fix hardcoded `nixpacks`
-  at `deployments.go:406`. Static builder = build + nginx sidecar.
-- [ ] **Resource limits + reserves** — adopt dflow-style explicit units
-  (`"0.5"`/`"512m"`); add `cpu_reserve`/`memory_reserve` →
-  `NanoCPUs`/`Memory`/`MemoryReservation`; instance defaults in
-  `app_settings`.
-- [ ] **Pre-deploy capacity check** — sum reservations vs node capacity
-  (agent telemetry); warn or block per policy flag.
-- [ ] **Service clone** + **move between projects**.
-- [ ] **Private registries** — `registry_credentials`
-  (server/username/secret, encrypted); `docker login` at pull time;
+- [x] **Builder override** — `services.builder` enum
+  `auto|railpack|nixpacks|dockerfile|static`; static builder = build +
+  nginx serve. Fixed hardcoded `nixpacks` + `BuildImage` stream drain bug.
+- [x] **Resource limits + reserves** — `cpu`/`memory` caps +
+  `cpu_reserve`/`memory_reserve` → NanoCPUs/Memory/MemoryReservation;
+  instance defaults in `app_settings`.
+- [x] **Pre-deploy capacity check** — reservations vs node capacity;
+  `app_settings.capacity_policy=block` rejects, default warns.
+- [x] **Service clone** + **move between projects** — copies volumes,
+  domains, access gates, vars (ciphertext verbatim); audit-logged.
+- [x] **Private registries** — `registry_credentials`
+  (server/username/secret, encrypted); pull auth resolved at deploy;
   per-service registry link.
-- [ ] **Service detail tabs to match dflow's surface**: add Domains,
-  Volumes, Proxy/access-controls, Backups sections to the service page
-  (Cron/Previews/Scaling already exist).
+- [x] **Service detail tabs to match dflow's surface**: Domains,
+  Volumes, access-controls sections added to the service page.
 
 ## 5. Phase D — Data layer maturity
 
-- [ ] **External DB registration** — `provider='managed'|'external'`,
-  conn fields, `POST /databases/test-connection`, same bind flow.
-- [ ] **Public DB port expose** — opt-in Traefik TCP route or host port;
-  default stays loopback.
-- [ ] **Offsite backups** — `backup_targets` (S3-compatible:
-  endpoint/bucket/keys encrypted); per-DB destination; ship archives via
-  utility container + s3 SDK; restore-from-S3.
+- [x] **External DB registration** — `provider='managed'|'external'`,
+  conn fields, `POST /databases/test-connection`, same bind flow. (PR #24)
+- [x] **Public DB port expose** — `public_port` opt-in `0.0.0.0` host
+  bind; default stays loopback. (PR #25)
+- [x] **Offsite backups** — `backup_targets` (S3-compatible:
+  endpoint/bucket/keys encrypted); per-DB destination; archives shipped
+  via holder container + minio-go; restore-from-S3 fallback. (PR #26)
 - [ ] **Cross-node DB migration** — `POST /databases/:id/migrate
   {target_node_id}`: dump → stream transfer → provision → restore →
-  re-point bound services. Needs ≥2 nodes or local↔node.
+  re-point bound services. Deferred until Phase F lands real second
+  nodes — nothing to migrate between today.
 - [ ] **Backup import** — upload archive → new restore point (pairs with
   migrators).
 
@@ -318,6 +308,26 @@ and wired refs, one click or one CLI call.
   audit logs, deployments, notifications tables.
 - [ ] **Notification producers round-out** — backups, agent offline,
   upgrade available, security findings.
+- [ ] **Sleep-on-idle / wake-on-traffic** (serverless-lite) —
+  `services.sleep_after_idle` (duration, empty=off). Reaper loop stops
+  containers past idle threshold (last-seen from Traefik access logs or
+  request-tracking middleware); edge middleware returns a "waking"
+  page/503-with-retry, starts the container, then routes normally.
+  Per-service toggle + status badge (`sleeping`). Railway calls this
+  "app sleep"; it is the single biggest cost saver for hobby services.
+- [ ] **Env doctor** — template/service required-var manifest:
+  `POST /templates/:id/plan` and service env UI surface *missing* and
+  *auto-generated* vars before deploy; never silently deploy with
+  empty required values. Secrets get `{{secret(len)}}` defaults.
+- [ ] **One-click install** — `install.sh` (curl|sh): detects docker,
+  writes compose + .env with generated secrets, pulls images, runs
+  migrations, prints admin URL. Companion `docker-compose.prod.yml`
+  + `Dockerfile` images published to GHCR so installs never build
+  from source.
+- [ ] **CI/CD v2** — required-checks workflow (backend test/vet,
+  frontend build, sqlc-diff check), path-filtered jobs for speed,
+  and a release pipeline: merge to main → tag → GoReleaser binaries
+  (CLI + MCP) → GHCR images (api, web, agent) → GitHub Release notes.
 - [ ] **Custom roles/RBAC** — defer until demanded; PAT scopes designed
   forward-compatible now.
 
@@ -334,6 +344,18 @@ and wired refs, one click or one CLI call.
 - [ ] **Template registry** — optional `CONTAINR_TEMPLATE_REGISTRY_URL`
   fetch/publish; bundled catalog works offline (dflow's self-contained
   principle — nothing phones home).
+
+## 9b. Phase I — Companion surfaces
+
+- [ ] **Phone app** — read-heavy mobile client over the existing API
+  (PAT auth already works). Scope v1: project/service list, status,
+  deploy trigger + log tail, restart/stop, notifications push via
+  existing notification rows (APNs/FCM relay optional, self-hosted
+  webhook → ntfy/Gotify as zero-infra alternative). React Native or
+  native-lean PWA; the API surface is already agent-shaped so the app
+  is a thin client. Design: dark UI, deploy status as first-class view.
+- [ ] **Status/offline resilience** — app + CLI degrade gracefully when
+  the instance is unreachable (cached last-known state, clear banner).
 
 ## 10. Carried-over debt (ROADMAP.md items still open)
 
