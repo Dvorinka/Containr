@@ -993,6 +993,34 @@ export async function revokeAgentToken(id: string): Promise<void> {
   await requestJson(`/agent-tokens/${id}`, { method: 'DELETE' });
 }
 
+export type UserToken = components['schemas']['UserToken'];
+export type UserTokenCreated = components['schemas']['UserTokenCreated'];
+export type UserTokenScope = 'read' | 'write' | 'admin';
+
+export async function createUserToken(input: {
+  name: string;
+  scope?: UserTokenScope;
+  expiresInDays?: number;
+}): Promise<UserTokenCreated> {
+  return requestJson<UserTokenCreated>(`/user/tokens`, {
+    method: 'POST',
+    body: JSON.stringify({
+      name: input.name,
+      scope: input.scope ?? 'write',
+      expires_in_days: input.expiresInDays ?? 0,
+    }),
+  });
+}
+
+export async function listUserTokens(): Promise<UserToken[]> {
+  const payload = await requestJson<{ tokens?: UserToken[] }>(`/user/tokens`);
+  return payload.tokens ?? [];
+}
+
+export async function revokeUserToken(id: string): Promise<void> {
+  await requestJson(`/user/tokens/${id}`, { method: 'DELETE' });
+}
+
 export async function createProject(input: CreateProjectInput): Promise<ProjectEntity> {
   const payload = await requestJson<RawProject | { project?: RawProject }>(`/projects`, {
     method: 'POST',

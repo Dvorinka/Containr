@@ -131,6 +131,61 @@ func TestAuthStoresStringUserIDForValidClaims(t *testing.T) {
 	}
 }
 
+func TestAuthRejectsPATWithoutDatabase(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(Auth("secret"))
+	router.GET("/test", func(c *gin.Context) {
+		c.String(http.StatusOK, "ok")
+	})
+
+	// A cnp_-prefixed token takes the PAT path, not JWT parsing — without a
+	// db handle it must fail closed with 401.
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Authorization", "Bearer cnp_"+strings.Repeat("ab", 24))
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, rec.Code)
+	}
+}
+
+func TestPATScopeAllows(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	cases := []struct {
+		name   string
+		scope  string
+		method string
+		want   bool
+	}{
+		{"read allows GET", "read", http.MethodGet, true},
+		{"read allows HEAD", "read", http.MethodHead, true},
+		{"read allows OPTIONS", "read", http.MethodOptions, true},
+		{"read blocks POST", "read", http.MethodPost, false},
+		{"read blocks DELETE", "read", http.MethodDelete, false},
+		{"write allows POST", "write", http.MethodPost, true},
+		{"write allows DELETE", "write", http.MethodDelete, true},
+		{"admin allows PATCH", "admin", http.MethodPatch, true},
+		{"no scope (session/JWT) unrestricted", "", http.MethodPost, true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(tc.method, "/x", nil)
+			if tc.scope != "" {
+				c.Set("pat_scope", tc.scope)
+			}
+			if got := patScopeAllows(c); got != tc.want {
+				t.Fatalf("patScopeAllows(scope=%q, method=%s) = %v, want %v", tc.scope, tc.method, got, tc.want)
+			}
+		})
+	}
+}
+
 func issueJWT(t *testing.T, secret string, claims jwt.MapClaims) string {
 	t.Helper()
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

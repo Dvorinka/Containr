@@ -231,6 +231,153 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/user/tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List personal access tokens
+         * @description Returns the caller's non-revoked personal access token metadata. Token values and hashes are never returned.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Token list */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            tokens?: components["schemas"]["UserToken"][];
+                        };
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Create personal access token
+         * @description Issues a `cnp_` bearer token for CLI/MCP/agent authentication. The raw token is returned exactly once and never stored — only its SHA-256 hash persists. Admin-scope tokens require a platform admin account.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreateUserTokenRequest"];
+                };
+            };
+            responses: {
+                /** @description Token created; raw value returned once */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["UserTokenCreated"];
+                    };
+                };
+                /** @description Invalid input */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Admin scope requires platform admin */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/user/tokens/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke personal access token
+         * @description Marks one of the caller's tokens as revoked. Clients presenting it are rejected from then on.
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Token revoked */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            message?: string;
+                        };
+                    };
+                };
+                /** @description Token not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects": {
         parameters: {
             query?: never;
@@ -8475,6 +8622,37 @@ export interface components {
         CreateAgentTokenRequest: {
             /** @description Human-readable label for the token (e.g. node name) */
             label?: string;
+        };
+        UserToken: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** @description First 12 chars of the token, for identification in lists */
+            key_prefix: string;
+            /** @enum {string} */
+            scope: "read" | "write" | "admin";
+            /** Format: date-time */
+            expires_at?: string;
+            /** Format: date-time */
+            last_used_at?: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        UserTokenCreated: components["schemas"]["UserToken"] & {
+            /** @description Raw cnp_ token value, returned exactly once at creation */
+            token: string;
+        };
+        CreateUserTokenRequest: {
+            /** @description Human-readable label (e.g. "laptop cli", "ci deploy") */
+            name: string;
+            /**
+             * @description read = GET/HEAD only; write = all non-admin routes; admin = everything (requires admin account)
+             * @default write
+             * @enum {string}
+             */
+            scope: "read" | "write" | "admin";
+            /** @description 0 or omitted = never expires */
+            expires_in_days?: number;
         };
         AgentCapabilities: {
             container_runtimes?: string[];

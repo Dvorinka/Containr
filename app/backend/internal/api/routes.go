@@ -260,6 +260,11 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			authed.GET("/user/profile", handleGetProfile)
 			authed.PUT("/user/profile", handleUpdateProfile)
 
+			// Personal access tokens for CLI/MCP/agent auth.
+			authed.GET("/user/tokens", handleListUserTokens)
+			authed.POST("/user/tokens", handleCreateUserToken)
+			authed.DELETE("/user/tokens/:id", handleDeleteUserToken)
+
 			authed.GET("/notifications", handleListNotifications)
 			authed.POST("/notifications/:id/read", handleMarkNotificationRead)
 			authed.POST("/notifications/read-all", handleMarkAllNotificationsRead)

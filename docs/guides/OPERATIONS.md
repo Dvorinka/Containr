@@ -90,3 +90,30 @@ backend restart.
 once), copy the prefilled install command, revoke tokens when done. Agents
 register over `POST /api/agents/register` and heartbeat via
 `POST /api/agents/heartbeat`.
+
+## Personal access tokens
+
+**Settings → Personal Access Tokens**: issue `cnp_…` bearer tokens for the
+CLI, MCP server, and scripts — the same privileges as your account, bounded
+by scope. The raw token is shown once at creation; only its SHA-256 hash is
+stored.
+
+Scopes:
+
+- `read` — `GET`/`HEAD`/`OPTIONS` only; mutations return `403 SCOPE_INSUFFICIENT`.
+- `write` — everything except admin routes.
+- `admin` — full access; requires a platform admin account, and the token is
+  still capped at the owner's privileges.
+
+A token can never outrank its owner: non-admin scopes report
+`is_admin = false` even on admin accounts.
+
+```
+GET    /api/v1/user/tokens            list (metadata only, never hashes)
+POST   /api/v1/user/tokens            {name, scope?, expires_in_days?} → raw token once
+DELETE /api/v1/user/tokens/:id        revoke (owner-scoped)
+```
+
+Use as `Authorization: Bearer cnp_…`, or `containr auth login cnp_…`.
+Revocation takes effect on the next request; `last_used_at` updates on each
+authenticated call.

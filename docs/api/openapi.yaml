@@ -152,6 +152,97 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /user/tokens:
+    get:
+      tags:
+        - User
+      summary: List personal access tokens
+      description: Returns the caller's non-revoked personal access token metadata. Token values and hashes are never returned.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Token list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tokens:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UserToken'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+        - User
+      summary: Create personal access token
+      description: Issues a `cnp_` bearer token for CLI/MCP/agent authentication. The raw token is returned exactly once and never stored — only its SHA-256 hash persists. Admin-scope tokens require a platform admin account.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserTokenRequest'
+      responses:
+        '201':
+          description: Token created; raw value returned once
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserTokenCreated'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Admin scope requires platform admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /user/tokens/{id}:
+    delete:
+      tags:
+        - User
+      summary: Revoke personal access token
+      description: Marks one of the caller's tokens as revoked. Clients presenting it are rejected from then on.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Token revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '404':
+          description: Token not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   # Projects
   /projects:
     get:
@@ -6394,6 +6485,66 @@ components:
         label:
           type: string
           description: Human-readable label for the token (e.g. node name)
+
+    UserToken:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        key_prefix:
+          type: string
+          description: First 12 chars of the token, for identification in lists
+        scope:
+          type: string
+          enum: [read, write, admin]
+        expires_at:
+          type: string
+          format: date-time
+        last_used_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - key_prefix
+        - scope
+        - created_at
+
+    UserTokenCreated:
+      allOf:
+        - $ref: '#/components/schemas/UserToken'
+        - type: object
+          properties:
+            token:
+              type: string
+              description: Raw cnp_ token value, returned exactly once at creation
+          required:
+            - token
+
+    CreateUserTokenRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Human-readable label (e.g. "laptop cli", "ci deploy")
+        scope:
+          type: string
+          enum: [read, write, admin]
+          default: write
+          description: read = GET/HEAD only; write = all non-admin routes; admin = everything (requires admin account)
+        expires_in_days:
+          type: integer
+          minimum: 0
+          maximum: 3650
+          description: 0 or omitted = never expires
+      required:
+        - name
 
     AgentCapabilities:
       type: object

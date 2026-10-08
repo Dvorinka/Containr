@@ -17,6 +17,9 @@ import {
   createAgentToken,
   listAgentTokens,
   revokeAgentToken,
+  createUserToken,
+  listUserTokens,
+  revokeUserToken,
   listDatabases,
   databaseAction,
   updateDatabaseBackupSchedule,
@@ -46,6 +49,8 @@ import {
   updateVulnerability,
   getSecurityMetrics,
   type AgentAuthTokenCreated,
+  type UserTokenCreated,
+  type UserTokenScope,
   type CreateDatabaseInput,
   type DatabaseEntity,
   type FailoverPolicy,
@@ -1267,6 +1272,164 @@ function PlatformSettingsSection() {
   );
 }
 
+const PAT_EXPIRY_OPTIONS: { label: string; days: number }[] = [
+  { label: 'Never', days: 0 },
+  { label: '30 days', days: 30 },
+  { label: '90 days', days: 90 },
+  { label: '1 year', days: 365 },
+];
+
+function UserTokensSection({ isAdmin }: { isAdmin: boolean }) {
+  const queryClient = useQueryClient();
+  const tokensQuery = useQuery({
+    queryKey: ['user-tokens'],
+    queryFn: listUserTokens,
+  });
+  const [tokenName, setTokenName] = useState('');
+  const [tokenScope, setTokenScope] = useState<UserTokenScope>('write');
+  const [expiryDays, setExpiryDays] = useState(0);
+  const [issuedToken, setIssuedToken] = useState<UserTokenCreated | null>(null);
+
+  const createMutation = useMutation({
+    mutationFn: () =>
+      createUserToken({
+        name: tokenName.trim(),
+        scope: tokenScope,
+        expiresInDays: expiryDays,
+      }),
+    onSuccess: (data) => {
+      setIssuedToken(data);
+      setTokenName('');
+      queryClient.invalidateQueries({ queryKey: ['user-tokens'] });
+    },
+  });
+  const revokeMutation = useMutation({
+    mutationFn: (id: string) => revokeUserToken(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['user-tokens'] }),
+  });
+
+  const tokens = tokensQuery.data ?? [];
+  const scopeOptions: { value: UserTokenScope; label: string }[] = isAdmin
+    ? [
+        { value: 'read', label: 'Read - GET requests only' },
+        { value: 'write', label: 'Write - read and manage resources' },
+        { value: 'admin', label: 'Admin - everything, incl. platform settings' },
+      ]
+    : [
+        { value: 'read', label: 'Read - GET requests only' },
+        { value: 'write', label: 'Write - read and manage resources' },
+      ];
+
+  return (
+    <section className="panel p-6">
+      <div className="flex items-center gap-3 mb-4">
+        <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
+          <Key size={18} className="text-[var(--accent-primary)]" />
+        </div>
+        <div>
+          <h2 className="text-lg font-semibold text-[var(--text-primary)]">Personal Access Tokens</h2>
+          <p className="text-xs text-[var(--text-tertiary)]">Authenticate the CLI, MCP server, and scripts - same rights as you, bounded by scope</p>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <div className="flex flex-wrap gap-2">
+          <input
+            value={tokenName}
+            onChange={(e) => setTokenName(e.target.value)}
+            placeholder="Token name (e.g. laptop cli)"
+            className="h-9 flex-1 min-w-[180px] rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] transition-all"
+          />
+          <select
+            value={tokenScope}
+            onChange={(e) => setTokenScope(e.target.value as UserTokenScope)}
+            className="h-9 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 text-sm text-[var(--text-primary)] focus:border-[var(--accent-primary)] transition-all"
+          >
+            {scopeOptions.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+          <select
+            value={expiryDays}
+            onChange={(e) => setExpiryDays(Number(e.target.value))}
+            className="h-9 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 text-sm text-[var(--text-primary)] focus:border-[var(--accent-primary)] transition-all"
+          >
+            {PAT_EXPIRY_OPTIONS.map((option) => (
+              <option key={option.days} value={option.days}>{option.label}</option>
+            ))}
+          </select>
+          <button
+            onClick={() => createMutation.mutate()}
+            disabled={createMutation.isPending || !tokenName.trim()}
+            className="h-9 px-4 rounded-[var(--radius-md)] text-sm font-medium text-[var(--accent-on)] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            style={{ background: 'var(--accent-primary)' }}
+          >
+            {createMutation.isPending ? 'Creating…' : 'Create token'}
+          </button>
+        </div>
+
+        {issuedToken ? (
+          <div className="rounded-[var(--radius-md)] border border-[var(--success)]/30 bg-[var(--success-soft)] p-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="mono text-xs text-[var(--text-primary)] break-all">{issuedToken.token}</span>
+              <button
+                onClick={() => void navigator.clipboard.writeText(issuedToken.token ?? '')}
+                className="flex items-center gap-1 text-xs text-[var(--accent-primary)] hover:underline shrink-0"
+              >
+                <Copy size={11} />
+                Copy
+              </button>
+            </div>
+            <p className="mt-1 text-xs text-[var(--text-tertiary)]">
+              Shown once - store it now. Use with <span className="mono">containr auth login --token</span> or as a Bearer token.
+            </p>
+          </div>
+        ) : null}
+        {createMutation.isError ? (
+          <p className="text-xs text-[var(--error)]">
+            {createMutation.error instanceof Error ? createMutation.error.message : 'Failed to create token'}
+          </p>
+        ) : null}
+
+        {tokensQuery.isLoading ? (
+          <div className="py-4 text-center">
+            <Loader2 size={16} className="animate-spin mx-auto text-[var(--text-tertiary)]" />
+          </div>
+        ) : tokens.length === 0 ? (
+          <p className="text-xs text-[var(--text-tertiary)]">No tokens yet. Create one to connect the CLI or an agent.</p>
+        ) : (
+          <div className="space-y-1.5 border-t border-[var(--border-subtle)] pt-3">
+            {tokens.map((token) => (
+              <div key={token.id} className="flex items-center justify-between gap-2 text-xs">
+                <div className="min-w-0">
+                  <span className="text-[var(--text-primary)]">{token.name}</span>
+                  <span className="ml-2 mono text-[var(--text-muted)]">{token.key_prefix}…</span>
+                  <span className="ml-2 rounded px-1.5 py-0.5 bg-[var(--surface-muted)] text-[var(--text-secondary)]">{token.scope}</span>
+                  <span className="ml-2 text-[var(--text-muted)]">
+                    {token.last_used_at ? `used ${formatRelative(token.last_used_at)}` : 'unused'}
+                    {token.expires_at ? ` · expires ${formatRelative(token.expires_at)}` : ''}
+                  </span>
+                </div>
+                <button
+                  onClick={() => {
+                    if (window.confirm(`Revoke token "${token.name}"? Clients using it lose access immediately.`)) {
+                      revokeMutation.mutate(token.id ?? '');
+                    }
+                  }}
+                  disabled={revokeMutation.isPending}
+                  className="text-[var(--error)] hover:underline disabled:opacity-50 shrink-0"
+                >
+                  Revoke
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 export function SettingsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -1437,6 +1600,9 @@ export function SettingsPage() {
               </div>
             )}
           </section>
+
+          {/* Personal Access Tokens */}
+          <UserTokensSection isAdmin={profileQuery.data?.isAdmin ?? false} />
 
           {/* Platform Settings - owner only */}
           {profileQuery.data?.isAdmin ? <PlatformSettingsSection /> : null}
