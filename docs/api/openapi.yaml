@@ -5173,6 +5173,22 @@ components:
           items:
             type: string
           description: Basic-auth usernames gating the route (hashes never returned)
+        builder:
+          type: string
+          enum: [auto, railpack, nixpacks, dockerfile, static]
+          description: Build strategy; auto detects from repo contents
+        cpu_reserve:
+          type: string
+          description: Soft CPU reservation (fraction, e.g. 0.25 → ~256 CPU shares)
+        memory_reserve:
+          type: string
+          description: Soft memory reservation (e.g. 128Mi)
+        static_build_cmd:
+          type: string
+          description: Build command for the static builder (default "npm ci && npm run build")
+        static_dir:
+          type: string
+          description: Output directory for the static builder (default dist)
         public_url:
           type: string
           description: Computed public URL (published port or domain)
@@ -5248,6 +5264,22 @@ components:
           items:
             $ref: '#/components/schemas/ServiceVolume'
           description: Volume/bind mounts applied to every replica
+        builder:
+          type: string
+          enum: [auto, railpack, nixpacks, dockerfile, static]
+          description: Build strategy (default auto)
+        cpu_reserve:
+          type: string
+          description: Soft CPU reservation (fraction, e.g. 0.25)
+        memory_reserve:
+          type: string
+          description: Soft memory reservation (e.g. 128Mi)
+        static_build_cmd:
+          type: string
+          description: Build command for the static builder
+        static_dir:
+          type: string
+          description: Output directory for the static builder (default dist)
 
     UpdateServiceRequest:
       type: object
@@ -5312,6 +5344,22 @@ components:
           items:
             $ref: '#/components/schemas/BasicAuthCred'
           description: Replaces all basic-auth credentials; [] clears the gate
+        builder:
+          type: string
+          enum: [auto, railpack, nixpacks, dockerfile, static]
+          description: Build strategy
+        cpu_reserve:
+          type: string
+          description: Soft CPU reservation (empty string clears)
+        memory_reserve:
+          type: string
+          description: Soft memory reservation (empty string clears)
+        static_build_cmd:
+          type: string
+          description: Build command for the static builder (empty string clears)
+        static_dir:
+          type: string
+          description: Output directory for the static builder (empty string clears)
 
     ServiceDomain:
       type: object

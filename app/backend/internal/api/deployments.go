@@ -4,9 +4,11 @@ import (
 	"containr/internal/database"
 	"containr/internal/deployment"
 	"containr/internal/deployqueue"
+	"containr/internal/docker"
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -232,6 +234,9 @@ func handleCreateDeployment(c *gin.Context) {
 		        COALESCE(s.replicas, 1), COALESCE(s.port, 0),
 		        COALESCE(s.domain, ''), COALESCE(s.healthcheck_path, ''),
 		        COALESCE(s.restart_policy, 'unless-stopped'),
+		        COALESCE(s.builder, 'auto'), COALESCE(s.cpu_reserve, ''),
+		        COALESCE(s.memory_reserve, ''), COALESCE(s.static_build_cmd, ''),
+		        COALESCE(s.static_dir, ''),
 		        s.created_at, s.updated_at, p.owner_id
 		 FROM services s
 		 JOIN projects p ON s.project_id = p.id
@@ -242,7 +247,9 @@ func handleCreateDeployment(c *gin.Context) {
 		&service.Image, &service.Command, &service.Environment, &service.GitRepo,
 		&service.GitBranch, &service.BuildPath, &service.CPU, &service.Memory,
 		&service.Replicas, &service.Port, &service.Domain, &service.HealthCheckPath,
-		&service.RestartPolicy, &service.CreatedAt, &service.UpdatedAt, &projectOwner,
+		&service.RestartPolicy, &service.Builder, &service.CPUReserve,
+		&service.MemoryReserve, &service.StaticBuildCmd, &service.StaticDir,
+		&service.CreatedAt, &service.UpdatedAt, &projectOwner,
 	)
 
 	if err != nil {
@@ -401,6 +408,13 @@ func runDeploymentAndSyncWithImage(
 	// ephemeral ports.
 	_ = db.QueryRow(`SELECT published_port FROM services WHERE id = $1`, service.ID).Scan(&publishedPort)
 
+	publicPort := int32(service.Port)
+	if service.Builder == "static" && publicPort == 0 {
+		// The static builder's image is nginx — route to its default port
+		// unless the user picked another.
+		publicPort = 80
+	}
+
 	maintenanceMode, basicAuthUsers := serviceAccess(db, service.ID)
 	maintURL := ""
 	if maintenanceMode {
@@ -417,7 +431,7 @@ func runDeploymentAndSyncWithImage(
 			Command:       command,
 			Environment:   env,
 			Replicas:      replicas,
-			PublicPort:    int32(service.Port),
+			PublicPort:    publicPort,
 			PublishedPort: publishedPort,
 			Domain:        service.Domain,
 			HealthPath:    service.HealthCheckPath,
@@ -425,8 +439,10 @@ func runDeploymentAndSyncWithImage(
 			VolumeMounts:  loadServiceVolumes(db, service.ID),
 			Domains:       serviceDomainNames(db, service.ID, service.Domain),
 			Resources: deployment.ResourceLimits{
-				MemoryBytes: parseMemoryLimit(service.Memory),
-				CPUQuota:    parseCPULimit(service.CPU),
+				MemoryBytes:       parseMemoryLimit(service.Memory),
+				MemoryReservation: parseMemoryLimit(service.MemoryReserve),
+				CPUQuota:          parseCPULimit(service.CPU),
+				CPUShares:         parseCPUReserveShares(service.CPUReserve),
 			},
 			Maintenance:    maintenanceMode,
 			MaintenanceURL: maintURL,
@@ -452,13 +468,33 @@ func runDeploymentAndSyncWithImage(
 			PrebuiltImage: service.Image,
 		}
 	} else {
+		// "auto" leaves BuildType empty so the manager detects it; the static
+		// builder additionally feeds its generated Dockerfile the service's
+		// build command and output dir.
+		buildType := ""
+		if service.Builder != "" && service.Builder != "auto" {
+			buildType = service.Builder
+		}
 		deployReq.BuildConfig = &deployment.BuildConfig{
-			BuildType:  "nixpacks",
+			BuildType:  buildType,
 			SourcePath: sourcePath,
 			Branch:     req.Branch,
 			Commit:     req.CommitHash,
 			NoCache:    req.NoCache,
 		}
+		if buildType == "static" {
+			deployReq.BuildConfig.BuildCommand = firstNonEmpty(service.StaticBuildCmd, "npm ci && npm run build")
+			deployReq.BuildConfig.BuildArgs = map[string]string{"STATIC_DIR": firstNonEmpty(service.StaticDir, "dist")}
+		}
+	}
+
+	if msg := capacityCheck(parentCtx, db, engine.DockerClient(), service, replicas); msg != "" {
+		failedAt := time.Now()
+		_, _ = db.Exec(
+			`UPDATE deployments SET status = 'failed', error = $1, completed_at = $2, updated_at = $2 WHERE id = $3`,
+			msg, failedAt, dbDeployment.ID,
+		)
+		return
 	}
 
 	engineDeployment, err := engine.Deploy(ctx, deployReq)
@@ -822,6 +858,9 @@ func handleRollbackDeployment(c *gin.Context) {
 			        COALESCE(s.replicas, 1), COALESCE(s.port, 0),
 			        COALESCE(s.domain, ''), COALESCE(s.healthcheck_path, ''),
 			        COALESCE(s.restart_policy, 'unless-stopped'),
+			        COALESCE(s.builder, 'auto'), COALESCE(s.cpu_reserve, ''),
+			        COALESCE(s.memory_reserve, ''), COALESCE(s.static_build_cmd, ''),
+			        COALESCE(s.static_dir, ''),
 			        s.created_at, s.updated_at
 			 FROM services s WHERE s.id = $1`, serviceID,
 		).Scan(
@@ -829,7 +868,9 @@ func handleRollbackDeployment(c *gin.Context) {
 			&service.Image, &service.Command, &service.Environment, &service.GitRepo,
 			&service.GitBranch, &service.BuildPath, &service.CPU, &service.Memory,
 			&service.Replicas, &service.Port, &service.Domain, &service.HealthCheckPath,
-			&service.RestartPolicy, &service.CreatedAt, &service.UpdatedAt,
+			&service.RestartPolicy, &service.Builder, &service.CPUReserve,
+			&service.MemoryReserve, &service.StaticBuildCmd, &service.StaticDir,
+			&service.CreatedAt, &service.UpdatedAt,
 		)
 
 		rollbackReq := CreateDeploymentRequest{
@@ -862,4 +903,36 @@ func handleRollbackDeployment(c *gin.Context) {
 		},
 		"message": "Rollback initiated",
 	})
+}
+
+// capacityCheck compares the requested per-replica memory (limit, falling
+// back to reservation) against node capacity. app_settings.capacity_policy
+// = "block" fails the deployment; the default "warn" only logs. CPU is not
+// gated — shares are a weight, not a reservation.
+func capacityCheck(ctx context.Context, db *database.DB, client *docker.Client, service Service, replicas int) string {
+	if client == nil {
+		return ""
+	}
+	requested := parseMemoryLimit(service.Memory)
+	if requested == 0 {
+		requested = parseMemoryLimit(service.MemoryReserve)
+	}
+	if requested == 0 {
+		return ""
+	}
+	info, err := client.GetSystemInfo(ctx)
+	if err != nil || info.MemTotal <= 0 {
+		return ""
+	}
+	need := requested * int64(replicas)
+	if need <= info.MemTotal {
+		return ""
+	}
+	msg := fmt.Sprintf("requested %d bytes x %d replicas exceeds node memory (%d bytes)",
+		requested, replicas, info.MemTotal)
+	if strings.ToLower(settingValue(db, "capacity_policy", "", "warn")) == "block" {
+		return msg
+	}
+	slog.Warn("capacity check exceeded", "service_id", service.ID, "detail", msg)
+	return ""
 }
