@@ -2247,7 +2247,7 @@ export function ServiceDetailPage() {
                             {
                               volumes: volumesForm
                                 .filter((v) => v.source.trim() && v.target.startsWith('/'))
-                                .map((v) => ({ type: v.type ?? 'volume' as const, source: v.source, target: v.target, read_only: v.read_only ?? false })),
+                                .map((v) => ({ type: v.type ?? 'volume', source: v.source, target: v.target, read_only: v.read_only ?? false })),
                             },
                             { onSuccess: () => setVolumesForm(null) },
                           )
