@@ -1,6 +1,6 @@
 import type { components, paths } from '@/generated/api-types';
 
-export type ServiceStatus = 'running' | 'degraded' | 'stopped' | 'building' | 'failed' | 'unknown';
+export type ServiceStatus = 'running' | 'degraded' | 'stopped' | 'building' | 'failed' | 'sleeping' | 'waking' | 'unknown';
 
 export type ProjectStats = components['schemas']['ProjectStats'];
 
@@ -1731,6 +1731,10 @@ export function serviceStatusClass(status: ServiceStatus): string {
       return 'status-building';
     case 'failed':
       return 'status-failed';
+    case 'sleeping':
+      return 'status-sleeping';
+    case 'waking':
+      return 'status-building';
     case 'stopped':
       return 'status-stopped';
     default:
