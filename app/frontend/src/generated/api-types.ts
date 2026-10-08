@@ -1241,6 +1241,204 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/backup-targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List backup targets
+         * @description S3-compatible archive destinations for the caller. Secret keys are never returned — `has_credentials` signals presence.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Backup target list */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            backup_targets?: components["schemas"]["BackupTarget"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Register a backup target
+         * @description The bucket is probed (BucketExists) before storing — typos and bad credentials fail at registration. Keys are stored encrypted at rest.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["BackupTargetRequest"];
+                };
+            };
+            responses: {
+                /** @description Backup target created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Validation error or connection check failed */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/backup-targets/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update a backup target
+         * @description Empty access_key/secret_key keep the stored pair — delete and recreate to remove credentials. Re-probed before saving.
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["BackupTargetRequest"];
+                };
+            };
+            responses: {
+                /** @description Backup target updated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Backup target not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        /**
+         * Delete a backup target
+         * @description Fails with 409 while databases still point at the target.
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Backup target deleted */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Databases still reference this target */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/backup-targets/{id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Re-probe a backup target
+         * @description Checks bucket access with the stored credentials. Always returns a probe result — `ok` false means unreachable or unauthorized.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Probe result */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            ok?: boolean;
+                            latency_ms?: number;
+                            error?: string;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/services/{id}/domains": {
         parameters: {
             query?: never;
@@ -9095,6 +9293,8 @@ export interface components {
             provider?: "managed" | "external";
             /** @description managed only — bind the database port on all interfaces instead of 127.0.0.1; toggling recreates the container */
             public_port?: boolean;
+            /** @description S3-compatible backup target receiving this database's archives, empty when local-only */
+            backup_target_id?: string;
             external?: components["schemas"]["DatabaseExternal"];
             /**
              * Format: date-time
@@ -9167,6 +9367,8 @@ export interface components {
             backup_schedule?: string | null;
             /** @description Toggle the published port between 127.0.0.1 and all interfaces; recreates the managed container */
             public_port?: boolean;
+            /** @description Assign a backup target for offsite archives; empty string clears */
+            backup_target_id?: string | null;
         };
         DatabaseActionRequest: {
             /**
@@ -9217,6 +9419,36 @@ export interface components {
             size?: string;
             /** @enum {string} */
             status?: "completed" | "failed" | "in_progress";
+            /** @description Archive also shipped to the database's configured backup target */
+            remote?: boolean;
+        };
+        BackupTarget: {
+            id?: string;
+            name?: string;
+            /** @description Bare host[:port] — scheme comes from use_tls */
+            endpoint?: string;
+            bucket?: string;
+            region?: string;
+            prefix?: string;
+            has_credentials?: boolean;
+            use_tls?: boolean;
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        BackupTargetRequest: {
+            name?: string;
+            endpoint: string;
+            bucket: string;
+            region?: string;
+            prefix?: string;
+            /** @description Stored encrypted; never returned. Empty on update keeps stored credentials. */
+            access_key?: string;
+            /** @description Stored encrypted; never returned. Empty on update keeps stored credentials. */
+            secret_key?: string;
+            /** @default true */
+            use_tls: boolean;
         };
         DatabaseBackupConfig: {
             enabled?: boolean;

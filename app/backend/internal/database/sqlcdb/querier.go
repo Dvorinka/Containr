@@ -6,6 +6,7 @@ package sqlcdb
 
 import (
 	"context"
+	"database/sql"
 
 	"github.com/google/uuid"
 )
@@ -13,11 +14,13 @@ import (
 type Querier interface {
 	CompleteCommand(ctx context.Context, arg CompleteCommandParams) (AgentCommand, error)
 	CountDatabaseServicesByUserAndName(ctx context.Context, arg CountDatabaseServicesByUserAndNameParams) (int64, error)
+	CountDatabasesUsingBackupTarget(ctx context.Context, targetID sql.NullString) (int64, error)
 	CountProjectsByUser(ctx context.Context, arg CountProjectsByUserParams) (int64, error)
 	CountServicesByProjectAndName(ctx context.Context, arg CountServicesByProjectAndNameParams) (int64, error)
 	CountUnreadNotificationsByUser(ctx context.Context, userID uuid.UUID) (int64, error)
 	CreateAgent(ctx context.Context, arg CreateAgentParams) (NodeAgent, error)
 	CreateAgentAuthToken(ctx context.Context, arg CreateAgentAuthTokenParams) (AgentAuthToken, error)
+	CreateBackupTarget(ctx context.Context, arg CreateBackupTargetParams) error
 	CreateCommand(ctx context.Context, arg CreateCommandParams) (AgentCommand, error)
 	CreateContainer(ctx context.Context, arg CreateContainerParams) (ContainerInstance, error)
 	CreateDatabaseBackup(ctx context.Context, arg CreateDatabaseBackupParams) error
@@ -30,12 +33,15 @@ type Querier interface {
 	CreateUserToken(ctx context.Context, arg CreateUserTokenParams) (UserToken, error)
 	DatabaseServiceExistsByIDAndUser(ctx context.Context, arg DatabaseServiceExistsByIDAndUserParams) (bool, error)
 	DeleteAgent(ctx context.Context, id string) error
+	DeleteBackupTargetByIDAndUser(ctx context.Context, arg DeleteBackupTargetByIDAndUserParams) error
 	DeleteDatabaseServiceByIDAndUser(ctx context.Context, arg DeleteDatabaseServiceByIDAndUserParams) error
 	DeleteProjectByID(ctx context.Context, projectID uuid.UUID) (int64, error)
 	DeleteUserTemplate(ctx context.Context, arg DeleteUserTemplateParams) (int64, error)
 	GetActiveAgentAuthTokenByHash(ctx context.Context, tokenHash string) (AgentAuthToken, error)
 	GetAgent(ctx context.Context, id string) (NodeAgent, error)
 	GetAgentByHostAndIP(ctx context.Context, arg GetAgentByHostAndIPParams) (NodeAgent, error)
+	GetBackupTargetByID(ctx context.Context, id string) (BackupTarget, error)
+	GetBackupTargetByIDAndUser(ctx context.Context, arg GetBackupTargetByIDAndUserParams) (BackupTarget, error)
 	GetCommandForAgent(ctx context.Context, arg GetCommandForAgentParams) (AgentCommand, error)
 	GetContainer(ctx context.Context, id string) (ContainerInstance, error)
 	GetContainerForAgent(ctx context.Context, arg GetContainerForAgentParams) (ContainerInstance, error)
@@ -55,6 +61,7 @@ type Querier interface {
 	ListAgentHeartbeatsSince(ctx context.Context, arg ListAgentHeartbeatsSinceParams) ([]AgentHeartbeat, error)
 	ListAgents(ctx context.Context) ([]NodeAgent, error)
 	ListAllDatabaseServices(ctx context.Context) ([]DatabaseService, error)
+	ListBackupTargetsByUser(ctx context.Context, userID string) ([]BackupTarget, error)
 	ListCommandsForAgent(ctx context.Context, nodeAgentID string) ([]AgentCommand, error)
 	ListContainersForAgent(ctx context.Context, nodeAgentID string) ([]ContainerInstance, error)
 	ListDatabaseBackupsByDatabaseAndUser(ctx context.Context, arg ListDatabaseBackupsByDatabaseAndUserParams) ([]DatabaseBackup, error)
@@ -74,8 +81,10 @@ type Querier interface {
 	MarkNotificationReadByIDAndUser(ctx context.Context, arg MarkNotificationReadByIDAndUserParams) error
 	RevokeAgentAuthToken(ctx context.Context, id uuid.UUID) (AgentAuthToken, error)
 	RevokeUserToken(ctx context.Context, arg RevokeUserTokenParams) (int64, error)
+	SetDatabaseBackupRemoteKeyByID(ctx context.Context, arg SetDatabaseBackupRemoteKeyByIDParams) error
 	SetDatabaseBackupScheduleByIDAndUser(ctx context.Context, arg SetDatabaseBackupScheduleByIDAndUserParams) error
 	SetDatabaseBackupStatusByID(ctx context.Context, arg SetDatabaseBackupStatusByIDParams) error
+	SetDatabaseBackupTargetByIDAndUser(ctx context.Context, arg SetDatabaseBackupTargetByIDAndUserParams) error
 	SetDatabaseNextBackupAt(ctx context.Context, arg SetDatabaseNextBackupAtParams) error
 	SetDatabaseServicePublicPortByIDAndUser(ctx context.Context, arg SetDatabaseServicePublicPortByIDAndUserParams) error
 	SetDatabaseServiceStatusAndConnectionByID(ctx context.Context, arg SetDatabaseServiceStatusAndConnectionByIDParams) error
@@ -86,6 +95,7 @@ type Querier interface {
 	TouchUserToken(ctx context.Context, id uuid.UUID) error
 	UpdateAgent(ctx context.Context, arg UpdateAgentParams) (NodeAgent, error)
 	UpdateAgentHeartbeat(ctx context.Context, arg UpdateAgentHeartbeatParams) error
+	UpdateBackupTargetByIDAndUser(ctx context.Context, arg UpdateBackupTargetByIDAndUserParams) error
 	UpdateContainerStatus(ctx context.Context, arg UpdateContainerStatusParams) error
 	UpdateDatabaseServiceNameAndPlanByIDAndUser(ctx context.Context, arg UpdateDatabaseServiceNameAndPlanByIDAndUserParams) error
 	UpdateDatabaseServiceNameByIDAndUser(ctx context.Context, arg UpdateDatabaseServiceNameByIDAndUserParams) error

@@ -49,6 +49,21 @@ type AgentHeartbeat struct {
 	CreatedAt      time.Time       `json:"created_at"`
 }
 
+type BackupTarget struct {
+	ID        string       `json:"id"`
+	UserID    string       `json:"user_id"`
+	Name      string       `json:"name"`
+	Endpoint  string       `json:"endpoint"`
+	Bucket    string       `json:"bucket"`
+	Region    string       `json:"region"`
+	Prefix    string       `json:"prefix"`
+	AccessKey string       `json:"access_key"`
+	SecretKey string       `json:"secret_key"`
+	UseTls    bool         `json:"use_tls"`
+	CreatedAt sql.NullTime `json:"created_at"`
+	UpdatedAt sql.NullTime `json:"updated_at"`
+}
+
 type ContainerInstance struct {
 	ID            string                `json:"id"`
 	Name          string                `json:"name"`
@@ -75,6 +90,7 @@ type DatabaseBackup struct {
 	Size        string         `json:"size"`
 	Status      string         `json:"status"`
 	BackupPath  sql.NullString `json:"backup_path"`
+	RemoteKey   sql.NullString `json:"remote_key"`
 	CreatedAt   sql.NullTime   `json:"created_at"`
 	CompletedAt sql.NullTime   `json:"completed_at"`
 }
@@ -99,6 +115,7 @@ type DatabaseService struct {
 	ExternalPassword string         `json:"external_password"`
 	ExternalSsl      bool           `json:"external_ssl"`
 	PublicPort       bool           `json:"public_port"`
+	BackupTargetID   sql.NullString `json:"backup_target_id"`
 	CreatedAt        sql.NullTime   `json:"created_at"`
 	UpdatedAt        sql.NullTime   `json:"updated_at"`
 }

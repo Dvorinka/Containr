@@ -828,6 +828,118 @@ paths:
         '404':
           description: Registry not found
 
+  /backup-targets:
+    get:
+      tags:
+        - BackupTargets
+      summary: List backup targets
+      description: S3-compatible archive destinations for the caller. Secret keys are never returned — `has_credentials` signals presence.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Backup target list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  backup_targets:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BackupTarget'
+    post:
+      tags:
+        - BackupTargets
+      summary: Register a backup target
+      description: The bucket is probed (BucketExists) before storing — typos and bad credentials fail at registration. Keys are stored encrypted at rest.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BackupTargetRequest'
+      responses:
+        '201':
+          description: Backup target created
+        '400':
+          description: Validation error or connection check failed
+
+  /backup-targets/{id}:
+    put:
+      tags:
+        - BackupTargets
+      summary: Update a backup target
+      description: Empty access_key/secret_key keep the stored pair — delete and recreate to remove credentials. Re-probed before saving.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BackupTargetRequest'
+      responses:
+        '200':
+          description: Backup target updated
+        '404':
+          description: Backup target not found
+    delete:
+      tags:
+        - BackupTargets
+      summary: Delete a backup target
+      description: Fails with 409 while databases still point at the target.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Backup target deleted
+        '409':
+          description: Databases still reference this target
+
+  /backup-targets/{id}/test:
+    post:
+      tags:
+        - BackupTargets
+      summary: Re-probe a backup target
+      description: Checks bucket access with the stored credentials. Always returns a probe result — `ok` false means unreachable or unauthorized.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Probe result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  latency_ms:
+                    type: integer
+                  error:
+                    type: string
+
   /services/{id}/domains:
     get:
       tags:
@@ -6322,6 +6434,9 @@ components:
         public_port:
           type: boolean
           description: managed only — bind the database port on all interfaces instead of 127.0.0.1; toggling recreates the container
+        backup_target_id:
+          type: string
+          description: S3-compatible backup target receiving this database's archives, empty when local-only
         external:
           $ref: '#/components/schemas/DatabaseExternal'
         next_backup_at:
@@ -6429,6 +6544,10 @@ components:
         public_port:
           type: boolean
           description: Toggle the published port between 127.0.0.1 and all interfaces; recreates the managed container
+        backup_target_id:
+          type: string
+          nullable: true
+          description: Assign a backup target for offsite archives; empty string clears
 
     DatabaseActionRequest:
       type: object
@@ -6522,6 +6641,62 @@ components:
         status:
           type: string
           enum: [completed, failed, in_progress]
+        remote:
+          type: boolean
+          description: Archive also shipped to the database's configured backup target
+
+    BackupTarget:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        endpoint:
+          type: string
+          description: Bare host[:port] — scheme comes from use_tls
+        bucket:
+          type: string
+        region:
+          type: string
+        prefix:
+          type: string
+        has_credentials:
+          type: boolean
+        use_tls:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    BackupTargetRequest:
+      type: object
+      required:
+        - endpoint
+        - bucket
+      properties:
+        name:
+          type: string
+        endpoint:
+          type: string
+        bucket:
+          type: string
+        region:
+          type: string
+        prefix:
+          type: string
+        access_key:
+          type: string
+          description: Stored encrypted; never returned. Empty on update keeps stored credentials.
+        secret_key:
+          type: string
+          description: Stored encrypted; never returned. Empty on update keeps stored credentials.
+        use_tls:
+          type: boolean
+          default: true
 
     DatabaseBackupConfig:
       type: object
@@ -8065,5 +8240,7 @@ tags:
     description: Scheduled jobs
   - name: Registries
     description: Private-image pull credentials
+  - name: BackupTargets
+    description: S3-compatible backup destinations for managed databases
   - name: Gateway
     description: API gateway — upstream services, keys, analytics

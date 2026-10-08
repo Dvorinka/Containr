@@ -354,6 +354,13 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			// One-off exec console (docker exec, 30s ceiling)
 			authed.POST("/services/:id/exec", handleExecInService)
 
+			// S3-compatible backup targets — owner-scoped, keys encrypted at rest.
+			authed.GET("/backup-targets", databaseHandler.ListBackupTargets)
+			authed.POST("/backup-targets", databaseHandler.CreateBackupTarget)
+			authed.PUT("/backup-targets/:id", databaseHandler.UpdateBackupTarget)
+			authed.DELETE("/backup-targets/:id", databaseHandler.DeleteBackupTarget)
+			authed.POST("/backup-targets/:id/test", databaseHandler.TestBackupTarget)
+
 			// Private-image registries — owner-scoped, credentials encrypted at rest.
 			authed.GET("/registries", handleListRegistries)
 			authed.POST("/registries", handleCreateRegistry)

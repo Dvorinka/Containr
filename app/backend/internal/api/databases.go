@@ -54,7 +54,8 @@ type DatabaseService struct {
 	NextBackupAt   *time.Time           `json:"next_backup_at,omitempty"`
 	Provider       string               `json:"provider"` // managed | external
 	PublicPort     bool                 `json:"public_port" db:"public_port"`
-	External       *DatabaseExternalRef `json:"external,omitempty"` // connection target for external DBs
+	BackupTargetID string               `json:"backup_target_id,omitempty"` // S3-compatible archive destination
+	External       *DatabaseExternalRef `json:"external,omitempty"`         // connection target for external DBs
 	CreatedAt      time.Time            `json:"created_at" db:"created_at"`
 	UpdatedAt      time.Time            `json:"updated_at" db:"updated_at"`
 	ConnectionURL  string               `json:"connection_url"`
@@ -106,6 +107,7 @@ type DatabaseBackup struct {
 	CreatedAt time.Time `json:"created_at"`
 	Size      string    `json:"size"`
 	Status    string    `json:"status"` // completed, failed, in_progress
+	Remote    bool      `json:"remote"` // archive also exists on the configured backup target
 }
 
 // DatabaseSettings represents database configuration
@@ -131,6 +133,7 @@ type DatabaseUpdateRequest struct {
 	Plan           string  `json:"plan,omitempty"`
 	BackupSchedule *string `json:"backup_schedule,omitempty"`
 	PublicPort     *bool   `json:"public_port,omitempty"`
+	BackupTargetID *string `json:"backup_target_id,omitempty"` // empty string clears
 }
 
 // DatabaseActionRequest represents a request to perform database actions
@@ -417,12 +420,12 @@ func (h *DatabaseHandler) UpdateDatabase(c *gin.Context) {
 	req.Name = strings.TrimSpace(req.Name)
 	req.Plan = strings.TrimSpace(req.Plan)
 
-	if req.Name == "" && req.Plan == "" && req.BackupSchedule == nil && req.PublicPort == nil {
+	if req.Name == "" && req.Plan == "" && req.BackupSchedule == nil && req.PublicPort == nil && req.BackupTargetID == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "No fields to update"})
 		return
 	}
 
-	if req.PublicPort != nil {
+	if req.PublicPort != nil || req.BackupTargetID != nil {
 		row, err := h.queries.GetDatabaseServiceByIDAndUser(c.Request.Context(), sqlcdb.GetDatabaseServiceByIDAndUserParams{
 			ID:     databaseID,
 			UserID: userID,
@@ -431,23 +434,47 @@ func (h *DatabaseHandler) UpdateDatabase(c *gin.Context) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Database not found", "code": "NOT_FOUND"})
 			return
 		}
-		if row.Provider == "external" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "public_port applies to managed databases — external databases are already reachable", "code": "VALIDATION"})
-			return
+		if req.PublicPort != nil {
+			if row.Provider == "external" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "public_port applies to managed databases — external databases are already reachable", "code": "VALIDATION"})
+				return
+			}
+			if err := h.queries.SetDatabaseServicePublicPortByIDAndUser(c.Request.Context(), sqlcdb.SetDatabaseServicePublicPortByIDAndUserParams{
+				PublicPort: *req.PublicPort,
+				UpdatedAt:  sql.NullTime{Time: time.Now(), Valid: true},
+				ID:         databaseID,
+				UserID:     userID,
+			}); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update public port"})
+				return
+			}
+			// Port bindings are baked into the container — recreate it so the
+			// new bind scope takes effect. The data volume survives.
+			if *req.PublicPort != row.PublicPort {
+				go h.reprovisionManagedDatabase(databaseID, row.Name, row.Type)
+			}
 		}
-		if err := h.queries.SetDatabaseServicePublicPortByIDAndUser(c.Request.Context(), sqlcdb.SetDatabaseServicePublicPortByIDAndUserParams{
-			PublicPort: *req.PublicPort,
-			UpdatedAt:  sql.NullTime{Time: time.Now(), Valid: true},
-			ID:         databaseID,
-			UserID:     userID,
-		}); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update public port"})
-			return
-		}
-		// Port bindings are baked into the container — recreate it so the
-		// new bind scope takes effect. The data volume survives.
-		if *req.PublicPort != row.PublicPort {
-			go h.reprovisionManagedDatabase(databaseID, row.Name, row.Type)
+		if req.BackupTargetID != nil {
+			if row.Provider == "external" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "backup targets apply to managed databases — external backups are not supported yet", "code": "VALIDATION"})
+				return
+			}
+			targetID := strings.TrimSpace(*req.BackupTargetID)
+			if targetID != "" {
+				if _, err := h.queries.GetBackupTargetByIDAndUser(c.Request.Context(), sqlcdb.GetBackupTargetByIDAndUserParams{ID: targetID, UserID: userID}); err != nil {
+					c.JSON(http.StatusNotFound, gin.H{"error": "Backup target not found", "code": "NOT_FOUND"})
+					return
+				}
+			}
+			if err := h.queries.SetDatabaseBackupTargetByIDAndUser(c.Request.Context(), sqlcdb.SetDatabaseBackupTargetByIDAndUserParams{
+				BackupTargetID: sql.NullString{String: targetID, Valid: targetID != ""},
+				UpdatedAt:      sql.NullTime{Time: time.Now(), Valid: true},
+				ID:             databaseID,
+				UserID:         userID,
+			}); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update backup target"})
+				return
+			}
 		}
 	}
 
@@ -991,6 +1018,7 @@ func (h *DatabaseHandler) resolveBackupConfig(ctx context.Context, userID string
 			CreatedAt: createdAt,
 			Size:      row.Size,
 			Status:    row.Status,
+			Remote:    row.RemoteKey.Valid && row.RemoteKey.String != "",
 		})
 		if lastBackup == nil && row.Status == "completed" {
 			t := createdAt
@@ -1144,6 +1172,7 @@ func mapDatabaseServiceRow(row sqlcdb.DatabaseService) DatabaseService {
 		NextBackupAt:   databaseNullTimePtr(row.NextBackupAt),
 		Provider:       row.Provider,
 		PublicPort:     row.PublicPort,
+		BackupTargetID: databaseNullString(row.BackupTargetID),
 		ConnectionURL:  databaseNullString(row.ConnectionUrl),
 		CreatedAt:      databaseNullTime(row.CreatedAt),
 		UpdatedAt:      databaseNullTime(row.UpdatedAt),
@@ -1815,16 +1844,39 @@ func (h *DatabaseHandler) createBackupProcess(databaseID, backupID, backupPath s
 		_ = h.setDatabaseBackupStatus(backupID, "failed", "0 B", false)
 		return
 	}
+	if dbRow, err := h.queries.GetDatabaseServiceByID(ctx, databaseID); err == nil {
+		if key, err := h.uploadBackupToTarget(ctx, dbRow, backupPath, backupID); err != nil {
+			log.Printf("containr: backup %s remote upload failed: %v (local archive kept)", backupID, err)
+		} else if key != "" {
+			log.Printf("containr: backup %s shipped to %s", backupID, key)
+		}
+	}
 	_ = h.setDatabaseBackupStatus(backupID, "completed", sizeLabel, true)
 }
 
-func (h *DatabaseHandler) restoreBackupProcess(databaseID, _ string, backupPath string) {
+func (h *DatabaseHandler) restoreBackupProcess(databaseID, backupID string, backupPath string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
 
 	if h.dockerClient == nil {
 		_ = h.setDatabaseStatus(databaseID, "error")
 		return
+	}
+
+	// Restore the archive from the configured S3 target when the local copy
+	// is gone (fresh node, pruned volume) — local takes precedence.
+	if dbRow, err := h.queries.GetDatabaseServiceByID(ctx, databaseID); err == nil && dbRow.BackupTargetID.Valid && dbRow.BackupTargetID.String != "" {
+		if ok, _ := h.backupArchiveExists(ctx, backupPath); !ok {
+			if b, err := h.queries.GetDatabaseBackupByIDAndDatabaseAndUser(ctx, sqlcdb.GetDatabaseBackupByIDAndDatabaseAndUserParams{
+				ID: backupID, DatabaseID: databaseID, UserID: dbRow.UserID,
+			}); err == nil && b.RemoteKey.Valid && b.RemoteKey.String != "" {
+				if err := h.downloadBackupToVolume(ctx, dbRow, b.RemoteKey.String, backupPath); err != nil {
+					log.Printf("containr: remote restore fetch failed for backup %s: %v", backupID, err)
+					_ = h.setDatabaseStatus(databaseID, "error")
+					return
+				}
+			}
+		}
 	}
 
 	_ = h.setDatabaseStatus(databaseID, "building")

@@ -112,8 +112,12 @@ var dbUpdateCmd = &cobra.Command{
 			v, _ := cmd.Flags().GetString("backup-schedule")
 			body["backup_schedule"] = v
 		}
+		if cmd.Flags().Changed("backup-target") {
+			v, _ := cmd.Flags().GetString("backup-target")
+			body["backup_target_id"] = v
+		}
 		if len(body) == 0 {
-			return &APIError{Message: "nothing to update — pass --public/--private-style flags, --name, or --backup-schedule", ExitCode: ExitError}
+			return &APIError{Message: "nothing to update — pass --public/--private-style flags, --name, --backup-schedule, or --backup-target", ExitCode: ExitError}
 		}
 		data, err := c.Do("PUT", "/databases/"+args[0], body)
 		if err != nil {
@@ -318,6 +322,7 @@ func init() {
 	dbUpdateCmd.Flags().Bool("public", false, "bind the database port on all interfaces")
 	dbUpdateCmd.Flags().String("name", "", "rename the database")
 	dbUpdateCmd.Flags().String("backup-schedule", "", "cron expression for automatic backups (empty clears)")
+	dbUpdateCmd.Flags().String("backup-target", "", "backup target id for offsite archives (empty clears)")
 	for _, cmd := range []*cobra.Command{dbRegisterCmd, dbTestConnCmd} {
 		cmd.Flags().String("type", "postgres", "postgres|mysql|mariadb|mongodb|redis|dragonfly|clickhouse")
 		cmd.Flags().String("host", "", "database host")
