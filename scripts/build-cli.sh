@@ -21,18 +21,25 @@ for platform in $PLATFORMS; do
     GOARCH=${platform#*/}
     
     OUTPUT_NAME="containr-${GOOS}-${GOARCH}"
+    MCP_NAME="containr-mcp-${GOOS}-${GOARCH}"
     if [ "$GOOS" = "windows" ]; then
         OUTPUT_NAME="${OUTPUT_NAME}.exe"
+        MCP_NAME="${MCP_NAME}.exe"
     fi
     
-    echo "📦 Building for ${platform}..."
-    
+    echo "📦 Building CLI for ${platform}..."
     GOOS=$GOOS GOARCH=$GOARCH go build \
         -ldflags "$LDFLAGS" \
         -o "bin/${OUTPUT_NAME}" \
         ./cmd/cli
     
-    echo "✅ Built bin/${OUTPUT_NAME}"
+    echo "📦 Building MCP server for ${platform}..."
+    GOOS=$GOOS GOARCH=$GOARCH go build \
+        -ldflags "$LDFLAGS" \
+        -o "bin/${MCP_NAME}" \
+        ./cmd/mcp
+    
+    echo "✅ Built bin/${OUTPUT_NAME} + bin/${MCP_NAME}"
 done
 
 echo "🎉 CLI build complete!"
