@@ -8,7 +8,6 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -55,17 +54,8 @@ func handleGetProjects(c *gin.Context) {
 	db := c.MustGet("db").(*database.DB)
 	queries := sqlcdb.New(db.DB)
 
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+	offset, limit := pageWindow(c, 10, 100)
 	search := strings.TrimSpace(c.DefaultQuery("search", ""))
-
-	if page < 1 {
-		page = 1
-	}
-	if limit > 100 || limit < 1 {
-		limit = 10
-	}
-	offset := (page - 1) * limit
 
 	searchParam := sql.NullString{}
 	if search != "" {
@@ -99,15 +89,9 @@ func handleGetProjects(c *gin.Context) {
 		return
 	}
 
-	totalCount := int(total)
 	c.JSON(http.StatusOK, gin.H{
-		"projects": projects,
-		"pagination": gin.H{
-			"page":  page,
-			"limit": limit,
-			"total": totalCount,
-			"pages": (totalCount + limit - 1) / limit,
-		},
+		"projects":   projects,
+		"pagination": paginationMeta(offset, limit, int(total)),
 	})
 }
 

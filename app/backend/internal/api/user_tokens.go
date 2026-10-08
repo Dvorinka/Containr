@@ -72,36 +72,36 @@ func handleCreateUserToken(c *gin.Context) {
 
 	req.Name = strings.TrimSpace(req.Name)
 	if req.Name == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "name is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "name is required", "code": "VALIDATION"})
 		return
 	}
 	if req.Scope == "" {
 		req.Scope = "write"
 	}
 	if !userTokenScopes[req.Scope] {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "scope must be one of: read, write, admin"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "scope must be one of: read, write, admin", "code": "VALIDATION"})
 		return
 	}
 	// A token can never outrank its owner: non-admin users cannot mint
 	// admin-scope tokens even for themselves.
 	if req.Scope == "admin" && !c.GetBool("is_admin") {
-		c.JSON(http.StatusForbidden, gin.H{"error": "admin scope requires a platform admin account"})
+		c.JSON(http.StatusForbidden, gin.H{"error": "admin scope requires a platform admin account", "code": "FORBIDDEN"})
 		return
 	}
 	if req.ExpiresInDays < 0 || req.ExpiresInDays > 3650 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "expires_in_days must be between 0 (never) and 3650"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "expires_in_days must be between 0 (never) and 3650", "code": "VALIDATION"})
 		return
 	}
 
 	token, prefix, hash, err := generateUserToken()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token", "code": "INTERNAL"})
 		return
 	}
 
 	ownerUUID, err := uuid.Parse(userID)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user context"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user context", "code": "INVALID_TOKEN"})
 		return
 	}
 
@@ -119,7 +119,7 @@ func handleCreateUserToken(c *gin.Context) {
 		ExpiresAt: expiresAt,
 	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to store token"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to store token", "code": "INTERNAL"})
 		return
 	}
 
@@ -140,13 +140,13 @@ func handleListUserTokens(c *gin.Context) {
 
 	ownerUUID, err := uuid.Parse(userID)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user context"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user context", "code": "INVALID_TOKEN"})
 		return
 	}
 
 	rows, err := queries.ListUserTokens(c.Request.Context(), ownerUUID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch tokens"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch tokens", "code": "INTERNAL"})
 		return
 	}
 
@@ -167,12 +167,12 @@ func handleDeleteUserToken(c *gin.Context) {
 
 	ownerUUID, err := uuid.Parse(userID)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user context"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user context", "code": "INVALID_TOKEN"})
 		return
 	}
 	tokenUUID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid token ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid token ID", "code": "VALIDATION"})
 		return
 	}
 
@@ -181,11 +181,11 @@ func handleDeleteUserToken(c *gin.Context) {
 		UserID: ownerUUID,
 	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to revoke token"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to revoke token", "code": "INTERNAL"})
 		return
 	}
 	if affected == 0 {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Token not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Token not found", "code": "NOT_FOUND"})
 		return
 	}
 

@@ -8,10 +8,27 @@ info:
     Containr provides a comprehensive platform for deploying, managing, and scaling containerized applications on Proxmox infrastructure. This API allows you to manage projects, services, deployments, databases, and more through a RESTful interface.
     
     ## Authentication
-    The API uses JWT-based authentication. Include your JWT token in the Authorization header:
-    ```
-    Authorization: Bearer <your-jwt-token>
-    ```
+    The API accepts three credentials in the Authorization header:
+    `Authorization: Bearer <jwt>` (UI sessions), a Better Auth session cookie, or a
+    personal access token `cnp_...` (CLI/MCP/agents). PAT scopes: `read` allows only
+    GET/HEAD/OPTIONS; `write` everything except admin routes; `admin` requires a
+    platform-admin owner.
+
+    ## Errors
+    Error responses use `{"error": "human message", "code": "MACHINE_CODE"}`. Stable
+    codes: `UNAUTHENTICATED`, `INVALID_TOKEN`, `FORBIDDEN`, `ADMIN_REQUIRED`,
+    `SCOPE_INSUFFICIENT`, `NOT_FOUND`, `VALIDATION`, `CONFLICT`, `INTERNAL`,
+    `DEPENDENCY_UNAVAILABLE`, `IDEMPOTENCY_IN_PROGRESS`.
+
+    ## Idempotency
+    POST endpoints accept an `Idempotency-Key` header. The first response is replayed
+    for repeated keys within 24h (scoped to the caller and path); a concurrent duplicate
+    receives `409 IDEMPOTENCY_IN_PROGRESS`. Safe for clients to always send a UUID.
+
+    ## Pagination
+    List endpoints accept `?limit=` plus either `?page=` (legacy) or `?cursor=`
+    (preferred — pass `pagination.next_cursor` from the previous response verbatim).
+    Invalid cursors fail soft to the first page.
     
     ## Base URL
     ```
@@ -255,7 +272,7 @@ paths:
       parameters:
         - name: page
           in: query
-          description: Page number for pagination
+          description: Page number for pagination (legacy — prefer cursor)
           schema:
             type: integer
             default: 1
@@ -265,6 +282,11 @@ paths:
           schema:
             type: integer
             default: 20
+        - name: cursor
+          in: query
+          description: Opaque cursor from a previous response's pagination.next_cursor
+          schema:
+            type: string
         - name: search
           in: query
           description: Search term to filter projects
@@ -660,6 +682,17 @@ paths:
           description: Service ID
           schema:
             type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 100
+        - name: cursor
+          in: query
+          description: Opaque cursor from a previous response's pagination.next_cursor
+          schema:
+            type: string
       responses:
         '200':
           description: Deployments retrieved successfully
@@ -712,6 +745,12 @@ paths:
             type: integer
             default: 10
             maximum: 50
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque cursor from a previous response's pagination.next_cursor
+          schema:
+            type: string
       responses:
         '200':
           description: Recent deployments

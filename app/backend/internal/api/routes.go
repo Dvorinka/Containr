@@ -256,6 +256,7 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 		// enforce ownership; platform admins additionally pass every check.
 		authed := v1.Group("/")
 		authed.Use(middleware.Auth(cfg.JWTSecret))
+		authed.Use(middleware.Idempotency())
 		{
 			authed.GET("/user/profile", handleGetProfile)
 			authed.PUT("/user/profile", handleUpdateProfile)
@@ -357,6 +358,7 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 		// Admin routes — platform-wide controls and cross-user management.
 		admin := v1.Group("/")
 		admin.Use(middleware.Auth(cfg.JWTSecret))
+		admin.Use(middleware.Idempotency())
 		admin.Use(middleware.RequireAdmin())
 		{
 			admin.GET("/admin/overview", handleAdminOverview)

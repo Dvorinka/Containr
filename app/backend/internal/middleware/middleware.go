@@ -212,15 +212,15 @@ func Auth(jwtSecret string) gin.HandlerFunc {
 		}
 
 		if tokenErr != "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": tokenErr})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": tokenErr, "code": "INVALID_TOKEN"})
 			c.Abort()
 			return
 		}
 
 		if hasToken {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token", "code": "INVALID_TOKEN"})
 		} else {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required", "code": "UNAUTHENTICATED"})
 		}
 		c.Abort()
 	}
@@ -245,12 +245,12 @@ func OptionalAuth(jwtSecret string) gin.HandlerFunc {
 func RequireAdmin() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if _, exists := c.Get("user_id"); !exists {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required", "code": "UNAUTHENTICATED"})
 			c.Abort()
 			return
 		}
 		if !c.GetBool("is_admin") {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required", "code": "ADMIN_REQUIRED"})
 			c.Abort()
 			return
 		}
