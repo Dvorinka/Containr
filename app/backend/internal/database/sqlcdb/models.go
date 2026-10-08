@@ -168,33 +168,39 @@ type ProjectMember struct {
 }
 
 type Service struct {
-	ID             uuid.UUID      `json:"id"`
-	Name           string         `json:"name"`
-	Description    sql.NullString `json:"description"`
-	ProjectID      uuid.UUID      `json:"project_id"`
-	EnvironmentID  uuid.UUID      `json:"environment_id"`
-	ServiceType    string         `json:"service_type"`
-	SourceType     string         `json:"source_type"`
-	SourceUrl      sql.NullString `json:"source_url"`
-	ImageName      sql.NullString `json:"image_name"`
-	BuildCommand   sql.NullString `json:"build_command"`
-	StartCommand   sql.NullString `json:"start_command"`
-	CpuLimit       sql.NullInt32  `json:"cpu_limit"`
-	MemoryLimit    sql.NullInt32  `json:"memory_limit"`
-	PublicUrl      sql.NullString `json:"public_url"`
-	HealthCheckUrl sql.NullString `json:"health_check_url"`
-	Status         sql.NullString `json:"status"`
-	CreatedAt      sql.NullTime   `json:"created_at"`
-	UpdatedAt      sql.NullTime   `json:"updated_at"`
-	Type           sql.NullString `json:"type"`
-	Image          sql.NullString `json:"image"`
-	Command        sql.NullString `json:"command"`
-	Environment    sql.NullString `json:"environment"`
-	GitRepo        sql.NullString `json:"git_repo"`
-	GitBranch      sql.NullString `json:"git_branch"`
-	BuildPath      sql.NullString `json:"build_path"`
-	Cpu            sql.NullString `json:"cpu"`
-	Memory         sql.NullString `json:"memory"`
+	ID              uuid.UUID      `json:"id"`
+	Name            string         `json:"name"`
+	Description     sql.NullString `json:"description"`
+	ProjectID       uuid.UUID      `json:"project_id"`
+	EnvironmentID   uuid.UUID      `json:"environment_id"`
+	ServiceType     string         `json:"service_type"`
+	SourceType      string         `json:"source_type"`
+	SourceUrl       sql.NullString `json:"source_url"`
+	ImageName       sql.NullString `json:"image_name"`
+	BuildCommand    sql.NullString `json:"build_command"`
+	StartCommand    sql.NullString `json:"start_command"`
+	CpuLimit        sql.NullInt32  `json:"cpu_limit"`
+	MemoryLimit     sql.NullInt32  `json:"memory_limit"`
+	PublicUrl       sql.NullString `json:"public_url"`
+	HealthCheckUrl  sql.NullString `json:"health_check_url"`
+	Status          sql.NullString `json:"status"`
+	CreatedAt       sql.NullTime   `json:"created_at"`
+	UpdatedAt       sql.NullTime   `json:"updated_at"`
+	Type            sql.NullString `json:"type"`
+	Image           sql.NullString `json:"image"`
+	Command         sql.NullString `json:"command"`
+	Environment     sql.NullString `json:"environment"`
+	GitRepo         sql.NullString `json:"git_repo"`
+	GitBranch       sql.NullString `json:"git_branch"`
+	BuildPath       sql.NullString `json:"build_path"`
+	Cpu             sql.NullString `json:"cpu"`
+	Memory          sql.NullString `json:"memory"`
+	Replicas        int32          `json:"replicas"`
+	Port            int32          `json:"port"`
+	Domain          string         `json:"domain"`
+	HealthcheckPath string         `json:"healthcheck_path"`
+	RestartPolicy   string         `json:"restart_policy"`
+	PublishedPort   int32          `json:"published_port"`
 }
 
 type ServiceTemplate struct {
@@ -210,4 +216,17 @@ type ServiceTemplate struct {
 	IsPublic    bool                  `json:"is_public"`
 	CreatedAt   sql.NullTime          `json:"created_at"`
 	UpdatedAt   sql.NullTime          `json:"updated_at"`
+}
+
+type UserToken struct {
+	ID         uuid.UUID    `json:"id"`
+	UserID     uuid.UUID    `json:"user_id"`
+	Name       string       `json:"name"`
+	KeyPrefix  string       `json:"key_prefix"`
+	TokenHash  string       `json:"token_hash"`
+	Scope      string       `json:"scope"`
+	ExpiresAt  sql.NullTime `json:"expires_at"`
+	LastUsedAt sql.NullTime `json:"last_used_at"`
+	RevokedAt  sql.NullTime `json:"revoked_at"`
+	CreatedAt  sql.NullTime `json:"created_at"`
 }

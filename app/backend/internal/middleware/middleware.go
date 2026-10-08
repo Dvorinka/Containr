@@ -2,7 +2,10 @@ package middleware
 
 import (
 	"containr/internal/database"
+	sqlcdb "containr/internal/database/sqlcdb"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -75,6 +78,14 @@ func RequestID() gin.HandlerFunc {
 func resolveRequestUser(c *gin.Context, jwtSecret string, sessionVerifier *betterAuthSessionVerifier) (userID, email, tokenErr string, hasToken, ok bool) {
 	tokenString, tokenErr, hasToken := extractJWTToken(c)
 	if tokenString != "" {
+		// Personal access tokens (cnp_…) are not JWTs — they resolve
+		// against the user_tokens table by sha256 hash.
+		if strings.HasPrefix(tokenString, patPrefix) {
+			if id, mail, verified := resolvePersonalAccessToken(c, tokenString); verified {
+				return id, mail, "", hasToken, true
+			}
+			return "", "", "Invalid token", hasToken, false
+		}
 		if claims, valid := validateJWTClaims(tokenString, jwtSecret); valid {
 			userIDClaim, exists := claims["user_id"]
 			if exists {
@@ -101,12 +112,67 @@ func resolveRequestUser(c *gin.Context, jwtSecret string, sessionVerifier *bette
 	return "", "", tokenErr, hasToken, false
 }
 
+const patPrefix = "cnp_"
+
+// resolvePersonalAccessToken authenticates a `cnp_` bearer token against the
+// user_tokens table (sha256 hash match, not revoked, not expired). On success
+// it stamps last_used_at, records the token scope on the context, and
+// returns the owner's id and email.
+func resolvePersonalAccessToken(c *gin.Context, token string) (string, string, bool) {
+	dbValue, exists := c.Get("db")
+	if !exists {
+		return "", "", false
+	}
+	db, ok := dbValue.(*database.DB)
+	if !ok || db == nil || db.DB == nil {
+		return "", "", false
+	}
+
+	sum := sha256.Sum256([]byte(token))
+	queries := sqlcdb.New(db.DB)
+	row, err := queries.GetUserTokenByHash(c.Request.Context(), hex.EncodeToString(sum[:]))
+	if err != nil {
+		return "", "", false
+	}
+
+	var email string
+	if err := db.QueryRowContext(c.Request.Context(),
+		`SELECT email FROM users WHERE id = $1`, row.UserID).Scan(&email); err != nil {
+		return "", "", false
+	}
+
+	_ = queries.TouchUserToken(c.Request.Context(), row.ID)
+	c.Set("pat_scope", row.Scope)
+	return row.UserID.String(), email, true
+}
+
+// patScopeAllows reports whether a PAT-authenticated request may proceed.
+// read scope permits only safe methods; write and admin are unrestricted at
+// this layer (admin routes still require the admin scope AND a platform
+// admin account — enforced via is_admin in setAuthenticatedContext).
+func patScopeAllows(c *gin.Context) bool {
+	if c.GetString("pat_scope") != "read" {
+		return true
+	}
+	switch c.Request.Method {
+	case http.MethodGet, http.MethodHead, http.MethodOptions:
+		return true
+	}
+	return false
+}
+
 // setAuthenticatedContext stores the resolved identity plus the admin flag on
 // the gin context so handlers and RequireAdmin can rely on it.
 func setAuthenticatedContext(c *gin.Context, userID, email string) {
 	c.Set("user_id", userID)
 	c.Set("email", email)
-	c.Set("is_admin", loadIsAdmin(c, userID))
+	isAdmin := loadIsAdmin(c, userID)
+	// A PAT can never outrank its scope: non-admin scopes cap the token at
+	// non-admin even when the owning user is a platform admin.
+	if scope := c.GetString("pat_scope"); scope != "" && scope != "admin" {
+		isAdmin = false
+	}
+	c.Set("is_admin", isAdmin)
 }
 
 func loadIsAdmin(c *gin.Context, userID string) bool {
@@ -133,6 +199,14 @@ func Auth(jwtSecret string) gin.HandlerFunc {
 		userID, email, tokenErr, hasToken, ok := resolveRequestUser(c, jwtSecret, sessionVerifier)
 		if ok {
 			setAuthenticatedContext(c, userID, email)
+			if !patScopeAllows(c) {
+				c.JSON(http.StatusForbidden, gin.H{
+					"error": "Token scope is read-only",
+					"code":  "SCOPE_INSUFFICIENT",
+				})
+				c.Abort()
+				return
+			}
 			c.Next()
 			return
 		}

@@ -56,7 +56,7 @@ dedicated console.
 - **Template catalog** — 30 official templates (NocoDB, Plausible, MinIO, n8n, …) plus user-defined templates with JSON upload and owner-scoped edit/delete
 - **Metrics** — per-service Docker stats plus host CPU/memory/disk telemetry
 - **HA & scaling** — failover policies, node agents, autoscaling rules
-- **Auth & security** — Better Auth sessions (email/password self-hosted), audit logs, vulnerability scans
+- **Auth & security** — Better Auth sessions (email/password self-hosted), personal access tokens with `read`/`write`/`admin` scopes for CLI and agents, audit logs, vulnerability scans
 - **Integrated docs** — searchable documentation rendered in-app on the landing page and `/docs`; syncs from GitHub, falls back to a bundled snapshot offline
 - **Networking** — Traefik reverse proxy, optional Cloudflare Tunnel
 

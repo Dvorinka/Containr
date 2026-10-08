@@ -26,6 +26,7 @@ type Querier interface {
 	CreateProject(ctx context.Context, arg CreateProjectParams) (Project, error)
 	CreateServiceFromTemplate(ctx context.Context, arg CreateServiceFromTemplateParams) error
 	CreateUserTemplate(ctx context.Context, arg CreateUserTemplateParams) error
+	CreateUserToken(ctx context.Context, arg CreateUserTokenParams) (UserToken, error)
 	DatabaseServiceExistsByIDAndUser(ctx context.Context, arg DatabaseServiceExistsByIDAndUserParams) (bool, error)
 	DeleteAgent(ctx context.Context, id string) error
 	DeleteDatabaseServiceByIDAndUser(ctx context.Context, arg DeleteDatabaseServiceByIDAndUserParams) error
@@ -46,6 +47,7 @@ type Querier interface {
 	GetProjectOwnerID(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	GetProjectRoleForUser(ctx context.Context, arg GetProjectRoleForUserParams) (string, error)
 	GetServiceTemplateByID(ctx context.Context, id string) (ServiceTemplate, error)
+	GetUserTokenByHash(ctx context.Context, tokenHash string) (UserToken, error)
 	InsertAgentHeartbeat(ctx context.Context, arg InsertAgentHeartbeatParams) error
 	InsertProjectEnvironment(ctx context.Context, arg InsertProjectEnvironmentParams) error
 	ListAgentAuthTokens(ctx context.Context) ([]AgentAuthToken, error)
@@ -66,9 +68,11 @@ type Querier interface {
 	ListProjectsWithStatsByUser(ctx context.Context, arg ListProjectsWithStatsByUserParams) ([]ListProjectsWithStatsByUserRow, error)
 	ListServiceTemplatesByCategoryForUser(ctx context.Context, arg ListServiceTemplatesByCategoryForUserParams) ([]ServiceTemplate, error)
 	ListServiceTemplatesForUser(ctx context.Context, ownerID uuid.NullUUID) ([]ServiceTemplate, error)
+	ListUserTokens(ctx context.Context, userID uuid.UUID) ([]UserToken, error)
 	MarkAllNotificationsReadByUser(ctx context.Context, arg MarkAllNotificationsReadByUserParams) error
 	MarkNotificationReadByIDAndUser(ctx context.Context, arg MarkNotificationReadByIDAndUserParams) error
 	RevokeAgentAuthToken(ctx context.Context, id uuid.UUID) (AgentAuthToken, error)
+	RevokeUserToken(ctx context.Context, arg RevokeUserTokenParams) (int64, error)
 	SetDatabaseBackupScheduleByIDAndUser(ctx context.Context, arg SetDatabaseBackupScheduleByIDAndUserParams) error
 	SetDatabaseBackupStatusByID(ctx context.Context, arg SetDatabaseBackupStatusByIDParams) error
 	SetDatabaseNextBackupAt(ctx context.Context, arg SetDatabaseNextBackupAtParams) error
@@ -77,6 +81,7 @@ type Querier interface {
 	SetDatabaseServiceStatusByIDAndUser(ctx context.Context, arg SetDatabaseServiceStatusByIDAndUserParams) error
 	SetProjectApproved(ctx context.Context, arg SetProjectApprovedParams) (int64, error)
 	TouchAgentAuthToken(ctx context.Context, tokenHash string) error
+	TouchUserToken(ctx context.Context, id uuid.UUID) error
 	UpdateAgent(ctx context.Context, arg UpdateAgentParams) (NodeAgent, error)
 	UpdateAgentHeartbeat(ctx context.Context, arg UpdateAgentHeartbeatParams) error
 	UpdateContainerStatus(ctx context.Context, arg UpdateContainerStatusParams) error
