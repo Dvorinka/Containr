@@ -326,6 +326,7 @@ func (de *DeploymentEngine) deployService(ctx context.Context, deployment *Deplo
 		RestartPolicy: cfg.RestartPolicy,
 		MemoryBytes:   cfg.Resources.MemoryBytes,
 		NanoCPUs:      cfg.Resources.CPUQuota,
+		Volumes:       cfg.VolumeMounts,
 	}
 	for _, pm := range cfg.PortMappings {
 		if spec.Port == 0 {
@@ -336,8 +337,6 @@ func (de *DeploymentEngine) deployService(ctx context.Context, deployment *Deplo
 		spec.RestartPolicy = "unless-stopped"
 	}
 
-	// Volume mounts aren't reconciled replicas-aware yet; still applied on the
-	// container config of every replica via spec extension later if needed.
 	state, err := de.ReconcileService(ctx, spec)
 	if err != nil {
 		return err

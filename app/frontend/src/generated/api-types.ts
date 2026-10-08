@@ -1890,6 +1890,95 @@ export interface paths {
         };
         trace?: never;
     };
+    "/admin/volumes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List docker volumes
+         * @description Returns the node's docker volume inventory with in-use flags. Admin only.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Volume list */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            volumes?: components["schemas"]["VolumeInfo"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/volumes/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a docker volume
+         * @description Removes an unused docker volume. Docker refuses in-use volumes — returned as 409.
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    name: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Volume deleted */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Volume in use or removal failed */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/templates/{id}": {
         parameters: {
             query?: never;
@@ -7714,6 +7803,8 @@ export interface components {
             healthcheck_path?: string;
             /** @description Docker restart policy (default unless-stopped) */
             restart_policy?: string;
+            /** @description Volume/bind mounts applied to every replica */
+            volumes?: components["schemas"]["ServiceVolume"][];
             /** @description Computed public URL (published port or domain) */
             public_url?: string;
             /**
@@ -7769,6 +7860,8 @@ export interface components {
             healthcheck_path?: string;
             /** @description Docker restart policy */
             restart_policy?: string;
+            /** @description Volume/bind mounts applied to every replica */
+            volumes?: components["schemas"]["ServiceVolume"][];
         };
         UpdateServiceRequest: {
             /** @description Service name */
@@ -7807,6 +7900,33 @@ export interface components {
             healthcheck_path?: string;
             /** @description Docker restart policy */
             restart_policy?: string;
+            /** @description Replaces the entire mount list when present; [] clears all mounts. Takes effect on next deploy/reconcile. */
+            volumes?: components["schemas"]["ServiceVolume"][];
+        };
+        ServiceVolume: {
+            /**
+             * @description volume = docker named volume, bind = host path
+             * @default volume
+             * @enum {string}
+             */
+            type: "volume" | "bind";
+            /** @description Volume name or host path */
+            source: string;
+            /** @description Absolute container path */
+            target: string;
+            /** @default false */
+            read_only: boolean;
+        };
+        VolumeInfo: {
+            name?: string;
+            driver?: string;
+            mountpoint?: string;
+            scope?: string;
+            in_use?: boolean;
+            /** @description Container names mounting this volume */
+            used_by?: string[];
+            /** Format: date-time */
+            created_at?: string;
         };
         Deployment: {
             /** @description Deployment ID */

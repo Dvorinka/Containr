@@ -3,8 +3,12 @@ package api
 import (
 	"containr/internal/database"
 	"containr/internal/deployment"
+	"containr/internal/deployqueue"
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -27,53 +31,107 @@ type Service struct {
 	CPU         string    `json:"cpu" db:"cpu"`
 	Memory      string    `json:"memory" db:"memory"`
 	// Runtime spec
-	Replicas        int       `json:"replicas" db:"replicas"`
-	Port            int       `json:"port" db:"port"`                         // container port to expose
-	Domain          string    `json:"domain" db:"domain"`                     // public hostname via Traefik
-	HealthCheckPath string    `json:"healthcheck_path" db:"healthcheck_path"` // probed on Port
-	RestartPolicy   string    `json:"restart_policy" db:"restart_policy"`
-	PublicURL       string    `json:"public_url,omitempty" db:"-"` // computed at read time
-	CreatedAt       time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at" db:"updated_at"`
+	Replicas        int             `json:"replicas" db:"replicas"`
+	Port            int             `json:"port" db:"port"`                         // container port to expose
+	Domain          string          `json:"domain" db:"domain"`                     // public hostname via Traefik
+	HealthCheckPath string          `json:"healthcheck_path" db:"healthcheck_path"` // probed on Port
+	RestartPolicy   string          `json:"restart_policy" db:"restart_policy"`
+	PublicURL       string          `json:"public_url,omitempty" db:"-"` // computed at read time
+	Volumes         []ServiceVolume `json:"volumes" db:"-"`              // loaded lazily — stored as JSONB
+	CreatedAt       time.Time       `json:"created_at" db:"created_at"`
+	UpdatedAt       time.Time       `json:"updated_at" db:"updated_at"`
+}
+
+// ServiceVolume is a volume/bind mount applied to every replica.
+type ServiceVolume struct {
+	Type     string `json:"type"`   // volume | bind (empty = volume)
+	Source   string `json:"source"` // volume name or host path
+	Target   string `json:"target"` // container path (absolute)
+	ReadOnly bool   `json:"read_only"`
+}
+
+// loadServiceVolumes reads the JSONB column; absent/invalid data degrades
+// to no mounts rather than failing the request.
+func loadServiceVolumes(db *database.DB, serviceID uuid.UUID) []deployment.VolumeMount {
+	var raw []byte
+	if err := db.QueryRow(`SELECT volumes FROM services WHERE id = $1`, serviceID).Scan(&raw); err != nil {
+		return nil
+	}
+	var stored []ServiceVolume
+	if err := json.Unmarshal(raw, &stored); err != nil {
+		return nil
+	}
+	out := make([]deployment.VolumeMount, 0, len(stored))
+	for _, v := range stored {
+		out = append(out, deployment.VolumeMount{
+			Type:        v.Type,
+			Source:      v.Source,
+			Destination: v.Target,
+			ReadOnly:    v.ReadOnly,
+		})
+	}
+	return out
+}
+
+// validateServiceVolumes enforces the mount contract — bad paths fail
+// fast at write time instead of surfacing as docker create errors later.
+func validateServiceVolumes(vols []ServiceVolume) error {
+	for i, v := range vols {
+		if v.Type == "" {
+			v.Type = "volume"
+		}
+		if v.Type != "volume" && v.Type != "bind" {
+			return fmt.Errorf("volumes[%d].type must be volume or bind", i)
+		}
+		if strings.TrimSpace(v.Source) == "" {
+			return fmt.Errorf("volumes[%d].source is required", i)
+		}
+		if !strings.HasPrefix(v.Target, "/") {
+			return fmt.Errorf("volumes[%d].target must be an absolute container path", i)
+		}
+	}
+	return nil
 }
 
 // CreateServiceRequest represents a request to create a service
 type CreateServiceRequest struct {
-	ProjectID       uuid.UUID `json:"project_id"`
-	Name            string    `json:"name" binding:"required,min=1,max=255"`
-	Type            string    `json:"type" binding:"required,oneof=web worker database cron"`
-	Image           string    `json:"image"`
-	Command         string    `json:"command"`
-	Environment     string    `json:"environment" binding:"required,oneof=production preview development"`
-	GitRepo         string    `json:"git_repo"`
-	GitBranch       string    `json:"git_branch"`
-	BuildPath       string    `json:"build_path"`
-	CPU             string    `json:"cpu"`
-	Memory          string    `json:"memory"`
-	Replicas        int       `json:"replicas"`
-	Port            int       `json:"port"`
-	Domain          string    `json:"domain"`
-	HealthCheckPath string    `json:"healthcheck_path"`
-	RestartPolicy   string    `json:"restart_policy"`
+	ProjectID       uuid.UUID       `json:"project_id"`
+	Name            string          `json:"name" binding:"required,min=1,max=255"`
+	Type            string          `json:"type" binding:"required,oneof=web worker database cron"`
+	Image           string          `json:"image"`
+	Command         string          `json:"command"`
+	Environment     string          `json:"environment" binding:"required,oneof=production preview development"`
+	GitRepo         string          `json:"git_repo"`
+	GitBranch       string          `json:"git_branch"`
+	BuildPath       string          `json:"build_path"`
+	CPU             string          `json:"cpu"`
+	Memory          string          `json:"memory"`
+	Replicas        int             `json:"replicas"`
+	Port            int             `json:"port"`
+	Domain          string          `json:"domain"`
+	HealthCheckPath string          `json:"healthcheck_path"`
+	RestartPolicy   string          `json:"restart_policy"`
+	Volumes         []ServiceVolume `json:"volumes"`
 }
 
 // UpdateServiceRequest represents a request to update a service
 type UpdateServiceRequest struct {
-	Name            string  `json:"name" binding:"omitempty,min=1,max=255"`
-	Type            string  `json:"type" binding:"omitempty,oneof=web worker database cron"`
-	Image           string  `json:"image"`
-	Command         string  `json:"command"`
-	Environment     string  `json:"environment" binding:"omitempty,oneof=production preview development"`
-	GitRepo         string  `json:"git_repo"`
-	GitBranch       string  `json:"git_branch"`
-	BuildPath       string  `json:"build_path"`
-	CPU             string  `json:"cpu"`
-	Memory          string  `json:"memory"`
-	Replicas        *int    `json:"replicas"`
-	Port            *int    `json:"port"`
-	Domain          *string `json:"domain"`
-	HealthCheckPath *string `json:"healthcheck_path"`
-	RestartPolicy   string  `json:"restart_policy"`
+	Name            string           `json:"name" binding:"omitempty,min=1,max=255"`
+	Type            string           `json:"type" binding:"omitempty,oneof=web worker database cron"`
+	Image           string           `json:"image"`
+	Command         string           `json:"command"`
+	Environment     string           `json:"environment" binding:"omitempty,oneof=production preview development"`
+	GitRepo         string           `json:"git_repo"`
+	GitBranch       string           `json:"git_branch"`
+	BuildPath       string           `json:"build_path"`
+	CPU             string           `json:"cpu"`
+	Memory          string           `json:"memory"`
+	Replicas        *int             `json:"replicas"`
+	Port            *int             `json:"port"`
+	Domain          *string          `json:"domain"`
+	HealthCheckPath *string          `json:"healthcheck_path"`
+	RestartPolicy   string           `json:"restart_policy"`
+	Volumes         *[]ServiceVolume `json:"volumes"`
 }
 
 // handleGetServices retrieves all services for a project
@@ -262,6 +320,15 @@ func handleCreateService(c *gin.Context) {
 	if service.RestartPolicy == "" {
 		service.RestartPolicy = "unless-stopped"
 	}
+	if err := validateServiceVolumes(req.Volumes); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "code": "VALIDATION"})
+		return
+	}
+	service.Volumes = req.Volumes
+	volumesJSON, _ := json.Marshal(req.Volumes)
+	if len(req.Volumes) == 0 {
+		volumesJSON = []byte("[]")
+	}
 
 	environmentID, err := getProjectEnvironmentID(db.(*database.DB), service.ProjectID, service.Environment)
 	if err != nil {
@@ -277,14 +344,14 @@ func handleCreateService(c *gin.Context) {
 			(id, project_id, name, environment_id, service_type, source_type, source_url, image_name,
 				 build_command, start_command, type, status, image, command, environment,
 				 git_repo, git_branch, build_path, cpu, memory, replicas, port, domain,
-				 healthcheck_path, restart_policy, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)`,
+				 healthcheck_path, restart_policy, volumes, created_at, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)`,
 		service.ID, service.ProjectID, service.Name, environmentID, service.Type,
 		sourceType, firstNonEmpty(service.GitRepo, service.Image), service.Image,
 		"", service.Command, service.Type, service.Status, service.Image, service.Command,
 		service.Environment, service.GitRepo, service.GitBranch, service.BuildPath, service.CPU, service.Memory,
 		service.Replicas, service.Port, service.Domain, service.HealthCheckPath, service.RestartPolicy,
-		service.CreatedAt, service.UpdatedAt,
+		volumesJSON, service.CreatedAt, service.UpdatedAt,
 	)
 
 	if err != nil {
@@ -369,6 +436,11 @@ func handleGetService(c *gin.Context) {
 	}
 
 	liveServiceStatus(c, db.(*database.DB), &service)
+	for _, v := range loadServiceVolumes(db.(*database.DB), service.ID) {
+		service.Volumes = append(service.Volumes, ServiceVolume{
+			Type: v.Type, Source: v.Source, Target: v.Destination, ReadOnly: v.ReadOnly,
+		})
+	}
 	c.JSON(http.StatusOK, gin.H{"service": service})
 }
 
@@ -483,6 +555,15 @@ func handleUpdateService(c *gin.Context) {
 	if req.RestartPolicy != "" {
 		existingService.RestartPolicy = req.RestartPolicy
 	}
+	var volumesJSON []byte
+	if req.Volumes != nil {
+		if err := validateServiceVolumes(*req.Volumes); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "code": "VALIDATION"})
+			return
+		}
+		existingService.Volumes = *req.Volumes
+		volumesJSON, _ = json.Marshal(*req.Volumes)
+	}
 
 	existingService.UpdatedAt = time.Now()
 
@@ -492,14 +573,14 @@ func handleUpdateService(c *gin.Context) {
 			SET name = $1, type = $2, image = $3, command = $4, environment = $5,
 				git_repo = $6, git_branch = $7, build_path = $8, cpu = $9, memory = $10,
 				replicas = $11, port = $12, domain = $13, healthcheck_path = $14,
-				restart_policy = $15, updated_at = $16
-			WHERE id = $17`,
+				restart_policy = $15, volumes = COALESCE($17, volumes), updated_at = $16
+			WHERE id = $18`,
 		existingService.Name, existingService.Type, existingService.Image, existingService.Command,
 		existingService.Environment, existingService.GitRepo, existingService.GitBranch,
 		existingService.BuildPath, existingService.CPU, existingService.Memory,
 		existingService.Replicas, existingService.Port, existingService.Domain,
 		existingService.HealthCheckPath, existingService.RestartPolicy,
-		existingService.UpdatedAt, existingService.ID,
+		existingService.UpdatedAt, volumesJSON, existingService.ID,
 	)
 
 	if err != nil {
@@ -509,21 +590,21 @@ func handleUpdateService(c *gin.Context) {
 
 	// A replica change applies immediately when the service has live
 	// containers; other spec fields take effect on the next deploy.
+	// Runs through the deploy queue so it can't overlap a build.
 	if req.Replicas != nil && existingService.Status == "running" {
 		if engineValue, exists := c.Get("deployment_engine"); exists && engineValue != nil {
 			engine := engineValue.(*deployment.DeploymentEngine)
 			serviceCopy := existingService
-			go func() {
-				spec, err := serviceRuntimeSpec(db.(*database.DB), serviceCopy)
+			dbCopy := db.(*database.DB)
+			getDeployQueue(c).Enqueue(serviceCopy.ID, deployqueue.Job{Run: func(jctx context.Context) {
+				spec, err := serviceRuntimeSpec(dbCopy, serviceCopy)
 				if err != nil {
 					return
 				}
-				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-				defer cancel()
-				if state, err := engine.ReconcileService(ctx, spec); err == nil && state != nil {
-					persistPublishedPort(db.(*database.DB), serviceCopy.ID, state.Ports)
+				if state, err := engine.ReconcileService(jctx, spec); err == nil && state != nil {
+					persistPublishedPort(dbCopy, serviceCopy.ID, state.Ports)
 				}
-			}()
+			}})
 		}
 	}
 

@@ -37,7 +37,8 @@ Resolution order for every command: `--token`/`--api-url` flags >
 auth login|logout|status         token auth and profiles
 tokens list|create|revoke        personal access tokens
 projects list|get|create|delete
-services list|get|create|delete|start|stop|restart|redeploy
+services list|get|create|update|delete|start|stop|restart|redeploy
+volumes list|delete              docker volume inventory + cleanup (admin)
 deploy <service-id>              trigger a deployment (--no-cache, --commit-hash, --branch)
 deployments list|get|logs|rollback|cancel
 logs <service-id> [--follow]     runtime logs (SSE follow)
@@ -69,6 +70,22 @@ containr up --project <id> --image ghcr.io/example/app:latest   # image, no buil
 
 Set `project_id` on the active profile to omit `--project` (stored in
 `~/.containr.yaml` under `profiles.<name>.project_id`).
+
+## Service volumes
+
+`services update` manages mounts; flags replace the whole mount list:
+
+```bash
+containr services update <id> --volume data:/data --bind /srv/cfg:/etc/app:ro
+containr services update <id> --clear-volumes
+```
+
+`type` is `volume` (docker named volume, auto-created) or `bind` (host
+path). `target` must be absolute. Mounts apply on the next deploy or
+redeploy — `containr deploy <id>` to apply immediately.
+
+`volumes list` shows the node's docker volume inventory with in-use
+flags; `volumes delete <name>` removes an unused volume (admin scope).
 
 ## MCP server
 

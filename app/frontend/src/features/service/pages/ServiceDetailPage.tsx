@@ -35,6 +35,7 @@ import {
   stopService,
   getServiceRuntime,
   type CronJobEntity,
+  type ServiceVolume,
 } from '@/lib/api-client';
 import { getDemoProjectById, getDemoServiceById, getDemoCronJobsByService } from '@/lib/demo-data';
 import { useDemoMode } from '@/lib/demo-mode';
@@ -436,6 +437,7 @@ export function ServiceDetailPage() {
   const [networkForm, setNetworkForm] = useState<{
     port: string; domain: string; healthcheckPath: string; restartPolicy: string; replicas: string;
   } | null>(null);
+  const [volumesForm, setVolumesForm] = useState<ServiceVolume[] | null>(null);
 
   const project = isDemoMode ? getDemoProjectById(projectId) : projectQuery.data;
   const service = isDemoMode ? getDemoServiceById(serviceId) : serviceQuery.data;
@@ -2057,6 +2059,132 @@ export function ServiceDetailPage() {
                         Cancel
                       </button>
                       <p className="text-[10px] text-[var(--text-tertiary)]">Takes effect on next deploy or redeploy</p>
+                    </div>
+                    {updateServiceMutation.isError && (
+                      <p className="text-xs text-[var(--error)]">{(updateServiceMutation.error as Error).message}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!isDemoMode && (
+              <div className="mt-6 pt-6 border-t border-[var(--border-subtle)]">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-medium text-[var(--text-primary)]">Volumes</h3>
+                  {volumesForm === null && (
+                    <button
+                      type="button"
+                      onClick={() => setVolumesForm([...(service.volumes ?? [])])}
+                      className="px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium hover:border-[var(--border-default)] transition-colors"
+                    >
+                      Edit
+                    </button>
+                  )}
+                </div>
+
+                {volumesForm === null ? (
+                  (service.volumes ?? []).length === 0 ? (
+                    <p className="text-xs text-[var(--text-tertiary)]">No volume mounts configured.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {(service.volumes ?? []).map((v, i) => (
+                        <div key={i} className="flex items-center gap-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] px-3 py-2 text-xs">
+                          <span className="px-1.5 py-0.5 rounded bg-[var(--surface-muted)] text-[var(--text-tertiary)] uppercase tracking-wide">{v.type || 'volume'}</span>
+                          <span className="mono text-[var(--text-primary)]">{v.source}</span>
+                          <span className="text-[var(--text-tertiary)]">→</span>
+                          <span className="mono text-[var(--text-primary)]">{v.target}</span>
+                          {v.read_only && <span className="text-[var(--text-tertiary)]">(read-only)</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )
+                ) : (
+                  <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] p-4 space-y-3">
+                    {volumesForm.map((v, i) => (
+                      <div key={i} className="grid grid-cols-[80px_1fr_1fr_auto_auto] items-center gap-2">
+                        <select
+                          value={v.type || 'volume'}
+                          onChange={(e) => {
+                            const next = [...volumesForm];
+                            next[i] = { ...v, type: e.target.value as 'volume' | 'bind' };
+                            setVolumesForm(next);
+                          }}
+                          className="px-2 py-1.5 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)]"
+                        >
+                          <option value="volume">volume</option>
+                          <option value="bind">bind</option>
+                        </select>
+                        <input
+                          value={v.source}
+                          onChange={(e) => {
+                            const next = [...volumesForm];
+                            next[i] = { ...v, source: e.target.value };
+                            setVolumesForm(next);
+                          }}
+                          placeholder={v.type === 'bind' ? '/host/path' : 'volume-name'}
+                          className="px-3 py-1.5 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-xs mono text-[var(--text-primary)]"
+                        />
+                        <input
+                          value={v.target}
+                          onChange={(e) => {
+                            const next = [...volumesForm];
+                            next[i] = { ...v, target: e.target.value };
+                            setVolumesForm(next);
+                          }}
+                          placeholder="/container/path"
+                          className="px-3 py-1.5 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-xs mono text-[var(--text-primary)]"
+                        />
+                        <label className="flex items-center gap-1 text-[10px] text-[var(--text-tertiary)]">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(v.read_only)}
+                            onChange={(e) => {
+                              const next = [...volumesForm];
+                              next[i] = { ...v, read_only: e.target.checked };
+                              setVolumesForm(next);
+                            }}
+                          />
+                          ro
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setVolumesForm(volumesForm.filter((_, j) => j !== i))}
+                          className="px-2 py-1 text-xs text-[var(--error)]"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ))}
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setVolumesForm([...volumesForm, { type: 'volume', source: '', target: '', read_only: false }])}
+                        className="px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium hover:border-[var(--border-default)] transition-colors"
+                      >
+                        Add mount
+                      </button>
+                      <button
+                        type="button"
+                        disabled={updateServiceMutation.isPending}
+                        onClick={() =>
+                          updateServiceMutation.mutate(
+                            { volumes: volumesForm.filter((v) => v.source.trim() && v.target.startsWith('/')) },
+                            { onSuccess: () => setVolumesForm(null) },
+                          )
+                        }
+                        className="px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-on)] text-sm font-medium disabled:opacity-50"
+                      >
+                        {updateServiceMutation.isPending ? 'Saving…' : 'Save'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setVolumesForm(null)}
+                        className="px-4 py-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)]"
+                      >
+                        Cancel
+                      </button>
+                      <p className="text-[10px] text-[var(--text-tertiary)]">Replaces all mounts; applies on next deploy or redeploy</p>
                     </div>
                     {updateServiceMutation.isError && (
                       <p className="text-xs text-[var(--error)]">{(updateServiceMutation.error as Error).message}</p>

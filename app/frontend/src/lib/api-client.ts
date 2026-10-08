@@ -54,7 +54,15 @@ export type ServiceEntity = {
   domain?: string;
   healthcheckPath?: string;
   restartPolicy?: string;
+  volumes?: ServiceVolume[];
   publicUrl?: string;
+};
+
+export type ServiceVolume = {
+  type?: 'volume' | 'bind';
+  source: string;
+  target: string;
+  read_only?: boolean;
 };
 
 export type RuntimeContainer = {
@@ -552,6 +560,7 @@ function normalizeService(service: RawService): ServiceEntity | null {
     domain: service.domain,
     healthcheckPath: service.healthcheck_path,
     restartPolicy: service.restart_policy,
+    volumes: service.volumes as ServiceVolume[] | undefined,
     publicUrl: service.public_url,
   };
 }
