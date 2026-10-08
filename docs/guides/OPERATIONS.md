@@ -117,3 +117,20 @@ DELETE /api/v1/user/tokens/:id        revoke (owner-scoped)
 Use as `Authorization: Bearer cnp_…`, or `containr auth login cnp_…`.
 Revocation takes effect on the next request; `last_used_at` updates on each
 authenticated call.
+
+## Deployment queue
+
+Deployments are serialized per service: a deploy while another is active
+lands in `queued` state and promotes when it finishes — deploys, rollbacks,
+redeploys, and variable-apply reconciles can never race on the same service.
+`POST /deployments/:id/cancel` drops queued work or aborts running builds.
+Rows left in-flight by a server restart are marked `failed` on boot.
+Webhook-triggered deploys build with `no_cache` by default.
+
+## Secret variables
+
+Variables with `is_secret` are AES-GCM-encrypted at rest (`enc:v1:` prefix).
+Key derivation: `SECRETS_KEY` env var if set, else `JWT_SECRET`. Existing
+plaintext secrets are encrypted on boot; reads for deploy/exec decrypt
+transparently. Rotating the key makes stored secrets unreadable — re-save
+them after rotation.

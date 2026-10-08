@@ -44,6 +44,7 @@ type BuildOptions struct {
 	BuildArgs  map[string]*string
 	Labels     map[string]string
 	Remove     bool
+	NoCache    bool
 }
 
 // NetworkConfig represents the configuration for creating a network

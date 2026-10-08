@@ -38,11 +38,11 @@ auth login|logout|status         token auth and profiles
 tokens list|create|revoke        personal access tokens
 projects list|get|create|delete
 services list|get|create|delete|start|stop|restart|redeploy
-deploy <service-id>              trigger a deployment
-deployments list|get|logs|rollback
+deploy <service-id>              trigger a deployment (--no-cache, --commit-hash, --branch)
+deployments list|get|logs|rollback|cancel
 logs <service-id> [--follow]     runtime logs (SSE follow)
 exec <service-id> -- <cmd>       one-off container command
-variables list|set|unset         env vars (secrets masked)
+variables list|set|unset         env vars (secrets masked; --redeploy applies them)
 databases list|get|create|delete|action|backup|restore|download-backup
 cron list|get|create|delete|trigger|executions
 templates list|get|create|delete|deploy
@@ -95,3 +95,8 @@ Client configuration (Claude Code, Cursor, Devin, any stdio MCP host):
 
 Scope the token deliberately: `read` is enough for inspection agents,
 `write` for deploy automation, `admin` only for platform operations.
+
+Deployments are serialized per service: a second `deploy` on a busy
+service lands in `queued` state and runs when the active one finishes.
+`deployments cancel <id>` drops a queued deployment or aborts a running
+one (builds/reconciles stop via context cancellation).

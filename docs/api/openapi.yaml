@@ -811,6 +811,45 @@ paths:
                   deployment:
                     $ref: '#/components/schemas/Deployment'
 
+  /deployments/{id}/cancel:
+    post:
+      tags:
+        - Deployments
+      summary: Cancel a deployment
+      description: Cancel a queued or in-flight deployment. Queued deployments are marked cancelled immediately; running ones get their build/reconcile aborted and settle as 'cancelled' shortly after.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Deployment ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Queued deployment cancelled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: cancelled }
+        '202':
+          description: Running deployment is cancelling
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: cancelling }
+        '409':
+          description: Deployment already finished
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /deployments/{id}/rollback:
     post:
       tags:
@@ -5108,6 +5147,9 @@ components:
           additionalProperties:
             type: string
           description: Runtime environment variable overrides
+        no_cache:
+          type: boolean
+          description: Build without Docker layer cache
 
     RollbackDeploymentResponse:
       type: object
@@ -5989,6 +6031,9 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/VariableInput'
+        redeploy:
+          type: boolean
+          description: Queue a service redeploy after saving so running containers pick up the new variables
 
     ConnectGitHubAppRequest:
       type: object

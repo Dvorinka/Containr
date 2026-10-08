@@ -222,6 +222,7 @@ func (d *DockerfileBuilder) Build(ctx context.Context, req *types.BuildRequest) 
 		Dockerfile: "Dockerfile",
 		Tags:       []string{imageName},
 		BuildArgs:  buildArgs,
+		NoCache:    req.NoCache,
 		Remove:     true,
 	}
 

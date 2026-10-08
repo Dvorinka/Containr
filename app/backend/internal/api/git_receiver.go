@@ -14,6 +14,7 @@ import (
 
 	"containr/internal/database"
 	"containr/internal/deployment"
+	"containr/internal/deployqueue"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -178,11 +179,24 @@ func handleGitWebhookPush(c *gin.Context) {
 			`UPDATE services SET status = 'building', updated_at = $1 WHERE id = $2`,
 			time.Now(), service.ID,
 		)
-		go runDeploymentAndSync(
-			context.Background(), db, engine, &d, service,
-			CreateDeploymentRequest{CommitHash: commit, Branch: branch, Trigger: "webhook"},
-			repoUserID,
-		)
+		// Webhook pushes default to a clean build — stale layers are the
+		// classic silent-rollback failure (dflow convention).
+		webhookReq := CreateDeploymentRequest{CommitHash: commit, Branch: branch, Trigger: "webhook", NoCache: true}
+		if pos := getDeployQueue(c).Enqueue(service.ID, deployqueue.Job{
+			DeploymentID: d.ID,
+			Run: func(jctx context.Context) {
+				runDeploymentAndSync(jctx, db, engine, &d, service, webhookReq, repoUserID)
+			},
+		}); pos > 0 {
+			_, _ = db.Exec(
+				`UPDATE deployments SET status = 'queued', updated_at = $1 WHERE id = $2`,
+				time.Now(), d.ID,
+			)
+			_, _ = db.Exec(
+				`UPDATE services SET status = 'queued', updated_at = $1 WHERE id = $2`,
+				time.Now(), service.ID,
+			)
+		}
 		enqueued++
 	}
 

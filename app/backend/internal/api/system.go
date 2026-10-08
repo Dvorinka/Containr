@@ -42,8 +42,8 @@ type hostMonitoringResponse struct {
 	Docker          map[string]any `json:"docker,omitempty"`
 	// Scope names what the telemetry actually measures: the physical host for
 	// native dockerd, or the Docker Desktop VM when the daemon runs in one.
-	Scope           string         `json:"scope"`
-	CollectedAt     string         `json:"collected_at"`
+	Scope       string `json:"scope"`
+	CollectedAt string `json:"collected_at"`
 }
 
 type hostCPU struct {

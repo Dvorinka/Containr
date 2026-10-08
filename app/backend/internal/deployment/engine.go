@@ -150,6 +150,7 @@ type BuildConfig struct {
 	Environment   map[string]string `json:"environment"`
 	Branch        string            `json:"branch"`
 	Commit        string            `json:"commit"`
+	NoCache       bool              `json:"no_cache"`
 }
 
 type TriggerConfig struct {
@@ -291,6 +292,7 @@ func (de *DeploymentEngine) buildImage(ctx context.Context, deployment *Deployme
 		TriggeredBy:   "deployment_engine",
 		Branch:        buildConfig.Branch,
 		Commit:        buildConfig.Commit,
+		NoCache:       buildConfig.NoCache,
 	}
 
 	response, err := de.buildManager.Build(ctx, buildReq)
