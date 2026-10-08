@@ -8,7 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -290,6 +292,144 @@ func (h *DatabaseHandler) DeleteBackupTarget(c *gin.Context) {
 	}
 	LogAudit(userID, "backup_target", targetID, "delete", nil)
 	c.JSON(http.StatusOK, gin.H{"message": "Backup target deleted"})
+}
+
+// ImportBackup accepts a `.tar.gz` archive (multipart `file` field or raw
+// body) and stores it as a restore point — the counterpart to offsite
+// export, and the entry path for migrators.
+func (h *DatabaseHandler) ImportBackup(c *gin.Context) {
+	userID, ok := requireAuthenticatedUserID(c)
+	if !ok {
+		return
+	}
+	databaseID := c.Param("id")
+	userID = h.effectiveUserID(c, userID, databaseID)
+
+	row, err := h.queries.GetDatabaseServiceByIDAndUser(c.Request.Context(), sqlcdb.GetDatabaseServiceByIDAndUserParams{
+		ID: databaseID, UserID: userID,
+	})
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Database not found", "code": "NOT_FOUND"})
+		return
+	}
+	if row.Provider == "external" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "backup import applies to managed databases — external restores are not supported yet", "code": "VALIDATION"})
+		return
+	}
+
+	// Buffer to a temp file — tar headers need the size up front, and a
+	// streamed upload can't be rewound for the archive write.
+	src, _, err := openUploadStream(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "code": "VALIDATION"})
+		return
+	}
+	defer src.Close()
+
+	tmp, err := os.CreateTemp("", "containr-backup-import-*")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to stage upload"})
+		return
+	}
+	defer func() { tmp.Close(); os.Remove(tmp.Name()) }()
+
+	const maxImport = 2 << 30 // 2 GiB ceiling for staged archives
+	size, err := io.Copy(tmp, http.MaxBytesReader(c.Writer, src, maxImport))
+	if err != nil {
+		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "archive too large or unreadable", "code": "VALIDATION"})
+		return
+	}
+	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read staged upload"})
+		return
+	}
+	magic := make([]byte, 2)
+	if _, err := tmp.Read(magic); err != nil || magic[0] != 0x1f || magic[1] != 0x8b {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "archive must be gzip-compressed (.tar.gz)", "code": "VALIDATION"})
+		return
+	}
+	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read staged upload"})
+		return
+	}
+
+	backupID := generateDatabaseBackupID(databaseID)
+	archivePath := sanitizeBackupArchivePath(managedDatabaseBackupArchivePath(backupID))
+
+	if _, err := h.dockerClient.CreateVolume(c.Request.Context(), docker.VolumeConfig{Name: managedDatabaseBackupVolume}); err != nil && !strings.Contains(strings.ToLower(err.Error()), "already exists") {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to prepare backup volume"})
+		return
+	}
+	holderID, err := h.createBackupVolumeHolder(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to open backup volume: %v", err)})
+		return
+	}
+	defer func() { _ = h.dockerClient.RemoveContainer(context.Background(), holderID, true) }()
+
+	pr, pw := io.Pipe()
+	tw := tar.NewWriter(pw)
+	go func() {
+		err := tw.WriteHeader(&tar.Header{Name: archivePath, Mode: 0o644, Size: size})
+		if err == nil {
+			_, err = io.Copy(tw, tmp)
+		}
+		if cerr := tw.Close(); err == nil {
+			err = cerr
+		}
+		_ = pw.CloseWithError(err)
+	}()
+	if err := h.dockerClient.CopyToContainer(c.Request.Context(), holderID, "/backup", pr); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to store archive: %v", err)})
+		return
+	}
+
+	now := sql.NullTime{Time: time.Now(), Valid: true}
+	if err := h.queries.CreateDatabaseBackup(c.Request.Context(), sqlcdb.CreateDatabaseBackupParams{
+		ID:         backupID,
+		DatabaseID: databaseID,
+		Size:       humanReadableBytes(size),
+		Status:     "completed",
+		BackupPath: sql.NullString{String: archivePath, Valid: true},
+		CreatedAt:  now,
+	}); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to register backup"})
+		return
+	}
+	_ = h.queries.SetDatabaseBackupStatusByID(c.Request.Context(), sqlcdb.SetDatabaseBackupStatusByIDParams{
+		Status:      "completed",
+		Size:        humanReadableBytes(size),
+		CompletedAt: now,
+		ID:          backupID,
+	})
+
+	// Imported archives ship offsite too when a target is configured —
+	// the import should be a first-class restore point.
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+		defer cancel()
+		if key, err := h.uploadBackupToTarget(ctx, row, archivePath, backupID); err != nil {
+			log.Printf("containr: imported backup %s remote upload failed: %v (local archive kept)", backupID, err)
+		} else if key != "" {
+			log.Printf("containr: imported backup %s shipped to %s", backupID, key)
+		}
+	}()
+
+	LogAudit(userID, "database", databaseID, "backup_import", map[string]interface{}{"backup_id": backupID, "size": size})
+	c.JSON(http.StatusCreated, gin.H{"backup_id": backupID, "size": humanReadableBytes(size), "status": "completed"})
+}
+
+// openUploadStream resolves the request body: multipart `file` field when
+// present, otherwise the raw body (e.g. CLI pipe of a .tar.gz).
+func openUploadStream(c *gin.Context) (io.ReadCloser, string, error) {
+	if fh, err := c.FormFile("file"); err == nil {
+		src, err := fh.Open()
+		return src, fh.Filename, err
+	}
+	if c.Request.Body == nil || c.Request.ContentLength == 0 {
+		return nil, "", errors.New("no archive uploaded — send multipart field 'file' or a raw .tar.gz body")
+	}
+	return c.Request.Body, "archive.tar.gz", nil
 }
 
 func (h *DatabaseHandler) TestBackupTarget(c *gin.Context) {

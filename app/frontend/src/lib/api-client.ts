@@ -1727,6 +1727,21 @@ export async function restoreDatabaseBackup(id: string, backupId: string): Promi
   });
 }
 
+export async function importDatabaseBackup(id: string, file: File): Promise<{ backup_id: string; size: string }> {
+  const form = new FormData();
+  form.append('file', file);
+  const resp = await fetch(`${getApiBaseUrl()}/databases/${encodeURIComponent(id)}/backups/import`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: form,
+  });
+  const payload = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    throw new ApiError(payload.error || 'Import failed', resp.status);
+  }
+  return payload;
+}
+
 export async function createManagedDatabase(
   input: CreateDatabaseInput,
 ): Promise<{ id: string; status: string }> {

@@ -47,7 +47,9 @@ deployments list|get|logs|rollback|cancel
 logs <service-id> [--follow]     runtime logs (SSE follow)
 exec <service-id> -- <cmd>       one-off container command
 variables list|set|unset         env vars (secrets masked; --redeploy applies them)
-databases list|get|create|update|delete|action|backup|restore|download-backup
+databases list|get|create|update|delete|action|backup|restore|download-backup|import-backup
+                               import-backup <id> <file.tar.gz|-> uploads an archive as a restore
+                               point; ships offsite too when a backup target is assigned
                                create --public exposes the port on all interfaces;
                                update <id> --public/--public=false toggles it (container recreates, data persists)
 databases register <name>      register an external database (--type --host --port --database --username --password --ssl; probed before storing)

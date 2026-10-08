@@ -156,6 +156,48 @@ func (c *Client) Do(method, path string, body interface{}) ([]byte, error) {
 	return data, nil
 }
 
+// DoRaw sends a non-JSON request body (file uploads) and returns the response.
+func (c *Client) DoRaw(method, path string, body io.Reader, contentType string) ([]byte, error) {
+	req, err := http.NewRequest(method, c.BaseURL+path, body)
+	if err != nil {
+		return nil, err
+	}
+	if c.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.Token)
+	}
+	req.Header.Set("Content-Type", contentType)
+	req.Header.Set("Accept", "application/json")
+
+	hc := c.HTTPClient
+	if hc == nil {
+		hc = &http.Client{Timeout: 5 * time.Minute}
+	}
+	resp, err := hc.Do(req)
+	if err != nil {
+		return nil, &APIError{Status: 0, Message: fmt.Sprintf("cannot reach %s: %v", c.BaseURL, err), ExitCode: ExitUnavailable}
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+	if resp.StatusCode >= 400 {
+		msg := strings.TrimSpace(string(data))
+		var envelope struct {
+			Error string `json:"error"`
+			Code  string `json:"code"`
+		}
+		if json.Unmarshal(data, &envelope) == nil && envelope.Error != "" {
+			msg = envelope.Error
+			if envelope.Code != "" {
+				msg = envelope.Code + ": " + msg
+			}
+		}
+		return nil, &APIError{Status: resp.StatusCode, Message: msg, ExitCode: exitCodeFor(resp.StatusCode)}
+	}
+	return data, nil
+}
+
 // DoJSON performs a request and unmarshals the response into out.
 func (c *Client) DoJSON(method, path string, body interface{}, out interface{}) error {
 	data, err := c.Do(method, path, body)

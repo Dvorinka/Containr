@@ -347,13 +347,25 @@ and wired refs, one click or one CLI call.
 
 ## 9b. Phase I — Companion surfaces
 
-- [ ] **Phone app** — read-heavy mobile client over the existing API
-  (PAT auth already works). Scope v1: project/service list, status,
-  deploy trigger + log tail, restart/stop, notifications push via
-  existing notification rows (APNs/FCM relay optional, self-hosted
-  webhook → ntfy/Gotify as zero-infra alternative). React Native or
-  native-lean PWA; the API surface is already agent-shaped so the app
-  is a thin client. Design: dark UI, deploy status as first-class view.
+- [ ] **Phone app** — fully-featured companion, not a read-only viewer.
+  The target: a user on the go can see a problem, understand it, and
+  fix it without a laptop. PAT + profile auth (multi-instance like the
+  CLI).
+  - **Dashboard** — project/service status at a glance, deploy
+    activity, node health, resource usage (cpu/mem from existing
+    metrics endpoints).
+  - **Operate** — deploy, redeploy, restart/stop/start, rollback to a
+    prior deployment, cancel a running deploy, scale replicas.
+  - **Observe** — live log tail (SSE), deployment step logs, backup
+    status, cron execution history.
+  - **Fix** — env var edit + apply-redeploy, domain add/remove,
+    maintenance-mode toggle, database backup/restore trigger.
+  - **Notifications** — push via existing notification rows; zero-infra
+    path = self-hosted ntfy/Gotify relay (no Firebase dependency),
+    FCM/APNs optional.
+  - **Stack** — React Native (Expo) thin client over the agent-shaped
+    API; dark UI mirroring the web design system; deploy status as the
+    first-class view. Ships with `app/` workspace in this repo.
 - [ ] **Status/offline resilience** — app + CLI degrade gracefully when
   the instance is unreachable (cached last-known state, clear banner).
 

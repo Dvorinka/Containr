@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -199,7 +200,36 @@ var dbRestoreCmd = &cobra.Command{
 		if !Confirm(fmt.Sprintf("Restore database %s from backup %s? Current data will be overwritten.", args[0], args[1])) {
 			return &APIError{Message: "aborted (pass --yes to skip confirmation)", ExitCode: ExitError}
 		}
-		data, err := c.Do("POST", "/databases/"+args[0]+"/restore", map[string]string{"backup_id": args[1]})
+		data, err := c.Do("POST", "/databases/"+args[0]+"/restore", map[string]string{"backup_id": args[1], "database_id": args[0]})
+		if err != nil {
+			return err
+		}
+		PrintRaw(data)
+		return nil
+	},
+}
+
+var dbImportBackupCmd = &cobra.Command{
+	Use:   "import-backup <id> <file.tar.gz|->",
+	Short: "Import a .tar.gz archive as a restore point (use '-' for stdin)",
+	Args:  cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := client()
+		if err != nil {
+			return err
+		}
+		var src io.ReadCloser
+		if args[1] == "-" {
+			src = io.NopCloser(os.Stdin)
+		} else {
+			f, err := os.Open(args[1])
+			if err != nil {
+				return err
+			}
+			src = f
+		}
+		defer src.Close()
+		data, err := c.DoRaw("POST", "/databases/"+args[0]+"/backups/import", src, "application/gzip")
 		if err != nil {
 			return err
 		}
@@ -332,5 +362,5 @@ func init() {
 		cmd.Flags().String("password", "", "database password (stored encrypted on register)")
 		cmd.Flags().Bool("ssl", false, "require TLS")
 	}
-	DatabasesCmd.AddCommand(dbListCmd, dbGetCmd, dbCreateCmd, dbUpdateCmd, dbRegisterCmd, dbTestConnCmd, dbDeleteCmd, dbActionCmd, dbBackupCmd, dbRestoreCmd, dbDownloadCmd)
+	DatabasesCmd.AddCommand(dbListCmd, dbGetCmd, dbCreateCmd, dbUpdateCmd, dbRegisterCmd, dbTestConnCmd, dbDeleteCmd, dbActionCmd, dbBackupCmd, dbRestoreCmd, dbImportBackupCmd, dbDownloadCmd)
 }

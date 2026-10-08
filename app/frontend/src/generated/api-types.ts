@@ -3612,6 +3612,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/databases/{id}/backups/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import a backup archive
+         * @description Upload a `.tar.gz` archive (multipart field `file` or a raw application/gzip body) to create a new restore point. The archive lands in the backup volume and, when a backup target is assigned, is also shipped offsite. Managed databases only; 2 GiB ceiling.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Database ID */
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "multipart/form-data": {
+                        /** Format: binary */
+                        file?: string;
+                    };
+                    "application/gzip": string;
+                };
+            };
+            responses: {
+                /** @description Backup imported */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            backup_id?: string;
+                            size?: string;
+                            status?: string;
+                        };
+                    };
+                };
+                /** @description Invalid archive */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Archive too large */
+                413: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/databases/{id}/backups/{bid}/download": {
         parameters: {
             query?: never;

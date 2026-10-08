@@ -31,6 +31,7 @@ import {
   restoreDatabaseBackup,
   createManagedDatabase,
   registerExternalDatabase,
+  importDatabaseBackup,
   updateDatabase,
   listBackupTargets,
   createBackupTarget,
@@ -130,6 +131,7 @@ import {
   HeartPulse,
   Cloud,
   ExternalLink,
+  Upload,
 } from 'lucide-react';
 
 function SecondaryPageHeader({ title, description }: { title: string; description: string }) {
@@ -2120,6 +2122,10 @@ export function DatabasesPage() {
       updateDatabase(id, { backup_target_id: targetId }),
     onSuccess: invalidate,
   });
+  const importBackupMutation = useMutation({
+    mutationFn: ({ id, file }: { id: string; file: File }) => importDatabaseBackup(id, file),
+    onSuccess: invalidate,
+  });
   const testByIdMutation = useMutation({
     mutationFn: (id: string) => testDatabaseConnectionByID(id),
     onSuccess: (result, id) => setExternalTestResult((prev) => ({ ...prev, [id]: result })),
@@ -2358,6 +2364,24 @@ export function DatabasesPage() {
                                 ))}
                               </select>
                             )}
+                          <label
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-md)] text-xs font-medium border border-[var(--border-subtle)] text-[var(--text-secondary)] transition-all ${importBackupMutation.isPending ? 'opacity-50' : 'cursor-pointer hover:text-[var(--text-primary)]'}`}
+                            title="Import a .tar.gz archive as a restore point"
+                          >
+                            <Upload size={11} />
+                            {importBackupMutation.isPending ? 'Importing…' : 'Import'}
+                            <input
+                              type="file"
+                              accept=".tar.gz,application/gzip"
+                              className="hidden"
+                              disabled={importBackupMutation.isPending}
+                              onChange={(e) => {
+                                const f = e.target.files?.[0];
+                                if (f) importBackupMutation.mutate({ id: db.id ?? '', file: f });
+                                e.target.value = '';
+                              }}
+                            />
+                          </label>
                           <button
                             onClick={() => backupMutation.mutate(db.id ?? '')}
                             disabled={!running || backupMutation.isPending}

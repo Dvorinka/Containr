@@ -398,6 +398,7 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			authed.POST("/databases/:id/action", databaseHandler.PerformDatabaseAction)
 			authed.POST("/databases/:id/backup", databaseHandler.CreateBackup)
 			authed.POST("/databases/:id/restore", databaseHandler.RestoreBackup)
+			authed.POST("/databases/:id/backups/import", databaseHandler.ImportBackup)
 			authed.GET("/databases/:id/backups/:bid/download", databaseHandler.DownloadBackup)
 
 			authed.POST("/projects/:id/preview-environments", handleCreatePreviewEnvironment)

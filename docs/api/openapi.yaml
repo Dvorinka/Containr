@@ -2388,6 +2388,66 @@ paths:
               schema:
                 $ref: '#/components/schemas/MessageResponse'
 
+  /databases/{id}/backups/import:
+    post:
+      tags:
+        - Databases
+      summary: Import a backup archive
+      description: >-
+        Upload a `.tar.gz` archive (multipart field `file` or a raw
+        application/gzip body) to create a new restore point. The archive
+        lands in the backup volume and, when a backup target is assigned,
+        is also shipped offsite. Managed databases only; 2 GiB ceiling.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Database ID
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+          application/gzip:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '201':
+          description: Backup imported
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  backup_id:
+                    type: string
+                  size:
+                    type: string
+                  status:
+                    type: string
+        '400':
+          description: Invalid archive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Archive too large
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /databases/{id}/backups/{bid}/download:
     get:
       tags:
