@@ -416,6 +416,7 @@ func runDeploymentAndSyncWithImage(
 			Domain:        service.Domain,
 			HealthPath:    service.HealthCheckPath,
 			RestartPolicy: service.RestartPolicy,
+			VolumeMounts:  loadServiceVolumes(db, service.ID),
 			Resources: deployment.ResourceLimits{
 				MemoryBytes: parseMemoryLimit(service.Memory),
 				CPUQuota:    parseCPULimit(service.CPU),

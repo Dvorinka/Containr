@@ -53,6 +53,7 @@ func serviceRuntimeSpec(db *database.DB, service Service) (deployment.RuntimeSpe
 	}
 	spec.NanoCPUs = parseCPULimit(service.CPU)
 	spec.MemoryBytes = parseMemoryLimit(service.Memory)
+	spec.Volumes = loadServiceVolumes(db, service.ID)
 	if spec.Port > 0 {
 		env["PORT"] = strconv.Itoa(service.Port)
 	}

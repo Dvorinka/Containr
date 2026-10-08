@@ -1310,6 +1310,51 @@ paths:
                   message:
                     type: string
 
+  /admin/volumes:
+    get:
+      tags:
+        - Admin
+      summary: List docker volumes
+      description: Returns the node's docker volume inventory with in-use flags. Admin only.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Volume list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  volumes:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/VolumeInfo'
+
+  /admin/volumes/{name}:
+    delete:
+      tags:
+        - Admin
+      summary: Delete a docker volume
+      description: Removes an unused docker volume. Docker refuses in-use volumes — returned as 409.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Volume deleted
+        '409':
+          description: Volume in use or removal failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /templates/{id}:
     get:
       tags:
@@ -4953,6 +4998,11 @@ components:
         restart_policy:
           type: string
           description: Docker restart policy (default unless-stopped)
+        volumes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceVolume'
+          description: Volume/bind mounts applied to every replica
         public_url:
           type: string
           description: Computed public URL (published port or domain)
@@ -5023,6 +5073,11 @@ components:
         restart_policy:
           type: string
           description: Docker restart policy
+        volumes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceVolume'
+          description: Volume/bind mounts applied to every replica
 
     UpdateServiceRequest:
       type: object
@@ -5074,6 +5129,54 @@ components:
         restart_policy:
           type: string
           description: Docker restart policy
+        volumes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceVolume'
+          description: Replaces the entire mount list when present; [] clears all mounts. Takes effect on next deploy/reconcile.
+
+    ServiceVolume:
+      type: object
+      required:
+        - source
+        - target
+      properties:
+        type:
+          type: string
+          enum: [volume, bind]
+          default: volume
+          description: volume = docker named volume, bind = host path
+        source:
+          type: string
+          description: Volume name or host path
+        target:
+          type: string
+          description: Absolute container path
+        read_only:
+          type: boolean
+          default: false
+
+    VolumeInfo:
+      type: object
+      properties:
+        name:
+          type: string
+        driver:
+          type: string
+        mountpoint:
+          type: string
+        scope:
+          type: string
+        in_use:
+          type: boolean
+        used_by:
+          type: array
+          items:
+            type: string
+          description: Container names mounting this volume
+        created_at:
+          type: string
+          format: date-time
 
     Deployment:
       type: object

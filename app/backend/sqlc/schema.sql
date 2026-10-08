@@ -58,7 +58,8 @@ CREATE TABLE services (
     domain VARCHAR(255) NOT NULL DEFAULT '',
     healthcheck_path VARCHAR(255) NOT NULL DEFAULT '',
     restart_policy VARCHAR(50) NOT NULL DEFAULT 'unless-stopped',
-    published_port INTEGER NOT NULL DEFAULT 0
+    published_port INTEGER NOT NULL DEFAULT 0,
+    volumes JSONB NOT NULL DEFAULT '[]'::jsonb
 );
 
 CREATE TABLE deployments (

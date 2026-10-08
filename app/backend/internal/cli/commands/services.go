@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -140,6 +141,85 @@ var servicesDeleteCmd = &cobra.Command{
 	},
 }
 
+var servicesUpdateCmd = &cobra.Command{
+	Use:   "update <id>",
+	Short: "Update a service (volumes, replicas, domain, ...)",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := client()
+		if err != nil {
+			return err
+		}
+		body := map[string]interface{}{}
+		for _, f := range []string{"name", "image", "command", "domain", "restart-policy", "healthcheck-path", "cpu", "memory"} {
+			if cmd.Flags().Changed(f) {
+				key := f
+				switch f {
+				case "restart-policy":
+					key = "restart_policy"
+				case "healthcheck-path":
+					key = "healthcheck_path"
+				}
+				v, _ := cmd.Flags().GetString(f)
+				body[key] = v
+			}
+		}
+		if cmd.Flags().Changed("replicas") {
+			v, _ := cmd.Flags().GetInt("replicas")
+			body["replicas"] = v
+		}
+		if cmd.Flags().Changed("port") {
+			v, _ := cmd.Flags().GetInt("port")
+			body["port"] = v
+		}
+		if cmd.Flags().Changed("volume") || cmd.Flags().Changed("bind") || cmd.Flags().Changed("clear-volumes") {
+			volumes := []map[string]interface{}{}
+			for _, spec := range volumeFlagValues(cmd, "volume", "bind") {
+				volumes = append(volumes, spec)
+			}
+			body["volumes"] = volumes
+		}
+		if len(body) == 0 {
+			return &APIError{Message: "nothing to update — pass a flag", ExitCode: ExitError}
+		}
+		data, err := c.Do("PUT", "/services/"+args[0], body)
+		if err != nil {
+			return err
+		}
+		if JSONMode() {
+			PrintRaw(data)
+			return nil
+		}
+		fmt.Printf("Updated service %s\n", args[0])
+		return nil
+	},
+}
+
+// volumeFlagValues parses repeated "src:target[:ro]" flags into API mount
+// objects. Bind mounts are type=bind, named volumes type=volume.
+func volumeFlagValues(cmd *cobra.Command, flags ...string) []map[string]interface{} {
+	var out []map[string]interface{}
+	for _, f := range flags {
+		vals, _ := cmd.Flags().GetStringArray(f)
+		for _, v := range vals {
+			parts := strings.SplitN(v, ":", 3)
+			if len(parts) < 2 {
+				continue
+			}
+			m := map[string]interface{}{
+				"type":   f,
+				"source": parts[0],
+				"target": parts[1],
+			}
+			if len(parts) == 3 && parts[2] == "ro" {
+				m["read_only"] = true
+			}
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
 // serviceAction returns a RunE for the simple POST action endpoints.
 func serviceAction(verb string) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
@@ -177,6 +257,21 @@ func init() {
 	f.Int("port", 0, "container port")
 	f.Int("replicas", 0, "replica count")
 
+	uf := servicesUpdateCmd.Flags()
+	uf.String("name", "", "service name")
+	uf.String("image", "", "container image")
+	uf.String("command", "", "container start command")
+	uf.String("domain", "", "public domain (empty string clears)")
+	uf.String("restart-policy", "", "docker restart policy")
+	uf.String("healthcheck-path", "", "HTTP health check path")
+	uf.String("cpu", "", "CPU limit (e.g. 0.5)")
+	uf.String("memory", "", "memory limit (e.g. 512m)")
+	uf.Int("replicas", 0, "replica count")
+	uf.Int("port", 0, "container port")
+	uf.StringArray("volume", nil, "named volume mount name:path[:ro] (repeatable, replaces all mounts)")
+	uf.StringArray("bind", nil, "bind mount src:path[:ro] (repeatable)")
+	uf.Bool("clear-volumes", false, "remove all volume mounts")
+
 	for _, a := range []string{"start", "stop", "restart", "redeploy"} {
 		verb := a
 		ServicesCmd.AddCommand(&cobra.Command{
@@ -186,5 +281,5 @@ func init() {
 			RunE:  serviceAction(verb),
 		})
 	}
-	ServicesCmd.AddCommand(servicesListCmd, servicesGetCmd, servicesCreateCmd, servicesDeleteCmd)
+	ServicesCmd.AddCommand(servicesListCmd, servicesGetCmd, servicesCreateCmd, servicesUpdateCmd, servicesDeleteCmd)
 }

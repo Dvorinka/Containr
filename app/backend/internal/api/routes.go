@@ -423,6 +423,8 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			scalingHandler.RegisterAdminRoutes(admin)
 			agentHandler.SetupAdminRoutes(admin)
 
+			admin.GET("/admin/volumes", handleAdminListVolumes)
+			admin.DELETE("/admin/volumes/:name", handleAdminDeleteVolume)
 			admin.GET("/audit-logs", handleGetAuditLogs)
 			admin.GET("/audit-logs/:resource/:id", handleGetResourceAuditLogs)
 

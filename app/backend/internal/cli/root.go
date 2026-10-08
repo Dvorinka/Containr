@@ -73,6 +73,7 @@ func init() {
 	rootCmd.AddCommand(commands.LogsCmd)
 	rootCmd.AddCommand(commands.ExecCmd)
 	rootCmd.AddCommand(commands.VariablesCmd)
+	rootCmd.AddCommand(commands.VolumesCmd)
 	rootCmd.AddCommand(commands.DatabasesCmd)
 	rootCmd.AddCommand(commands.CronCmd)
 	rootCmd.AddCommand(commands.TemplatesCmd)

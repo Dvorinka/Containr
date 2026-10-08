@@ -17,6 +17,7 @@ import (
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/go-connections/nat"
 )
@@ -47,6 +48,7 @@ type RuntimeSpec struct {
 	RestartPolicy string
 	MemoryBytes   int64
 	NanoCPUs      int64
+	Volumes       []VolumeMount // applied to every replica
 }
 
 // RuntimeContainer describes one live replica.
@@ -243,6 +245,19 @@ func (de *DeploymentEngine) createReplica(ctx context.Context, spec RuntimeSpec,
 		Memory:        spec.MemoryBytes,
 		NanoCPUs:      spec.NanoCPUs,
 		Networks:      endpoints,
+	}
+
+	for _, v := range spec.Volumes {
+		mountType := mount.TypeVolume
+		if v.Type == "bind" {
+			mountType = mount.TypeBind
+		}
+		cfg.Mounts = append(cfg.Mounts, mount.Mount{
+			Type:     mountType,
+			Source:   v.Source,
+			Target:   v.Destination,
+			ReadOnly: v.ReadOnly,
+		})
 	}
 
 	var wantPort nat.Port
@@ -474,8 +489,9 @@ func specHash(spec RuntimeSpec) string {
 		Env                                            map[string]string
 		Port                                           int32
 		MemoryBytes, NanoCPUs                          int64
+		Volumes                                        []VolumeMount
 	}{spec.Image, spec.Name, spec.Domain, spec.HealthPath, spec.RestartPolicy,
-		spec.Command, spec.Env, spec.Port, spec.MemoryBytes, spec.NanoCPUs})
+		spec.Command, spec.Env, spec.Port, spec.MemoryBytes, spec.NanoCPUs, spec.Volumes})
 	sum := sha256.Sum256(payload)
 	return hex.EncodeToString(sum[:8])
 }
