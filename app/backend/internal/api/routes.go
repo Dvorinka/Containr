@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"containr/internal/build"
@@ -16,6 +17,7 @@ import (
 	"containr/internal/metrics"
 	"containr/internal/middleware"
 	"containr/internal/scaling"
+	"containr/internal/secrets"
 
 	"github.com/gin-gonic/gin"
 )
@@ -102,6 +104,41 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 	// Per-service serialized deploy queue — one active deployment per
 	// service, the rest wait as 'queued'.
 	deployQueue := deployqueue.New()
+
+	// Encrypt-at-rest for secret env vars. SECRETS_KEY wins, JWT_SECRET is
+	// the fallback so existing installs need no new config.
+	secrets.Configure(os.Getenv("SECRETS_KEY"), cfg.JWTSecret)
+
+	// Boot sweep: in-memory engine state dies on restart, so anything that
+	// looked in-flight is actually orphaned — mark it failed rather than
+	// leaving phantom 'building'/'queued' rows.
+	_, _ = db.Exec(
+		`UPDATE deployments SET status = 'failed', error = 'Interrupted by server restart', completed_at = NOW(), updated_at = NOW()
+		 WHERE status IN ('queued', 'pending', 'building', 'deploying', 'rolling_back')`,
+	)
+
+	// Boot sweep: encrypt any plaintext secret values left over from before
+	// encryption-at-rest landed. Transparent and idempotent.
+	if encRows, err := db.Query(`SELECT id, value FROM environment_variables WHERE is_secret = TRUE`); err == nil {
+		type encRow struct {
+			id    string
+			value string
+		}
+		var toEncrypt []encRow
+		for encRows.Next() {
+			var r encRow
+			if err := encRows.Scan(&r.id, &r.value); err == nil && !secrets.IsEncrypted(r.value) {
+				toEncrypt = append(toEncrypt, r)
+			}
+		}
+		encRows.Close()
+		for _, r := range toEncrypt {
+			_, _ = db.Exec(`UPDATE environment_variables SET value = $1, updated_at = NOW() WHERE id = $2`, secrets.Encrypt(r.value), r.id)
+		}
+		if len(toEncrypt) > 0 {
+			log.Printf("secrets: encrypted %d plaintext secret variable(s)", len(toEncrypt))
+		}
+	}
 
 	// Initialize security handler
 	securityHandler := NewSecurityHandler(db, cfg.JWTSecret)

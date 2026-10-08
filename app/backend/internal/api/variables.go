@@ -2,6 +2,7 @@ package api
 
 import (
 	"containr/internal/database"
+	"containr/internal/secrets"
 	"net/http"
 	"time"
 
@@ -159,6 +160,9 @@ func handleUpdateVariables(c *gin.Context) {
 			if stored, ok := storedSecrets[v.Key]; ok {
 				value = stored
 			}
+		}
+		if v.IsSecret {
+			value = secrets.Encrypt(value)
 		}
 		varID := uuid.New()
 		_, err = tx.Exec(

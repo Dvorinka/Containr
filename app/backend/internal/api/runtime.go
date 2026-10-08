@@ -12,6 +12,7 @@ import (
 	"containr/internal/database"
 	"containr/internal/deployment"
 	"containr/internal/deployqueue"
+	"containr/internal/secrets"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -79,7 +80,7 @@ func resolveServiceEnv(db *database.DB, service Service) (map[string]string, err
 		if err := rows.Scan(&k, &v); err != nil {
 			return nil, err
 		}
-		env[k] = v
+		env[k] = secrets.Decrypt(v)
 	}
 
 	var refServices []struct{ ID, Name string }
@@ -127,7 +128,7 @@ func resolveServiceEnv(db *database.DB, service Service) (map[string]string, err
 		if err != nil {
 			return "", false
 		}
-		return value, true
+		return secrets.Decrypt(value), true
 	}
 
 	for k, v := range env {
