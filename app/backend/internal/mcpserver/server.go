@@ -60,6 +60,7 @@ func init() {
 	register(spec{"containr_services_restart", "Restart a service", "POST", "/services/{id}/restart", []string{"id"}, nil, false})
 	register(spec{"containr_services_sleep", "Put a service to sleep immediately (scale to zero)", "POST", "/services/{id}/sleep", []string{"id"}, nil, false})
 	register(spec{"containr_services_wake", "Wake a sleeping service", "POST", "/services/{id}/wake", []string{"id"}, nil, false})
+	register(spec{"containr_services_env_check", "Diagnose service env: returns ok plus unresolved ${{refs}}, empty vars, and undecryptable secrets", "GET", "/services/{id}/env-check", []string{"id"}, nil, false})
 	register(spec{"containr_services_redeploy", "Rebuild and redeploy a service", "POST", "/services/{id}/redeploy", []string{"id"}, nil, false})
 	register(spec{"containr_services_clone", "Clone a service (config, volumes, domains, variables) into the same or another project. Args: id, name, project_id, environment.", "POST", "/services/{id}/clone", []string{"id"}, nil, false})
 	register(spec{"containr_services_move", "Move a service to another project the caller owns. Args: id, project_id (required).", "POST", "/services/{id}/move", []string{"id"}, []string{"project_id"}, false})

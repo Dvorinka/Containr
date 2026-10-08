@@ -530,5 +530,38 @@ func init() {
 
 	domainsAddCmd.Flags().Bool("default", false, "set as the default domain")
 	servicesDomainsCmd.AddCommand(domainsListCmd, domainsAddCmd, domainsRemoveCmd, domainsDefaultCmd, domainsCheckCmd)
-	ServicesCmd.AddCommand(servicesListCmd, servicesGetCmd, servicesCreateCmd, servicesUpdateCmd, servicesDeleteCmd, servicesDomainsCmd, servicesCloneCmd, servicesMoveCmd)
+	ServicesCmd.AddCommand(servicesListCmd, servicesGetCmd, servicesCreateCmd, servicesUpdateCmd, servicesDeleteCmd, servicesDomainsCmd, servicesCloneCmd, servicesMoveCmd, servicesEnvCheckCmd)
+}
+
+var servicesEnvCheckCmd = &cobra.Command{
+	Use:   "env-check <id>",
+	Short: "Diagnose service environment: empty vars, unresolved ${{refs}}",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := client()
+		if err != nil {
+			return err
+		}
+		data, err := c.Do("GET", "/services/"+args[0]+"/env-check", nil)
+		if err != nil {
+			return err
+		}
+		if JSONMode() {
+			PrintRaw(data)
+			return nil
+		}
+		m, _ := unwrapObject(data)
+		if b, ok := m["ok"].(bool); ok && b {
+			fmt.Println("env check: ok")
+			return nil
+		}
+		for _, group := range []string{"unresolved", "empty", "unreadable"} {
+			if list, ok := m[group].([]interface{}); ok {
+				for _, item := range list {
+					fmt.Printf("%s: %v\n", group, item)
+				}
+			}
+		}
+		return &APIError{Message: "env check failed", ExitCode: ExitError}
+	},
 }

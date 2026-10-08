@@ -685,6 +685,41 @@ paths:
         '202':
           description: Wake initiated
 
+  /services/{id}/env-check:
+    get:
+      tags:
+        - Services
+      summary: Environment diagnostics
+      description: Reports empty variables, unresolved ${{service.KEY}} references, and secrets whose stored ciphertext fails to decrypt. Values are never returned.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Diagnostic result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  unresolved:
+                    type: array
+                    items:
+                      type: string
+                  empty:
+                    type: array
+                    items:
+                      type: string
+                  unreadable:
+                    type: array
+                    items:
+                      type: string
+
   /internal/wake/{id}:
     get:
       tags:
