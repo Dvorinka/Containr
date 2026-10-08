@@ -28,6 +28,7 @@ Dev stack: Postgres on `:15432` (`containr-postgres-1`), Dragonfly on `:16379` (
 ## Conventions that matter
 
 - New endpoints go in the right route group; mutations on `authed`/`admin` get idempotency for free.
+- Deploy work goes through `deploy_queue` (`internal/deployqueue`) — per-service FIFO; enqueue jobs instead of `go`-ing deployment/reconcile goroutines so they never race a build.
 - New list endpoints use `pageWindow`/`paginationMeta` (`internal/api/pagination.go`) — cursor + page, `next_cursor` in the envelope.
 - New errors use stable codes via `respondError(c, status, code, msg)` in `internal/api/errors.go`.
 - New CLI command → also register an MCP tool in `internal/mcpserver/server.go` and document in OpenAPI. All three surfaces ship together.

@@ -11,6 +11,7 @@ import (
 
 	"containr/internal/database"
 	"containr/internal/deployment"
+	"containr/internal/deployqueue"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -381,6 +382,7 @@ func handleServiceRestart(c *gin.Context) {
 
 // handleServiceRedeploy re-applies the current spec: pulls the image for
 // image-sourced services and reconciles containers (env, ports, replicas).
+// Runs through the per-service deploy queue so it never overlaps a build.
 func handleServiceRedeploy(c *gin.Context) {
 	engine, db, ok := getRuntimeEngine(c)
 	if !ok {
@@ -406,7 +408,78 @@ func handleServiceRedeploy(c *gin.Context) {
 		}
 	}
 	service.Image = image
-	reconcileNow(c, engine, db, service)
+
+	finished := make(chan struct{})
+	var recErr error
+	var state *deployment.RuntimeState
+	getDeployQueue(c).Enqueue(service.ID, deployqueue.Job{Run: func(jctx context.Context) {
+		defer close(finished)
+		state, recErr = reconcileServiceJob(jctx, db, engine, service)
+	}})
+
+	select {
+	case <-finished:
+		if recErr != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": recErr.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"runtime": state})
+	case <-c.Request.Context().Done():
+		c.JSON(http.StatusAccepted, gin.H{"status": "queued"})
+	}
+}
+
+// reconcileServiceJob is the shared queue-job body for redeploy paths:
+// build the spec from current DB state, reconcile containers, persist the
+// resulting status and published port.
+func reconcileServiceJob(ctx context.Context, db *database.DB, engine *deployment.DeploymentEngine, service Service) (*deployment.RuntimeState, error) {
+	spec, err := serviceRuntimeSpec(db, service)
+	if err != nil {
+		return nil, err
+	}
+	state, err := engine.ReconcileService(ctx, spec)
+	if err != nil {
+		return nil, err
+	}
+	if state != nil {
+		persistPublishedPort(db, service.ID, state.Ports)
+		status := "stopped"
+		if state.Status != "" {
+			status = state.Status
+		}
+		_, _ = db.Exec(`UPDATE services SET status = $1, updated_at = $2 WHERE id = $3`, status, time.Now(), service.ID)
+	}
+	return state, nil
+}
+
+// enqueueServiceRedeploy resolves a deployable image (service.Image, else
+// the last successful deployment's tag) and queues a reconcile. Returns
+// false when no image is available or the engine is missing.
+func enqueueServiceRedeploy(c *gin.Context, db *database.DB, service Service) bool {
+	engineValue, exists := c.Get("deployment_engine")
+	if !exists || engineValue == nil {
+		return false
+	}
+	engine, ok := engineValue.(*deployment.DeploymentEngine)
+	if !ok {
+		return false
+	}
+	image := service.Image
+	if image == "" {
+		if err := db.QueryRow(
+			`SELECT image_name || ':' || image_tag FROM deployments
+			 WHERE service_id = $1 AND status = 'deployed' AND image_name <> ''
+			 ORDER BY created_at DESC LIMIT 1`,
+			service.ID,
+		).Scan(&image); err != nil {
+			return false
+		}
+	}
+	service.Image = image
+	getDeployQueue(c).Enqueue(service.ID, deployqueue.Job{Run: func(jctx context.Context) {
+		_, _ = reconcileServiceJob(jctx, db, engine, service)
+	}})
+	return true
 }
 
 // persistPublishedPort records the host port Docker actually bound so later

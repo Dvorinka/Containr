@@ -297,6 +297,7 @@ func (c *Client) BuildImage(ctx context.Context, buildContext io.Reader, options
 		BuildArgs:  options.BuildArgs,
 		Labels:     options.Labels,
 		Remove:     options.Remove,
+		NoCache:    options.NoCache,
 	})
 }
 

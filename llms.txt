@@ -12,9 +12,10 @@ Base URL: `https://<host>/api/v1`. OpenAPI: `docs/api/openapi.yaml`.
 
 ## Conventions
 
-- **Errors**: `{"error": "msg", "code": "MACHINE_CODE"}`. Codes: `UNAUTHENTICATED`, `INVALID_TOKEN`, `FORBIDDEN`, `ADMIN_REQUIRED`, `SCOPE_INSUFFICIENT`, `NOT_FOUND`, `VALIDATION`, `CONFLICT`, `INTERNAL`, `DEPENDENCY_UNAVAILABLE`, `IDEMPOTENCY_IN_PROGRESS`.
+- **Errors**: `{"error": "msg", "code": "MACHINE_CODE"}`. Codes: `UNAUTHENTICATED`, `INVALID_TOKEN`, `FORBIDDEN`, `ADMIN_REQUIRED`, `SCOPE_INSUFFICIENT`, `NOT_FOUND`, `VALIDATION`, `CONFLICT`, `INTERNAL`, `DEPENDENCY_UNAVAILABLE`, `IDEMPOTENCY_IN_PROGRESS`, `NOT_CANCELLABLE`.
 - **Idempotency**: send `Idempotency-Key: <uuid>` on POSTs — the first response replays for 24h; concurrent duplicates get 409. Always safe to send.
 - **Pagination**: `?limit=` + `?cursor=` (pass `pagination.next_cursor` verbatim; legacy `?page=` also works). Invalid cursors fall back to page 1.
+- **Deployments**: serialized per service — a deploy on a busy service returns `status: queued` and runs when the active one finishes. `POST /deployments/{id}/cancel` drops queued (`200 cancelled`) or aborts running (`202 cancelling`) work. `no_cache: true` on create disables the Docker layer cache. `PUT /services/{id}/variables` accepts `redeploy: true` to apply env changes to running containers.
 - **Identifiers**: all ids are UUIDs. Tokens: `cnp_` user PATs, `cagt_` agent onboarding tokens.
 
 ## Core objects

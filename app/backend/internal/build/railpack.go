@@ -156,6 +156,7 @@ func (rb *RailpackBuilder) Build(ctx context.Context, req *types.BuildRequest) (
 		Tags:       []string{imageName},
 		BuildArgs:  buildArgs,
 		Labels:     req.Labels,
+		NoCache:    req.NoCache,
 		Remove:     true,
 	}
 

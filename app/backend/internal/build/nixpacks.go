@@ -498,7 +498,8 @@ func (n *NixpacksBuilder) Build(ctx context.Context, req *types.BuildRequest) (*
 		BuildArgs: map[string]*string{
 			"BUILDKIT_INLINE_CACHE": strPtr("1"),
 		},
-		Remove: true,
+		NoCache: req.NoCache,
+		Remove:  true,
 	}
 
 	_, err = n.dockerClient.BuildImage(ctx, buildCtx, buildOptions)

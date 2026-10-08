@@ -17,6 +17,9 @@ var DeployCmd = &cobra.Command{
 			return err
 		}
 		body := map[string]interface{}{"trigger": "cli"}
+		if nc, _ := cmd.Flags().GetBool("no-cache"); nc {
+			body["no_cache"] = true
+		}
 		for _, f := range []string{"commit-hash", "branch"} {
 			if v, _ := cmd.Flags().GetString(f); v != "" {
 				key := "commit_hash"
@@ -106,6 +109,29 @@ var deploymentsLogsCmd = &cobra.Command{
 	RunE:  runDeploymentLogs,
 }
 
+var deploymentsCancelCmd = &cobra.Command{
+	Use:   "cancel <id>",
+	Short: "Cancel a queued or running deployment",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := client()
+		if err != nil {
+			return err
+		}
+		data, err := c.Do("POST", "/deployments/"+args[0]+"/cancel", map[string]interface{}{})
+		if err != nil {
+			return err
+		}
+		if JSONMode() {
+			PrintRaw(data)
+			return nil
+		}
+		obj, _ := unwrapObject(data)
+		fmt.Printf("Deployment %s: %s\n", args[0], str(obj, "status"))
+		return nil
+	},
+}
+
 var deploymentsRollbackCmd = &cobra.Command{
 	Use:   "rollback <id>",
 	Short: "Roll back to a deployment",
@@ -131,5 +157,6 @@ var deploymentsRollbackCmd = &cobra.Command{
 func init() {
 	DeployCmd.Flags().String("commit-hash", "", "commit to deploy")
 	DeployCmd.Flags().String("branch", "", "branch to deploy")
-	DeploymentsCmd.AddCommand(deploymentsListCmd, deploymentsGetCmd, deploymentsLogsCmd, deploymentsRollbackCmd)
+	DeployCmd.Flags().Bool("no-cache", false, "build without Docker layer cache")
+	DeploymentsCmd.AddCommand(deploymentsListCmd, deploymentsGetCmd, deploymentsLogsCmd, deploymentsRollbackCmd, deploymentsCancelCmd)
 }

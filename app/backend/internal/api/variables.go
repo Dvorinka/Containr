@@ -25,6 +25,7 @@ type EnvironmentVariable struct {
 
 type UpdateVariablesRequest struct {
 	Variables []VariableInput `json:"variables" binding:"required"`
+	Redeploy  bool            `json:"redeploy"`
 }
 
 type VariableInput struct {
@@ -204,5 +205,22 @@ func handleUpdateVariables(c *gin.Context) {
 		variables = append(variables, v)
 	}
 
-	c.JSON(http.StatusOK, gin.H{"variables": variables, "message": "Environment variables updated successfully"})
+	resp := gin.H{"variables": variables, "message": "Environment variables updated successfully"}
+	if req.Redeploy {
+		// Load the service spec inputs and queue a reconcile behind any
+		// in-flight deployment — new env lands in the recreated containers.
+		var svc Service
+		svcErr := db.(*database.DB).QueryRow(
+			`SELECT id, project_id, name, COALESCE(image, ''), COALESCE(command, ''),
+			        COALESCE(replicas, 1), COALESCE(port, 0), COALESCE(domain, ''),
+			        COALESCE(healthcheck_path, ''), COALESCE(restart_policy, 'unless-stopped'),
+			        COALESCE(cpu, ''), COALESCE(memory, '')
+			 FROM services WHERE id = $1`,
+			serviceID,
+		).Scan(&svc.ID, &svc.ProjectID, &svc.Name, &svc.Image, &svc.Command,
+			&svc.Replicas, &svc.Port, &svc.Domain, &svc.HealthCheckPath,
+			&svc.RestartPolicy, &svc.CPU, &svc.Memory)
+		resp["redeploy_queued"] = svcErr == nil && enqueueServiceRedeploy(c, db.(*database.DB), svc)
+	}
+	c.JSON(http.StatusOK, resp)
 }

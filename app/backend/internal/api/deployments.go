@@ -3,7 +3,9 @@ package api
 import (
 	"containr/internal/database"
 	"containr/internal/deployment"
+	"containr/internal/deployqueue"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -34,6 +36,7 @@ type CreateDeploymentRequest struct {
 	Branch     string            `json:"branch"`
 	Trigger    string            `json:"trigger"`
 	EnvVars    map[string]string `json:"env_vars"`
+	NoCache    bool              `json:"no_cache"`
 }
 
 type DeploymentResponse struct {
@@ -309,7 +312,23 @@ func handleCreateDeployment(c *gin.Context) {
 		}
 
 		engineInstance := engine.(*deployment.DeploymentEngine)
-		go runDeploymentAndSync(context.Background(), db.(*database.DB), engineInstance, &d, service, req, userID.(string))
+		pos := getDeployQueue(c).Enqueue(serviceID, deployqueue.Job{
+			DeploymentID: d.ID,
+			Run: func(jctx context.Context) {
+				runDeploymentAndSync(jctx, db.(*database.DB), engineInstance, &d, service, req, userID.(string))
+			},
+		})
+		if pos > 0 {
+			d.Status = "queued"
+			_, _ = db.(*database.DB).Exec(
+				`UPDATE deployments SET status = 'queued', updated_at = $1 WHERE id = $2`,
+				time.Now(), d.ID,
+			)
+			_, _ = db.(*database.DB).Exec(
+				`UPDATE services SET status = 'queued', updated_at = $1 WHERE id = $2`,
+				time.Now(), serviceID,
+			)
+		}
 	}
 
 	c.JSON(http.StatusCreated, DeploymentResponse{
@@ -427,6 +446,7 @@ func runDeploymentAndSyncWithImage(
 			SourcePath: sourcePath,
 			Branch:     req.Branch,
 			Commit:     req.CommitHash,
+			NoCache:    req.NoCache,
 		}
 	}
 
@@ -454,16 +474,19 @@ func runDeploymentAndSyncWithImage(
 		select {
 		case <-ctx.Done():
 			failedAt := time.Now()
-			timeoutErr := "Deployment timed out before completion"
+			finalStatus, finalErr := "failed", "Deployment timed out before completion"
+			if errors.Is(ctx.Err(), context.Canceled) {
+				finalStatus, finalErr = "cancelled", "Deployment cancelled"
+			}
 			_, _ = db.Exec(
 				`UPDATE deployments
-				 SET status = 'failed', error = $1, completed_at = $2, updated_at = $2
-				 WHERE id = $3`,
-				timeoutErr, failedAt, dbDeployment.ID,
+				 SET status = $1, error = $2, completed_at = $3, updated_at = $3
+				 WHERE id = $4`,
+				finalStatus, finalErr, failedAt, dbDeployment.ID,
 			)
 			_, _ = db.Exec(
-				`UPDATE services SET status = 'failed', updated_at = $1 WHERE id = $2`,
-				failedAt, service.ID,
+				`UPDATE services SET status = $1, updated_at = $2 WHERE id = $3`,
+				finalStatus, failedAt, service.ID,
 			)
 			return
 		case <-syncTicker.C:
@@ -530,13 +553,86 @@ func runDeploymentAndSyncWithImage(
 }
 
 func mapEngineStatusToDBStatus(status string) string {
-	switch status {
-	case "running":
+	if status == "running" {
 		return "deployed"
-	case "cancelled":
-		return "failed"
+	}
+	return status
+}
+
+// getDeployQueue returns the per-service deploy queue. SetupRoutes always
+// sets it; the fallback keeps handler tests that skip SetupRoutes working.
+func getDeployQueue(c *gin.Context) *deployqueue.Queue {
+	if v, exists := c.Get("deploy_queue"); exists {
+		if q, ok := v.(*deployqueue.Queue); ok && q != nil {
+			return q
+		}
+	}
+	return deployqueue.New()
+}
+
+// handleCancelDeployment cancels a queued or in-flight deployment. Queued
+// jobs are dropped and marked cancelled immediately; active jobs get their
+// context cancelled so the build/reconcile aborts and the sync loop writes
+// the terminal 'cancelled' status.
+func handleCancelDeployment(c *gin.Context) {
+	db, exists := c.Get("db")
+	if !exists {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database connection not available", "code": "DEPENDENCY_UNAVAILABLE"})
+		return
+	}
+
+	deploymentID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid deployment ID", "code": "VALIDATION"})
+		return
+	}
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated", "code": "UNAUTHENTICATED"})
+		return
+	}
+
+	var status, owner string
+	var serviceID uuid.UUID
+	err = db.(*database.DB).QueryRow(
+		`SELECT d.status, d.service_id, p.owner_id
+		 FROM deployments d
+		 JOIN services s ON d.service_id = s.id
+		 JOIN projects p ON s.project_id = p.id
+		 WHERE d.id = $1`,
+		deploymentID,
+	).Scan(&status, &serviceID, &owner)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Deployment not found", "code": "NOT_FOUND"})
+		return
+	}
+	if owner != userID.(string) && !contextIsAdmin(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied", "code": "FORBIDDEN"})
+		return
+	}
+
+	switch status {
+	case "deployed", "failed", "cancelled":
+		c.JSON(http.StatusConflict, gin.H{"error": "Deployment already finished", "code": "NOT_CANCELLABLE"})
+		return
+	}
+
+	switch getDeployQueue(c).Cancel(serviceID, deploymentID) {
+	case deployqueue.WasQueued:
+		now := time.Now()
+		_, _ = db.(*database.DB).Exec(
+			`UPDATE deployments SET status = 'cancelled', error = 'Deployment cancelled', completed_at = $1, updated_at = $1 WHERE id = $2`,
+			now, deploymentID,
+		)
+		_, _ = db.(*database.DB).Exec(
+			`UPDATE services SET status = 'cancelled', updated_at = $1 WHERE id = $2`,
+			now, serviceID,
+		)
+		c.JSON(http.StatusOK, gin.H{"status": "cancelled"})
+	case deployqueue.WasActive:
+		c.JSON(http.StatusAccepted, gin.H{"status": "cancelling"})
 	default:
-		return status
+		c.JSON(http.StatusConflict, gin.H{"error": "Deployment is not running on this node", "code": "NOT_CANCELLABLE"})
 	}
 }
 
@@ -735,7 +831,12 @@ func handleRollbackDeployment(c *gin.Context) {
 			Trigger: "rollback",
 		}
 		// Reuse the stored image directly — no rebuild.
-		go runDeploymentAndSyncWithImage(context.Background(), db.(*database.DB), engine, &rollback, service, rollbackReq, userID.(string), targetImage)
+		getDeployQueue(c).Enqueue(serviceID, deployqueue.Job{
+			DeploymentID: rollback.ID,
+			Run: func(jctx context.Context) {
+				runDeploymentAndSyncWithImage(jctx, db.(*database.DB), engine, &rollback, service, rollbackReq, userID.(string), targetImage)
+			},
+		})
 	}
 
 	c.JSON(http.StatusCreated, gin.H{

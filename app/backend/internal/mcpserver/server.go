@@ -64,15 +64,16 @@ func init() {
 
 	// Variables
 	register(spec{"containr_variables_list", "List service environment variables (secrets masked)", "GET", "/services/{id}/variables", []string{"id"}, nil, false})
-	register(spec{"containr_variables_set", "Replace all variables on a service. Args: id, variables = [{key, value, is_secret}]. Fetch the current list first and merge — the server replaces wholesale.", "PUT", "/services/{id}/variables", []string{"id"}, []string{"variables"}, false})
+	register(spec{"containr_variables_set", "Replace all variables on a service. Args: id, variables = [{key, value, is_secret}], redeploy (queue a redeploy to apply). Fetch the current list first and merge — the server replaces wholesale.", "PUT", "/services/{id}/variables", []string{"id"}, []string{"variables", "redeploy"}, false})
 
 	// Deployments
-	register(spec{"containr_deploy", "Trigger a deployment for a service. Args: id (service), commit_hash, branch.", "POST", "/services/{id}/deployments", []string{"id"}, []string{"commit_hash", "branch", "trigger"}, false})
+	register(spec{"containr_deploy", "Trigger a deployment for a service. Args: id (service), commit_hash, branch, no_cache.", "POST", "/services/{id}/deployments", []string{"id"}, []string{"commit_hash", "branch", "trigger", "no_cache"}, false})
 	register(spec{"containr_deployments_list", "List recent deployments across services", "GET", "/deployments", nil, nil, false})
 	register(spec{"containr_services_deployments", "List deployments for one service", "GET", "/services/{id}/deployments", []string{"id"}, nil, false})
 	register(spec{"containr_deployments_get", "Get a deployment", "GET", "/deployments/{id}", []string{"id"}, nil, false})
 	register(spec{"containr_deployments_logs", "Get persisted build/runtime logs for a deployment. Args: id, type (all|build|runtime).", "GET", "/deployments/{id}/logs", []string{"id"}, nil, false})
 	register(spec{"containr_deployments_rollback", "Roll back to a deployment. Requires confirm:true.", "POST", "/deployments/{id}/rollback", []string{"id"}, nil, true})
+	register(spec{"containr_deployments_cancel", "Cancel a queued or running deployment", "POST", "/deployments/{id}/cancel", []string{"id"}, nil, false})
 
 	// Databases
 	register(spec{"containr_databases_list", "List managed databases", "GET", "/databases", nil, nil, false})

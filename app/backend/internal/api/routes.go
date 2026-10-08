@@ -10,6 +10,7 @@ import (
 	"containr/internal/config"
 	"containr/internal/database"
 	"containr/internal/deployment"
+	"containr/internal/deployqueue"
 	"containr/internal/docker"
 	"containr/internal/ha"
 	"containr/internal/metrics"
@@ -98,6 +99,10 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 	// Initialize database handler
 	databaseHandler := NewDatabaseHandler(db.DB, dockerClient)
 
+	// Per-service serialized deploy queue — one active deployment per
+	// service, the rest wait as 'queued'.
+	deployQueue := deployqueue.New()
+
 	// Initialize security handler
 	securityHandler := NewSecurityHandler(db, cfg.JWTSecret)
 
@@ -115,6 +120,7 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 		if deploymentEngine != nil {
 			c.Set("deployment_engine", deploymentEngine)
 		}
+		c.Set("deploy_queue", deployQueue)
 		c.Set("scheduler", scheduler)
 		c.Set("metrics_collector", metricsCollector)
 		c.Set("auto_scaler", autoScaler)
@@ -289,6 +295,7 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			authed.POST("/services/:id/redeploy", handleServiceRedeploy)
 			authed.POST("/services/:id/deployments", handleCreateDeployment)
 			authed.POST("/deployments/:id/rollback", handleRollbackDeployment)
+			authed.POST("/deployments/:id/cancel", handleCancelDeployment)
 
 			// Environment variables — secrets, owner/admin only.
 			authed.GET("/services/:id/variables", handleGetVariables)

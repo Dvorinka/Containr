@@ -1146,6 +1146,72 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/deployments/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a deployment
+         * @description Cancel a queued or in-flight deployment. Queued deployments are marked cancelled immediately; running ones get their build/reconcile aborted and settle as 'cancelled' shortly after.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Deployment ID */
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Queued deployment cancelled */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @example cancelled */
+                            status?: string;
+                        };
+                    };
+                };
+                /** @description Running deployment is cancelling */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @example cancelling */
+                            status?: string;
+                        };
+                    };
+                };
+                /** @description Deployment already finished */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/deployments/{id}/rollback": {
         parameters: {
             query?: never;
@@ -7796,6 +7862,8 @@ export interface components {
             env_vars?: {
                 [key: string]: string;
             };
+            /** @description Build without Docker layer cache */
+            no_cache?: boolean;
         };
         RollbackDeploymentResponse: {
             deployment?: components["schemas"]["Deployment"];
@@ -8347,6 +8415,8 @@ export interface components {
         };
         UpdateVariablesRequest: {
             variables: components["schemas"]["VariableInput"][];
+            /** @description Queue a service redeploy after saving so running containers pick up the new variables */
+            redeploy?: boolean;
         };
         ConnectGitHubAppRequest: {
             /**

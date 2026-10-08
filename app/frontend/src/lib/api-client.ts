@@ -1320,6 +1320,12 @@ export async function rollbackDeployment(deploymentId: string): Promise<Rollback
   };
 }
 
+export async function cancelDeployment(deploymentId: string): Promise<{ status: string }> {
+  return requestJson<{ status: string }>(`/deployments/${deploymentId}/cancel`, {
+    method: 'POST',
+  });
+}
+
 export async function listBuilds(input: ListBuildsInput = {}): Promise<ListBuildsResult> {
   const searchParams = new URLSearchParams();
   if (input.projectId) {

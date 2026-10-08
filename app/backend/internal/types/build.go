@@ -28,6 +28,7 @@ type BuildRequest struct {
 	TriggeredBy  string `json:"triggered_by"`  // Who triggered the build
 	Branch       string `json:"branch"`        // Git branch
 	Commit       string `json:"commit"`        // Git commit SHA
+	NoCache      bool   `json:"no_cache"`      // Disable Docker layer cache
 }
 
 // BuildResponse represents the response from a build operation

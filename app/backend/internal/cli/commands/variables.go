@@ -49,7 +49,8 @@ var varsSetCmd = &cobra.Command{
 	Args:  cobra.MinimumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		secret, _ := cmd.Flags().GetBool("secret")
-		return mutateVars(args[0], func(vars []map[string]interface{}) []map[string]interface{} {
+		redeploy, _ := cmd.Flags().GetBool("redeploy")
+		return mutateVars(args[0], redeploy, func(vars []map[string]interface{}) []map[string]interface{} {
 			for _, pair := range args[1:] {
 				k, v, found := strings.Cut(pair, "=")
 				if !found || k == "" {
@@ -71,7 +72,8 @@ var varsUnsetCmd = &cobra.Command{
 		for _, k := range args[1:] {
 			drop[k] = true
 		}
-		return mutateVars(args[0], func(vars []map[string]interface{}) []map[string]interface{} {
+		redeploy, _ := cmd.Flags().GetBool("redeploy")
+		return mutateVars(args[0], redeploy, func(vars []map[string]interface{}) []map[string]interface{} {
 			out := vars[:0]
 			for _, v := range vars {
 				if !drop[str(v, "key")] {
@@ -91,7 +93,7 @@ func fetchVars(c *Client, serviceID string) ([]map[string]interface{}, error) {
 	return unwrapList(data, "variables")
 }
 
-func mutateVars(serviceID string, mutate func([]map[string]interface{}) []map[string]interface{}) error {
+func mutateVars(serviceID string, redeploy bool, mutate func([]map[string]interface{}) []map[string]interface{}) error {
 	c, err := client()
 	if err != nil {
 		return err
@@ -109,7 +111,11 @@ func mutateVars(serviceID string, mutate func([]map[string]interface{}) []map[st
 			"is_secret": v["is_secret"] == true,
 		})
 	}
-	data, err := c.Do("PUT", "/services/"+serviceID+"/variables", map[string]interface{}{"variables": payload})
+	body := map[string]interface{}{"variables": payload}
+	if redeploy {
+		body["redeploy"] = true
+	}
+	data, err := c.Do("PUT", "/services/"+serviceID+"/variables", body)
 	if err != nil {
 		return err
 	}
@@ -117,7 +123,12 @@ func mutateVars(serviceID string, mutate func([]map[string]interface{}) []map[st
 		PrintRaw(data)
 		return nil
 	}
-	fmt.Printf("Variables updated on %s — redeploy to apply to running containers\n", serviceID)
+	obj, _ := unwrapObject(data)
+	if obj["redeploy_queued"] == true {
+		fmt.Printf("Variables updated on %s — redeploy queued\n", serviceID)
+	} else {
+		fmt.Printf("Variables updated on %s — redeploy to apply to running containers\n", serviceID)
+	}
 	return nil
 }
 
@@ -134,5 +145,7 @@ func upsertVar(vars []map[string]interface{}, key, value string, secret bool) []
 
 func init() {
 	varsSetCmd.Flags().Bool("secret", false, "mark the variable(s) as secret")
+	varsSetCmd.Flags().Bool("redeploy", false, "redeploy the service after saving")
+	varsUnsetCmd.Flags().Bool("redeploy", false, "redeploy the service after saving")
 	VariablesCmd.AddCommand(varsListCmd, varsSetCmd, varsUnsetCmd)
 }

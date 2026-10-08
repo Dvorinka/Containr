@@ -28,6 +28,7 @@ import {
   manualScaleService,
   execInService,
   rollbackDeployment,
+  cancelDeployment,
   updateServiceVariables,
   updateService,
   restartService,
@@ -66,6 +67,7 @@ import {
   Sparkles,
   RefreshCw,
   Box,
+  Ban,
   Play,
   ChevronDown,
   GitPullRequest,
@@ -104,7 +106,9 @@ function StatusBadge({ status }: { status: string }) {
     failed: { color: 'var(--error)', bg: 'var(--error-soft)', Icon: X, animate: false },
     building: { color: 'var(--warning)', bg: 'var(--warning-soft)', Icon: Loader2, animate: true },
     pending: { color: 'var(--warning)', bg: 'var(--warning-soft)', Icon: Loader2, animate: true },
+    queued: { color: 'var(--warning)', bg: 'var(--warning-soft)', Icon: Clock, animate: false },
     rolling_back: { color: 'var(--warning)', bg: 'var(--warning-soft)', Icon: RefreshCw, animate: true },
+    cancelled: { color: 'var(--text-tertiary)', bg: 'var(--surface-muted)', Icon: Ban, animate: false },
     stopped: { color: 'var(--text-tertiary)', bg: 'var(--surface-muted)', Icon: Box, animate: false },
   }[status] || { color: 'var(--text-tertiary)', bg: 'var(--surface-muted)', Icon: Box, animate: false };
 
@@ -374,6 +378,14 @@ export function ServiceDetailPage() {
     },
   });
 
+  const cancelDeploymentMutation = useMutation({
+    mutationFn: (deploymentId: string) => cancelDeployment(deploymentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['service-deployments', serviceId] });
+      queryClient.invalidateQueries({ queryKey: ['service', serviceId] });
+    },
+  });
+
   const rollbackMutation = useMutation({
     mutationFn: (deploymentId: string) => rollbackDeployment(deploymentId),
     onSuccess: () => {
@@ -514,7 +526,7 @@ export function ServiceDetailPage() {
     const deployments = isDemoMode ? [] : deploymentsQuery.data ?? [];
     const total = deployments.length;
     const active = deployments.filter((deployment) =>
-      ['pending', 'building', 'deploying', 'rolling_back'].includes(deployment.status),
+      ['queued', 'pending', 'building', 'deploying', 'rolling_back'].includes(deployment.status),
     ).length;
     const failed = deployments.filter((deployment) => deployment.status === 'failed').length;
 
@@ -2121,6 +2133,19 @@ export function ServiceDetailPage() {
                                 >
                                   Logs
                                 </button>
+                                {['queued', 'pending', 'building', 'deploying', 'rolling_back'].includes(deployment.status) && (
+                                  <button
+                                    onClick={() => {
+                                      if (window.confirm(`Cancel deployment ${deployment.id.slice(0, 8)}?`)) {
+                                        cancelDeploymentMutation.mutate(deployment.id);
+                                      }
+                                    }}
+                                    disabled={cancelDeploymentMutation.isPending}
+                                    className="px-3 py-1.5 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--error)] hover:border-[var(--error)]/50 disabled:opacity-50 transition-colors"
+                                  >
+                                    {cancelDeploymentMutation.isPending && cancelDeploymentMutation.variables === deployment.id ? '...' : 'Cancel'}
+                                  </button>
+                                )}
                                 <button
                                   onClick={() => {
                                     if (window.confirm(`Rollback to deployment ${deployment.id.slice(0, 8)}?`)) {
