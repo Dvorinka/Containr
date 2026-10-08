@@ -57,6 +57,7 @@ dedicated console.
 - **Metrics** — per-service Docker stats plus host CPU/memory/disk telemetry
 - **HA & scaling** — failover policies, node agents, autoscaling rules
 - **Auth & security** — Better Auth sessions (email/password self-hosted), personal access tokens with `read`/`write`/`admin` scopes for CLI and agents, audit logs, vulnerability scans
+- **CLI** — `containr` covers the full API: projects, services, deployments, logs, exec, variables, databases, cron, templates, nodes, scaling, HA, security, gateway, admin — with `--json`, `--yes`, named profiles, and `containr up` for current-directory deploys
 - **Integrated docs** — searchable documentation rendered in-app on the landing page and `/docs`; syncs from GitHub, falls back to a bundled snapshot offline
 - **Networking** — Traefik reverse proxy, optional Cloudflare Tunnel
 

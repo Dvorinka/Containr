@@ -1,219 +1,123 @@
 package commands
 
 import (
-	"bytes"
-	"containr/internal/pkg/utils"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
-// Project represents a Containr project
-type Project struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	OwnerID     string `json:"owner_id"`
-	CreatedAt   string `json:"created_at"`
-	UpdatedAt   string `json:"updated_at"`
-}
-
-// ProjectsCmd represents the projects command
+// ProjectsCmd manages projects.
 var ProjectsCmd = &cobra.Command{
-	Use:   "projects",
-	Short: "Manage projects",
-	Long: `Manage your Containr projects.
-You can list, create, update, and delete projects.`,
+	Use:     "projects",
+	Aliases: []string{"project"},
+	Short:   "Manage projects",
 }
 
-// listProjectsCmd represents the list command
-var listProjectsCmd = &cobra.Command{
+var projectsListCmd = &cobra.Command{
 	Use:   "list",
-	Short: "List all projects",
-	Long:  `List all your Containr projects.`,
-	RunE:  runListProjects,
+	Short: "List projects",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := client()
+		if err != nil {
+			return err
+		}
+		data, err := c.Do("GET", "/projects", nil)
+		if err != nil {
+			return err
+		}
+		items, err := unwrapList(data, "projects")
+		if err != nil {
+			return err
+		}
+		rows := make([][]string, 0, len(items))
+		for _, p := range items {
+			rows = append(rows, []string{
+				str(p, "id"), str(p, "name"), str(p, "description"), relTime(p, "created_at"),
+			})
+		}
+		printRows(data, []string{"ID", "NAME", "DESCRIPTION", "CREATED"}, rows)
+		return nil
+	},
 }
 
-// createProjectCmd represents the create command
-var createProjectCmd = &cobra.Command{
-	Use:   "create [name]",
-	Short: "Create a new project",
-	Long: `Create a new Containr project.
-Provide a name and optional description.`,
-	Args: cobra.ExactArgs(1),
-	RunE: runCreateProject,
-}
-
-// deleteProjectCmd represents the delete command
-var deleteProjectCmd = &cobra.Command{
-	Use:   "delete [project-id]",
-	Short: "Delete a project",
-	Long:  `Delete a Containr project by ID.`,
+var projectsGetCmd = &cobra.Command{
+	Use:   "get <id>",
+	Short: "Show a project",
 	Args:  cobra.ExactArgs(1),
-	RunE:  runDeleteProject,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := client()
+		if err != nil {
+			return err
+		}
+		data, err := c.Do("GET", "/projects/"+args[0], nil)
+		if err != nil {
+			return err
+		}
+		if JSONMode() {
+			PrintRaw(data)
+			return nil
+		}
+		p, _ := unwrapObject(data, "project")
+		fmt.Printf("ID:          %s\n", str(p, "id"))
+		fmt.Printf("Name:        %s\n", str(p, "name"))
+		fmt.Printf("Description: %s\n", str(p, "description"))
+		fmt.Printf("Created:     %s\n", str(p, "created_at"))
+		return nil
+	},
 }
 
-var projectDescription string
+var projectsCreateCmd = &cobra.Command{
+	Use:   "create <name>",
+	Short: "Create a project",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := client()
+		if err != nil {
+			return err
+		}
+		desc, _ := cmd.Flags().GetString("description")
+		body := map[string]interface{}{"name": args[0]}
+		if desc != "" {
+			body["description"] = desc
+		}
+		data, err := c.Do("POST", "/projects", body)
+		if err != nil {
+			return err
+		}
+		if JSONMode() {
+			PrintRaw(data)
+			return nil
+		}
+		p, _ := unwrapObject(data, "project")
+		fmt.Printf("Created project %s (%s)\n", str(p, "name"), str(p, "id"))
+		return nil
+	},
+}
 
-// getAPIURL constructs the full API URL for a given endpoint
-func getAPIURL(endpoint string) string {
-	baseURL := viper.GetString("api-url")
-	if baseURL == "" {
-		baseURL = "http://localhost:8080/api/v1" // Default for development
-	}
-
-	// Ensure baseURL doesn't end with / and endpoint starts with /
-	baseURL = strings.TrimSuffix(baseURL, "/")
-	if !strings.HasPrefix(endpoint, "/") {
-		endpoint = "/" + endpoint
-	}
-
-	return baseURL + endpoint
+var projectsDeleteCmd = &cobra.Command{
+	Use:   "delete <id>",
+	Short: "Delete a project and all its services",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := client()
+		if err != nil {
+			return err
+		}
+		if !Confirm(fmt.Sprintf("Delete project %s and all its services?", args[0])) {
+			return &APIError{Message: "aborted (pass --yes to skip confirmation)", ExitCode: ExitError}
+		}
+		if _, err := c.Do("DELETE", "/projects/"+args[0], nil); err != nil {
+			return err
+		}
+		if JSONMode() {
+			return PrintJSON(map[string]string{"status": "deleted", "id": args[0]})
+		}
+		fmt.Printf("Deleted project %s\n", args[0])
+		return nil
+	},
 }
 
 func init() {
-	ProjectsCmd.AddCommand(listProjectsCmd)
-	ProjectsCmd.AddCommand(createProjectCmd)
-	ProjectsCmd.AddCommand(deleteProjectCmd)
-
-	// Add flags
-	createProjectCmd.Flags().StringVarP(&projectDescription, "description", "d", "", "Project description")
-}
-
-func runListProjects(cmd *cobra.Command, args []string) error {
-	apiURL := getAPIURL("/projects")
-
-	req, err := http.NewRequest("GET", apiURL, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Authorization", "Bearer "+viper.GetString("token"))
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to make request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("API request failed: %s - %s", resp.Status, string(body))
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("failed to read response: %w", err)
-	}
-
-	var projects []Project
-	if err := json.Unmarshal(body, &projects); err != nil {
-		return fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	if len(projects) == 0 {
-		fmt.Println("No projects found")
-		return nil
-	}
-
-	fmt.Println("Your Projects:")
-	fmt.Println()
-	for _, project := range projects {
-		fmt.Printf("📦 %s (%s)\n", project.Name, project.ID)
-		if project.Description != "" {
-			fmt.Printf("   %s\n", project.Description)
-		}
-		fmt.Printf("   Created: %s\n", utils.FormatTime(project.CreatedAt))
-		fmt.Println()
-	}
-
-	return nil
-}
-
-func runCreateProject(cmd *cobra.Command, args []string) error {
-	name := args[0]
-
-	projectData := map[string]interface{}{
-		"name": name,
-	}
-
-	if projectDescription != "" {
-		projectData["description"] = projectDescription
-	}
-
-	jsonData, err := json.Marshal(projectData)
-	if err != nil {
-		return fmt.Errorf("failed to marshal project data: %w", err)
-	}
-
-	apiURL := getAPIURL("/projects")
-
-	req, err := http.NewRequest("POST", apiURL, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Authorization", "Bearer "+viper.GetString("token"))
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to make request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusCreated {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("API request failed: %s - %s", resp.Status, string(body))
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("failed to read response: %w", err)
-	}
-
-	var project Project
-	if err := json.Unmarshal(body, &project); err != nil {
-		return fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	fmt.Printf("✓ Project '%s' created successfully!\n", project.Name)
-	fmt.Printf("ID: %s\n", project.ID)
-	return nil
-}
-
-func runDeleteProject(cmd *cobra.Command, args []string) error {
-	projectID := args[0]
-
-	apiURL := getAPIURL("/projects/" + projectID)
-
-	req, err := http.NewRequest("DELETE", apiURL, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Authorization", "Bearer "+viper.GetString("token"))
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to make request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusNoContent {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("API request failed: %s - %s", resp.Status, string(body))
-	}
-
-	fmt.Printf("✓ Project '%s' deleted successfully!\n", projectID)
-	return nil
+	projectsCreateCmd.Flags().StringP("description", "d", "", "project description")
+	ProjectsCmd.AddCommand(projectsListCmd, projectsGetCmd, projectsCreateCmd, projectsDeleteCmd)
 }
