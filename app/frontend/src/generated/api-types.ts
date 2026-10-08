@@ -392,10 +392,12 @@ export interface paths {
         get: {
             parameters: {
                 query?: {
-                    /** @description Page number for pagination */
+                    /** @description Page number for pagination (legacy — prefer cursor) */
                     page?: number;
                     /** @description Number of items per page */
                     limit?: number;
+                    /** @description Opaque cursor from a previous response's pagination.next_cursor */
+                    cursor?: string;
                     /** @description Search term to filter projects */
                     search?: string;
                 };
@@ -982,7 +984,11 @@ export interface paths {
          */
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    limit?: number;
+                    /** @description Opaque cursor from a previous response's pagination.next_cursor */
+                    cursor?: string;
+                };
                 header?: never;
                 path: {
                     /** @description Service ID */
@@ -1056,6 +1062,8 @@ export interface paths {
             parameters: {
                 query?: {
                     limit?: number;
+                    /** @description Opaque cursor from a previous response's pagination.next_cursor */
+                    cursor?: string;
                 };
                 header?: never;
                 path?: never;

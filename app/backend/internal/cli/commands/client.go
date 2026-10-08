@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/spf13/viper"
 )
 
 // Exit codes — stable for scripting and agent use.
@@ -109,6 +111,9 @@ func (c *Client) Do(method, path string, body interface{}) ([]byte, error) {
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	if k := viper.GetString("idempotency-key"); k != "" && method == http.MethodPost {
+		req.Header.Set("Idempotency-Key", k)
+	}
 	req.Header.Set("Accept", "application/json")
 
 	hc := c.HTTPClient
@@ -134,9 +139,13 @@ func (c *Client) Do(method, path string, body interface{}) ([]byte, error) {
 		msg := strings.TrimSpace(string(data))
 		var envelope struct {
 			Error string `json:"error"`
+			Code  string `json:"code"`
 		}
 		if json.Unmarshal(data, &envelope) == nil && envelope.Error != "" {
 			msg = envelope.Error
+			if envelope.Code != "" {
+				msg = envelope.Code + ": " + msg
+			}
 		}
 		return nil, &APIError{
 			Status:   resp.StatusCode,

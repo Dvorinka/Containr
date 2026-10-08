@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -74,14 +73,21 @@ func handleGetDeployments(c *gin.Context) {
 		return
 	}
 
+	offset, limit := pageWindow(c, 50, 100)
+
+	var total int
+	_ = db.(*database.DB).QueryRow(
+		`SELECT COUNT(*) FROM deployments WHERE service_id = $1`, serviceID,
+	).Scan(&total)
+
 	rows, err := db.(*database.DB).Query(
 		`SELECT id, service_id, commit_hash, status, image_name, image_tag,
 		        build_log, runtime_log, error, started_at, completed_at, created_at, updated_at
 		 FROM deployments
 		 WHERE service_id = $1
 		 ORDER BY created_at DESC
-		 LIMIT 50`,
-		serviceID,
+		 LIMIT $2 OFFSET $3`,
+		serviceID, limit, offset,
 	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve deployments"})
@@ -104,7 +110,10 @@ func handleGetDeployments(c *gin.Context) {
 		deployments = append(deployments, d)
 	}
 
-	c.JSON(http.StatusOK, gin.H{"deployments": deployments})
+	c.JSON(http.StatusOK, gin.H{
+		"deployments": deployments,
+		"pagination":  paginationMeta(offset, limit, total),
+	})
 }
 
 // RecentDeployment is a deployment row joined with its service and project names.
@@ -132,11 +141,19 @@ func handleGetRecentDeployments(c *gin.Context) {
 	userID := optionalUserUUID(c)
 	isAdmin := contextIsAdmin(c)
 
-	limit := 10
-	if v := c.Query("limit"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 50 {
-			limit = n
-		}
+	offset, limit := pageWindow(c, 10, 50)
+
+	var total int
+	if err := db.(*database.DB).QueryRow(
+		`SELECT COUNT(*)
+		 FROM deployments d
+		 JOIN services s ON s.id = d.service_id
+		 JOIN projects p ON p.id = s.project_id
+		 WHERE p.is_approved OR p.owner_id = $1 OR $2::bool
+		    OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = p.id AND pm.user_id = $1)`,
+		userID, isAdmin,
+	).Scan(&total); err != nil {
+		total = 0
 	}
 
 	rows, err := db.(*database.DB).Query(
@@ -148,8 +165,8 @@ func handleGetRecentDeployments(c *gin.Context) {
 		 WHERE p.is_approved OR p.owner_id = $1 OR $2::bool
 		    OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = p.id AND pm.user_id = $1)
 		 ORDER BY d.created_at DESC
-		 LIMIT $3`,
-		userID, isAdmin, limit,
+		 LIMIT $3 OFFSET $4`,
+		userID, isAdmin, limit, offset,
 	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve deployments"})
@@ -168,7 +185,10 @@ func handleGetRecentDeployments(c *gin.Context) {
 		deployments = append(deployments, d)
 	}
 
-	c.JSON(http.StatusOK, gin.H{"deployments": deployments})
+	c.JSON(http.StatusOK, gin.H{
+		"deployments": deployments,
+		"pagination":  paginationMeta(offset, limit, total),
+	})
 }
 
 func handleCreateDeployment(c *gin.Context) {

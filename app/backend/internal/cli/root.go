@@ -55,12 +55,14 @@ func init() {
 	pf.StringP("profile", "p", "", "config profile to use (default current_profile)")
 	pf.Bool("json", false, "machine-readable JSON output")
 	pf.BoolP("yes", "y", false, "skip confirmation prompts (required for destructive ops in scripts)")
+	pf.String("idempotency-key", "", "Idempotency-Key header for POST mutations (safe retries)")
 
 	viper.BindPFlag("api-url", pf.Lookup("api-url"))
 	viper.BindPFlag("token", pf.Lookup("token"))
 	viper.BindPFlag("profile", pf.Lookup("profile"))
 	viper.BindPFlag("json", pf.Lookup("json"))
 	viper.BindPFlag("yes", pf.Lookup("yes"))
+	viper.BindPFlag("idempotency-key", pf.Lookup("idempotency-key"))
 
 	rootCmd.AddCommand(commands.AuthCmd)
 	rootCmd.AddCommand(commands.TokensCmd)
