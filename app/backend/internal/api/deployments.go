@@ -401,6 +401,12 @@ func runDeploymentAndSyncWithImage(
 	// ephemeral ports.
 	_ = db.QueryRow(`SELECT published_port FROM services WHERE id = $1`, service.ID).Scan(&publishedPort)
 
+	maintenanceMode, basicAuthUsers := serviceAccess(db, service.ID)
+	maintURL := ""
+	if maintenanceMode {
+		maintURL = maintenanceURL(db)
+	}
+
 	deployReq := &deployment.DeploymentRequest{
 		ProjectID:   service.ProjectID.String(),
 		ServiceID:   service.ID.String(),
@@ -417,10 +423,14 @@ func runDeploymentAndSyncWithImage(
 			HealthPath:    service.HealthCheckPath,
 			RestartPolicy: service.RestartPolicy,
 			VolumeMounts:  loadServiceVolumes(db, service.ID),
+			Domains:       serviceDomainNames(db, service.ID, service.Domain),
 			Resources: deployment.ResourceLimits{
 				MemoryBytes: parseMemoryLimit(service.Memory),
 				CPUQuota:    parseCPULimit(service.CPU),
 			},
+			Maintenance:    maintenanceMode,
+			MaintenanceURL: maintURL,
+			BasicAuthUsers: basicAuthUsers,
 		},
 		Trigger: deployment.TriggerConfig{
 			Type:      req.Trigger,

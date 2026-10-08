@@ -667,6 +667,163 @@ paths:
         '200':
           description: Reconciled runtime state
 
+  /services/{id}/domains:
+    get:
+      tags:
+        - Services
+      summary: List service domains
+      description: All hostnames attached to the service; the default is mirrored to services.domain
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Domain list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  domains:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ServiceDomain'
+    post:
+      tags:
+        - Services
+      summary: Attach a domain
+      description: Adds a hostname routed to the service via Traefik. The first domain becomes default automatically.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - domain
+              properties:
+                domain:
+                  type: string
+                is_default:
+                  type: boolean
+      responses:
+        '201':
+          description: Domain attached
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  domain:
+                    $ref: '#/components/schemas/ServiceDomain'
+        '409':
+          description: Domain already attached
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /services/{id}/domains/check:
+    get:
+      tags:
+        - Services
+      summary: DNS preflight
+      description: Resolves every attached domain and compares it to the expected target (app_settings.public_ip / PUBLIC_IP, or base_url host)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Per-domain DNS status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  domains:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DomainCheckResult'
+
+  /services/{id}/domains/{domain_id}:
+    delete:
+      tags:
+        - Services
+      summary: Detach a domain
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: domain_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Domain removed
+
+  /services/{id}/domains/{domain_id}/default:
+    post:
+      tags:
+        - Services
+      summary: Set the default domain
+      description: Marks the domain default and mirrors it to services.domain
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: domain_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Updated domain list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  domains:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ServiceDomain'
+
+  /maintenance:
+    get:
+      tags:
+        - Services
+      summary: Maintenance page
+      description: Public HTML page Traefik redirects to while a service is in maintenance mode
+
   /services/{id}/deployments:
     get:
       tags:
@@ -5003,6 +5160,19 @@ components:
           items:
             $ref: '#/components/schemas/ServiceVolume'
           description: Volume/bind mounts applied to every replica
+        domains:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceDomain'
+          description: All attached hostnames; `domain` is the derived default
+        maintenance_mode:
+          type: boolean
+          description: Redirect all traffic to the platform maintenance page
+        basic_auth:
+          type: array
+          items:
+            type: string
+          description: Basic-auth usernames gating the route (hashes never returned)
         public_url:
           type: string
           description: Computed public URL (published port or domain)
@@ -5134,6 +5304,66 @@ components:
           items:
             $ref: '#/components/schemas/ServiceVolume'
           description: Replaces the entire mount list when present; [] clears all mounts. Takes effect on next deploy/reconcile.
+        maintenance_mode:
+          type: boolean
+          description: Redirect all traffic to the platform maintenance page
+        basic_auth:
+          type: array
+          items:
+            $ref: '#/components/schemas/BasicAuthCred'
+          description: Replaces all basic-auth credentials; [] clears the gate
+
+    ServiceDomain:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        service_id:
+          type: string
+          format: uuid
+        domain:
+          type: string
+        is_default:
+          type: boolean
+        cert_type:
+          type: string
+        cert_status:
+          type: string
+          enum: [pending, issued, failed]
+        last_checked_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+    DomainCheckResult:
+      type: object
+      properties:
+        domain:
+          type: string
+        status:
+          type: string
+          enum: [ok, wrong-target, pending]
+          description: ok = resolves to expected target (or no expectation configured), wrong-target = resolves elsewhere, pending = no DNS records
+        resolved:
+          type: array
+          items:
+            type: string
+          description: A/AAAA records resolved
+
+    BasicAuthCred:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+          description: Plaintext on write — stored as bcrypt htpasswd; never returned
 
     ServiceVolume:
       type: object

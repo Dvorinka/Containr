@@ -55,7 +55,27 @@ export type ServiceEntity = {
   healthcheckPath?: string;
   restartPolicy?: string;
   volumes?: ServiceVolume[];
+  domains?: ServiceDomain[];
+  maintenanceMode?: boolean;
+  basicAuth?: string[];
   publicUrl?: string;
+};
+
+export type ServiceDomain = {
+  id: string;
+  service_id: string;
+  domain: string;
+  is_default: boolean;
+  cert_type?: string;
+  cert_status?: string;
+  last_checked_at?: string;
+  created_at?: string;
+};
+
+export type DomainCheckResult = {
+  domain: string;
+  status: 'ok' | 'wrong-target' | 'pending';
+  resolved?: string[];
 };
 
 export type ServiceVolume = {
@@ -561,6 +581,9 @@ function normalizeService(service: RawService): ServiceEntity | null {
     healthcheckPath: service.healthcheck_path,
     restartPolicy: service.restart_policy,
     volumes: service.volumes as ServiceVolume[] | undefined,
+    domains: service.domains as ServiceDomain[] | undefined,
+    maintenanceMode: service.maintenance_mode,
+    basicAuth: service.basic_auth as string[] | undefined,
     publicUrl: service.public_url,
   };
 }
@@ -1098,6 +1121,36 @@ export async function createService(projectId: string, input: CreateServiceInput
   }
 
   return parsed;
+}
+
+export async function listServiceDomains(serviceId: string): Promise<ServiceDomain[]> {
+  const payload = await requestJson<{ domains?: ServiceDomain[] }>(`/services/${serviceId}/domains`);
+  return payload.domains ?? [];
+}
+
+export async function addServiceDomain(serviceId: string, domain: string, isDefault = false): Promise<ServiceDomain> {
+  const payload = await requestJson<{ domain: ServiceDomain }>(`/services/${serviceId}/domains`, {
+    method: 'POST',
+    body: JSON.stringify({ domain, is_default: isDefault }),
+  });
+  return payload.domain;
+}
+
+export async function removeServiceDomain(serviceId: string, domainId: string): Promise<void> {
+  await requestJson(`/services/${serviceId}/domains/${domainId}`, { method: 'DELETE' });
+}
+
+export async function setDefaultServiceDomain(serviceId: string, domainId: string): Promise<ServiceDomain[]> {
+  const payload = await requestJson<{ domains?: ServiceDomain[] }>(
+    `/services/${serviceId}/domains/${domainId}/default`,
+    { method: 'POST' },
+  );
+  return payload.domains ?? [];
+}
+
+export async function checkServiceDomains(serviceId: string): Promise<DomainCheckResult[]> {
+  const payload = await requestJson<{ domains?: DomainCheckResult[] }>(`/services/${serviceId}/domains/check`);
+  return payload.domains ?? [];
 }
 
 export async function updateService(serviceId: string, input: UpdateServiceInput): Promise<ServiceEntity> {

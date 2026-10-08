@@ -36,6 +36,13 @@ import {
   getServiceRuntime,
   type CronJobEntity,
   type ServiceVolume,
+  type ServiceDomain,
+  type DomainCheckResult,
+  listServiceDomains,
+  addServiceDomain,
+  removeServiceDomain,
+  setDefaultServiceDomain,
+  checkServiceDomains,
 } from '@/lib/api-client';
 import { getDemoProjectById, getDemoServiceById, getDemoCronJobsByService } from '@/lib/demo-data';
 import { useDemoMode } from '@/lib/demo-mode';
@@ -438,6 +445,23 @@ export function ServiceDetailPage() {
     port: string; domain: string; healthcheckPath: string; restartPolicy: string; replicas: string;
   } | null>(null);
   const [volumesForm, setVolumesForm] = useState<ServiceVolume[] | null>(null);
+  const [domainInput, setDomainInput] = useState('');
+  const [domainChecks, setDomainChecks] = useState<Record<string, DomainCheckResult> | null>(null);
+  const [accessForm, setAccessForm] = useState<{ maintenance: boolean; basicAuth: string } | null>(null);
+
+  const domainsQuery = useQuery({
+    queryKey: ['service-domains', serviceId],
+    queryFn: () => listServiceDomains(serviceId),
+    enabled: Boolean(serviceId) && !isDemoMode,
+  });
+
+  const domainMutation = useMutation({
+    mutationFn: (fn: () => Promise<unknown>) => fn(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['service-domains', serviceId] });
+      invalidateService();
+    },
+  });
 
   const project = isDemoMode ? getDemoProjectById(projectId) : projectQuery.data;
   const service = isDemoMode ? getDemoServiceById(serviceId) : serviceQuery.data;
@@ -2189,6 +2213,174 @@ export function ServiceDetailPage() {
                     {updateServiceMutation.isError && (
                       <p className="text-xs text-[var(--error)]">{(updateServiceMutation.error as Error).message}</p>
                     )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!isDemoMode && (
+              <div className="mt-6 pt-6 border-t border-[var(--border-subtle)]">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-medium text-[var(--text-primary)]">Domains</h3>
+                  <button
+                    type="button"
+                    disabled={domainMutation.isPending}
+                    onClick={async () => {
+                      const results = await checkServiceDomains(serviceId);
+                      setDomainChecks(Object.fromEntries(results.map((r) => [r.domain, r])));
+                    }}
+                    className="px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium hover:border-[var(--border-default)] transition-colors"
+                  >
+                    Check DNS
+                  </button>
+                </div>
+
+                <div className="space-y-2 mb-3">
+                  {(domainsQuery.data ?? []).length === 0 && !domainsQuery.isLoading && (
+                    <p className="text-xs text-[var(--text-tertiary)]">No domains attached.</p>
+                  )}
+                  {(domainsQuery.data ?? []).map((d: ServiceDomain) => {
+                    const check = domainChecks?.[d.domain];
+                    return (
+                      <div key={d.id} className="flex items-center gap-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] px-3 py-2 text-xs">
+                        <span className="mono text-[var(--text-primary)]">{d.domain}</span>
+                        {d.is_default && <span className="px-1.5 py-0.5 rounded bg-[var(--accent-primary)]/15 text-[var(--accent-primary)]">default</span>}
+                        {check && (
+                          <span className={`px-1.5 py-0.5 rounded ${check.status === 'ok' ? 'bg-[var(--success-soft)] text-[var(--success)]' : check.status === 'pending' ? 'bg-[var(--warning-soft)] text-[var(--warning)]' : 'bg-[var(--error-soft)] text-[var(--error)]'}`}>
+                            {check.status}
+                          </span>
+                        )}
+                        <span className="flex-1" />
+                        {!d.is_default && (
+                          <button
+                            type="button"
+                            onClick={() => domainMutation.mutate(() => setDefaultServiceDomain(serviceId, d.id))}
+                            className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
+                          >
+                            set default
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => domainMutation.mutate(() => removeServiceDomain(serviceId, d.id))}
+                          className="text-[var(--error)]"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    value={domainInput}
+                    onChange={(e) => setDomainInput(e.target.value)}
+                    placeholder="app.example.com"
+                    className="flex-1 px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm mono text-[var(--text-primary)]"
+                  />
+                  <button
+                    type="button"
+                    disabled={domainMutation.isPending || !domainInput.trim()}
+                    onClick={() =>
+                      domainMutation.mutate(() => addServiceDomain(serviceId, domainInput.trim()), {
+                        onSuccess: () => setDomainInput(''),
+                      })
+                    }
+                    className="px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-on)] text-sm font-medium disabled:opacity-50"
+                  >
+                    Add
+                  </button>
+                </div>
+                {domainMutation.isError && (
+                  <p className="mt-2 text-xs text-[var(--error)]">{(domainMutation.error as Error).message}</p>
+                )}
+                <p className="mt-2 text-[10px] text-[var(--text-tertiary)]">Point the domain at this node (A record or CNAME), then Check DNS. Applies on next deploy or redeploy.</p>
+              </div>
+            )}
+
+            {!isDemoMode && (
+              <div className="mt-6 pt-6 border-t border-[var(--border-subtle)]">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-medium text-[var(--text-primary)]">Access</h3>
+                  {accessForm === null && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setAccessForm({ maintenance: Boolean(service.maintenanceMode), basicAuth: '' })
+                      }
+                      className="px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium hover:border-[var(--border-default)] transition-colors"
+                    >
+                      Edit
+                    </button>
+                  )}
+                </div>
+
+                {accessForm === null ? (
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] p-3">
+                      <p className="text-[var(--text-tertiary)] uppercase tracking-wide">Maintenance mode</p>
+                      <p className="mt-1 text-sm font-medium text-[var(--text-primary)]">{service.maintenanceMode ? 'on' : 'off'}</p>
+                    </div>
+                    <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] p-3">
+                      <p className="text-[var(--text-tertiary)] uppercase tracking-wide">Basic auth</p>
+                      <p className="mt-1 text-sm font-medium text-[var(--text-primary)]">
+                        {(service.basicAuth ?? []).length > 0 ? (service.basicAuth ?? []).join(', ') : 'off'}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] p-4 space-y-4">
+                    <label className="flex items-center gap-2 text-sm text-[var(--text-primary)]">
+                      <input
+                        type="checkbox"
+                        checked={accessForm.maintenance}
+                        onChange={(e) => setAccessForm({ ...accessForm, maintenance: e.target.checked })}
+                      />
+                      Maintenance mode — redirect all traffic to the maintenance page
+                    </label>
+                    <div>
+                      <label className="block text-xs text-[var(--text-tertiary)] mb-1">Basic auth credentials (user:password per line — replaces all; empty clears)</label>
+                      <textarea
+                        value={accessForm.basicAuth}
+                        onChange={(e) => setAccessForm({ ...accessForm, basicAuth: e.target.value })}
+                        rows={2}
+                        placeholder="admin:s3cret"
+                        className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm mono text-[var(--text-primary)]"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={updateServiceMutation.isPending}
+                        onClick={() => {
+                          const creds = accessForm.basicAuth
+                            .split('\n')
+                            .map((l) => l.trim())
+                            .filter(Boolean)
+                            .map((l) => {
+                              const i = l.indexOf(':');
+                              return i > 0 ? { username: l.slice(0, i), password: l.slice(i + 1) } : null;
+                            })
+                            .filter((x): x is { username: string; password: string } => x !== null);
+                          updateServiceMutation.mutate(
+                            { maintenance_mode: accessForm.maintenance, basic_auth: creds },
+                            { onSuccess: () => setAccessForm(null) },
+                          );
+                        }}
+                        className="px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-on)] text-sm font-medium disabled:opacity-50"
+                      >
+                        {updateServiceMutation.isPending ? 'Saving…' : 'Save'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAccessForm(null)}
+                        className="px-4 py-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)]"
+                      >
+                        Cancel
+                      </button>
+                      <p className="text-[10px] text-[var(--text-tertiary)]">Applies on next deploy or redeploy</p>
+                    </div>
                   </div>
                 )}
               </div>

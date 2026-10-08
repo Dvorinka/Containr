@@ -971,6 +971,245 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/services/{id}/domains": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List service domains
+         * @description All hostnames attached to the service; the default is mirrored to services.domain
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Domain list */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            domains?: components["schemas"]["ServiceDomain"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Attach a domain
+         * @description Adds a hostname routed to the service via Traefik. The first domain becomes default automatically.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        domain: string;
+                        is_default?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Domain attached */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            domain?: components["schemas"]["ServiceDomain"];
+                        };
+                    };
+                };
+                /** @description Domain already attached */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/services/{id}/domains/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * DNS preflight
+         * @description Resolves every attached domain and compares it to the expected target (app_settings.public_ip / PUBLIC_IP, or base_url host)
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Per-domain DNS status */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            domains?: components["schemas"]["DomainCheckResult"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/services/{id}/domains/{domain_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Detach a domain */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    domain_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Domain removed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/services/{id}/domains/{domain_id}/default": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set the default domain
+         * @description Marks the domain default and mirrors it to services.domain
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    domain_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Updated domain list */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            domains?: components["schemas"]["ServiceDomain"][];
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/maintenance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Maintenance page
+         * @description Public HTML page Traefik redirects to while a service is in maintenance mode
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: never;
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/services/{id}/deployments": {
         parameters: {
             query?: never;
@@ -7805,6 +8044,12 @@ export interface components {
             restart_policy?: string;
             /** @description Volume/bind mounts applied to every replica */
             volumes?: components["schemas"]["ServiceVolume"][];
+            /** @description All attached hostnames; `domain` is the derived default */
+            domains?: components["schemas"]["ServiceDomain"][];
+            /** @description Redirect all traffic to the platform maintenance page */
+            maintenance_mode?: boolean;
+            /** @description Basic-auth usernames gating the route (hashes never returned) */
+            basic_auth?: string[];
             /** @description Computed public URL (published port or domain) */
             public_url?: string;
             /**
@@ -7902,6 +8147,40 @@ export interface components {
             restart_policy?: string;
             /** @description Replaces the entire mount list when present; [] clears all mounts. Takes effect on next deploy/reconcile. */
             volumes?: components["schemas"]["ServiceVolume"][];
+            /** @description Redirect all traffic to the platform maintenance page */
+            maintenance_mode?: boolean;
+            /** @description Replaces all basic-auth credentials; [] clears the gate */
+            basic_auth?: components["schemas"]["BasicAuthCred"][];
+        };
+        ServiceDomain: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            service_id?: string;
+            domain?: string;
+            is_default?: boolean;
+            cert_type?: string;
+            /** @enum {string} */
+            cert_status?: "pending" | "issued" | "failed";
+            /** Format: date-time */
+            last_checked_at?: string;
+            /** Format: date-time */
+            created_at?: string;
+        };
+        DomainCheckResult: {
+            domain?: string;
+            /**
+             * @description ok = resolves to expected target (or no expectation configured), wrong-target = resolves elsewhere, pending = no DNS records
+             * @enum {string}
+             */
+            status?: "ok" | "wrong-target" | "pending";
+            /** @description A/AAAA records resolved */
+            resolved?: string[];
+        };
+        BasicAuthCred: {
+            username: string;
+            /** @description Plaintext on write — stored as bcrypt htpasswd; never returned */
+            password: string;
         };
         ServiceVolume: {
             /**

@@ -61,7 +61,14 @@ func init() {
 	register(spec{"containr_services_redeploy", "Rebuild and redeploy a service", "POST", "/services/{id}/redeploy", []string{"id"}, nil, false})
 	register(spec{"containr_services_logs", "Get service runtime logs. Args: id, tail (default 100).", "GET", "/services/{id}/logs", []string{"id"}, nil, false})
 	register(spec{"containr_services_exec", "Run a one-off command in the service container (30s ceiling). Args: id, command (required).", "POST", "/services/{id}/exec", []string{"id"}, []string{"command"}, false})
-	register(spec{"containr_services_update", "Update a service. Args: id, name, image, command, domain, restart_policy, healthcheck_path, cpu, memory, replicas, port, volumes = [{type: volume|bind, source, target, read_only}] — volumes replaces the whole mount list; pass [] to clear.", "PUT", "/services/{id}", []string{"id"}, nil, false})
+	register(spec{"containr_services_update", "Update a service. Args: id, name, image, command, domain, restart_policy, healthcheck_path, cpu, memory, replicas, port, volumes = [{type: volume|bind, source, target, read_only}] — volumes replaces the whole mount list; pass [] to clear. maintenance_mode (bool), basic_auth = [{username, password}] — replaces all creds; [] clears.", "PUT", "/services/{id}", []string{"id"}, nil, false})
+
+	// Domains
+	register(spec{"containr_domains_list", "List domains attached to a service", "GET", "/services/{id}/domains", []string{"id"}, nil, false})
+	register(spec{"containr_domains_add", "Attach a domain to a service. Args: id, domain (required), is_default.", "POST", "/services/{id}/domains", []string{"id"}, []string{"domain", "is_default"}, false})
+	register(spec{"containr_domains_remove", "Detach a domain. Args: id (service), domain_id.", "DELETE", "/services/{id}/domains/{domain_id}", []string{"id", "domain_id"}, nil, false})
+	register(spec{"containr_domains_default", "Set the default domain. Args: id (service), domain_id.", "POST", "/services/{id}/domains/{domain_id}/default", []string{"id", "domain_id"}, nil, false})
+	register(spec{"containr_domains_check", "DNS preflight for all service domains — returns ok|wrong-target|pending per domain", "GET", "/services/{id}/domains/check", []string{"id"}, nil, false})
 
 	// Docker volumes (admin)
 	register(spec{"containr_volumes_list", "List docker volumes on the node with in-use flags (admin)", "GET", "/admin/volumes", nil, nil, false})

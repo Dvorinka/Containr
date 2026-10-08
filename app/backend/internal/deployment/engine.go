@@ -57,6 +57,11 @@ type ServiceConfig struct {
 	PublicPort int32 `json:"public_port,omitempty"`
 	// Domain is a public hostname routed to PublicPort via Traefik.
 	Domain string `json:"domain,omitempty"`
+	// Domains is the full hostname set (includes Domain when set).
+	Domains        []string `json:"domains,omitempty"`
+	Maintenance    bool     `json:"maintenance,omitempty"`
+	MaintenanceURL string   `json:"maintenance_url,omitempty"`
+	BasicAuthUsers string   `json:"basic_auth_users,omitempty"`
 	// HealthPath is an HTTP path probed on PublicPort for container health.
 	HealthPath string `json:"health_path,omitempty"`
 	// PublishedPort is the host port bound by the previous deployment; replica 0
@@ -312,21 +317,25 @@ func (de *DeploymentEngine) deployService(ctx context.Context, deployment *Deplo
 	cfg := deployment.Config
 
 	spec := RuntimeSpec{
-		ProjectID:     deployment.ProjectID,
-		ServiceID:     deployment.ServiceID,
-		Name:          cfg.Name,
-		Image:         deployment.ImageName,
-		Command:       cfg.Command,
-		Env:           cfg.Environment,
-		Replicas:      cfg.Replicas,
-		Port:          cfg.PublicPort,
-		PublishedPort: cfg.PublishedPort,
-		Domain:        cfg.Domain,
-		HealthPath:    cfg.HealthPath,
-		RestartPolicy: cfg.RestartPolicy,
-		MemoryBytes:   cfg.Resources.MemoryBytes,
-		NanoCPUs:      cfg.Resources.CPUQuota,
-		Volumes:       cfg.VolumeMounts,
+		ProjectID:      deployment.ProjectID,
+		ServiceID:      deployment.ServiceID,
+		Name:           cfg.Name,
+		Image:          deployment.ImageName,
+		Command:        cfg.Command,
+		Env:            cfg.Environment,
+		Replicas:       cfg.Replicas,
+		Port:           cfg.PublicPort,
+		PublishedPort:  cfg.PublishedPort,
+		Domain:         cfg.Domain,
+		HealthPath:     cfg.HealthPath,
+		RestartPolicy:  cfg.RestartPolicy,
+		MemoryBytes:    cfg.Resources.MemoryBytes,
+		NanoCPUs:       cfg.Resources.CPUQuota,
+		Volumes:        cfg.VolumeMounts,
+		Domains:        cfg.Domains,
+		Maintenance:    cfg.Maintenance,
+		MaintenanceURL: cfg.MaintenanceURL,
+		BasicAuthUsers: cfg.BasicAuthUsers,
 	}
 	for _, pm := range cfg.PortMappings {
 		if spec.Port == 0 {

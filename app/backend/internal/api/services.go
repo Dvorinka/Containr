@@ -38,6 +38,9 @@ type Service struct {
 	RestartPolicy   string          `json:"restart_policy" db:"restart_policy"`
 	PublicURL       string          `json:"public_url,omitempty" db:"-"` // computed at read time
 	Volumes         []ServiceVolume `json:"volumes" db:"-"`              // loaded lazily — stored as JSONB
+	Domains         []ServiceDomain `json:"domains,omitempty" db:"-"`
+	MaintenanceMode bool            `json:"maintenance_mode" db:"-"`
+	BasicAuth       []string        `json:"basic_auth,omitempty" db:"-"` // usernames only, never hashes
 	CreatedAt       time.Time       `json:"created_at" db:"created_at"`
 	UpdatedAt       time.Time       `json:"updated_at" db:"updated_at"`
 }
@@ -112,6 +115,8 @@ type CreateServiceRequest struct {
 	HealthCheckPath string          `json:"healthcheck_path"`
 	RestartPolicy   string          `json:"restart_policy"`
 	Volumes         []ServiceVolume `json:"volumes"`
+	MaintenanceMode bool            `json:"maintenance_mode"`
+	BasicAuth       []BasicAuthCred `json:"basic_auth"`
 }
 
 // UpdateServiceRequest represents a request to update a service
@@ -132,6 +137,8 @@ type UpdateServiceRequest struct {
 	HealthCheckPath *string          `json:"healthcheck_path"`
 	RestartPolicy   string           `json:"restart_policy"`
 	Volumes         *[]ServiceVolume `json:"volumes"`
+	MaintenanceMode *bool            `json:"maintenance_mode"`
+	BasicAuth       *[]BasicAuthCred `json:"basic_auth"`
 }
 
 // handleGetServices retrieves all services for a project
@@ -359,6 +366,26 @@ func handleCreateService(c *gin.Context) {
 		return
 	}
 
+	// Domains live in service_domains; services.domain is the derived default.
+	if req.Domain != "" && validHostname(strings.ToLower(req.Domain)) {
+		_, _ = db.(*database.DB).Exec(
+			`INSERT INTO service_domains (service_id, domain, is_default) VALUES ($1, $2, true)
+			 ON CONFLICT (service_id, domain) DO UPDATE SET is_default = true`,
+			service.ID, strings.ToLower(req.Domain))
+	}
+	if req.MaintenanceMode || len(req.BasicAuth) > 0 {
+		basicAuthUsers := ""
+		if encoded, encErr := encodeBasicAuth(req.BasicAuth); encErr == nil {
+			basicAuthUsers = encoded
+		}
+		_, _ = db.(*database.DB).Exec(
+			`UPDATE services SET maintenance_mode = $1, basic_auth_users = $2 WHERE id = $3`,
+			req.MaintenanceMode, basicAuthUsers, service.ID)
+		service.MaintenanceMode = req.MaintenanceMode
+		service.BasicAuth = basicAuthUsernames(basicAuthUsers)
+	}
+	service.Domains = loadServiceDomains(db.(*database.DB), service.ID)
+
 	c.JSON(http.StatusCreated, gin.H{"service": service})
 }
 
@@ -441,6 +468,10 @@ func handleGetService(c *gin.Context) {
 			Type: v.Type, Source: v.Source, Target: v.Destination, ReadOnly: v.ReadOnly,
 		})
 	}
+	service.Domains = loadServiceDomains(db.(*database.DB), service.ID)
+	maintenance, basicAuth := serviceAccess(db.(*database.DB), service.ID)
+	service.MaintenanceMode = maintenance
+	service.BasicAuth = basicAuthUsernames(basicAuth)
 	c.JSON(http.StatusOK, gin.H{"service": service})
 }
 
@@ -555,14 +586,17 @@ func handleUpdateService(c *gin.Context) {
 	if req.RestartPolicy != "" {
 		existingService.RestartPolicy = req.RestartPolicy
 	}
-	var volumesJSON []byte
+	// lib/pq sends a nil []byte as an empty bytea literal rather than NULL,
+	// so the COALESCE fallback needs an untyped nil when volumes aren't sent.
+	var volumesArg interface{}
 	if req.Volumes != nil {
 		if err := validateServiceVolumes(*req.Volumes); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "code": "VALIDATION"})
 			return
 		}
 		existingService.Volumes = *req.Volumes
-		volumesJSON, _ = json.Marshal(*req.Volumes)
+		volumesJSON, _ := json.Marshal(*req.Volumes)
+		volumesArg = volumesJSON
 	}
 
 	existingService.UpdatedAt = time.Now()
@@ -573,20 +607,62 @@ func handleUpdateService(c *gin.Context) {
 			SET name = $1, type = $2, image = $3, command = $4, environment = $5,
 				git_repo = $6, git_branch = $7, build_path = $8, cpu = $9, memory = $10,
 				replicas = $11, port = $12, domain = $13, healthcheck_path = $14,
-				restart_policy = $15, volumes = COALESCE($17, volumes), updated_at = $16
+				restart_policy = $15, volumes = COALESCE($17::jsonb, volumes), updated_at = $16
 			WHERE id = $18`,
 		existingService.Name, existingService.Type, existingService.Image, existingService.Command,
 		existingService.Environment, existingService.GitRepo, existingService.GitBranch,
 		existingService.BuildPath, existingService.CPU, existingService.Memory,
 		existingService.Replicas, existingService.Port, existingService.Domain,
 		existingService.HealthCheckPath, existingService.RestartPolicy,
-		existingService.UpdatedAt, volumesJSON, existingService.ID,
+		existingService.UpdatedAt, volumesArg, existingService.ID,
 	)
 
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update service"})
 		return
 	}
+
+	// Domain writes route through service_domains — services.domain is the
+	// derived default and gets rewritten by syncDefaultDomain.
+	if req.Domain != nil {
+		domain := strings.ToLower(strings.TrimSpace(*req.Domain))
+		if domain == "" {
+			_, _ = db.(*database.DB).Exec(`DELETE FROM service_domains WHERE service_id = $1`, serviceID)
+		} else if validHostname(domain) {
+			_, _ = db.(*database.DB).Exec(`UPDATE service_domains SET is_default = false WHERE service_id = $1`, serviceID)
+			_, _ = db.(*database.DB).Exec(
+				`INSERT INTO service_domains (service_id, domain, is_default) VALUES ($1, $2, true)
+				 ON CONFLICT (service_id, domain) DO UPDATE SET is_default = true`,
+				serviceID, domain)
+		} else {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid hostname", "code": "VALIDATION"})
+			return
+		}
+		syncDefaultDomain(db.(*database.DB), serviceID)
+		_ = db.(*database.DB).QueryRow(`SELECT domain FROM services WHERE id = $1`, serviceID).Scan(&existingService.Domain)
+	}
+
+	if req.MaintenanceMode != nil || req.BasicAuth != nil {
+		maintenance, basicAuth := serviceAccess(db.(*database.DB), serviceID)
+		if req.MaintenanceMode != nil {
+			maintenance = *req.MaintenanceMode
+		}
+		if req.BasicAuth != nil {
+			encoded, encErr := encodeBasicAuth(*req.BasicAuth)
+			if encErr != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to encode basic auth", "code": "INTERNAL"})
+				return
+			}
+			basicAuth = encoded
+		}
+		_, _ = db.(*database.DB).Exec(
+			`UPDATE services SET maintenance_mode = $1, basic_auth_users = $2 WHERE id = $3`,
+			maintenance, basicAuth, serviceID)
+		existingService.MaintenanceMode = maintenance
+	}
+	existingService.Domains = loadServiceDomains(db.(*database.DB), serviceID)
+	_, storedAuth := serviceAccess(db.(*database.DB), serviceID)
+	existingService.BasicAuth = basicAuthUsernames(storedAuth)
 
 	// A replica change applies immediately when the service has live
 	// containers; other spec fields take effect on the next deploy.

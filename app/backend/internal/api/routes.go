@@ -248,6 +248,7 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			public.GET("/auth/bootstrap", handleAuthBootstrap)
 			public.POST("/auth/login", handleLogin)
 			public.POST("/auth/register", handleRegister)
+			public.GET("/maintenance", handleMaintenancePage)
 		}
 
 		// Read routes — public browsing. OptionalAuth resolves a session when
@@ -268,6 +269,8 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			read.GET("/services/:id/metrics", handleGetServiceMetrics)
 			read.GET("/services/:id/runtime", handleGetServiceRuntime)
 			read.GET("/services/:id/deployments", handleGetDeployments)
+			read.GET("/services/:id/domains", handleListServiceDomains)
+			read.GET("/services/:id/domains/check", handleCheckServiceDomains)
 			read.GET("/deployments", handleGetRecentDeployments)
 			read.GET("/deployments/:id", handleGetDeployment)
 
@@ -326,6 +329,9 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 
 			authed.PUT("/services/:id", handleUpdateService)
 			authed.DELETE("/services/:id", handleDeleteService)
+			authed.POST("/services/:id/domains", handleAddServiceDomain)
+			authed.DELETE("/services/:id/domains/:domain_id", handleDeleteServiceDomain)
+			authed.POST("/services/:id/domains/:domain_id/default", handleSetDefaultDomain)
 			authed.POST("/services/:id/start", handleServiceStart)
 			authed.POST("/services/:id/stop", handleServiceStop)
 			authed.POST("/services/:id/restart", handleServiceRestart)
