@@ -667,6 +667,167 @@ paths:
         '200':
           description: Reconciled runtime state
 
+  /services/{id}/clone:
+    post:
+      tags:
+        - Services
+      summary: Clone service
+      description: Duplicates config, volumes, domains, access gates, builder settings, and variables into the same or another project. Containers are not cloned — the copy starts stopped.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: Name for the clone (default "<name>-copy")
+                project_id:
+                  type: string
+                  format: uuid
+                  description: Target project (default same project; caller must own it)
+                environment:
+                  type: string
+                  enum: [production, preview, development]
+      responses:
+        '201':
+          description: Clone created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  service_id:
+                    type: string
+                    format: uuid
+                  name:
+                    type: string
+                  message:
+                    type: string
+        '409':
+          description: Name already exists in target project
+
+  /services/{id}/move:
+    post:
+      tags:
+        - Services
+      summary: Move service
+      description: Re-parents the service to another project the caller owns. Variables, domains, and volumes follow the service; running containers keep running and join the new project's network on next deploy.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [project_id]
+              properties:
+                project_id:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Service moved
+        '409':
+          description: Name conflict in target project
+
+  /registries:
+    get:
+      tags:
+        - Registries
+      summary: List registry credentials
+      description: Private-image pull credentials for the caller. Passwords are never returned — `has_password` signals presence.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Registry list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  registries:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Registry'
+    post:
+      tags:
+        - Registries
+      summary: Add registry credential
+      description: Credentials are matched by image host (e.g. ghcr.io, registry.example.com, docker.io for Docker Hub) on prebuilt-image deploys. Password stored encrypted at rest.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegistryRequest'
+      responses:
+        '201':
+          description: Registry created
+        '409':
+          description: A registry for this host already exists
+
+  /registries/{id}:
+    put:
+      tags:
+        - Registries
+      summary: Update registry credential
+      description: Empty password keeps the stored credential — delete and recreate to remove a password.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegistryRequest'
+      responses:
+        '200':
+          description: Registry updated
+        '404':
+          description: Registry not found
+    delete:
+      tags:
+        - Registries
+      summary: Remove registry credential
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Registry removed
+        '404':
+          description: Registry not found
+
   /services/{id}/domains:
     get:
       tags:
@@ -5413,6 +5574,44 @@ components:
           type: string
           description: Plaintext on write — stored as bcrypt htpasswd; never returned
 
+    Registry:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        host:
+          type: string
+          description: Registry host matched against the image reference — ghcr.io, registry.example.com, docker.io for Docker Hub
+        username:
+          type: string
+        has_password:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    RegistryRequest:
+      type: object
+      required:
+        - name
+        - host
+      properties:
+        name:
+          type: string
+        host:
+          type: string
+        username:
+          type: string
+        password:
+          type: string
+          description: Plaintext on write — stored encrypted; never returned. Empty on update keeps the stored credential.
+
     ServiceVolume:
       type: object
       required:
@@ -7732,5 +7931,7 @@ tags:
     description: Vulnerability scans and compliance reporting
   - name: Cron
     description: Scheduled jobs
+  - name: Registries
+    description: Private-image pull credentials
   - name: Gateway
     description: API gateway — upstream services, keys, analytics
