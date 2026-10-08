@@ -2169,7 +2169,11 @@ export function ServiceDetailPage() {
                         disabled={updateServiceMutation.isPending}
                         onClick={() =>
                           updateServiceMutation.mutate(
-                            { volumes: volumesForm.filter((v) => v.source.trim() && v.target.startsWith('/')) },
+                            {
+                              volumes: volumesForm
+                                .filter((v) => v.source.trim() && v.target.startsWith('/'))
+                                .map((v) => ({ type: v.type ?? 'volume', source: v.source, target: v.target, read_only: v.read_only ?? false })),
+                            },
                             { onSuccess: () => setVolumesForm(null) },
                           )
                         }
