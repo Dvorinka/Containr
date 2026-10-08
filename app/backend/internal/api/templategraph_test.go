@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -155,5 +156,47 @@ func TestValidateTemplateGraph(t *testing.T) {
 		{Key: "web", Type: "web"},
 	}); err == nil {
 		t.Fatal("expected missing runtime error")
+	}
+}
+
+// TestOfficialTemplatesAllParse walks every seeded template and asserts the
+// config parses, graph templates topo-sort + validate, and a dry-run resolve
+// produces no unresolved refs (defaults cover all expressions).
+func TestOfficialTemplatesAllParse(t *testing.T) {
+	for _, tpl := range SeedTemplates() {
+		var cfg TemplateConfig
+		if err := json.Unmarshal([]byte(tpl.Config), &cfg); err != nil {
+			t.Errorf("%s: config parse: %v", tpl.ID, err)
+			continue
+		}
+		if len(cfg.Services) == 0 {
+			continue
+		}
+		sorted, err := topoSortServices(cfg.Services)
+		if err != nil {
+			t.Errorf("%s: topo sort: %v", tpl.ID, err)
+			continue
+		}
+		if err := validateTemplateGraph(sorted); err != nil {
+			t.Errorf("%s: validate: %v", tpl.ID, err)
+			continue
+		}
+		var vars []TemplateVariable
+		if tpl.Variables != "" {
+			if err := json.Unmarshal([]byte(tpl.Variables), &vars); err != nil {
+				t.Errorf("%s: variables parse: %v", tpl.ID, err)
+				continue
+			}
+		}
+		userVars := map[string]string{}
+		for _, v := range vars {
+			if v.Default != "" {
+				userVars[v.Key] = v.Default
+			}
+		}
+		graph := resolveTemplateGraph(sorted, userVars)
+		if len(graph.unresolved) > 0 {
+			t.Errorf("%s: unresolved refs: %v", tpl.ID, graph.unresolved)
+		}
 	}
 }
