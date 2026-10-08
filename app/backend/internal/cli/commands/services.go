@@ -195,6 +195,14 @@ var servicesUpdateCmd = &cobra.Command{
 			}
 			body["volumes"] = volumes
 		}
+		if cmd.Flags().Changed("sleep") {
+			v, _ := cmd.Flags().GetBool("sleep")
+			body["sleep_enabled"] = v
+		}
+		if cmd.Flags().Changed("sleep-idle") {
+			v, _ := cmd.Flags().GetInt("sleep-idle")
+			body["sleep_idle_minutes"] = v
+		}
 		if cmd.Flags().Changed("maintenance") {
 			v, _ := cmd.Flags().GetString("maintenance")
 			body["maintenance_mode"] = v == "on" || v == "true"
@@ -504,8 +512,10 @@ func init() {
 	uf.String("memory-reserve", "", "soft memory reservation (empty clears)")
 	uf.String("static-cmd", "", "build command for the static builder (empty clears)")
 	uf.String("static-dir", "", "output dir for the static builder (empty clears)")
+	uf.Bool("sleep", false, "enable scale-to-zero on idle (sleep mode)")
+	uf.Int("sleep-idle", 0, "idle minutes before sleeping (1-1440)")
 
-	for _, a := range []string{"start", "stop", "restart", "redeploy"} {
+	for _, a := range []string{"start", "stop", "restart", "redeploy", "sleep", "wake"} {
 		verb := a
 		ServicesCmd.AddCommand(&cobra.Command{
 			Use:   verb + " <id>",

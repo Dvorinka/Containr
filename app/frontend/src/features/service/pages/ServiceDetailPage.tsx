@@ -33,6 +33,8 @@ import {
   updateService,
   restartService,
   stopService,
+  sleepService,
+  wakeService,
   getServiceRuntime,
   type CronJobEntity,
   type ServiceVolume,
@@ -459,6 +461,14 @@ export function ServiceDetailPage() {
     mutationFn: () => stopService(serviceId),
     onSuccess: invalidateService,
   });
+  const sleepMutation = useMutation({
+    mutationFn: () => sleepService(serviceId),
+    onSuccess: invalidateService,
+  });
+  const wakeMutation = useMutation({
+    mutationFn: () => wakeService(serviceId),
+    onSuccess: invalidateService,
+  });
   const updateServiceMutation = useMutation({
     mutationFn: (input: Parameters<typeof updateService>[1]) => updateService(serviceId, input),
     onSuccess: () => {
@@ -481,6 +491,24 @@ export function ServiceDetailPage() {
   const [domainInput, setDomainInput] = useState('');
   const [domainChecks, setDomainChecks] = useState<Record<string, DomainCheckResult> | null>(null);
   const [accessForm, setAccessForm] = useState<{ maintenance: boolean; basicAuth: string } | null>(null);
+  const [sleepForm, setSleepForm] = useState<{ enabled: boolean; minutes: string; dirty: boolean }>({
+    enabled: false,
+    minutes: '15',
+    dirty: false,
+  });
+  const sleepFormInitRef = useRef<string>('');
+  useEffect(() => {
+    const svc = isDemoMode ? getDemoServiceById(serviceId) : serviceQuery.data;
+    const key = svc ? `${svc.id}:${svc.sleepEnabled}:${svc.sleepIdleMinutes}` : '';
+    if (svc && key !== sleepFormInitRef.current) {
+      sleepFormInitRef.current = key;
+      setSleepForm({
+        enabled: Boolean(svc.sleepEnabled),
+        minutes: String(svc.sleepIdleMinutes ?? 15),
+        dirty: false,
+      });
+    }
+  }, [isDemoMode, serviceId, serviceQuery.data]);
   const [buildForm, setBuildForm] = useState<{
     builder: string; cpuReserve: string; memoryReserve: string; staticCmd: string; staticDir: string;
   } | null>(null);
@@ -689,7 +717,7 @@ export function ServiceDetailPage() {
               className={`badge-${service.status === 'running' ? 'active' : service.status === 'degraded' ? 'degraded' : 'stopped'}`}
             >
               {service.status === 'running' && <span className="live-dot" />}
-              {service.status === 'running' ? 'Active' : service.status === 'degraded' ? 'Degraded' : 'Stopped'}
+              {service.status === 'running' ? 'Active' : service.status === 'degraded' ? 'Degraded' : service.status === 'sleeping' ? 'Sleeping' : 'Stopped'}
             </span>
           </div>
           <div className="flex items-center" style={{ gap: '16px', marginTop: '4px' }}>
@@ -2336,6 +2364,80 @@ export function ServiceDetailPage() {
                   <p className="mt-2 text-xs text-[var(--error)]">{(domainMutation.error as Error).message}</p>
                 )}
                 <p className="mt-2 text-[10px] text-[var(--text-tertiary)]">Point the domain at this node (A record or CNAME), then Check DNS. Applies on next deploy or redeploy.</p>
+              </div>
+            )}
+
+            {!isDemoMode && (
+              <div className="mt-6 pt-6 border-t border-[var(--border-subtle)]">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <h3 className="text-sm font-medium text-[var(--text-primary)]">Sleep</h3>
+                    <p className="text-xs text-[var(--text-tertiary)] mt-0.5">
+                      Scale to zero after idle minutes without traffic. Requests resume the service automatically.
+                    </p>
+                  </div>
+                  {service.status === 'sleeping' ? (
+                    <button
+                      type="button"
+                      disabled={wakeMutation.isPending}
+                      onClick={() => wakeMutation.mutate()}
+                      className="px-3 py-1.5 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-on)] text-xs font-medium disabled:opacity-50"
+                    >
+                      {wakeMutation.isPending ? 'Waking…' : 'Wake now'}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={sleepMutation.isPending || service.status !== 'running'}
+                      onClick={() => sleepMutation.mutate()}
+                      className="px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium hover:border-[var(--border-default)] transition-colors disabled:opacity-50"
+                    >
+                      {sleepMutation.isPending ? 'Sleeping…' : 'Sleep now'}
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center gap-4 text-xs">
+                  <label className="flex items-center gap-2 text-[var(--text-primary)]">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(sleepForm.enabled)}
+                      onChange={(e) =>
+                        setSleepForm((f) => ({ ...f, enabled: e.target.checked, dirty: true }))
+                      }
+                    />
+                    Sleep on idle
+                  </label>
+                  <label className="flex items-center gap-2 text-[var(--text-tertiary)]">
+                    after
+                    <input
+                      type="number"
+                      min={1}
+                      max={1440}
+                      value={sleepForm.minutes}
+                      onChange={(e) =>
+                        setSleepForm((f) => ({ ...f, minutes: e.target.value, dirty: true }))
+                      }
+                      className="w-20 px-2 py-1 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)]"
+                    />
+                    min
+                  </label>
+                  <button
+                    type="button"
+                    disabled={updateServiceMutation.isPending}
+                    onClick={() =>
+                      updateServiceMutation.mutate({
+                        sleep_enabled: sleepForm.enabled,
+                        sleep_idle_minutes: Math.max(1, Math.min(1440, Number(sleepForm.minutes) || 15)),
+                      })
+                    }
+                    className="px-3 py-1.5 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-on)] text-xs font-medium disabled:opacity-50"
+                  >
+                    Save
+                  </button>
+                  {sleepForm.dirty && (
+                    <span className="text-[var(--text-tertiary)]">unsaved</span>
+                  )}
+                </div>
               </div>
             )}
 

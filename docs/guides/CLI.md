@@ -159,6 +159,25 @@ instance-level defaults used at service creation;
 `app_settings.capacity_policy=block` fails deployments whose requested
 memory exceeds node capacity (default `warn` logs only).
 
+## Sleep mode (scale-to-zero)
+
+Services can scale to zero after an idle window and resume on traffic:
+
+```bash
+containr services update <id> --sleep --sleep-idle 15   # enable, 15 min idle timeout
+containr services update <id> --sleep=false            # disable
+containr services sleep <id>                           # sleep now
+containr services wake <id>                            # resume now
+```
+
+Idleness is measured as flat container network I/O over the configured
+window (swept every 30s). Sleeping removes the workload containers and —
+when the service has domains — installs a busybox placeholder that holds
+the Traefik route at higher priority, serves a reloading "waking" page,
+and pings `GET /api/v1/internal/wake/:id` to reconcile the service back.
+The API must be reachable from containers for the callback (containerized
+deploys work via the shared network; bare-metal needs `HOST=0.0.0.0`).
+
 ## Clone, move, registries
 
 `services clone` duplicates config, volumes, domains, access gates,

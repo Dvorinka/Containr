@@ -371,6 +371,21 @@ func (c *Client) RemoveNetwork(ctx context.Context, networkID string) error {
 	return c.cli.NetworkRemove(ctx, networkID)
 }
 
+// NetworkGateway returns the IPAM gateway of a network — the address
+// containers on it can use to reach host-published ports.
+func (c *Client) NetworkGateway(ctx context.Context, networkID string) string {
+	resp, err := c.cli.NetworkInspect(ctx, networkID, network.InspectOptions{})
+	if err != nil {
+		return ""
+	}
+	for _, cfg := range resp.IPAM.Config {
+		if cfg.Gateway != "" {
+			return cfg.Gateway
+		}
+	}
+	return ""
+}
+
 // ConnectNetwork connects a container to a network
 func (c *Client) ConnectNetwork(ctx context.Context, networkID, containerID string, config network.EndpointSettings) error {
 	return c.cli.NetworkConnect(ctx, networkID, containerID, &config)

@@ -31,23 +31,37 @@ type Service struct {
 	CPU         string    `json:"cpu" db:"cpu"`
 	Memory      string    `json:"memory" db:"memory"`
 	// Runtime spec
-	Replicas        int             `json:"replicas" db:"replicas"`
-	Port            int             `json:"port" db:"port"`                         // container port to expose
-	Domain          string          `json:"domain" db:"domain"`                     // public hostname via Traefik
-	HealthCheckPath string          `json:"healthcheck_path" db:"healthcheck_path"` // probed on Port
-	RestartPolicy   string          `json:"restart_policy" db:"restart_policy"`
-	PublicURL       string          `json:"public_url,omitempty" db:"-"` // computed at read time
-	Volumes         []ServiceVolume `json:"volumes" db:"-"`              // loaded lazily — stored as JSONB
-	Domains         []ServiceDomain `json:"domains,omitempty" db:"-"`
-	MaintenanceMode bool            `json:"maintenance_mode" db:"-"`
-	BasicAuth       []string        `json:"basic_auth,omitempty" db:"-"` // usernames only, never hashes
-	Builder         string          `json:"builder" db:"builder"`        // auto|railpack|nixpacks|dockerfile|static
-	CPUReserve      string          `json:"cpu_reserve,omitempty" db:"cpu_reserve"`
-	MemoryReserve   string          `json:"memory_reserve,omitempty" db:"memory_reserve"`
-	StaticBuildCmd  string          `json:"static_build_cmd,omitempty" db:"static_build_cmd"`
-	StaticDir       string          `json:"static_dir,omitempty" db:"static_dir"`
-	CreatedAt       time.Time       `json:"created_at" db:"created_at"`
-	UpdatedAt       time.Time       `json:"updated_at" db:"updated_at"`
+	Replicas         int             `json:"replicas" db:"replicas"`
+	Port             int             `json:"port" db:"port"`                         // container port to expose
+	Domain           string          `json:"domain" db:"domain"`                     // public hostname via Traefik
+	HealthCheckPath  string          `json:"healthcheck_path" db:"healthcheck_path"` // probed on Port
+	RestartPolicy    string          `json:"restart_policy" db:"restart_policy"`
+	PublicURL        string          `json:"public_url,omitempty" db:"-"` // computed at read time
+	Volumes          []ServiceVolume `json:"volumes" db:"-"`              // loaded lazily — stored as JSONB
+	Domains          []ServiceDomain `json:"domains,omitempty" db:"-"`
+	MaintenanceMode  bool            `json:"maintenance_mode" db:"-"`
+	BasicAuth        []string        `json:"basic_auth,omitempty" db:"-"` // usernames only, never hashes
+	Builder          string          `json:"builder" db:"builder"`        // auto|railpack|nixpacks|dockerfile|static
+	CPUReserve       string          `json:"cpu_reserve,omitempty" db:"cpu_reserve"`
+	MemoryReserve    string          `json:"memory_reserve,omitempty" db:"memory_reserve"`
+	StaticBuildCmd   string          `json:"static_build_cmd,omitempty" db:"static_build_cmd"`
+	StaticDir        string          `json:"static_dir,omitempty" db:"static_dir"`
+	SleepEnabled     bool            `json:"sleep_enabled" db:"-"`
+	SleepIdleMinutes int             `json:"sleep_idle_minutes" db:"-"`
+	CreatedAt        time.Time       `json:"created_at" db:"created_at"`
+	UpdatedAt        time.Time       `json:"updated_at" db:"updated_at"`
+}
+
+// loadServiceSleep fills the sleep-mode columns, which live outside the
+// wide service SELECTs. Missing columns (pre-migration) degrade to off.
+func loadServiceSleep(db *database.DB, s *Service) {
+	var idle int
+	if err := db.QueryRow(
+		`SELECT COALESCE(sleep_enabled, false), COALESCE(sleep_idle_minutes, 15) FROM services WHERE id = $1`,
+		s.ID,
+	).Scan(&s.SleepEnabled, &idle); err == nil {
+		s.SleepIdleMinutes = idle
+	}
 }
 
 // ServiceVolume is a volume/bind mount applied to every replica.
@@ -131,29 +145,31 @@ type CreateServiceRequest struct {
 
 // UpdateServiceRequest represents a request to update a service
 type UpdateServiceRequest struct {
-	Name            string           `json:"name" binding:"omitempty,min=1,max=255"`
-	Type            string           `json:"type" binding:"omitempty,oneof=web worker database cron"`
-	Image           string           `json:"image"`
-	Command         string           `json:"command"`
-	Environment     string           `json:"environment" binding:"omitempty,oneof=production preview development"`
-	GitRepo         string           `json:"git_repo"`
-	GitBranch       string           `json:"git_branch"`
-	BuildPath       string           `json:"build_path"`
-	CPU             string           `json:"cpu"`
-	Memory          string           `json:"memory"`
-	Replicas        *int             `json:"replicas"`
-	Port            *int             `json:"port"`
-	Domain          *string          `json:"domain"`
-	HealthCheckPath *string          `json:"healthcheck_path"`
-	RestartPolicy   string           `json:"restart_policy"`
-	Volumes         *[]ServiceVolume `json:"volumes"`
-	MaintenanceMode *bool            `json:"maintenance_mode"`
-	BasicAuth       *[]BasicAuthCred `json:"basic_auth"`
-	Builder         string           `json:"builder" binding:"omitempty,oneof=auto railpack nixpacks dockerfile static"`
-	CPUReserve      *string          `json:"cpu_reserve"`
-	MemoryReserve   *string          `json:"memory_reserve"`
-	StaticBuildCmd  *string          `json:"static_build_cmd"`
-	StaticDir       *string          `json:"static_dir"`
+	Name             string           `json:"name" binding:"omitempty,min=1,max=255"`
+	Type             string           `json:"type" binding:"omitempty,oneof=web worker database cron"`
+	Image            string           `json:"image"`
+	Command          string           `json:"command"`
+	Environment      string           `json:"environment" binding:"omitempty,oneof=production preview development"`
+	GitRepo          string           `json:"git_repo"`
+	GitBranch        string           `json:"git_branch"`
+	BuildPath        string           `json:"build_path"`
+	CPU              string           `json:"cpu"`
+	Memory           string           `json:"memory"`
+	Replicas         *int             `json:"replicas"`
+	Port             *int             `json:"port"`
+	Domain           *string          `json:"domain"`
+	HealthCheckPath  *string          `json:"healthcheck_path"`
+	RestartPolicy    string           `json:"restart_policy"`
+	Volumes          *[]ServiceVolume `json:"volumes"`
+	MaintenanceMode  *bool            `json:"maintenance_mode"`
+	BasicAuth        *[]BasicAuthCred `json:"basic_auth"`
+	Builder          string           `json:"builder" binding:"omitempty,oneof=auto railpack nixpacks dockerfile static"`
+	CPUReserve       *string          `json:"cpu_reserve"`
+	MemoryReserve    *string          `json:"memory_reserve"`
+	StaticBuildCmd   *string          `json:"static_build_cmd"`
+	StaticDir        *string          `json:"static_dir"`
+	SleepEnabled     *bool            `json:"sleep_enabled"`
+	SleepIdleMinutes *int             `json:"sleep_idle_minutes"`
 }
 
 // handleGetServices retrieves all services for a project
@@ -201,9 +217,10 @@ func handleGetServices(c *gin.Context) {
 				COALESCE(builder, 'auto'), COALESCE(cpu_reserve, ''),
 				COALESCE(memory_reserve, ''), COALESCE(static_build_cmd, ''),
 				COALESCE(static_dir, ''),
-				created_at, updated_at 
-			FROM services 
-			WHERE project_id = $1 
+				COALESCE(sleep_enabled, false), COALESCE(sleep_idle_minutes, 15),
+				created_at, updated_at
+			FROM services
+			WHERE project_id = $1
 			ORDER BY created_at DESC`,
 		projectID,
 	)
@@ -223,6 +240,7 @@ func handleGetServices(c *gin.Context) {
 			&service.Replicas, &service.Port, &service.Domain, &service.HealthCheckPath,
 			&service.RestartPolicy, &service.Builder, &service.CPUReserve,
 			&service.MemoryReserve, &service.StaticBuildCmd, &service.StaticDir,
+			&service.SleepEnabled, &service.SleepIdleMinutes,
 			&service.CreatedAt, &service.UpdatedAt,
 		)
 		if err != nil {
@@ -524,6 +542,7 @@ func handleGetService(c *gin.Context) {
 		})
 	}
 	service.Domains = loadServiceDomains(db.(*database.DB), service.ID)
+	loadServiceSleep(db.(*database.DB), &service)
 	maintenance, basicAuth := serviceAccess(db.(*database.DB), service.ID)
 	service.MaintenanceMode = maintenance
 	service.BasicAuth = basicAuthUsernames(basicAuth)
@@ -665,6 +684,17 @@ func handleUpdateService(c *gin.Context) {
 	if existingService.Builder == "static" && existingService.StaticDir == "" {
 		existingService.StaticDir = "dist"
 	}
+	loadServiceSleep(db.(*database.DB), &existingService)
+	if req.SleepEnabled != nil {
+		existingService.SleepEnabled = *req.SleepEnabled
+	}
+	if req.SleepIdleMinutes != nil {
+		if *req.SleepIdleMinutes < 1 || *req.SleepIdleMinutes > 1440 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "sleep_idle_minutes must be 1-1440", "code": "VALIDATION"})
+			return
+		}
+		existingService.SleepIdleMinutes = *req.SleepIdleMinutes
+	}
 	for label, check := range map[string]func(string) error{
 		"cpu": validateCPUSpec, "cpu_reserve": validateCPUSpec,
 		"memory": validateMemorySpec, "memory_reserve": validateMemorySpec,
@@ -701,7 +731,8 @@ func handleUpdateService(c *gin.Context) {
 				replicas = $11, port = $12, domain = $13, healthcheck_path = $14,
 				restart_policy = $15, volumes = COALESCE($17::jsonb, volumes), updated_at = $16,
 				builder = $19, cpu_reserve = $20, memory_reserve = $21,
-				static_build_cmd = $22, static_dir = $23
+				static_build_cmd = $22, static_dir = $23,
+				sleep_enabled = $24, sleep_idle_minutes = $25
 			WHERE id = $18`,
 		existingService.Name, existingService.Type, existingService.Image, existingService.Command,
 		existingService.Environment, existingService.GitRepo, existingService.GitBranch,
@@ -711,6 +742,7 @@ func handleUpdateService(c *gin.Context) {
 		existingService.UpdatedAt, volumesArg, existingService.ID,
 		existingService.Builder, existingService.CPUReserve, existingService.MemoryReserve,
 		existingService.StaticBuildCmd, existingService.StaticDir,
+		existingService.SleepEnabled, existingService.SleepIdleMinutes,
 	)
 
 	if err != nil {

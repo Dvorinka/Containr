@@ -58,12 +58,14 @@ func init() {
 	register(spec{"containr_services_start", "Start a service", "POST", "/services/{id}/start", []string{"id"}, nil, false})
 	register(spec{"containr_services_stop", "Stop a service", "POST", "/services/{id}/stop", []string{"id"}, nil, false})
 	register(spec{"containr_services_restart", "Restart a service", "POST", "/services/{id}/restart", []string{"id"}, nil, false})
+	register(spec{"containr_services_sleep", "Put a service to sleep immediately (scale to zero)", "POST", "/services/{id}/sleep", []string{"id"}, nil, false})
+	register(spec{"containr_services_wake", "Wake a sleeping service", "POST", "/services/{id}/wake", []string{"id"}, nil, false})
 	register(spec{"containr_services_redeploy", "Rebuild and redeploy a service", "POST", "/services/{id}/redeploy", []string{"id"}, nil, false})
 	register(spec{"containr_services_clone", "Clone a service (config, volumes, domains, variables) into the same or another project. Args: id, name, project_id, environment.", "POST", "/services/{id}/clone", []string{"id"}, nil, false})
 	register(spec{"containr_services_move", "Move a service to another project the caller owns. Args: id, project_id (required).", "POST", "/services/{id}/move", []string{"id"}, []string{"project_id"}, false})
 	register(spec{"containr_services_logs", "Get service runtime logs. Args: id, tail (default 100).", "GET", "/services/{id}/logs", []string{"id"}, nil, false})
 	register(spec{"containr_services_exec", "Run a one-off command in the service container (30s ceiling). Args: id, command (required).", "POST", "/services/{id}/exec", []string{"id"}, []string{"command"}, false})
-	register(spec{"containr_services_update", "Update a service. Args: id, name, image, command, domain, restart_policy, healthcheck_path, cpu, memory, replicas, port, volumes = [{type: volume|bind, source, target, read_only}] — volumes replaces the whole mount list; pass [] to clear. maintenance_mode (bool), basic_auth = [{username, password}] — replaces all creds; [] clears. builder = auto|railpack|nixpacks|dockerfile|static, cpu_reserve, memory_reserve, static_build_cmd, static_dir (empty string clears reserves/static fields).", "PUT", "/services/{id}", []string{"id"}, nil, false})
+	register(spec{"containr_services_update", "Update a service. Args: id, name, image, command, domain, restart_policy, healthcheck_path, cpu, memory, replicas, port, volumes = [{type: volume|bind, source, target, read_only}] — volumes replaces the whole mount list; pass [] to clear. maintenance_mode (bool), basic_auth = [{username, password}] — replaces all creds; [] clears. builder = auto|railpack|nixpacks|dockerfile|static, cpu_reserve, memory_reserve, static_build_cmd, static_dir (empty string clears reserves/static fields). sleep_enabled (bool) + sleep_idle_minutes (1-1440) enable scale-to-zero on idle; a wake placeholder answers traffic while the service resumes.", "PUT", "/services/{id}", []string{"id"}, nil, false})
 
 	// Domains
 	register(spec{"containr_domains_list", "List domains attached to a service", "GET", "/services/{id}/domains", []string{"id"}, nil, false})

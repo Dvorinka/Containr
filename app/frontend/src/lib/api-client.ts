@@ -63,6 +63,8 @@ export type ServiceEntity = {
   memoryReserve?: string;
   staticBuildCmd?: string;
   staticDir?: string;
+  sleepEnabled?: boolean;
+  sleepIdleMinutes?: number;
   publicUrl?: string;
 };
 
@@ -611,6 +613,8 @@ function normalizeService(service: RawService): ServiceEntity | null {
     memoryReserve: service.memory_reserve,
     staticBuildCmd: service.static_build_cmd,
     staticDir: service.static_dir,
+    sleepEnabled: service.sleep_enabled,
+    sleepIdleMinutes: service.sleep_idle_minutes,
     publicUrl: service.public_url,
   };
 }
@@ -1290,13 +1294,15 @@ export async function getServiceRuntime(serviceId: string): Promise<ServiceRunti
   return normalizeRuntime(payload.runtime);
 }
 
-async function serviceAction(serviceId: string, action: 'start' | 'stop' | 'restart'): Promise<void> {
+async function serviceAction(serviceId: string, action: 'start' | 'stop' | 'restart' | 'sleep' | 'wake'): Promise<void> {
   await requestJson<{ message?: string }>(`/services/${serviceId}/${action}`, { method: 'POST' });
 }
 
 export const startService = (serviceId: string) => serviceAction(serviceId, 'start');
 export const stopService = (serviceId: string) => serviceAction(serviceId, 'stop');
 export const restartService = (serviceId: string) => serviceAction(serviceId, 'restart');
+export const sleepService = (serviceId: string) => serviceAction(serviceId, 'sleep');
+export const wakeService = (serviceId: string) => serviceAction(serviceId, 'wake');
 
 export async function redeployService(serviceId: string): Promise<ServiceRuntime> {
   const payload = await requestJson<{ runtime?: ServiceRuntime }>(`/services/${serviceId}/redeploy`, {
