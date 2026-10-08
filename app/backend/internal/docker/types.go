@@ -12,20 +12,22 @@ import (
 
 // ContainerConfig represents the configuration for creating a container
 type ContainerConfig struct {
-	Name          string
-	Image         string
-	Cmd           []string
-	Env           []string
-	Labels        map[string]string
-	RestartPolicy string
-	ExposedPorts  nat.PortSet
-	PortBindings  nat.PortMap
-	Mounts        []mount.Mount
-	Memory        int64
-	NanoCPUs      int64
-	NetworkMode   string
-	Networks      map[string]*network.EndpointSettings
-	Healthcheck   *container.HealthConfig
+	Name              string
+	Image             string
+	Cmd               []string
+	Env               []string
+	Labels            map[string]string
+	RestartPolicy     string
+	ExposedPorts      nat.PortSet
+	PortBindings      nat.PortMap
+	Mounts            []mount.Mount
+	Memory            int64
+	MemoryReservation int64
+	NanoCPUs          int64
+	CPUShares         int64
+	NetworkMode       string
+	Networks          map[string]*network.EndpointSettings
+	Healthcheck       *container.HealthConfig
 }
 
 // LogOptions represents options for retrieving container logs

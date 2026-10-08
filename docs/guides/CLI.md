@@ -115,6 +115,34 @@ Maintenance mode redirects all traffic to `<BASE_URL>/api/v1/maintenance`
 taken offline with empty responses. Basic-auth credentials are stored
 bcrypt-hashed (htpasswd) and gate every request.
 
+## Build strategy and resources
+
+Source-built services pick a builder per service:
+
+```bash
+containr services update <id> --builder railpack   # auto|railpack|nixpacks|dockerfile|static
+containr services update <id> --builder static --static-cmd "npm run build" --static-dir dist
+```
+
+`auto` detects from repo contents (Dockerfile → railpack → nixpacks).
+`static` builds assets in a node stage and serves them from nginx —
+`--static-cmd` runs inside the build stage (default
+`npm ci && npm run build`), `--static-dir` is copied into the nginx image
+(default `dist`, exposed on port 80).
+
+Resource reservations complement the hard `cpu`/`memory` limits:
+
+```bash
+containr services update <id> --cpu-reserve 0.25 --memory-reserve 128Mi
+```
+
+`cpu`/`memory` are hard caps (NanoCPUs/Memory); `cpu_reserve`/
+`memory_reserve` are soft hints (CPU shares, MemoryReservation). Empty
+string clears. `app_settings.default_cpu`/`default_memory` change the
+instance-level defaults used at service creation;
+`app_settings.capacity_policy=block` fails deployments whose requested
+memory exceeds node capacity (default `warn` logs only).
+
 ## MCP server
 
 `containr-mcp` (`go build ./cmd/mcp`) exposes the same API as MCP tools

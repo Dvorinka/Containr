@@ -218,12 +218,14 @@ func handleUpdateVariables(c *gin.Context) {
 			`SELECT id, project_id, name, COALESCE(image, ''), COALESCE(command, ''),
 			        COALESCE(replicas, 1), COALESCE(port, 0), COALESCE(domain, ''),
 			        COALESCE(healthcheck_path, ''), COALESCE(restart_policy, 'unless-stopped'),
-			        COALESCE(cpu, ''), COALESCE(memory, '')
+			        COALESCE(cpu, ''), COALESCE(memory, ''),
+			        COALESCE(builder, 'auto'), COALESCE(cpu_reserve, ''), COALESCE(memory_reserve, '')
 			 FROM services WHERE id = $1`,
 			serviceID,
 		).Scan(&svc.ID, &svc.ProjectID, &svc.Name, &svc.Image, &svc.Command,
 			&svc.Replicas, &svc.Port, &svc.Domain, &svc.HealthCheckPath,
-			&svc.RestartPolicy, &svc.CPU, &svc.Memory)
+			&svc.RestartPolicy, &svc.CPU, &svc.Memory,
+			&svc.Builder, &svc.CPUReserve, &svc.MemoryReserve)
 		resp["redeploy_queued"] = svcErr == nil && enqueueServiceRedeploy(c, db.(*database.DB), svc)
 	}
 	c.JSON(http.StatusOK, resp)

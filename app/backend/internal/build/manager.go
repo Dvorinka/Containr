@@ -16,6 +16,7 @@ type BuildManager struct {
 	railpackBuilder   *RailpackBuilder
 	nixpacksBuilder   *NixpacksBuilder
 	dockerfileBuilder *DockerfileBuilder
+	staticBuilder     *StaticBuilder
 	dockerClient      *docker.Client
 	cacheManager      *CacheManager
 	parallelBuilder   *ParallelBuilder
@@ -28,6 +29,7 @@ const (
 	BuildTypeRailpack   BuildType = "railpack"
 	BuildTypeNixpacks   BuildType = "nixpacks"
 	BuildTypeDockerfile BuildType = "dockerfile"
+	BuildTypeStatic     BuildType = "static"
 	BuildTypePrebuilt   BuildType = "prebuilt"
 )
 
@@ -39,6 +41,7 @@ func NewBuildManager(workDir string, dockerClient *docker.Client) *BuildManager 
 		railpackBuilder:   NewRailpackBuilder(workDir, dockerClient),
 		nixpacksBuilder:   NewNixpacksBuilder(workDir, dockerClient),
 		dockerfileBuilder: NewDockerfileBuilder(workDir, dockerClient),
+		staticBuilder:     NewStaticBuilder(dockerClient),
 		dockerClient:      dockerClient,
 		cacheManager:      cacheManager,
 		parallelBuilder:   parallelBuilder,
@@ -80,6 +83,8 @@ func (bm *BuildManager) Build(ctx context.Context, req *types.BuildRequest) (*ty
 		return bm.nixpacksBuilder.Build(ctx, req)
 	case BuildTypeDockerfile:
 		return bm.dockerfileBuilder.Build(ctx, req)
+	case BuildTypeStatic:
+		return bm.staticBuilder.Build(ctx, req)
 	case BuildTypePrebuilt:
 		return bm.buildPrebuilt(ctx, req)
 	default:

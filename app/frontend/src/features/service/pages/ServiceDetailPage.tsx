@@ -448,6 +448,9 @@ export function ServiceDetailPage() {
   const [domainInput, setDomainInput] = useState('');
   const [domainChecks, setDomainChecks] = useState<Record<string, DomainCheckResult> | null>(null);
   const [accessForm, setAccessForm] = useState<{ maintenance: boolean; basicAuth: string } | null>(null);
+  const [buildForm, setBuildForm] = useState<{
+    builder: string; cpuReserve: string; memoryReserve: string; staticCmd: string; staticDir: string;
+  } | null>(null);
 
   const domainsQuery = useQuery({
     queryKey: ['service-domains', serviceId],
@@ -2193,7 +2196,11 @@ export function ServiceDetailPage() {
                         disabled={updateServiceMutation.isPending}
                         onClick={() =>
                           updateServiceMutation.mutate(
-                            { volumes: volumesForm.filter((v) => v.source.trim() && v.target.startsWith('/')) },
+                            {
+                              volumes: volumesForm
+                                .filter((v) => v.source.trim() && v.target.startsWith('/'))
+                                .map((v) => ({ type: v.type ?? 'volume' as const, source: v.source, target: v.target, read_only: v.read_only ?? false })),
+                            },
                             { onSuccess: () => setVolumesForm(null) },
                           )
                         }
@@ -2381,6 +2388,144 @@ export function ServiceDetailPage() {
                       </button>
                       <p className="text-[10px] text-[var(--text-tertiary)]">Applies on next deploy or redeploy</p>
                     </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!isDemoMode && (
+              <div className="mt-6 pt-6 border-t border-[var(--border-subtle)]">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-medium text-[var(--text-primary)]">Build &amp; Resources</h3>
+                  {buildForm === null && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setBuildForm({
+                          builder: service.builder ?? 'auto',
+                          cpuReserve: service.cpuReserve ?? '',
+                          memoryReserve: service.memoryReserve ?? '',
+                          staticCmd: service.staticBuildCmd ?? '',
+                          staticDir: service.staticDir ?? '',
+                        })
+                      }
+                      className="px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium hover:border-[var(--border-default)] transition-colors"
+                    >
+                      Edit
+                    </button>
+                  )}
+                </div>
+
+                {buildForm === null ? (
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] p-3">
+                      <p className="text-[var(--text-tertiary)] uppercase tracking-wide">Builder</p>
+                      <p className="mt-1 text-sm font-medium text-[var(--text-primary)]">{service.builder ?? 'auto'}</p>
+                    </div>
+                    <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] p-3">
+                      <p className="text-[var(--text-tertiary)] uppercase tracking-wide">Reservations</p>
+                      <p className="mt-1 text-sm font-medium text-[var(--text-primary)]">
+                        {[service.cpuReserve && `cpu ${service.cpuReserve}`, service.memoryReserve && `mem ${service.memoryReserve}`]
+                          .filter(Boolean).join(' · ') || 'none'}
+                      </p>
+                    </div>
+                    {service.builder === 'static' && (
+                      <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] p-3 col-span-2">
+                        <p className="text-[var(--text-tertiary)] uppercase tracking-wide">Static build</p>
+                        <p className="mt-1 text-sm font-medium mono text-[var(--text-primary)]">
+                          {service.staticBuildCmd || 'npm ci && npm run build'} → {service.staticDir || 'dist'}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] p-4 space-y-4">
+                    <div>
+                      <label className="block text-xs text-[var(--text-tertiary)] mb-1">Builder</label>
+                      <select
+                        value={buildForm.builder}
+                        onChange={(e) => setBuildForm({ ...buildForm, builder: e.target.value })}
+                        className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)]"
+                      >
+                        {['auto', 'railpack', 'nixpacks', 'dockerfile', 'static'].map((b) => (
+                          <option key={b} value={b}>{b}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs text-[var(--text-tertiary)] mb-1">CPU reservation (e.g. 0.25)</label>
+                        <input
+                          value={buildForm.cpuReserve}
+                          onChange={(e) => setBuildForm({ ...buildForm, cpuReserve: e.target.value })}
+                          placeholder="0.25"
+                          className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm mono text-[var(--text-primary)]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-[var(--text-tertiary)] mb-1">Memory reservation (e.g. 128Mi)</label>
+                        <input
+                          value={buildForm.memoryReserve}
+                          onChange={(e) => setBuildForm({ ...buildForm, memoryReserve: e.target.value })}
+                          placeholder="128Mi"
+                          className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm mono text-[var(--text-primary)]"
+                        />
+                      </div>
+                    </div>
+                    {buildForm.builder === 'static' && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs text-[var(--text-tertiary)] mb-1">Build command</label>
+                          <input
+                            value={buildForm.staticCmd}
+                            onChange={(e) => setBuildForm({ ...buildForm, staticCmd: e.target.value })}
+                            placeholder="npm ci && npm run build"
+                            className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm mono text-[var(--text-primary)]"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-[var(--text-tertiary)] mb-1">Output directory</label>
+                          <input
+                            value={buildForm.staticDir}
+                            onChange={(e) => setBuildForm({ ...buildForm, staticDir: e.target.value })}
+                            placeholder="dist"
+                            className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm mono text-[var(--text-primary)]"
+                          />
+                        </div>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={updateServiceMutation.isPending}
+                        onClick={() => {
+                          updateServiceMutation.mutate(
+                            {
+                              builder: buildForm.builder as 'auto' | 'railpack' | 'nixpacks' | 'dockerfile' | 'static',
+                              cpu_reserve: buildForm.cpuReserve,
+                              memory_reserve: buildForm.memoryReserve,
+                              static_build_cmd: buildForm.staticCmd,
+                              static_dir: buildForm.staticDir,
+                            },
+                            { onSuccess: () => setBuildForm(null) },
+                          );
+                        }}
+                        className="px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-on)] text-sm font-medium disabled:opacity-50"
+                      >
+                        {updateServiceMutation.isPending ? 'Saving…' : 'Save'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBuildForm(null)}
+                        className="px-4 py-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)]"
+                      >
+                        Cancel
+                      </button>
+                      <p className="text-[10px] text-[var(--text-tertiary)]">Builder applies to the next source build; reservations on next deploy</p>
+                    </div>
+                    {updateServiceMutation.isError && (
+                      <p className="text-xs text-[var(--error)]">{(updateServiceMutation.error as Error).message}</p>
+                    )}
                   </div>
                 )}
               </div>

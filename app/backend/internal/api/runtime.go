@@ -53,6 +53,13 @@ func serviceRuntimeSpec(db *database.DB, service Service) (deployment.RuntimeSpe
 	}
 	spec.NanoCPUs = parseCPULimit(service.CPU)
 	spec.MemoryBytes = parseMemoryLimit(service.Memory)
+	spec.MemoryReserve = parseMemoryLimit(service.MemoryReserve)
+	spec.CPUShares = parseCPUReserveShares(service.CPUReserve)
+	if service.Builder == "static" && spec.Port == 0 {
+		// The static builder's image is nginx; expose its default port so
+		// Traefik has something to route to without extra config.
+		spec.Port = 80
+	}
 	spec.Volumes = loadServiceVolumes(db, service.ID)
 	spec.Domains = serviceDomainNames(db, service.ID, service.Domain)
 	spec.Maintenance, spec.BasicAuthUsers = serviceAccess(db, service.ID)
@@ -160,6 +167,32 @@ func parseCPULimit(cpu string) int64 {
 	return int64(v * 1e9)
 }
 
+// parseCPUReserveShares maps a cpu fraction to Docker's relative share
+// weight: 1024 shares ≈ one CPU.
+func parseCPUReserveShares(cpu string) int64 {
+	v, err := strconv.ParseFloat(strings.TrimSpace(cpu), 64)
+	if err != nil || v <= 0 {
+		return 0
+	}
+	return int64(v * 1024)
+}
+
+// validateCPUSpec and validateMemorySpec reject values that silently parse
+// to zero — a typo like "512mb" must fail loudly instead of dropping the limit.
+func validateCPUSpec(v string) error {
+	if s := strings.TrimSpace(v); s != "" && parseCPULimit(s) <= 0 {
+		return fmt.Errorf("must be a positive cpu fraction (e.g. 0.5, 2)")
+	}
+	return nil
+}
+
+func validateMemorySpec(v string) error {
+	if s := strings.TrimSpace(v); s != "" && parseMemoryLimit(s) <= 0 {
+		return fmt.Errorf("must be bytes with unit (e.g. 256Mi, 1g)")
+	}
+	return nil
+}
+
 var memUnits = map[string]int64{"k": 1e3, "m": 1e6, "g": 1e9, "ki": 1 << 10, "mi": 1 << 20, "gi": 1 << 30}
 
 func parseMemoryLimit(mem string) int64 {
@@ -215,6 +248,9 @@ func loadOwnedService(c *gin.Context, db *database.DB) (Service, bool) {
 		        COALESCE(s.replicas, 1), COALESCE(s.port, 0),
 		        COALESCE(s.domain, ''), COALESCE(s.healthcheck_path, ''),
 		        COALESCE(s.restart_policy, 'unless-stopped'),
+		        COALESCE(s.builder, 'auto'), COALESCE(s.cpu_reserve, ''),
+		        COALESCE(s.memory_reserve, ''), COALESCE(s.static_build_cmd, ''),
+		        COALESCE(s.static_dir, ''),
 		        s.created_at, s.updated_at, p.owner_id
 		 FROM services s JOIN projects p ON s.project_id = p.id
 		 WHERE s.id = $1`,
@@ -224,7 +260,9 @@ func loadOwnedService(c *gin.Context, db *database.DB) (Service, bool) {
 		&service.Image, &service.Command, &service.Environment, &service.GitRepo,
 		&service.GitBranch, &service.BuildPath, &service.CPU, &service.Memory,
 		&service.Replicas, &service.Port, &service.Domain, &service.HealthCheckPath,
-		&service.RestartPolicy, &service.CreatedAt, &service.UpdatedAt, &owner,
+		&service.RestartPolicy, &service.Builder, &service.CPUReserve,
+		&service.MemoryReserve, &service.StaticBuildCmd, &service.StaticDir,
+		&service.CreatedAt, &service.UpdatedAt, &owner,
 	)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Service not found"})
@@ -258,6 +296,9 @@ func loadReadableService(c *gin.Context, db *database.DB) (Service, bool) {
 		        COALESCE(s.replicas, 1), COALESCE(s.port, 0),
 		        COALESCE(s.domain, ''), COALESCE(s.healthcheck_path, ''),
 		        COALESCE(s.restart_policy, 'unless-stopped'),
+		        COALESCE(s.builder, 'auto'), COALESCE(s.cpu_reserve, ''),
+		        COALESCE(s.memory_reserve, ''), COALESCE(s.static_build_cmd, ''),
+		        COALESCE(s.static_dir, ''),
 		        s.created_at, s.updated_at, s.project_id
 		 FROM services s
 		 WHERE s.id = $1`,
@@ -267,7 +308,9 @@ func loadReadableService(c *gin.Context, db *database.DB) (Service, bool) {
 		&service.Image, &service.Command, &service.Environment, &service.GitRepo,
 		&service.GitBranch, &service.BuildPath, &service.CPU, &service.Memory,
 		&service.Replicas, &service.Port, &service.Domain, &service.HealthCheckPath,
-		&service.RestartPolicy, &service.CreatedAt, &service.UpdatedAt, &projectID,
+		&service.RestartPolicy, &service.Builder, &service.CPUReserve,
+		&service.MemoryReserve, &service.StaticBuildCmd, &service.StaticDir,
+		&service.CreatedAt, &service.UpdatedAt, &projectID,
 	)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Service not found"})
@@ -549,6 +592,9 @@ func runtimeScaleService(c *gin.Context, serviceID string, replicas int) error {
 		        COALESCE(s.replicas, 1), COALESCE(s.port, 0),
 		        COALESCE(s.domain, ''), COALESCE(s.healthcheck_path, ''),
 		        COALESCE(s.restart_policy, 'unless-stopped'),
+		        COALESCE(s.builder, 'auto'), COALESCE(s.cpu_reserve, ''),
+		        COALESCE(s.memory_reserve, ''), COALESCE(s.static_build_cmd, ''),
+		        COALESCE(s.static_dir, ''),
 		        s.created_at, s.updated_at, p.owner_id
 		 FROM services s JOIN projects p ON s.project_id = p.id
 		 WHERE s.id = $1`, serviceID,
@@ -557,7 +603,9 @@ func runtimeScaleService(c *gin.Context, serviceID string, replicas int) error {
 		&service.Image, &service.Command, &service.Environment, &service.GitRepo,
 		&service.GitBranch, &service.BuildPath, &service.CPU, &service.Memory,
 		&service.Replicas, &service.Port, &service.Domain, &service.HealthCheckPath,
-		&service.RestartPolicy, &service.CreatedAt, &service.UpdatedAt, &owner,
+		&service.RestartPolicy, &service.Builder, &service.CPUReserve,
+		&service.MemoryReserve, &service.StaticBuildCmd, &service.StaticDir,
+		&service.CreatedAt, &service.UpdatedAt, &owner,
 	)
 	if err != nil {
 		return err

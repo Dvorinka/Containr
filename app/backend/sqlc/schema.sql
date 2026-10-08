@@ -61,7 +61,12 @@ CREATE TABLE services (
     published_port INTEGER NOT NULL DEFAULT 0,
     volumes JSONB NOT NULL DEFAULT '[]'::jsonb,
     maintenance_mode BOOLEAN NOT NULL DEFAULT false,
-    basic_auth_users TEXT NOT NULL DEFAULT ''
+    basic_auth_users TEXT NOT NULL DEFAULT '',
+    builder VARCHAR(32) NOT NULL DEFAULT 'auto',
+    cpu_reserve VARCHAR(20) NOT NULL DEFAULT '',
+    memory_reserve VARCHAR(20) NOT NULL DEFAULT '',
+    static_build_cmd VARCHAR(255) NOT NULL DEFAULT '',
+    static_dir VARCHAR(255) NOT NULL DEFAULT ''
 );
 
 CREATE TABLE service_domains (

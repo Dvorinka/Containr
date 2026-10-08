@@ -84,10 +84,11 @@ type VolumeMount struct {
 }
 
 type ResourceLimits struct {
-	MemoryBytes int64 `json:"memory_bytes,omitempty"`
-	CPUQuota    int64 `json:"cpu_quota,omitempty"`
-	CPUPeriod   int64 `json:"cpu_period,omitempty"`
-	CPUShares   int64 `json:"cpu_shares,omitempty"`
+	MemoryBytes       int64 `json:"memory_bytes,omitempty"`
+	MemoryReservation int64 `json:"memory_reservation,omitempty"`
+	CPUQuota          int64 `json:"cpu_quota,omitempty"`
+	CPUPeriod         int64 `json:"cpu_period,omitempty"`
+	CPUShares         int64 `json:"cpu_shares,omitempty"`
 }
 
 type HealthCheck struct {
@@ -152,6 +153,7 @@ type BuildConfig struct {
 	PrebuiltImage string            `json:"prebuilt_image"`
 	BuildCommand  string            `json:"build_command"`
 	StartCommand  string            `json:"start_command"`
+	BuildArgs     map[string]string `json:"build_args,omitempty"`
 	Environment   map[string]string `json:"environment"`
 	Branch        string            `json:"branch"`
 	Commit        string            `json:"commit"`
@@ -164,6 +166,12 @@ type TriggerConfig struct {
 	User      string            `json:"user"`      // User who triggered
 	Data      map[string]string `json:"data"`      // Trigger-specific data
 	Timestamp time.Time         `json:"timestamp"` // When trigger occurred
+}
+
+// DockerClient exposes the engine's docker handle for read-only queries
+// (capacity checks, image info).
+func (de *DeploymentEngine) DockerClient() *docker.Client {
+	return de.dockerClient
 }
 
 func NewDeploymentEngine(buildManager *build.BuildManager, dockerClient *docker.Client) *DeploymentEngine {
@@ -290,6 +298,7 @@ func (de *DeploymentEngine) buildImage(ctx context.Context, deployment *Deployme
 		ImageTag:      deployment.ID,
 		BuildCommand:  buildConfig.BuildCommand,
 		StartCommand:  buildConfig.StartCommand,
+		BuildArgs:     buildConfig.BuildArgs,
 		Environment:   buildConfig.Environment,
 		ProjectID:     deployment.ProjectID,
 		ServiceID:     deployment.ServiceID,
@@ -330,7 +339,9 @@ func (de *DeploymentEngine) deployService(ctx context.Context, deployment *Deplo
 		HealthPath:     cfg.HealthPath,
 		RestartPolicy:  cfg.RestartPolicy,
 		MemoryBytes:    cfg.Resources.MemoryBytes,
+		MemoryReserve:  cfg.Resources.MemoryReservation,
 		NanoCPUs:       cfg.Resources.CPUQuota,
+		CPUShares:      cfg.Resources.CPUShares,
 		Volumes:        cfg.VolumeMounts,
 		Domains:        cfg.Domains,
 		Maintenance:    cfg.Maintenance,

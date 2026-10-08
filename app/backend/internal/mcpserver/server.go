@@ -53,7 +53,7 @@ func init() {
 	// Services
 	register(spec{"containr_services_list", "List services in a project", "GET", "/projects/{project_id}/services", []string{"project_id"}, nil, false})
 	register(spec{"containr_services_get", "Get a service by id", "GET", "/services/{id}", []string{"id"}, nil, false})
-	register(spec{"containr_services_create", "Create a service in a project. Args: name (required), type, image, git_repo, git_branch, environment, port, domain, replicas, volumes = [{type: volume|bind, source, target, read_only}].", "POST", "/projects/{project_id}/services", []string{"project_id"}, nil, false})
+	register(spec{"containr_services_create", "Create a service in a project. Args: name (required), type, image, git_repo, git_branch, environment, port, domain, replicas, volumes = [{type: volume|bind, source, target, read_only}], builder = auto|railpack|nixpacks|dockerfile|static, cpu, memory, cpu_reserve, memory_reserve, static_build_cmd, static_dir.", "POST", "/projects/{project_id}/services", []string{"project_id"}, nil, false})
 	register(spec{"containr_services_delete", "Delete a service. Requires confirm:true.", "DELETE", "/services/{id}", []string{"id"}, nil, true})
 	register(spec{"containr_services_start", "Start a service", "POST", "/services/{id}/start", []string{"id"}, nil, false})
 	register(spec{"containr_services_stop", "Stop a service", "POST", "/services/{id}/stop", []string{"id"}, nil, false})
@@ -61,7 +61,7 @@ func init() {
 	register(spec{"containr_services_redeploy", "Rebuild and redeploy a service", "POST", "/services/{id}/redeploy", []string{"id"}, nil, false})
 	register(spec{"containr_services_logs", "Get service runtime logs. Args: id, tail (default 100).", "GET", "/services/{id}/logs", []string{"id"}, nil, false})
 	register(spec{"containr_services_exec", "Run a one-off command in the service container (30s ceiling). Args: id, command (required).", "POST", "/services/{id}/exec", []string{"id"}, []string{"command"}, false})
-	register(spec{"containr_services_update", "Update a service. Args: id, name, image, command, domain, restart_policy, healthcheck_path, cpu, memory, replicas, port, volumes = [{type: volume|bind, source, target, read_only}] — volumes replaces the whole mount list; pass [] to clear. maintenance_mode (bool), basic_auth = [{username, password}] — replaces all creds; [] clears.", "PUT", "/services/{id}", []string{"id"}, nil, false})
+	register(spec{"containr_services_update", "Update a service. Args: id, name, image, command, domain, restart_policy, healthcheck_path, cpu, memory, replicas, port, volumes = [{type: volume|bind, source, target, read_only}] — volumes replaces the whole mount list; pass [] to clear. maintenance_mode (bool), basic_auth = [{username, password}] — replaces all creds; [] clears. builder = auto|railpack|nixpacks|dockerfile|static, cpu_reserve, memory_reserve, static_build_cmd, static_dir (empty string clears reserves/static fields).", "PUT", "/services/{id}", []string{"id"}, nil, false})
 
 	// Domains
 	register(spec{"containr_domains_list", "List domains attached to a service", "GET", "/services/{id}/domains", []string{"id"}, nil, false})

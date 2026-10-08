@@ -156,8 +156,10 @@ func (c *Client) CreateContainer(ctx context.Context, config ContainerConfig) (s
 		PortBindings: config.PortBindings,
 		Mounts:       config.Mounts,
 		Resources: container.Resources{
-			Memory:   config.Memory,
-			NanoCPUs: config.NanoCPUs,
+			Memory:            config.Memory,
+			MemoryReservation: config.MemoryReservation,
+			NanoCPUs:          config.NanoCPUs,
+			CPUShares:         config.CPUShares,
 		},
 		NetworkMode: container.NetworkMode(config.NetworkMode),
 	}
@@ -291,7 +293,7 @@ func (c *Client) PullImageWait(ctx context.Context, ref string, auth registry.Au
 
 // BuildImage builds an image from a Dockerfile
 func (c *Client) BuildImage(ctx context.Context, buildContext io.Reader, options BuildOptions) (types.ImageBuildResponse, error) {
-	return c.cli.ImageBuild(ctx, buildContext, types.ImageBuildOptions{
+	resp, err := c.cli.ImageBuild(ctx, buildContext, types.ImageBuildOptions{
 		Dockerfile: options.Dockerfile,
 		Tags:       options.Tags,
 		BuildArgs:  options.BuildArgs,
@@ -299,6 +301,34 @@ func (c *Client) BuildImage(ctx context.Context, buildContext io.Reader, options
 		Remove:     options.Remove,
 		NoCache:    options.NoCache,
 	})
+	if err != nil {
+		return resp, err
+	}
+	// The daemon aborts the build if the response stream isn't consumed,
+	// and reports failures only inside that stream.
+	defer resp.Body.Close()
+	var buildErr string
+	dec := json.NewDecoder(resp.Body)
+	for {
+		var line struct {
+			ErrorDetail struct {
+				Message string `json:"message"`
+			} `json:"errorDetail"`
+			Error string `json:"error"`
+		}
+		if err := dec.Decode(&line); err != nil {
+			break
+		}
+		if line.ErrorDetail.Message != "" {
+			buildErr = line.ErrorDetail.Message
+		} else if line.Error != "" {
+			buildErr = line.Error
+		}
+	}
+	if buildErr != "" {
+		return resp, fmt.Errorf("docker build failed: %s", buildErr)
+	}
+	return resp, nil
 }
 
 // RemoveImage removes an image

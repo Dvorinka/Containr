@@ -41,6 +41,11 @@ type Service struct {
 	Domains         []ServiceDomain `json:"domains,omitempty" db:"-"`
 	MaintenanceMode bool            `json:"maintenance_mode" db:"-"`
 	BasicAuth       []string        `json:"basic_auth,omitempty" db:"-"` // usernames only, never hashes
+	Builder         string          `json:"builder" db:"builder"`        // auto|railpack|nixpacks|dockerfile|static
+	CPUReserve      string          `json:"cpu_reserve,omitempty" db:"cpu_reserve"`
+	MemoryReserve   string          `json:"memory_reserve,omitempty" db:"memory_reserve"`
+	StaticBuildCmd  string          `json:"static_build_cmd,omitempty" db:"static_build_cmd"`
+	StaticDir       string          `json:"static_dir,omitempty" db:"static_dir"`
 	CreatedAt       time.Time       `json:"created_at" db:"created_at"`
 	UpdatedAt       time.Time       `json:"updated_at" db:"updated_at"`
 }
@@ -117,6 +122,11 @@ type CreateServiceRequest struct {
 	Volumes         []ServiceVolume `json:"volumes"`
 	MaintenanceMode bool            `json:"maintenance_mode"`
 	BasicAuth       []BasicAuthCred `json:"basic_auth"`
+	Builder         string          `json:"builder" binding:"omitempty,oneof=auto railpack nixpacks dockerfile static"`
+	CPUReserve      string          `json:"cpu_reserve"`
+	MemoryReserve   string          `json:"memory_reserve"`
+	StaticBuildCmd  string          `json:"static_build_cmd"`
+	StaticDir       string          `json:"static_dir"`
 }
 
 // UpdateServiceRequest represents a request to update a service
@@ -139,6 +149,11 @@ type UpdateServiceRequest struct {
 	Volumes         *[]ServiceVolume `json:"volumes"`
 	MaintenanceMode *bool            `json:"maintenance_mode"`
 	BasicAuth       *[]BasicAuthCred `json:"basic_auth"`
+	Builder         string           `json:"builder" binding:"omitempty,oneof=auto railpack nixpacks dockerfile static"`
+	CPUReserve      *string          `json:"cpu_reserve"`
+	MemoryReserve   *string          `json:"memory_reserve"`
+	StaticBuildCmd  *string          `json:"static_build_cmd"`
+	StaticDir       *string          `json:"static_dir"`
 }
 
 // handleGetServices retrieves all services for a project
@@ -183,6 +198,9 @@ func handleGetServices(c *gin.Context) {
 				COALESCE(replicas, 1), COALESCE(port, 0),
 				COALESCE(domain, ''), COALESCE(healthcheck_path, ''),
 				COALESCE(restart_policy, 'unless-stopped'),
+				COALESCE(builder, 'auto'), COALESCE(cpu_reserve, ''),
+				COALESCE(memory_reserve, ''), COALESCE(static_build_cmd, ''),
+				COALESCE(static_dir, ''),
 				created_at, updated_at 
 			FROM services 
 			WHERE project_id = $1 
@@ -203,7 +221,9 @@ func handleGetServices(c *gin.Context) {
 			&service.Image, &service.Command, &service.Environment, &service.GitRepo,
 			&service.GitBranch, &service.BuildPath, &service.CPU, &service.Memory,
 			&service.Replicas, &service.Port, &service.Domain, &service.HealthCheckPath,
-			&service.RestartPolicy, &service.CreatedAt, &service.UpdatedAt,
+			&service.RestartPolicy, &service.Builder, &service.CPUReserve,
+			&service.MemoryReserve, &service.StaticBuildCmd, &service.StaticDir,
+			&service.CreatedAt, &service.UpdatedAt,
 		)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to scan service"})
@@ -314,12 +334,38 @@ func handleCreateService(c *gin.Context) {
 		UpdatedAt:       time.Now(),
 	}
 
-	// Set default values if not provided
+	// Set default values if not provided; app_settings.default_cpu /
+	// default_memory override the hardcoded fallbacks.
 	if service.CPU == "" {
-		service.CPU = "0.5"
+		service.CPU = firstNonEmpty(settingValue(db.(*database.DB), "default_cpu", "", ""), "0.5")
 	}
 	if service.Memory == "" {
-		service.Memory = "512Mi"
+		service.Memory = firstNonEmpty(settingValue(db.(*database.DB), "default_memory", "", ""), "512Mi")
+	}
+	if req.Builder == "" {
+		service.Builder = "auto"
+	} else {
+		service.Builder = req.Builder
+	}
+	service.CPUReserve = req.CPUReserve
+	service.MemoryReserve = req.MemoryReserve
+	service.StaticBuildCmd = req.StaticBuildCmd
+	service.StaticDir = req.StaticDir
+	if service.Builder == "static" && service.StaticDir == "" {
+		service.StaticDir = "dist"
+	}
+	for label, check := range map[string]func(string) error{
+		"cpu": validateCPUSpec, "cpu_reserve": validateCPUSpec,
+		"memory": validateMemorySpec, "memory_reserve": validateMemorySpec,
+	} {
+		v := map[string]string{
+			"cpu": service.CPU, "cpu_reserve": service.CPUReserve,
+			"memory": service.Memory, "memory_reserve": service.MemoryReserve,
+		}[label]
+		if err := check(v); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid %s: %s", label, err.Error()), "code": "VALIDATION"})
+			return
+		}
 	}
 	if service.Replicas < 1 {
 		service.Replicas = 1
@@ -351,14 +397,18 @@ func handleCreateService(c *gin.Context) {
 			(id, project_id, name, environment_id, service_type, source_type, source_url, image_name,
 				 build_command, start_command, type, status, image, command, environment,
 				 git_repo, git_branch, build_path, cpu, memory, replicas, port, domain,
-				 healthcheck_path, restart_policy, volumes, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)`,
+				 healthcheck_path, restart_policy, volumes,
+				 builder, cpu_reserve, memory_reserve, static_build_cmd, static_dir,
+				 created_at, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26,
+					$27, $28, $29, $30, $31, $32, $33)`,
 		service.ID, service.ProjectID, service.Name, environmentID, service.Type,
 		sourceType, firstNonEmpty(service.GitRepo, service.Image), service.Image,
 		"", service.Command, service.Type, service.Status, service.Image, service.Command,
 		service.Environment, service.GitRepo, service.GitBranch, service.BuildPath, service.CPU, service.Memory,
 		service.Replicas, service.Port, service.Domain, service.HealthCheckPath, service.RestartPolicy,
-		volumesJSON, service.CreatedAt, service.UpdatedAt,
+		volumesJSON, service.Builder, service.CPUReserve, service.MemoryReserve,
+		service.StaticBuildCmd, service.StaticDir, service.CreatedAt, service.UpdatedAt,
 	)
 
 	if err != nil {
@@ -443,6 +493,9 @@ func handleGetService(c *gin.Context) {
 				COALESCE(s.replicas, 1), COALESCE(s.port, 0),
 				COALESCE(s.domain, ''), COALESCE(s.healthcheck_path, ''),
 				COALESCE(s.restart_policy, 'unless-stopped'),
+				COALESCE(s.builder, 'auto'), COALESCE(s.cpu_reserve, ''),
+				COALESCE(s.memory_reserve, ''), COALESCE(s.static_build_cmd, ''),
+				COALESCE(s.static_dir, ''),
 				s.created_at, s.updated_at
 			FROM services s
 			JOIN projects p ON s.project_id = p.id
@@ -454,7 +507,9 @@ func handleGetService(c *gin.Context) {
 		&service.Image, &service.Command, &service.Environment, &service.GitRepo,
 		&service.GitBranch, &service.BuildPath, &service.CPU, &service.Memory,
 		&service.Replicas, &service.Port, &service.Domain, &service.HealthCheckPath,
-		&service.RestartPolicy, &service.CreatedAt, &service.UpdatedAt,
+		&service.RestartPolicy, &service.Builder, &service.CPUReserve,
+		&service.MemoryReserve, &service.StaticBuildCmd, &service.StaticDir,
+		&service.CreatedAt, &service.UpdatedAt,
 	)
 
 	if err != nil {
@@ -520,6 +575,9 @@ func handleUpdateService(c *gin.Context) {
 				COALESCE(s.replicas, 1), COALESCE(s.port, 0),
 				COALESCE(s.domain, ''), COALESCE(s.healthcheck_path, ''),
 				COALESCE(s.restart_policy, 'unless-stopped'),
+				COALESCE(s.builder, 'auto'), COALESCE(s.cpu_reserve, ''),
+				COALESCE(s.memory_reserve, ''), COALESCE(s.static_build_cmd, ''),
+				COALESCE(s.static_dir, ''),
 				s.created_at, s.updated_at
 			FROM services s
 			JOIN projects p ON s.project_id = p.id
@@ -532,6 +590,9 @@ func handleUpdateService(c *gin.Context) {
 		&existingService.BuildPath, &existingService.CPU, &existingService.Memory,
 		&existingService.Replicas, &existingService.Port, &existingService.Domain,
 		&existingService.HealthCheckPath, &existingService.RestartPolicy,
+		&existingService.Builder, &existingService.CPUReserve,
+		&existingService.MemoryReserve, &existingService.StaticBuildCmd,
+		&existingService.StaticDir,
 		&existingService.CreatedAt, &existingService.UpdatedAt,
 	)
 
@@ -586,6 +647,37 @@ func handleUpdateService(c *gin.Context) {
 	if req.RestartPolicy != "" {
 		existingService.RestartPolicy = req.RestartPolicy
 	}
+	if req.Builder != "" {
+		existingService.Builder = req.Builder
+	}
+	if req.CPUReserve != nil {
+		existingService.CPUReserve = *req.CPUReserve
+	}
+	if req.MemoryReserve != nil {
+		existingService.MemoryReserve = *req.MemoryReserve
+	}
+	if req.StaticBuildCmd != nil {
+		existingService.StaticBuildCmd = *req.StaticBuildCmd
+	}
+	if req.StaticDir != nil {
+		existingService.StaticDir = *req.StaticDir
+	}
+	if existingService.Builder == "static" && existingService.StaticDir == "" {
+		existingService.StaticDir = "dist"
+	}
+	for label, check := range map[string]func(string) error{
+		"cpu": validateCPUSpec, "cpu_reserve": validateCPUSpec,
+		"memory": validateMemorySpec, "memory_reserve": validateMemorySpec,
+	} {
+		v := map[string]string{
+			"cpu": existingService.CPU, "cpu_reserve": existingService.CPUReserve,
+			"memory": existingService.Memory, "memory_reserve": existingService.MemoryReserve,
+		}[label]
+		if err := check(v); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid %s: %s", label, err.Error()), "code": "VALIDATION"})
+			return
+		}
+	}
 	// lib/pq sends a nil []byte as an empty bytea literal rather than NULL,
 	// so the COALESCE fallback needs an untyped nil when volumes aren't sent.
 	var volumesArg interface{}
@@ -607,7 +699,9 @@ func handleUpdateService(c *gin.Context) {
 			SET name = $1, type = $2, image = $3, command = $4, environment = $5,
 				git_repo = $6, git_branch = $7, build_path = $8, cpu = $9, memory = $10,
 				replicas = $11, port = $12, domain = $13, healthcheck_path = $14,
-				restart_policy = $15, volumes = COALESCE($17::jsonb, volumes), updated_at = $16
+				restart_policy = $15, volumes = COALESCE($17::jsonb, volumes), updated_at = $16,
+				builder = $19, cpu_reserve = $20, memory_reserve = $21,
+				static_build_cmd = $22, static_dir = $23
 			WHERE id = $18`,
 		existingService.Name, existingService.Type, existingService.Image, existingService.Command,
 		existingService.Environment, existingService.GitRepo, existingService.GitBranch,
@@ -615,6 +709,8 @@ func handleUpdateService(c *gin.Context) {
 		existingService.Replicas, existingService.Port, existingService.Domain,
 		existingService.HealthCheckPath, existingService.RestartPolicy,
 		existingService.UpdatedAt, volumesArg, existingService.ID,
+		existingService.Builder, existingService.CPUReserve, existingService.MemoryReserve,
+		existingService.StaticBuildCmd, existingService.StaticDir,
 	)
 
 	if err != nil {

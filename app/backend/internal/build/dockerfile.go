@@ -211,8 +211,12 @@ func (d *DockerfileBuilder) Build(ctx context.Context, req *types.BuildRequest) 
 	// Build Docker image
 	imageName := fmt.Sprintf("%s:%s", req.ImageName, req.ImageTag)
 
-	// Create build context tar
-	buildCtx, err := createBuildContext(req.SourcePath, optimizedDockerfile)
+	// createBuildContext wants the Dockerfile contents, not its path.
+	dockerfileContent, err := os.ReadFile(optimizedDockerfile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read Dockerfile: %w", err)
+	}
+	buildCtx, err := createBuildContext(req.SourcePath, string(dockerfileContent))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create build context: %w", err)
 	}

@@ -58,6 +58,11 @@ export type ServiceEntity = {
   domains?: ServiceDomain[];
   maintenanceMode?: boolean;
   basicAuth?: string[];
+  builder?: 'auto' | 'railpack' | 'nixpacks' | 'dockerfile' | 'static';
+  cpuReserve?: string;
+  memoryReserve?: string;
+  staticBuildCmd?: string;
+  staticDir?: string;
   publicUrl?: string;
 };
 
@@ -584,6 +589,11 @@ function normalizeService(service: RawService): ServiceEntity | null {
     domains: service.domains as ServiceDomain[] | undefined,
     maintenanceMode: service.maintenance_mode,
     basicAuth: service.basic_auth as string[] | undefined,
+    builder: service.builder as ServiceEntity['builder'],
+    cpuReserve: service.cpu_reserve,
+    memoryReserve: service.memory_reserve,
+    staticBuildCmd: service.static_build_cmd,
+    staticDir: service.static_dir,
     publicUrl: service.public_url,
   };
 }

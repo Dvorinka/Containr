@@ -8050,6 +8050,19 @@ export interface components {
             maintenance_mode?: boolean;
             /** @description Basic-auth usernames gating the route (hashes never returned) */
             basic_auth?: string[];
+            /**
+             * @description Build strategy; auto detects from repo contents
+             * @enum {string}
+             */
+            builder?: "auto" | "railpack" | "nixpacks" | "dockerfile" | "static";
+            /** @description Soft CPU reservation (fraction, e.g. 0.25 → ~256 CPU shares) */
+            cpu_reserve?: string;
+            /** @description Soft memory reservation (e.g. 128Mi) */
+            memory_reserve?: string;
+            /** @description Build command for the static builder (default "npm ci && npm run build") */
+            static_build_cmd?: string;
+            /** @description Output directory for the static builder (default dist) */
+            static_dir?: string;
             /** @description Computed public URL (published port or domain) */
             public_url?: string;
             /**
@@ -8107,6 +8120,19 @@ export interface components {
             restart_policy?: string;
             /** @description Volume/bind mounts applied to every replica */
             volumes?: components["schemas"]["ServiceVolume"][];
+            /**
+             * @description Build strategy (default auto)
+             * @enum {string}
+             */
+            builder?: "auto" | "railpack" | "nixpacks" | "dockerfile" | "static";
+            /** @description Soft CPU reservation (fraction, e.g. 0.25) */
+            cpu_reserve?: string;
+            /** @description Soft memory reservation (e.g. 128Mi) */
+            memory_reserve?: string;
+            /** @description Build command for the static builder */
+            static_build_cmd?: string;
+            /** @description Output directory for the static builder (default dist) */
+            static_dir?: string;
         };
         UpdateServiceRequest: {
             /** @description Service name */
@@ -8151,6 +8177,19 @@ export interface components {
             maintenance_mode?: boolean;
             /** @description Replaces all basic-auth credentials; [] clears the gate */
             basic_auth?: components["schemas"]["BasicAuthCred"][];
+            /**
+             * @description Build strategy
+             * @enum {string}
+             */
+            builder?: "auto" | "railpack" | "nixpacks" | "dockerfile" | "static";
+            /** @description Soft CPU reservation (empty string clears) */
+            cpu_reserve?: string;
+            /** @description Soft memory reservation (empty string clears) */
+            memory_reserve?: string;
+            /** @description Build command for the static builder (empty string clears) */
+            static_build_cmd?: string;
+            /** @description Output directory for the static builder (empty string clears) */
+            static_dir?: string;
         };
         ServiceDomain: {
             /** Format: uuid */

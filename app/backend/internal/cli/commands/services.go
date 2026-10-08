@@ -79,7 +79,7 @@ var servicesCreateCmd = &cobra.Command{
 		body := map[string]interface{}{
 			"name": args[1],
 		}
-		for _, f := range []string{"type", "image", "git-repo", "git-branch", "build-path", "command", "environment", "domain", "restart-policy", "healthcheck-path", "cpu", "memory"} {
+		for _, f := range []string{"type", "image", "git-repo", "git-branch", "build-path", "command", "environment", "domain", "restart-policy", "healthcheck-path", "cpu", "memory", "builder", "cpu-reserve", "memory-reserve", "static-cmd", "static-dir"} {
 			if v, _ := cmd.Flags().GetString(f); v != "" {
 				key := f
 				// JSON uses snake_case keys matching the API schema.
@@ -94,6 +94,14 @@ var servicesCreateCmd = &cobra.Command{
 					key = "restart_policy"
 				case "healthcheck-path":
 					key = "healthcheck_path"
+				case "cpu-reserve":
+					key = "cpu_reserve"
+				case "memory-reserve":
+					key = "memory_reserve"
+				case "static-cmd":
+					key = "static_build_cmd"
+				case "static-dir":
+					key = "static_dir"
 				}
 				body[key] = v
 			}
@@ -151,7 +159,7 @@ var servicesUpdateCmd = &cobra.Command{
 			return err
 		}
 		body := map[string]interface{}{}
-		for _, f := range []string{"name", "image", "command", "domain", "restart-policy", "healthcheck-path", "cpu", "memory"} {
+		for _, f := range []string{"name", "image", "command", "domain", "restart-policy", "healthcheck-path", "cpu", "memory", "builder", "cpu-reserve", "memory-reserve", "static-cmd", "static-dir"} {
 			if cmd.Flags().Changed(f) {
 				key := f
 				switch f {
@@ -159,6 +167,14 @@ var servicesUpdateCmd = &cobra.Command{
 					key = "restart_policy"
 				case "healthcheck-path":
 					key = "healthcheck_path"
+				case "cpu-reserve":
+					key = "cpu_reserve"
+				case "memory-reserve":
+					key = "memory_reserve"
+				case "static-cmd":
+					key = "static_build_cmd"
+				case "static-dir":
+					key = "static_dir"
 				}
 				v, _ := cmd.Flags().GetString(f)
 				body[key] = v
@@ -406,6 +422,11 @@ func init() {
 	f.String("memory", "", "memory limit (e.g. 512m)")
 	f.Int("port", 0, "container port")
 	f.Int("replicas", 0, "replica count")
+	f.String("builder", "", "build strategy: auto|railpack|nixpacks|dockerfile|static")
+	f.String("cpu-reserve", "", "soft CPU reservation (e.g. 0.25)")
+	f.String("memory-reserve", "", "soft memory reservation (e.g. 128Mi)")
+	f.String("static-cmd", "", "build command for the static builder")
+	f.String("static-dir", "", "output dir for the static builder (default dist)")
 
 	uf := servicesUpdateCmd.Flags()
 	uf.String("name", "", "service name")
@@ -423,6 +444,11 @@ func init() {
 	uf.Bool("clear-volumes", false, "remove all volume mounts")
 	uf.String("maintenance", "", "maintenance mode: on|off")
 	uf.StringArray("basic-auth", nil, "basic-auth credential user:password (repeatable, replaces all)")
+	uf.String("builder", "", "build strategy: auto|railpack|nixpacks|dockerfile|static")
+	uf.String("cpu-reserve", "", "soft CPU reservation (empty clears)")
+	uf.String("memory-reserve", "", "soft memory reservation (empty clears)")
+	uf.String("static-cmd", "", "build command for the static builder (empty clears)")
+	uf.String("static-dir", "", "output dir for the static builder (empty clears)")
 
 	for _, a := range []string{"start", "stop", "restart", "redeploy"} {
 		verb := a

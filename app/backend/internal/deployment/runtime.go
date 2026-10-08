@@ -47,7 +47,9 @@ type RuntimeSpec struct {
 	HealthPath     string // http path probed on Port for container healthcheck
 	RestartPolicy  string
 	MemoryBytes    int64
+	MemoryReserve  int64 // soft reservation; scheduler hint, not a hard cap
 	NanoCPUs       int64
+	CPUShares      int64         // relative weight (1024 ≈ 1 cpu), not a cap
 	Volumes        []VolumeMount // applied to every replica
 	Domains        []string      // all public hostnames; Domain is the default
 	Maintenance    bool          // redirect traffic to MaintenanceURL
@@ -273,15 +275,17 @@ func (de *DeploymentEngine) createReplica(ctx context.Context, spec RuntimeSpec,
 	}
 
 	cfg := docker.ContainerConfig{
-		Name:          fmt.Sprintf("%s%d", serviceNamePrefix(spec.ServiceID), index),
-		Image:         spec.Image,
-		Cmd:           spec.Command,
-		Env:           env,
-		Labels:        labels,
-		RestartPolicy: spec.RestartPolicy,
-		Memory:        spec.MemoryBytes,
-		NanoCPUs:      spec.NanoCPUs,
-		Networks:      endpoints,
+		Name:              fmt.Sprintf("%s%d", serviceNamePrefix(spec.ServiceID), index),
+		Image:             spec.Image,
+		Cmd:               spec.Command,
+		Env:               env,
+		Labels:            labels,
+		RestartPolicy:     spec.RestartPolicy,
+		Memory:            spec.MemoryBytes,
+		MemoryReservation: spec.MemoryReserve,
+		NanoCPUs:          spec.NanoCPUs,
+		CPUShares:         spec.CPUShares,
+		Networks:          endpoints,
 	}
 
 	for _, v := range spec.Volumes {
@@ -526,12 +530,14 @@ func specHash(spec RuntimeSpec) string {
 		Env                                            map[string]string
 		Port                                           int32
 		MemoryBytes, NanoCPUs                          int64
+		MemoryReserve, CPUShares                       int64
 		Volumes                                        []VolumeMount
 		Domains                                        []string
 		Maintenance                                    bool
 		BasicAuth                                      string
 	}{spec.Image, spec.Name, spec.Domain, spec.HealthPath, spec.RestartPolicy,
-		spec.Command, spec.Env, spec.Port, spec.MemoryBytes, spec.NanoCPUs, spec.Volumes,
+		spec.Command, spec.Env, spec.Port, spec.MemoryBytes, spec.NanoCPUs,
+		spec.MemoryReserve, spec.CPUShares, spec.Volumes,
 		spec.Domains, spec.Maintenance, spec.BasicAuthUsers})
 	sum := sha256.Sum256(payload)
 	return hex.EncodeToString(sum[:8])
