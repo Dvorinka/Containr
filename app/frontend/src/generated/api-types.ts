@@ -9093,6 +9093,8 @@ export interface components {
              * @enum {string}
              */
             provider?: "managed" | "external";
+            /** @description managed only — bind the database port on all interfaces instead of 127.0.0.1; toggling recreates the container */
+            public_port?: boolean;
             external?: components["schemas"]["DatabaseExternal"];
             /**
              * Format: date-time
@@ -9128,6 +9130,8 @@ export interface components {
             plan: "hobby" | "starter" | "standard" | "business";
             /** @description Database region */
             region: string;
+            /** @description Bind the database port on all interfaces (default 127.0.0.1) */
+            public_port?: boolean;
         };
         DatabaseExternal: {
             host?: string;
@@ -9161,6 +9165,8 @@ export interface components {
             plan?: "hobby" | "starter" | "standard" | "business";
             /** @description Cron expression for automatic backups; empty string clears the schedule */
             backup_schedule?: string | null;
+            /** @description Toggle the published port between 127.0.0.1 and all interfaces; recreates the managed container */
+            public_port?: boolean;
         };
         DatabaseActionRequest: {
             /**

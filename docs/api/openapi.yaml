@@ -6319,6 +6319,9 @@ components:
           type: string
           enum: [managed, external]
           description: managed = Containr-provisioned container; external = registered connection to a database hosted elsewhere
+        public_port:
+          type: boolean
+          description: managed only — bind the database port on all interfaces instead of 127.0.0.1; toggling recreates the container
         external:
           $ref: '#/components/schemas/DatabaseExternal'
         next_backup_at:
@@ -6362,6 +6365,9 @@ components:
         region:
           type: string
           description: Database region
+        public_port:
+          type: boolean
+          description: Bind the database port on all interfaces (default 127.0.0.1)
 
     DatabaseExternal:
       type: object
@@ -6420,6 +6426,9 @@ components:
           type: string
           nullable: true
           description: Cron expression for automatic backups; empty string clears the schedule
+        public_port:
+          type: boolean
+          description: Toggle the published port between 127.0.0.1 and all interfaces; recreates the managed container
 
     DatabaseActionRequest:
       type: object

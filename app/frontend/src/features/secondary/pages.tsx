@@ -31,6 +31,7 @@ import {
   restoreDatabaseBackup,
   createManagedDatabase,
   registerExternalDatabase,
+  updateDatabase,
   testDatabaseConnection,
   testDatabaseConnectionByID,
   type ExternalDatabaseInput,
@@ -1906,7 +1907,7 @@ export function DatabasesPage() {
   const [bindDb, setBindDb] = useState<DatabaseEntity | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [createMode, setCreateMode] = useState<'managed' | 'external'>('managed');
-  const [createForm, setCreateForm] = useState({ name: '', type: 'postgresql', plan: 'hobby', region: 'local' });
+  const [createForm, setCreateForm] = useState({ name: '', type: 'postgresql', plan: 'hobby', region: 'local', public: false });
   const [externalForm, setExternalForm] = useState({ name: '', type: 'postgresql', host: '', port: '', database: '', username: '', password: '', ssl: false });
   const [externalProbe, setExternalProbe] = useState<{ ok: boolean; latency_ms?: number; error?: string } | null>(null);
   const [externalTestResult, setExternalTestResult] = useState<Record<string, { ok: boolean; latency_ms?: number; error?: string }>>({});
@@ -1926,10 +1927,11 @@ export function DatabasesPage() {
         type: createForm.type as CreateDatabaseInput['type'],
         plan: createForm.plan as CreateDatabaseInput['plan'],
         region: createForm.region.trim() || 'local',
+        public_port: createForm.public,
       }),
     onSuccess: () => {
       setCreateOpen(false);
-      setCreateForm({ name: '', type: 'postgresql', plan: 'hobby', region: 'local' });
+      setCreateForm({ name: '', type: 'postgresql', plan: 'hobby', region: 'local', public: false });
       setCreateError(null);
       invalidate();
     },
@@ -1964,6 +1966,11 @@ export function DatabasesPage() {
     mutationFn: () => testDatabaseConnection(externalPayload()),
     onSuccess: (result) => setExternalProbe(result),
     onError: (error) => setExternalProbe({ ok: false, error: error instanceof Error ? error.message : 'probe failed' }),
+  });
+  const publicPortMutation = useMutation({
+    mutationFn: ({ id, publicPort }: { id: string; publicPort: boolean }) =>
+      updateDatabase(id, { public_port: publicPort }),
+    onSuccess: () => window.setTimeout(invalidate, 1500),
   });
   const testByIdMutation = useMutation({
     mutationFn: (id: string) => testDatabaseConnectionByID(id),
@@ -2132,6 +2139,13 @@ export function DatabasesPage() {
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-secondary)] hover:border-[var(--border-default)] disabled:opacity-40 transition-colors"
                         >
                           <RefreshCw size={11} /> Restart
+                        </button>
+                        <button
+                          onClick={() => { if (window.confirm(`${db.public_port ? 'Stop exposing' : 'Expose'} ${db.name} on all interfaces? The container will be recreated; data persists.`)) publicPortMutation.mutate({ id: db.id ?? '', publicPort: !db.public_port }) }}
+                          disabled={publicPortMutation.isPending}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-md)] border text-xs font-medium transition-colors disabled:opacity-40 ${db.public_port ? 'border-[var(--warning)] text-[var(--warning)]' : 'border-[var(--border-subtle)] text-[var(--text-secondary)] hover:border-[var(--border-default)]'}`}
+                        >
+                          <Link2 size={11} /> {db.public_port ? 'Public ✓' : 'Local only'}
                         </button>
                           </>
                         )}
@@ -2368,6 +2382,7 @@ export function DatabasesPage() {
                   </div>
                 </>
               ) : (
+              <>
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Type</label>
@@ -2403,6 +2418,16 @@ export function DatabasesPage() {
                   />
                 </div>
               </div>
+              <label className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+                <input
+                  type="checkbox"
+                  checked={createForm.public}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, public: e.target.checked }))}
+                  className="accent-[var(--accent-primary)]"
+                />
+                Expose port on all interfaces (default: localhost only)
+              </label>
+              </>
               )}
               {createError ? (
                 <div className="rounded-[var(--radius-md)] bg-[var(--error-soft)] px-3.5 py-2.5 text-xs text-[var(--error)]">{createError}</div>

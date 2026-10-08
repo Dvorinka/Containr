@@ -98,6 +98,7 @@ type DatabaseService struct {
 	ExternalUsername sql.NullString `json:"external_username"`
 	ExternalPassword string         `json:"external_password"`
 	ExternalSsl      bool           `json:"external_ssl"`
+	PublicPort       bool           `json:"public_port"`
 	CreatedAt        sql.NullTime   `json:"created_at"`
 	UpdatedAt        sql.NullTime   `json:"updated_at"`
 }

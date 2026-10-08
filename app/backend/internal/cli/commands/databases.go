@@ -79,7 +79,43 @@ var dbCreateCmd = &cobra.Command{
 				body[key] = v
 			}
 		}
+		if v, _ := cmd.Flags().GetBool("public"); v {
+			body["public_port"] = true
+		}
 		data, err := c.Do("POST", "/databases", body)
+		if err != nil {
+			return err
+		}
+		PrintRaw(data)
+		return nil
+	},
+}
+
+var dbUpdateCmd = &cobra.Command{
+	Use:   "update <id>",
+	Short: "Update a database (--public/--public=false toggles the exposed host port)",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := client()
+		if err != nil {
+			return err
+		}
+		body := map[string]interface{}{}
+		if cmd.Flags().Changed("public") {
+			v, _ := cmd.Flags().GetBool("public")
+			body["public_port"] = v
+		}
+		if v, _ := cmd.Flags().GetString("name"); v != "" {
+			body["name"] = v
+		}
+		if cmd.Flags().Changed("backup-schedule") {
+			v, _ := cmd.Flags().GetString("backup-schedule")
+			body["backup_schedule"] = v
+		}
+		if len(body) == 0 {
+			return &APIError{Message: "nothing to update — pass --public/--private-style flags, --name, or --backup-schedule", ExitCode: ExitError}
+		}
+		data, err := c.Do("PUT", "/databases/"+args[0], body)
 		if err != nil {
 			return err
 		}
@@ -278,6 +314,10 @@ func init() {
 	dbCreateCmd.Flags().String("type", "postgres", "postgres|mysql|mariadb|mongodb|redis|dragonfly|clickhouse")
 	dbCreateCmd.Flags().String("version", "", "engine version tag")
 	dbCreateCmd.Flags().String("storage-size", "", "volume size (e.g. 10Gi)")
+	dbCreateCmd.Flags().Bool("public", false, "bind the database port on all interfaces (default: localhost only)")
+	dbUpdateCmd.Flags().Bool("public", false, "bind the database port on all interfaces")
+	dbUpdateCmd.Flags().String("name", "", "rename the database")
+	dbUpdateCmd.Flags().String("backup-schedule", "", "cron expression for automatic backups (empty clears)")
 	for _, cmd := range []*cobra.Command{dbRegisterCmd, dbTestConnCmd} {
 		cmd.Flags().String("type", "postgres", "postgres|mysql|mariadb|mongodb|redis|dragonfly|clickhouse")
 		cmd.Flags().String("host", "", "database host")
@@ -287,5 +327,5 @@ func init() {
 		cmd.Flags().String("password", "", "database password (stored encrypted on register)")
 		cmd.Flags().Bool("ssl", false, "require TLS")
 	}
-	DatabasesCmd.AddCommand(dbListCmd, dbGetCmd, dbCreateCmd, dbRegisterCmd, dbTestConnCmd, dbDeleteCmd, dbActionCmd, dbBackupCmd, dbRestoreCmd, dbDownloadCmd)
+	DatabasesCmd.AddCommand(dbListCmd, dbGetCmd, dbCreateCmd, dbUpdateCmd, dbRegisterCmd, dbTestConnCmd, dbDeleteCmd, dbActionCmd, dbBackupCmd, dbRestoreCmd, dbDownloadCmd)
 }
