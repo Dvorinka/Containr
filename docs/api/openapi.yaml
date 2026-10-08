@@ -1870,6 +1870,10 @@ paths:
       description: |
         Create a new resource in a project using a selected template.
         For `database` templates, this creates a managed database service.
+        For v2 graph templates (config.services non-empty), this deploys
+        the entire service graph — databases first, then services in
+        dependency order — and returns `resource: stack` with a `created`
+        list. Deployments are enqueued for each service member.
       security:
         - bearerAuth: []
       parameters:
@@ -1892,6 +1896,169 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DeployTemplateResponse'
+
+  /templates/{id}/plan:
+    post:
+      tags:
+        - Templates
+      summary: Dry-resolve a template
+      description: |
+        Resolves a template without creating resources: variable merging,
+        `{{secret}}`/`{{random:N}}`/`{{VAR}}`/`{{VAR:-default}}` expression
+        expansion and `{{service.<key>.<prop>}}` references. Generated
+        secrets are returned masked — a real deploy regenerates them.
+        Returns `members` (with resolved environment), `missing_variables`
+        and `unresolved` reference names.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Template ID
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                project_id:
+                  type: string
+                variables:
+                  type: object
+                  additionalProperties:
+                    type: string
+      responses:
+        '200':
+          description: Resolved plan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  members:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TemplatePlanMember'
+                  missing_variables:
+                    type: array
+                    items:
+                      type: string
+                  unresolved:
+                    type: array
+                    items:
+                      type: string
+
+  /templates/import/compose:
+    post:
+      tags:
+        - Templates
+      summary: Convert docker-compose YAML to a template graph
+      description: |
+        Parses a docker-compose YAML document and returns a v2 template
+        config (`version: 2`, `services[]`). Well-known database images
+        (postgres, redis, mongo, mysql, mariadb, clickhouse, dragonfly)
+        become managed-database members; other images become web services.
+        `build:` contexts are flagged in `warnings` — Containr deploys
+        images or git repos, not local build contexts. The returned config
+        can be saved via POST /templates or deployed directly via
+        POST /templates/deploy.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - compose_yaml
+              properties:
+                compose_yaml:
+                  type: string
+                  description: Raw docker-compose YAML (max 512 KiB)
+      responses:
+        '200':
+          description: Converted config
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  config:
+                    $ref: '#/components/schemas/TemplateConfig'
+                  variables:
+                    type: array
+                    items:
+                      type: object
+                  warnings:
+                    type: array
+                    items:
+                      type: string
+
+  /templates/deploy:
+    post:
+      tags:
+        - Templates
+      summary: Deploy an ad-hoc service graph
+      description: |
+        Deploys a v2 graph config (config.services[]) without a stored
+        template — the companion to POST /templates/import/compose.
+        Members are created in dependency order; `database` members become
+        managed databases attached to the project network under their key
+        as DNS alias, and deployments are enqueued for service members.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - project_id
+                - config
+              properties:
+                project_id:
+                  type: string
+                config:
+                  $ref: '#/components/schemas/TemplateConfig'
+                variables:
+                  type: object
+                  additionalProperties:
+                    type: string
+                plan:
+                  type: string
+                region:
+                  type: string
+      responses:
+        '201':
+          description: Graph deployed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  resource:
+                    type: string
+                  created:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key:
+                          type: string
+                        kind:
+                          type: string
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        deployment_id:
+                          type: string
 
   # Agent Onboarding Tokens
   /agent-tokens:
@@ -6269,6 +6436,9 @@ components:
     TemplateConfig:
       type: object
       properties:
+        version:
+          type: integer
+          description: Config version — 2 when services[] is used
         type:
           type: string
           description: Service type for created service
@@ -6300,6 +6470,87 @@ components:
           additionalProperties:
             type: string
           description: Optional nixpacks-specific config
+        services:
+          type: array
+          description: |
+            v2 graph members. When non-empty, the flat fields above are
+            ignored and deploy creates the whole graph in dependency order.
+          items:
+            $ref: '#/components/schemas/TemplateServiceSpec'
+
+    TemplateServiceSpec:
+      type: object
+      required:
+        - key
+        - type
+      properties:
+        key:
+          type: string
+          description: Member key — DNS alias on the project network and the target of {{service.<key>.*}} refs
+        name:
+          type: string
+          description: Display/deployed name (defaults to key)
+        type:
+          type: string
+          enum: [web, worker, cron, database]
+        runtime:
+          type: string
+          description: Image reference (web/worker/cron) or managed engine (database)
+        repo:
+          type: string
+          description: Git repository URL — when set, the member builds from source
+        branch:
+          type: string
+        build_command:
+          type: string
+        start_command:
+          type: string
+        port:
+          type: integer
+        health_check:
+          type: string
+        builder:
+          type: string
+          enum: [auto, nixpacks, dockerfile, static]
+        environment:
+          type: object
+          additionalProperties:
+            type: string
+          description: |
+            Env vars. Values support {{secret}}, {{secret(N)}}, {{random:N}},
+            {{VAR}}, {{VAR:-default}} and {{service.<key>.<prop>}} where prop
+            is host, port, url, user, password or database.
+        volumes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceVolume'
+        depends_on:
+          type: array
+          items:
+            type: string
+          description: Member keys that must be created first
+
+    TemplatePlanMember:
+      type: object
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+        runtime:
+          type: string
+        port:
+          type: integer
+        depends_on:
+          type: array
+          items:
+            type: string
+        environment:
+          type: object
+          additionalProperties:
+            type: string
 
     TemplateVariable:
       type: object
@@ -6365,7 +6616,7 @@ components:
       properties:
         resource:
           type: string
-          enum: [service, database]
+          enum: [service, database, stack]
           description: Type of resource created by template deployment
         service_id:
           type: string
@@ -6373,6 +6624,23 @@ components:
         database_id:
           type: string
           description: Newly created managed database ID (set for database templates)
+        created:
+          type: array
+          description: Created resources (set for graph templates — resource=stack)
+          items:
+            type: object
+            properties:
+              key:
+                type: string
+              kind:
+                type: string
+                enum: [service, database]
+              id:
+                type: string
+              name:
+                type: string
+              deployment_id:
+                type: string
         message:
           type: string
           description: Deployment result message

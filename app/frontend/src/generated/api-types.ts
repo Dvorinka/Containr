@@ -2801,6 +2801,10 @@ export interface paths {
          * Create resource from template
          * @description Create a new resource in a project using a selected template.
          *     For `database` templates, this creates a managed database service.
+         *     For v2 graph templates (config.services non-empty), this deploys
+         *     the entire service graph — databases first, then services in
+         *     dependency order — and returns `resource: stack` with a `created`
+         *     list. Deployments are enqueued for each service member.
          */
         post: {
             parameters: {
@@ -2825,6 +2829,187 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["DeployTemplateResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/templates/{id}/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dry-resolve a template
+         * @description Resolves a template without creating resources: variable merging,
+         *     `{{secret}}`/`{{random:N}}`/`{{VAR}}`/`{{VAR:-default}}` expression
+         *     expansion and `{{service.<key>.<prop>}}` references. Generated
+         *     secrets are returned masked — a real deploy regenerates them.
+         *     Returns `members` (with resolved environment), `missing_variables`
+         *     and `unresolved` reference names.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Template ID */
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        project_id?: string;
+                        variables?: {
+                            [key: string]: string;
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Resolved plan */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            members?: components["schemas"]["TemplatePlanMember"][];
+                            missing_variables?: string[];
+                            unresolved?: string[];
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/templates/import/compose": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Convert docker-compose YAML to a template graph
+         * @description Parses a docker-compose YAML document and returns a v2 template
+         *     config (`version: 2`, `services[]`). Well-known database images
+         *     (postgres, redis, mongo, mysql, mariadb, clickhouse, dragonfly)
+         *     become managed-database members; other images become web services.
+         *     `build:` contexts are flagged in `warnings` — Containr deploys
+         *     images or git repos, not local build contexts. The returned config
+         *     can be saved via POST /templates or deployed directly via
+         *     POST /templates/deploy.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description Raw docker-compose YAML (max 512 KiB) */
+                        compose_yaml: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Converted config */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            config?: components["schemas"]["TemplateConfig"];
+                            variables?: Record<string, never>[];
+                            warnings?: string[];
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/templates/deploy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Deploy an ad-hoc service graph
+         * @description Deploys a v2 graph config (config.services[]) without a stored
+         *     template — the companion to POST /templates/import/compose.
+         *     Members are created in dependency order; `database` members become
+         *     managed databases attached to the project network under their key
+         *     as DNS alias, and deployments are enqueued for service members.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        project_id: string;
+                        config: components["schemas"]["TemplateConfig"];
+                        variables?: {
+                            [key: string]: string;
+                        };
+                        plan?: string;
+                        region?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Graph deployed */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            resource?: string;
+                            created?: {
+                                key?: string;
+                                kind?: string;
+                                id?: string;
+                                name?: string;
+                                deployment_id?: string;
+                            }[];
+                        };
                     };
                 };
             };
@@ -9213,6 +9398,8 @@ export interface components {
             is_public?: boolean;
         };
         TemplateConfig: {
+            /** @description Config version — 2 when services[] is used */
+            version?: number;
             /** @description Service type for created service */
             type?: string;
             /** @description Runtime or base image */
@@ -9233,6 +9420,52 @@ export interface components {
             dockerfile?: string;
             /** @description Optional nixpacks-specific config */
             nixpacks_config?: {
+                [key: string]: string;
+            };
+            /**
+             * @description v2 graph members. When non-empty, the flat fields above are
+             *     ignored and deploy creates the whole graph in dependency order.
+             */
+            services?: components["schemas"]["TemplateServiceSpec"][];
+        };
+        TemplateServiceSpec: {
+            /** @description Member key — DNS alias on the project network and the target of {{service.<key>.*}} refs */
+            key: string;
+            /** @description Display/deployed name (defaults to key) */
+            name?: string;
+            /** @enum {string} */
+            type: "web" | "worker" | "cron" | "database";
+            /** @description Image reference (web/worker/cron) or managed engine (database) */
+            runtime?: string;
+            /** @description Git repository URL — when set, the member builds from source */
+            repo?: string;
+            branch?: string;
+            build_command?: string;
+            start_command?: string;
+            port?: number;
+            health_check?: string;
+            /** @enum {string} */
+            builder?: "auto" | "nixpacks" | "dockerfile" | "static";
+            /**
+             * @description Env vars. Values support {{secret}}, {{secret(N)}}, {{random:N}},
+             *     {{VAR}}, {{VAR:-default}} and {{service.<key>.<prop>}} where prop
+             *     is host, port, url, user, password or database.
+             */
+            environment?: {
+                [key: string]: string;
+            };
+            volumes?: components["schemas"]["ServiceVolume"][];
+            /** @description Member keys that must be created first */
+            depends_on?: string[];
+        };
+        TemplatePlanMember: {
+            key?: string;
+            name?: string;
+            type?: string;
+            runtime?: string;
+            port?: number;
+            depends_on?: string[];
+            environment?: {
                 [key: string]: string;
             };
         };
@@ -9277,11 +9510,20 @@ export interface components {
              * @description Type of resource created by template deployment
              * @enum {string}
              */
-            resource?: "service" | "database";
+            resource?: "service" | "database" | "stack";
             /** @description Newly created service ID (set for non-database templates) */
             service_id?: string;
             /** @description Newly created managed database ID (set for database templates) */
             database_id?: string;
+            /** @description Created resources (set for graph templates — resource=stack) */
+            created?: {
+                key?: string;
+                /** @enum {string} */
+                kind?: "service" | "database";
+                id?: string;
+                name?: string;
+                deployment_id?: string;
+            }[];
             /** @description Deployment result message */
             message?: string;
         };

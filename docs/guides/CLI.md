@@ -59,7 +59,11 @@ backup-targets list|add|update|remove|test
                                first, empty --access-key/--secret-key on update keep stored keys;
                                update <db-id> --backup-target assigns a target ("" clears it)
 cron list|get|create|delete|trigger|executions
-templates list|get|create|delete|deploy
+templates list|get|create|delete|deploy|plan|import-compose|deploy-graph
+                               deploy --name --var K=V; plan dry-resolves expressions;
+                               import-compose <compose.yml|-> converts a compose file into
+                               a v2 graph config; deploy-graph <project-id> <config.json|->
+                               deploys an ad-hoc service graph
 nodes list|get|delete|tokens     node agents + onboarding tokens (admin)
 scaling status|policies|services|scale
 ha status|alerts|health|policies|enable|disable|failover

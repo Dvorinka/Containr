@@ -1,8 +1,11 @@
 package commands
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -104,16 +107,31 @@ var templatesDeleteCmd = &cobra.Command{
 	},
 }
 
+var tplDeployVars []string
+var tplDeployName string
+
 var templatesDeployCmd = &cobra.Command{
 	Use:   "deploy <template-id> <project-id>",
 	Short: "Deploy a template into a project",
+	Long:  "Deploys a single-service template or a multi-service graph (v2) template. Pass --name for single-service templates; graph members take names from the template. Use --var KEY=VALUE to override template variables.",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		c, err := client()
 		if err != nil {
 			return err
 		}
-		data, err := c.Do("POST", "/templates/"+args[0]+"/deploy", map[string]string{"project_id": args[1]})
+		body := map[string]interface{}{"project_id": args[1]}
+		if tplDeployName != "" {
+			body["name"] = tplDeployName
+		}
+		vars, err := parseKVFlags(tplDeployVars)
+		if err != nil {
+			return err
+		}
+		if len(vars) > 0 {
+			body["variables"] = vars
+		}
+		data, err := c.Do("POST", "/templates/"+args[0]+"/deploy", body)
 		if err != nil {
 			return err
 		}
@@ -122,6 +140,122 @@ var templatesDeployCmd = &cobra.Command{
 	},
 }
 
+var templatesPlanCmd = &cobra.Command{
+	Use:   "plan <template-id>",
+	Short: "Dry-resolve a template — expanded expressions, service refs, missing variables",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := client()
+		if err != nil {
+			return err
+		}
+		vars, err := parseKVFlags(tplDeployVars)
+		if err != nil {
+			return err
+		}
+		body := map[string]interface{}{}
+		if len(vars) > 0 {
+			body["variables"] = vars
+		}
+		data, err := c.Do("POST", "/templates/"+args[0]+"/plan", body)
+		if err != nil {
+			return err
+		}
+		PrintRaw(data)
+		return nil
+	},
+}
+
+var templatesImportComposeCmd = &cobra.Command{
+	Use:   "import-compose <compose.yml|->",
+	Short: "Convert a docker-compose file into a template graph config",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		var raw []byte
+		var err error
+		if args[0] == "-" {
+			raw, err = io.ReadAll(os.Stdin)
+		} else {
+			raw, err = os.ReadFile(args[0])
+		}
+		if err != nil {
+			return fmt.Errorf("cannot read compose file: %w", err)
+		}
+		c, err := client()
+		if err != nil {
+			return err
+		}
+		data, err := c.Do("POST", "/templates/import/compose", map[string]string{"compose_yaml": string(raw)})
+		if err != nil {
+			return err
+		}
+		PrintRaw(data)
+		return nil
+	},
+}
+
+var templatesDeployGraphCmd = &cobra.Command{
+	Use:   "deploy-graph <project-id> <config.json|->",
+	Short: "Deploy an ad-hoc service graph (v2 config with services[]) without a stored template",
+	Args:  cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		var raw []byte
+		var err error
+		if args[1] == "-" {
+			raw, err = io.ReadAll(os.Stdin)
+		} else {
+			raw, err = os.ReadFile(args[1])
+		}
+		if err != nil {
+			return fmt.Errorf("cannot read config: %w", err)
+		}
+		var config json.RawMessage
+		if err := json.Unmarshal(raw, &config); err != nil {
+			return fmt.Errorf("invalid config JSON: %w", err)
+		}
+		c, err := client()
+		if err != nil {
+			return err
+		}
+		vars, err := parseKVFlags(tplDeployVars)
+		if err != nil {
+			return err
+		}
+		body := map[string]interface{}{"project_id": args[0]}
+		var cfg map[string]interface{}
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return fmt.Errorf("invalid config JSON: %w", err)
+		}
+		body["config"] = cfg
+		if len(vars) > 0 {
+			body["variables"] = vars
+		}
+		data, err := c.Do("POST", "/templates/deploy", body)
+		if err != nil {
+			return err
+		}
+		PrintRaw(data)
+		return nil
+	},
+}
+
+// parseKVFlags converts repeated --var KEY=VALUE flags into a map.
+func parseKVFlags(flags []string) (map[string]string, error) {
+	out := map[string]string{}
+	for _, f := range flags {
+		idx := strings.Index(f, "=")
+		if idx <= 0 {
+			return nil, fmt.Errorf("invalid --var %q — expected KEY=VALUE", f)
+		}
+		out[f[:idx]] = f[idx+1:]
+	}
+	return out, nil
+}
+
 func init() {
-	TemplatesCmd.AddCommand(templatesListCmd, templatesGetCmd, templatesCreateCmd, templatesDeleteCmd, templatesDeployCmd)
+	templatesDeployCmd.Flags().StringVar(&tplDeployName, "name", "", "Name for the created service (single-service templates)")
+	templatesDeployCmd.Flags().StringArrayVar(&tplDeployVars, "var", nil, "Template variable override (KEY=VALUE, repeatable)")
+	templatesPlanCmd.Flags().StringArrayVar(&tplDeployVars, "var", nil, "Template variable override (KEY=VALUE, repeatable)")
+	templatesDeployGraphCmd.Flags().StringArrayVar(&tplDeployVars, "var", nil, "Template variable override (KEY=VALUE, repeatable)")
+	TemplatesCmd.AddCommand(templatesListCmd, templatesGetCmd, templatesCreateCmd, templatesDeleteCmd, templatesDeployCmd, templatesPlanCmd, templatesImportComposeCmd, templatesDeployGraphCmd)
 }

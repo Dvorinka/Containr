@@ -7,6 +7,7 @@ import {
   deployTemplate,
   getCurrentUserProfile,
   getTemplateById,
+  importComposeTemplate,
   listProjects,
   listTemplates,
   updateTemplate,
@@ -36,6 +37,8 @@ import {
   Trash2,
   Upload,
   X,
+  FileCode,
+  Network,
 } from 'lucide-react';
 
 function toServiceName(value: string): string {
@@ -147,10 +150,16 @@ export function TemplatesPage() {
   const [variableValuesByTemplate, setVariableValuesByTemplate] = useState<
     Record<string, Record<string, string>>
   >({});
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [composeYaml, setComposeYaml] = useState('');
+  const [composeWarnings, setComposeWarnings] = useState<string[]>([]);
+  const [composeError, setComposeError] = useState<string | null>(null);
+
   const [lastDeployment, setLastDeployment] = useState<{
     projectId: string;
-    serviceId: string;
+    serviceId?: string;
     serviceName: string;
+    created?: { key: string; kind: string; id: string; name: string; deploymentId?: string }[];
   } | null>(null);
 
   const templatesQuery = useQuery({
@@ -281,6 +290,12 @@ export function TemplatesPage() {
     });
   }, [selectedDetail, variableValues]);
 
+  const graphMembers = useMemo(
+    () => selectedDetail?.config.services ?? [],
+    [selectedDetail],
+  );
+  const isGraphTemplate = graphMembers.length > 0;
+
   const deployMutation = useMutation({
     mutationFn: async () => {
       if (!selectedTemplateId) {
@@ -296,17 +311,21 @@ export function TemplatesPage() {
 
       return deployTemplate(selectedTemplateId, {
         projectId: deployProjectId,
-        name: deployName.trim(),
+        name: isGraphTemplate ? undefined : deployName.trim(),
         variables,
       });
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
       queryClient.invalidateQueries({ queryKey: ['project-services'] });
+      queryClient.invalidateQueries({ queryKey: ['databases'] });
       setLastDeployment({
         projectId: deployProjectId,
         serviceId: result.serviceId,
-        serviceName: deployName.trim(),
+        serviceName: isGraphTemplate
+          ? `${result.created?.length ?? 0} resources`
+          : deployName.trim(),
+        created: result.created,
       });
     },
   });
@@ -314,7 +333,7 @@ export function TemplatesPage() {
   const isDeployDisabled =
     !selectedTemplateId ||
     !deployProjectId ||
-    deployName.trim().length === 0 ||
+    (!isGraphTemplate && deployName.trim().length === 0) ||
     missingRequiredVariables.length > 0 ||
     deployMutation.isPending;
 
@@ -341,6 +360,37 @@ export function TemplatesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['templates-page'] });
       selectTemplate(null);
+    },
+  });
+
+  const composeImportMutation = useMutation({
+    mutationFn: (yaml: string) => importComposeTemplate(yaml),
+    onSuccess: (result) => {
+      setComposeWarnings(result.warnings);
+      setComposeError(null);
+      setComposeOpen(false);
+      // Load the converted graph into the template editor for review/save.
+      setEditingTemplate(null);
+      setEditorIsPublic(false);
+      setEditorError(null);
+      setEditorJson(
+        JSON.stringify(
+          {
+            name: 'compose-stack',
+            description: 'Imported from docker-compose',
+            category: 'stack',
+            logo: '',
+            config: result.config,
+            variables: [],
+          },
+          null,
+          2,
+        ),
+      );
+      setEditorOpen(true);
+    },
+    onError: (error) => {
+      setComposeError(error instanceof Error ? error.message : 'Failed to convert compose file');
     },
   });
 
@@ -438,13 +488,27 @@ export function TemplatesPage() {
               <Layers size={16} />
               <span>{filteredTemplates.length} templates</span>
               {signedIn && !isDemoMode ? (
-                <button
-                  type="button"
-                  onClick={openCreateEditor}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-[var(--radius-md)] bg-[var(--accent-primary)] px-3.5 text-[12.5px] font-semibold text-[var(--accent-on)]"
-                >
-                  <Plus size={14} /> New template
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setComposeYaml('');
+                      setComposeWarnings([]);
+                      setComposeError(null);
+                      setComposeOpen(true);
+                    }}
+                    className="inline-flex h-9 items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] px-3.5 text-[12.5px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                  >
+                    <FileCode size={14} /> Import Compose
+                  </button>
+                  <button
+                    type="button"
+                    onClick={openCreateEditor}
+                    className="inline-flex h-9 items-center gap-1.5 rounded-[var(--radius-md)] bg-[var(--accent-primary)] px-3.5 text-[12.5px] font-semibold text-[var(--accent-on)]"
+                  >
+                    <Plus size={14} /> New template
+                  </button>
+                </>
               ) : null}
             </div>
           </div>
@@ -725,6 +789,42 @@ export function TemplatesPage() {
                   )}
                 </div>
 
+                {isGraphTemplate ? (
+                  <div className="panel-soft p-4 mb-6">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Network size={14} className="text-[var(--accent-primary)]" />
+                      <p className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
+                        Stack — {graphMembers.length} members
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      {graphMembers.map((member) => (
+                        <div key={member.key} className="flex items-center justify-between gap-3 text-sm">
+                          <div className="flex items-center gap-2 min-w-0">
+                            {member.type === 'database' ? (
+                              <Database size={13} className="text-[var(--info)] shrink-0" />
+                            ) : (
+                              <Box size={13} className="text-[var(--text-tertiary)] shrink-0" />
+                            )}
+                            <span className="mono text-[var(--text-primary)] truncate">{member.name || member.key}</span>
+                            {member.dependsOn && member.dependsOn.length > 0 ? (
+                              <span className="text-[10px] text-[var(--text-tertiary)]">
+                                after {member.dependsOn.join(', ')}
+                              </span>
+                            ) : null}
+                          </div>
+                          <span className="mono text-[11px] text-[var(--text-tertiary)] truncate">
+                            {member.type === 'database' ? `managed ${member.runtime}` : member.runtime || member.repo || '—'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-xs text-[var(--text-tertiary)] mt-3">
+                      Members join a private project network; references like {'{{service.db.url}}'} resolve to the member key.
+                    </p>
+                  </div>
+                ) : null}
+
                 {/* Deploy Section */}
                 <div className="border-t border-[var(--border-subtle)] pt-6">
                   <div className="flex items-center gap-3 mb-4">
@@ -733,7 +833,9 @@ export function TemplatesPage() {
                     </div>
                     <div>
                       <h3 className="text-lg font-semibold text-[var(--text-primary)]">Deploy from Template</h3>
-                      <p className="text-sm text-[var(--text-secondary)]">Configure and create a new service</p>
+                      <p className="text-sm text-[var(--text-secondary)]">
+                        {isGraphTemplate ? 'Deploy all members into a project' : 'Configure and create a new service'}
+                      </p>
                     </div>
                   </div>
 
@@ -767,6 +869,7 @@ export function TemplatesPage() {
                         ))}
                       </select>
                     </div>
+                    {!isGraphTemplate ? (
                     <div>
                       <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)] mb-2">
                         Service Name
@@ -784,6 +887,7 @@ export function TemplatesPage() {
                         placeholder="service-name"
                       />
                     </div>
+                    ) : null}
                   </div>
 
                   {selectedDetail.variables.length > 0 && (
@@ -846,15 +950,30 @@ export function TemplatesPage() {
                       <div className="flex items-center gap-2">
                         <Check size={16} />
                         <span>
-                          Service <span className="mono font-medium">{lastDeployment.serviceName}</span> created
+                          {lastDeployment.created
+                            ? `Stack deployed — ${lastDeployment.created.length} resources`
+                            : <>Service <span className="mono font-medium">{lastDeployment.serviceName}</span> created</>}
                         </span>
                         <Link
-                          to={`/projects/${lastDeployment.projectId}/services/${lastDeployment.serviceId}${isDemoMode ? '?demo=1' : ''}`}
+                          to={lastDeployment.created
+                            ? `/projects/${lastDeployment.projectId}${isDemoMode ? '?demo=1' : ''}`
+                            : `/projects/${lastDeployment.projectId}/services/${lastDeployment.serviceId}${isDemoMode ? '?demo=1' : ''}`}
                           className="flex items-center gap-1 ml-2 underline underline-offset-2 hover:no-underline"
                         >
                           View <ArrowRight size={12} />
                         </Link>
                       </div>
+                      {lastDeployment.created ? (
+                        <div className="mt-2 space-y-1">
+                          {lastDeployment.created.map((m) => (
+                            <div key={m.id} className="flex items-center gap-2 text-xs">
+                              {m.kind === 'database' ? <Database size={11} /> : <Box size={11} />}
+                              <span className="mono">{m.name}</span>
+                              <span className="opacity-70">({m.kind})</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
                   )}
 
@@ -868,12 +987,12 @@ export function TemplatesPage() {
                       {deployMutation.isPending ? (
                         <>
                           <Loader2 size={16} className="animate-spin" />
-                          Creating...
+                          Deploying...
                         </>
                       ) : (
                         <>
                           <Play size={16} />
-                          Create Service
+                          {isGraphTemplate ? 'Deploy Stack' : 'Create Service'}
                         </>
                       )}
                     </button>
@@ -929,6 +1048,14 @@ export function TemplatesPage() {
               spellCheck={false}
               className="mono min-h-[380px] flex-1 resize-none bg-[var(--bg-void)] p-4 text-[12.5px] leading-relaxed text-[var(--text-secondary)] outline-none"
             />
+            {composeWarnings.length > 0 ? (
+              <div className="border-t border-[var(--border-subtle)] bg-[var(--warning-soft)]/60 px-5 py-2.5 text-xs text-[var(--warning)]">
+                <p className="font-medium mb-1">Compose import notes</p>
+                {composeWarnings.map((w) => (
+                  <p key={w}>• {w}</p>
+                ))}
+              </div>
+            ) : null}
             {editorError ? (
               <div className="border-t border-[var(--border-subtle)] bg-[var(--error-soft)] px-5 py-2.5 text-xs text-[var(--error)]">
                 {editorError}
@@ -962,6 +1089,59 @@ export function TemplatesPage() {
                   {editingTemplate ? 'Save changes' : 'Create template'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Compose import */}
+      {composeOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--bg-base)] shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[var(--border-subtle)] px-5 py-4">
+              <div>
+                <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">Import docker-compose</h2>
+                <p className="text-xs text-[var(--text-tertiary)]">
+                  Paste a compose file — known database images become managed databases, everything else becomes services.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setComposeOpen(false)}
+                className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-md)] text-[var(--text-tertiary)] hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)]"
+              >
+                <X size={15} />
+              </button>
+            </div>
+            <textarea
+              value={composeYaml}
+              onChange={(e) => setComposeYaml(e.target.value)}
+              spellCheck={false}
+              placeholder={'services:\n  db:\n    image: postgres:16\n  web:\n    image: myapp:latest\n    depends_on: [db]'}
+              className="mono min-h-[320px] flex-1 resize-none bg-[var(--bg-void)] p-4 text-[12.5px] leading-relaxed text-[var(--text-secondary)] outline-none"
+            />
+            {composeError ? (
+              <div className="border-t border-[var(--border-subtle)] bg-[var(--error-soft)] px-5 py-2.5 text-xs text-[var(--error)]">
+                {composeError}
+              </div>
+            ) : null}
+            <div className="flex items-center justify-end gap-2 border-t border-[var(--border-subtle)] px-5 py-3.5">
+              <button
+                type="button"
+                onClick={() => setComposeOpen(false)}
+                className="rounded-[var(--radius-md)] px-3.5 py-2 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--surface-muted)]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => composeImportMutation.mutate(composeYaml)}
+                disabled={!composeYaml.trim() || composeImportMutation.isPending}
+                className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] bg-[var(--accent-primary)] px-4 py-2 text-xs font-semibold text-[var(--accent-on)] disabled:opacity-50"
+              >
+                {composeImportMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <FileCode size={13} />}
+                Convert to template
+              </button>
             </div>
           </div>
         </div>
