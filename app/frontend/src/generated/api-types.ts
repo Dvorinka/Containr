@@ -3570,6 +3570,98 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{id}/variables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List shared project variables
+         * @description Project-level variables shared across services. Services reference them as `${{shared.KEY}}` in environment values — resolved at deploy/reconcile, not live-updated. Secret values are masked.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Variables retrieved */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            variables?: components["schemas"]["ServiceVariable"][];
+                        };
+                    };
+                };
+                /** @description Project not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        /**
+         * Replace shared project variables
+         * @description Replace the full shared-variable set for a project. Fetch the current list first and merge — the server replaces wholesale. Masked secret placeholders (`********`) keep the stored value.
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["UpdateVariablesRequest"];
+                };
+            };
+            responses: {
+                /** @description Variables updated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            variables?: components["schemas"]["ServiceVariable"][];
+                        };
+                    };
+                };
+                /** @description Invalid input */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/git/github-app/install-url": {
         parameters: {
             query?: never;

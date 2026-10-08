@@ -1238,6 +1238,22 @@ export async function updateServiceVariables(
   return normalizeServiceVariables(payload.variables);
 }
 
+export async function listProjectVariables(projectId: string): Promise<ServiceVariable[]> {
+  const payload = await requestJson<{ variables?: RawServiceVariable[] }>(`/projects/${projectId}/variables`);
+  return normalizeServiceVariables(payload.variables);
+}
+
+export async function updateProjectVariables(
+  projectId: string,
+  variables: UpdateServiceVariableInput[],
+): Promise<ServiceVariable[]> {
+  const payload = await requestJson<{ variables?: RawServiceVariable[] }>(
+    `/projects/${projectId}/variables`,
+    { method: 'PUT', body: JSON.stringify({ variables }) },
+  );
+  return normalizeServiceVariables(payload.variables);
+}
+
 export async function listAuditLogs(input: ListAuditLogsInput = {}): Promise<AuditLogEntity[]> {
   const searchParams = new URLSearchParams();
   if (input.resource) {
