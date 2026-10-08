@@ -1,0 +1,30 @@
+# Containr
+
+> Self-hosted Docker PaaS — deploy and manage containerized apps, databases, cron jobs and preview environments. Operable by humans (web UI) and agents (API / CLI / MCP) through one contract.
+
+Base URL: `https://<host>/api/v1`. OpenAPI: `docs/api/openapi.yaml`.
+
+## Access (pick one)
+
+- **API**: `Authorization: Bearer <pat>` — create a PAT in Settings → Access Tokens or `containr tokens create`. Scopes: `read` (GET/HEAD/OPTIONS only), `write` (everything but admin routes), `admin` (requires platform-admin owner).
+- **CLI**: `containr auth login --api-url <url>` (or `--token cnp_…`), then e.g. `containr projects list --json`, `containr up`. Global flags: `--json`, `--yes`, `--profile`, `--idempotency-key`.
+- **MCP**: run `containr-mcp` over stdio with `CONTAINR_API_URL` + `CONTAINR_TOKEN` env (or CLI profile). ~60 tools mirroring the API; destructive tools require `confirm: true`.
+
+## Conventions
+
+- **Errors**: `{"error": "msg", "code": "MACHINE_CODE"}`. Codes: `UNAUTHENTICATED`, `INVALID_TOKEN`, `FORBIDDEN`, `ADMIN_REQUIRED`, `SCOPE_INSUFFICIENT`, `NOT_FOUND`, `VALIDATION`, `CONFLICT`, `INTERNAL`, `DEPENDENCY_UNAVAILABLE`, `IDEMPOTENCY_IN_PROGRESS`.
+- **Idempotency**: send `Idempotency-Key: <uuid>` on POSTs — the first response replays for 24h; concurrent duplicates get 409. Always safe to send.
+- **Pagination**: `?limit=` + `?cursor=` (pass `pagination.next_cursor` verbatim; legacy `?page=` also works). Invalid cursors fall back to page 1.
+- **Identifiers**: all ids are UUIDs. Tokens: `cnp_` user PATs, `cagt_` agent onboarding tokens.
+
+## Core objects
+
+`projects` → `services` (git/app deploys) → `deployments`; plus `databases`, `templates`, `cron-jobs`, `variables`, `volumes`, `preview-environments`, `nodes`, `scaling`, `security`, `gateway`, `admin`, `notifications`, `user/tokens`.
+
+## Docs
+
+- `docs/guides/CLI.md` — full CLI reference
+- `docs/guides/OPERATIONS.md` — PATs, agent tokens, ops
+- `docs/api/openapi.yaml` — request/response contract
+- `ROADMAP2.md` — product roadmap
+- `AGENTS.md` — repo conventions for coding agents
