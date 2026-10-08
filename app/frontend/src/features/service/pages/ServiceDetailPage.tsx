@@ -473,6 +473,7 @@ export function ServiceDetailPage() {
     mutationFn: (input: Parameters<typeof updateService>[1]) => updateService(serviceId, input),
     onSuccess: () => {
       setNetworkForm(null);
+      setSleepDraft(null);
       invalidateService();
     },
   });
@@ -491,24 +492,7 @@ export function ServiceDetailPage() {
   const [domainInput, setDomainInput] = useState('');
   const [domainChecks, setDomainChecks] = useState<Record<string, DomainCheckResult> | null>(null);
   const [accessForm, setAccessForm] = useState<{ maintenance: boolean; basicAuth: string } | null>(null);
-  const [sleepForm, setSleepForm] = useState<{ enabled: boolean; minutes: string; dirty: boolean }>({
-    enabled: false,
-    minutes: '15',
-    dirty: false,
-  });
-  const sleepFormInitRef = useRef<string>('');
-  useEffect(() => {
-    const svc = isDemoMode ? getDemoServiceById(serviceId) : serviceQuery.data;
-    const key = svc ? `${svc.id}:${svc.sleepEnabled}:${svc.sleepIdleMinutes}` : '';
-    if (svc && key !== sleepFormInitRef.current) {
-      sleepFormInitRef.current = key;
-      setSleepForm({
-        enabled: Boolean(svc.sleepEnabled),
-        minutes: String(svc.sleepIdleMinutes ?? 15),
-        dirty: false,
-      });
-    }
-  }, [isDemoMode, serviceId, serviceQuery.data]);
+  const [sleepDraft, setSleepDraft] = useState<{ id: string; enabled: boolean; minutes: string } | null>(null);
   const [buildForm, setBuildForm] = useState<{
     builder: string; cpuReserve: string; memoryReserve: string; staticCmd: string; staticDir: string;
   } | null>(null);
@@ -529,6 +513,9 @@ export function ServiceDetailPage() {
 
   const project = isDemoMode ? getDemoProjectById(projectId) : projectQuery.data;
   const service = isDemoMode ? getDemoServiceById(serviceId) : serviceQuery.data;
+  const sleepDraftCurrent = sleepDraft?.id === serviceId ? sleepDraft : null;
+  const sleepEnabled = sleepDraftCurrent?.enabled ?? Boolean(service?.sleepEnabled);
+  const sleepMinutes = sleepDraftCurrent?.minutes ?? String(service?.sleepIdleMinutes ?? 15);
 
   const varRows: VariableDraft[] = useMemo(
     () =>
@@ -2400,9 +2387,9 @@ export function ServiceDetailPage() {
                   <label className="flex items-center gap-2 text-[var(--text-primary)]">
                     <input
                       type="checkbox"
-                      checked={Boolean(sleepForm.enabled)}
+                      checked={sleepEnabled}
                       onChange={(e) =>
-                        setSleepForm((f) => ({ ...f, enabled: e.target.checked, dirty: true }))
+                        setSleepDraft({ id: serviceId, enabled: e.target.checked, minutes: sleepMinutes })
                       }
                     />
                     Sleep on idle
@@ -2413,9 +2400,9 @@ export function ServiceDetailPage() {
                       type="number"
                       min={1}
                       max={1440}
-                      value={sleepForm.minutes}
+                      value={sleepMinutes}
                       onChange={(e) =>
-                        setSleepForm((f) => ({ ...f, minutes: e.target.value, dirty: true }))
+                        setSleepDraft({ id: serviceId, enabled: sleepEnabled, minutes: e.target.value })
                       }
                       className="w-20 px-2 py-1 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)]"
                     />
@@ -2426,15 +2413,15 @@ export function ServiceDetailPage() {
                     disabled={updateServiceMutation.isPending}
                     onClick={() =>
                       updateServiceMutation.mutate({
-                        sleep_enabled: sleepForm.enabled,
-                        sleep_idle_minutes: Math.max(1, Math.min(1440, Number(sleepForm.minutes) || 15)),
+                        sleep_enabled: sleepEnabled,
+                        sleep_idle_minutes: Math.max(1, Math.min(1440, Number(sleepMinutes) || 15)),
                       })
                     }
                     className="px-3 py-1.5 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-on)] text-xs font-medium disabled:opacity-50"
                   >
                     Save
                   </button>
-                  {sleepForm.dirty && (
+                  {sleepDraftCurrent && (
                     <span className="text-[var(--text-tertiary)]">unsaved</span>
                   )}
                 </div>
