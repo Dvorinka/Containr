@@ -1,16 +1,16 @@
 -- name: ListDatabaseServicesByUser :many
-SELECT id, user_id, name, type, status, version, plan, region, connection_url, backup_schedule, next_backup_at, created_at, updated_at
+SELECT database_services.*
 FROM database_services
 WHERE user_id = $1
 ORDER BY created_at DESC;
 
 -- name: ListAllDatabaseServices :many
-SELECT id, user_id, name, type, status, version, plan, region, connection_url, backup_schedule, next_backup_at, created_at, updated_at
+SELECT database_services.*
 FROM database_services
 ORDER BY created_at DESC;
 
 -- name: GetDatabaseServiceByID :one
-SELECT id, user_id, name, type, status, version, plan, region, connection_url, backup_schedule, next_backup_at, created_at, updated_at
+SELECT database_services.*
 FROM database_services
 WHERE id = $1;
 
@@ -20,7 +20,7 @@ FROM database_services
 WHERE id = $1;
 
 -- name: GetDatabaseServiceByIDAndUser :one
-SELECT id, user_id, name, type, status, version, plan, region, connection_url, backup_schedule, next_backup_at, created_at, updated_at
+SELECT database_services.*
 FROM database_services
 WHERE id = $1 AND user_id = $2;
 
@@ -110,3 +110,9 @@ WHERE backup_schedule IS NOT NULL AND backup_schedule <> ''
 UPDATE database_services
 SET next_backup_at = $1
 WHERE id = $2;
+
+-- name: CreateExternalDatabaseService :exec
+INSERT INTO database_services (id, user_id, name, type, status, version, plan, region,
+    provider, external_host, external_port, external_name, external_username, external_password, external_ssl,
+    created_at, updated_at)
+VALUES ($1, $2, $3, $4, 'running', $5, $6, $7, 'external', $8, $9, $10, $11, $12, $13, $14, $15);

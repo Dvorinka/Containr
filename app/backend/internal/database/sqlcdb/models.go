@@ -80,19 +80,26 @@ type DatabaseBackup struct {
 }
 
 type DatabaseService struct {
-	ID             string         `json:"id"`
-	UserID         string         `json:"user_id"`
-	Name           string         `json:"name"`
-	Type           string         `json:"type"`
-	Status         string         `json:"status"`
-	Version        string         `json:"version"`
-	Plan           string         `json:"plan"`
-	Region         string         `json:"region"`
-	ConnectionUrl  sql.NullString `json:"connection_url"`
-	BackupSchedule sql.NullString `json:"backup_schedule"`
-	NextBackupAt   sql.NullTime   `json:"next_backup_at"`
-	CreatedAt      sql.NullTime   `json:"created_at"`
-	UpdatedAt      sql.NullTime   `json:"updated_at"`
+	ID               string         `json:"id"`
+	UserID           string         `json:"user_id"`
+	Name             string         `json:"name"`
+	Type             string         `json:"type"`
+	Status           string         `json:"status"`
+	Version          string         `json:"version"`
+	Plan             string         `json:"plan"`
+	Region           string         `json:"region"`
+	ConnectionUrl    sql.NullString `json:"connection_url"`
+	BackupSchedule   sql.NullString `json:"backup_schedule"`
+	NextBackupAt     sql.NullTime   `json:"next_backup_at"`
+	Provider         string         `json:"provider"`
+	ExternalHost     sql.NullString `json:"external_host"`
+	ExternalPort     sql.NullInt32  `json:"external_port"`
+	ExternalName     sql.NullString `json:"external_name"`
+	ExternalUsername sql.NullString `json:"external_username"`
+	ExternalPassword string         `json:"external_password"`
+	ExternalSsl      bool           `json:"external_ssl"`
+	CreatedAt        sql.NullTime   `json:"created_at"`
+	UpdatedAt        sql.NullTime   `json:"updated_at"`
 }
 
 type Deployment struct {
@@ -167,6 +174,17 @@ type ProjectMember struct {
 	CreatedAt sql.NullTime `json:"created_at"`
 }
 
+type Registry struct {
+	ID        uuid.UUID `json:"id"`
+	OwnerID   uuid.UUID `json:"owner_id"`
+	Name      string    `json:"name"`
+	Host      string    `json:"host"`
+	Username  string    `json:"username"`
+	Password  string    `json:"password"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 type Service struct {
 	ID              uuid.UUID       `json:"id"`
 	Name            string          `json:"name"`
@@ -204,6 +222,11 @@ type Service struct {
 	Volumes         json.RawMessage `json:"volumes"`
 	MaintenanceMode bool            `json:"maintenance_mode"`
 	BasicAuthUsers  string          `json:"basic_auth_users"`
+	Builder         string          `json:"builder"`
+	CpuReserve      string          `json:"cpu_reserve"`
+	MemoryReserve   string          `json:"memory_reserve"`
+	StaticBuildCmd  string          `json:"static_build_cmd"`
+	StaticDir       string          `json:"static_dir"`
 }
 
 type ServiceDomain struct {

@@ -196,9 +196,96 @@ var dbDownloadCmd = &cobra.Command{
 	},
 }
 
+var dbRegisterCmd = &cobra.Command{
+	Use:   "register <name>",
+	Short: "Register an external database (probes the connection first)",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := client()
+		if err != nil {
+			return err
+		}
+		body := map[string]interface{}{"name": args[0]}
+		for _, f := range []string{"type", "host", "database", "username", "password"} {
+			if v, _ := cmd.Flags().GetString(f); v != "" {
+				body[f] = v
+			}
+		}
+		if v, _ := cmd.Flags().GetInt("port"); v > 0 {
+			body["port"] = v
+		}
+		if v, _ := cmd.Flags().GetBool("ssl"); v {
+			body["ssl"] = true
+		}
+		data, err := c.Do("POST", "/databases/register-external", body)
+		if err != nil {
+			return err
+		}
+		if JSONMode() {
+			PrintRaw(data)
+			return nil
+		}
+		m, _ := unwrapObject(data)
+		fmt.Printf("Registered external database %s (%s)\n", args[0], str(m, "id"))
+		return nil
+	},
+}
+
+var dbTestConnCmd = &cobra.Command{
+	Use:   "test-connection [<id>]",
+	Short: "Probe a database connection — by id, or with --type/--host flags",
+	Args:  cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := client()
+		if err != nil {
+			return err
+		}
+		var data []byte
+		if len(args) == 1 {
+			data, err = c.Do("POST", "/databases/"+args[0]+"/test-connection", map[string]interface{}{})
+		} else {
+			body := map[string]interface{}{}
+			for _, f := range []string{"type", "host", "database", "username", "password"} {
+				if v, _ := cmd.Flags().GetString(f); v != "" {
+					body[f] = v
+				}
+			}
+			if v, _ := cmd.Flags().GetInt("port"); v > 0 {
+				body["port"] = v
+			}
+			if v, _ := cmd.Flags().GetBool("ssl"); v {
+				body["ssl"] = true
+			}
+			data, err = c.Do("POST", "/databases/test-connection", body)
+		}
+		if err != nil {
+			return err
+		}
+		m, _ := unwrapObject(data)
+		if str(m, "ok") == "false" {
+			return &APIError{Message: "connection failed: " + str(m, "error"), ExitCode: ExitError}
+		}
+		if JSONMode() {
+			PrintRaw(data)
+			return nil
+		}
+		fmt.Printf("Connection ok (%sms)\n", str(m, "latency_ms"))
+		return nil
+	},
+}
+
 func init() {
 	dbCreateCmd.Flags().String("type", "postgres", "postgres|mysql|mariadb|mongodb|redis|dragonfly|clickhouse")
 	dbCreateCmd.Flags().String("version", "", "engine version tag")
 	dbCreateCmd.Flags().String("storage-size", "", "volume size (e.g. 10Gi)")
-	DatabasesCmd.AddCommand(dbListCmd, dbGetCmd, dbCreateCmd, dbDeleteCmd, dbActionCmd, dbBackupCmd, dbRestoreCmd, dbDownloadCmd)
+	for _, cmd := range []*cobra.Command{dbRegisterCmd, dbTestConnCmd} {
+		cmd.Flags().String("type", "postgres", "postgres|mysql|mariadb|mongodb|redis|dragonfly|clickhouse")
+		cmd.Flags().String("host", "", "database host")
+		cmd.Flags().Int("port", 0, "database port (default per type)")
+		cmd.Flags().String("database", "", "database name")
+		cmd.Flags().String("username", "", "database username")
+		cmd.Flags().String("password", "", "database password (stored encrypted on register)")
+		cmd.Flags().Bool("ssl", false, "require TLS")
+	}
+	DatabasesCmd.AddCommand(dbListCmd, dbGetCmd, dbCreateCmd, dbRegisterCmd, dbTestConnCmd, dbDeleteCmd, dbActionCmd, dbBackupCmd, dbRestoreCmd, dbDownloadCmd)
 }

@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"containr/internal/database/sqlcdb"
 	"containr/internal/docker"
+	"containr/internal/secrets"
 	"context"
 	"crypto/rand"
 	"database/sql"
@@ -51,12 +52,30 @@ type DatabaseService struct {
 	Region         string               `json:"region" db:"region"`
 	BackupSchedule string               `json:"backup_schedule,omitempty"`
 	NextBackupAt   *time.Time           `json:"next_backup_at,omitempty"`
+	Provider       string               `json:"provider"`           // managed | external
+	External       *DatabaseExternalRef `json:"external,omitempty"` // connection target for external DBs
 	CreatedAt      time.Time            `json:"created_at" db:"created_at"`
 	UpdatedAt      time.Time            `json:"updated_at" db:"updated_at"`
 	ConnectionURL  string               `json:"connection_url"`
 	Metrics        DatabaseMetrics      `json:"metrics"`
 	Backups        DatabaseBackupConfig `json:"backups"`
 	Settings       DatabaseSettings     `json:"settings"`
+
+	// externalPasswordEnc is the stored ciphertext — needed to compose the
+	// connection URL on privileged reads, never serialized.
+	externalPasswordEnc string `json:"-"`
+}
+
+// DatabaseExternalRef describes a registered external database's connection
+// target. The password is stored encrypted and never returned — has_password
+// signals presence.
+type DatabaseExternalRef struct {
+	Host        string `json:"host"`
+	Port        int    `json:"port"`
+	Database    string `json:"database"`
+	Username    string `json:"username"`
+	HasPassword bool   `json:"has_password"`
+	SSL         bool   `json:"ssl"`
 }
 
 // DatabaseMetrics represents database performance metrics
@@ -467,21 +486,20 @@ func (h *DatabaseHandler) DeleteDatabase(c *gin.Context) {
 	databaseID := c.Param("id")
 	userID = h.effectiveUserID(c, userID, databaseID)
 
-	exists, err := h.queries.DatabaseServiceExistsByIDAndUser(c.Request.Context(), sqlcdb.DatabaseServiceExistsByIDAndUserParams{
+	row, err := h.queries.GetDatabaseServiceByIDAndUser(c.Request.Context(), sqlcdb.GetDatabaseServiceByIDAndUserParams{
 		ID:     databaseID,
 		UserID: userID,
 	})
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Database not found"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check database"})
 		return
 	}
 
-	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Database not found"})
-		return
-	}
-
-	if h.dockerClient != nil {
+	if row.Provider != "external" && h.dockerClient != nil {
 		if err := h.deleteManagedDatabaseRuntime(databaseID); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete runtime database"})
 			return
@@ -515,17 +533,24 @@ func (h *DatabaseHandler) PerformDatabaseAction(c *gin.Context) {
 		return
 	}
 
-	exists, err := h.queries.DatabaseServiceExistsByIDAndUser(c.Request.Context(), sqlcdb.DatabaseServiceExistsByIDAndUserParams{
+	row, err := h.queries.GetDatabaseServiceByIDAndUser(c.Request.Context(), sqlcdb.GetDatabaseServiceByIDAndUserParams{
 		ID:     databaseID,
 		UserID: userID,
 	})
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Database not found"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check database"})
 		return
 	}
 
-	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Database not found"})
+	if row.Provider == "external" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Lifecycle actions apply to managed databases only — external databases are run elsewhere",
+			"code":  "VALIDATION",
+		})
 		return
 	}
 
@@ -619,6 +644,13 @@ func (h *DatabaseHandler) CreateBackup(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"error": "Database is still provisioning"})
 		return
 	}
+	if row.Provider == "external" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Backups run against the managed dump pipeline — external database backups are not supported yet",
+			"code":  "VALIDATION",
+		})
+		return
+	}
 
 	backupID := generateDatabaseBackupID(databaseID)
 	archivePath := sanitizeBackupArchivePath(managedDatabaseBackupArchivePath(backupID))
@@ -659,17 +691,23 @@ func (h *DatabaseHandler) RestoreBackup(c *gin.Context) {
 		return
 	}
 
-	exists, err := h.queries.DatabaseServiceExistsByIDAndUser(c.Request.Context(), sqlcdb.DatabaseServiceExistsByIDAndUserParams{
+	dbRow, err := h.queries.GetDatabaseServiceByIDAndUser(c.Request.Context(), sqlcdb.GetDatabaseServiceByIDAndUserParams{
 		ID:     databaseID,
 		UserID: userID,
 	})
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Database not found"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check database"})
 		return
 	}
-
-	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Database not found"})
+	if dbRow.Provider == "external" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Restores run against the managed dump pipeline — external database restores are not supported yet",
+			"code":  "VALIDATION",
+		})
 		return
 	}
 
@@ -787,7 +825,7 @@ func (h *DatabaseHandler) DownloadBackup(c *gin.Context) {
 }
 
 func (h *DatabaseHandler) resolveDatabaseMetrics(ctx context.Context, db DatabaseService) DatabaseMetrics {
-	if h.dockerClient == nil {
+	if h.dockerClient == nil || db.Provider == "external" {
 		return h.generateMockMetrics()
 	}
 
@@ -945,7 +983,11 @@ func (h *DatabaseHandler) generateMockSettings() DatabaseSettings {
 
 // resolveConnectionURL returns the stored connection URL for privileged
 // viewers, or "" when the runtime has not produced one (not provisioned yet).
+// External databases compose it from the registered fields on demand.
 func (h *DatabaseHandler) resolveConnectionURL(db DatabaseService) string {
+	if db.Provider == "external" && db.External != nil {
+		return externalConnectionURL(db.Type, db.External, secrets.Decrypt(db.externalPasswordEnc))
+	}
 	return strings.TrimSpace(db.ConnectionURL)
 }
 
@@ -987,7 +1029,7 @@ func rewriteLoopbackURL(rawURL, host string) string {
 }
 
 func (h *DatabaseHandler) reconcileManagedDatabaseState(ctx context.Context, db DatabaseService) DatabaseService {
-	if h.dockerClient == nil {
+	if h.dockerClient == nil || db.Provider == "external" {
 		return db
 	}
 
@@ -1054,7 +1096,7 @@ func (h *DatabaseHandler) resolveManagedRuntimeStatus(ctx context.Context, db Da
 }
 
 func mapDatabaseServiceRow(row sqlcdb.DatabaseService) DatabaseService {
-	return DatabaseService{
+	svc := DatabaseService{
 		ID:             row.ID,
 		OwnerID:        row.UserID,
 		Name:           row.Name,
@@ -1065,10 +1107,23 @@ func mapDatabaseServiceRow(row sqlcdb.DatabaseService) DatabaseService {
 		Region:         row.Region,
 		BackupSchedule: databaseNullString(row.BackupSchedule),
 		NextBackupAt:   databaseNullTimePtr(row.NextBackupAt),
+		Provider:       row.Provider,
 		ConnectionURL:  databaseNullString(row.ConnectionUrl),
 		CreatedAt:      databaseNullTime(row.CreatedAt),
 		UpdatedAt:      databaseNullTime(row.UpdatedAt),
 	}
+	if svc.Provider == "external" {
+		svc.External = &DatabaseExternalRef{
+			Host:        databaseNullString(row.ExternalHost),
+			Port:        int(row.ExternalPort.Int32),
+			Database:    databaseNullString(row.ExternalName),
+			Username:    databaseNullString(row.ExternalUsername),
+			HasPassword: row.ExternalPassword != "",
+			SSL:         row.ExternalSsl,
+		}
+		svc.externalPasswordEnc = row.ExternalPassword
+	}
+	return svc
 }
 
 func databaseNullTime(value sql.NullTime) time.Time {

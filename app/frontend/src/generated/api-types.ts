@@ -3034,6 +3034,154 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/databases/register-external": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register external database
+         * @description Record a database hosted elsewhere — connection is probed first (postgres/redis get protocol-level checks, others TCP). Password stored encrypted, never returned.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ExternalDatabaseRequest"] & Record<string, never>;
+                };
+            };
+            responses: {
+                /** @description External database registered */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Validation failed or connection probe failed */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Name already in use */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/databases/test-connection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Probe a database connection
+         * @description Ad-hoc connectivity check — postgres via libpq ping, redis/dragonfly via PING, other engines via TCP dial. Always 200; `ok` carries the result.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ExternalDatabaseRequest"];
+                };
+            };
+            responses: {
+                /** @description Probe result */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            ok?: boolean;
+                            latency_ms?: number;
+                            error?: string;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/databases/{id}/test-connection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Re-probe a registered external database
+         * @description Uses the stored credentials. External databases only.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Probe result (`ok` carries the outcome) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Database not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/databases/{id}": {
         parameters: {
             query?: never;
@@ -8941,6 +9089,12 @@ export interface components {
             /** @description Cron expression for automatic backups, empty when unset */
             backup_schedule?: string;
             /**
+             * @description managed = Containr-provisioned container; external = registered connection to a database hosted elsewhere
+             * @enum {string}
+             */
+            provider?: "managed" | "external";
+            external?: components["schemas"]["DatabaseExternal"];
+            /**
              * Format: date-time
              * @description Next scheduled backup run
              */
@@ -8974,6 +9128,28 @@ export interface components {
             plan: "hobby" | "starter" | "standard" | "business";
             /** @description Database region */
             region: string;
+        };
+        DatabaseExternal: {
+            host?: string;
+            port?: number;
+            database?: string;
+            username?: string;
+            has_password?: boolean;
+            ssl?: boolean;
+        };
+        ExternalDatabaseRequest: {
+            /** @description Display name (required for register, unused for probes) */
+            name?: string;
+            /** @enum {string} */
+            type: "postgresql" | "redis" | "mysql" | "mariadb" | "mongodb" | "clickhouse" | "dragonfly";
+            host: string;
+            /** @description Defaults to the engine's standard port */
+            port?: number;
+            database?: string;
+            username?: string;
+            /** @description Stored encrypted; never returned */
+            password?: string;
+            ssl?: boolean;
         };
         UpdateDatabaseRequest: {
             /** @description Updated database name */

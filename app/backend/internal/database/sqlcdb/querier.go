@@ -22,6 +22,7 @@ type Querier interface {
 	CreateContainer(ctx context.Context, arg CreateContainerParams) (ContainerInstance, error)
 	CreateDatabaseBackup(ctx context.Context, arg CreateDatabaseBackupParams) error
 	CreateDatabaseService(ctx context.Context, arg CreateDatabaseServiceParams) error
+	CreateExternalDatabaseService(ctx context.Context, arg CreateExternalDatabaseServiceParams) error
 	CreateNotification(ctx context.Context, arg CreateNotificationParams) error
 	CreateProject(ctx context.Context, arg CreateProjectParams) (Project, error)
 	CreateServiceFromTemplate(ctx context.Context, arg CreateServiceFromTemplateParams) error

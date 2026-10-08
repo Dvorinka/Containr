@@ -1733,6 +1733,39 @@ export async function createManagedDatabase(
   return { id: payload.id, status: payload.status ?? 'building' };
 }
 
+export type ExternalDatabaseInput = {
+  name?: string;
+  type: string;
+  host: string;
+  port?: number;
+  database?: string;
+  username?: string;
+  password?: string;
+  ssl?: boolean;
+};
+
+export async function registerExternalDatabase(input: ExternalDatabaseInput): Promise<{ id: string }> {
+  const payload = await requestJson<{ id?: string }>('/databases/register-external', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  if (!payload.id) {
+    throw new ApiError('Database response is invalid', 500);
+  }
+  return { id: payload.id };
+}
+
+export async function testDatabaseConnection(input: ExternalDatabaseInput): Promise<{ ok: boolean; latency_ms?: number; error?: string }> {
+  return requestJson('/databases/test-connection', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function testDatabaseConnectionByID(id: string): Promise<{ ok: boolean; latency_ms?: number; error?: string }> {
+  return requestJson(`/databases/${encodeURIComponent(id)}/test-connection`, { method: 'POST' });
+}
+
 export type ConnectGitRepositoryInput = components['schemas']['ConnectGitRepoRequest'];
 export type CreateGitWebhookInput = components['schemas']['CreateWebhookRequest'];
 export type GitWebhookEntity = components['schemas']['GitWebhook'];
