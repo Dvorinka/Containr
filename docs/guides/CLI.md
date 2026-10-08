@@ -69,3 +69,29 @@ containr up --project <id> --image ghcr.io/example/app:latest   # image, no buil
 
 Set `project_id` on the active profile to omit `--project` (stored in
 `~/.containr.yaml` under `profiles.<name>.project_id`).
+
+## MCP server
+
+`containr-mcp` (`go build ./cmd/mcp`) exposes the same API as MCP tools
+over stdio — every command group above maps to a `containr_*` tool
+(~60 tools). Destructive tools require the caller to pass
+`confirm: true`; results are pretty JSON with `isError` on failures.
+
+Client configuration (Claude Code, Cursor, Devin, any stdio MCP host):
+
+```json
+{
+  "mcpServers": {
+    "containr": {
+      "command": "containr-mcp",
+      "env": {
+        "CONTAINR_API_URL": "https://containr.example.com",
+        "CONTAINR_TOKEN": "cnp_..."
+      }
+    }
+  }
+}
+```
+
+Scope the token deliberately: `read` is enough for inspection agents,
+`write` for deploy automation, `admin` only for platform operations.
