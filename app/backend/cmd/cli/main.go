@@ -15,8 +15,5 @@ var (
 
 func main() {
 	cli.SetVersion(fmt.Sprintf("%s (%s, %s)", Version, GitCommit, BuildTime))
-	if err := cli.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
+	os.Exit(cli.Execute())
 }

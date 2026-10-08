@@ -2,139 +2,150 @@ package commands
 
 import (
 	"fmt"
-	"net/http"
-	"strings"
-	"time"
+	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
+	"golang.org/x/term"
 )
 
-// AuthCmd represents the auth command
+// AuthCmd groups authentication commands.
 var AuthCmd = &cobra.Command{
 	Use:   "auth",
-	Short: "Authenticate with Containr API",
-	Long: `Manage authentication with the Containr API.
-You can login, logout, and check your current authentication status.`,
+	Short: "Authenticate with a Containr instance",
+	Long: `Login with a personal access token (cnp_...) created under
+Settings → Personal Access Tokens, check status, or switch profiles.`,
 }
 
-// loginCmd represents the login command
 var loginCmd = &cobra.Command{
 	Use:   "login [token]",
-	Short: "Login to Containr",
-	Long: `Login to Containr using your API token.
-You can get your token from the Containr web interface.`,
+	Short: "Store a personal access token",
+	Long: `Login with a cnp_ token. Reads interactively when no argument is
+given. The token is verified against the API before it is stored.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runLogin,
 }
 
-// logoutCmd represents the logout command
 var logoutCmd = &cobra.Command{
 	Use:   "logout",
-	Short: "Logout from Containr",
-	Long:  `Remove stored authentication credentials.`,
+	Short: "Remove the stored token",
 	RunE:  runLogout,
 }
 
-// statusCmd represents the status command
 var statusCmd = &cobra.Command{
 	Use:   "status",
-	Short: "Check authentication status",
-	Long:  `Check if you are currently authenticated with Containr.`,
+	Short: "Show the active profile and verify the token",
 	RunE:  runStatus,
 }
 
 func init() {
-	AuthCmd.AddCommand(loginCmd)
-	AuthCmd.AddCommand(logoutCmd)
-	AuthCmd.AddCommand(statusCmd)
+	loginCmd.Flags().String("url", "", "API URL to store in the profile (e.g. https://containr.example.com)")
+	loginCmd.Flags().String("name", "", "profile name to save under (default: active profile)")
+	AuthCmd.AddCommand(loginCmd, logoutCmd, statusCmd)
+}
+
+type profileResponse struct {
+	ID      string `json:"id"`
+	Email   string `json:"email"`
+	Name    string `json:"name"`
+	IsAdmin bool   `json:"is_admin"`
 }
 
 func runLogin(cmd *cobra.Command, args []string) error {
 	var token string
-
 	if len(args) > 0 {
 		token = args[0]
-	} else {
-		// Prompt for token
-		fmt.Print("Enter your Containr API token: ")
-		fmt.Scanln(&token)
+	} else if isTerminal() {
+		fmt.Fprint(os.Stderr, "Token: ")
+		raw, err := term.ReadPassword(int(os.Stdin.Fd()))
+		fmt.Fprintln(os.Stderr)
+		if err != nil {
+			return err
+		}
+		token = string(raw)
 	}
-
 	if token == "" {
-		return fmt.Errorf("token is required")
+		return &APIError{Message: "token is required — pass it as an argument or pipe it via stdin", ExitCode: ExitValidation}
 	}
 
-	// Store token in config
-	viper.Set("token", token)
-	if err := viper.WriteConfig(); err != nil {
-		return fmt.Errorf("failed to save token: %w", err)
+	// Verify before saving so a mistyped token fails loudly.
+	urlFlag, _ := cmd.Flags().GetString("url")
+	probe := &Client{BaseURL: ResolveAPIURL(), Token: token}
+	if urlFlag != "" {
+		probe.BaseURL = normalizeBase(urlFlag)
+	}
+	var profile profileResponse
+	if err := probe.DoJSON("GET", "/user/profile", nil, &profile); err != nil {
+		return fmt.Errorf("token verification failed: %w", err)
 	}
 
-	fmt.Println("✓ Successfully logged in to Containr")
+	name, _ := cmd.Flags().GetString("name")
+	if name == "" {
+		name = ActiveProfile()
+	}
+	if err := SaveProfile(name, probe.BaseURL, token); err != nil {
+		return fmt.Errorf("failed to save profile: %w", err)
+	}
+
+	if JSONMode() {
+		return PrintJSON(map[string]interface{}{
+			"profile": name, "api_url": probe.BaseURL,
+			"user": profile,
+		})
+	}
+	fmt.Printf("Logged in as %s (%s) — profile %q → %s\n", profile.Name, profile.Email, name, probe.BaseURL)
 	return nil
 }
 
 func runLogout(cmd *cobra.Command, args []string) error {
-	// Remove token from config
-	viper.Set("token", "")
-	if err := viper.WriteConfig(); err != nil {
-		return fmt.Errorf("failed to remove token: %w", err)
+	name := ActiveProfile()
+	if err := ClearProfileToken(name); err != nil {
+		return fmt.Errorf("failed to update config: %w", err)
 	}
-
-	fmt.Println("✓ Successfully logged out from Containr")
+	if !JSONMode() {
+		fmt.Printf("Removed token from profile %q\n", name)
+	} else {
+		return PrintJSON(map[string]string{"status": "ok", "profile": name})
+	}
 	return nil
 }
 
 func runStatus(cmd *cobra.Command, args []string) error {
-	token := viper.GetString("token")
-	if token == "" {
-		fmt.Println("❌ Not authenticated")
-		fmt.Println("Run 'containr auth login <token>' to authenticate")
+	client := NewClient()
+	profile := ActiveProfile()
+
+	if JSONMode() {
+		out := map[string]interface{}{
+			"profile": profile,
+			"api_url": client.BaseURL,
+		}
+		if client.Token != "" {
+			var p profileResponse
+			if err := client.DoJSON("GET", "/user/profile", nil, &p); err == nil {
+				out["user"] = p
+				out["authenticated"] = true
+			} else {
+				out["authenticated"] = false
+			}
+		} else {
+			out["authenticated"] = false
+		}
+		return PrintJSON(out)
+	}
+
+	fmt.Printf("Profile:  %s\n", profile)
+	fmt.Printf("API URL:  %s\n", client.BaseURL)
+	if client.Token == "" {
+		fmt.Println("Token:    not set — run `containr auth login <token>`")
 		return nil
 	}
-
-	fmt.Println("✓ Authenticated with Containr")
-	apiURL := buildAPIURL("/user/profile")
-	fmt.Printf("API URL: %s\n", strings.TrimSuffix(buildAPIURL(""), "/"))
-
-	req, err := http.NewRequest(http.MethodGet, apiURL, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create verification request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		fmt.Printf("⚠ Token verification unavailable: %v\n", err)
+	var p profileResponse
+	if err := client.DoJSON("GET", "/user/profile", nil, &p); err != nil {
+		fmt.Printf("Token:    present but rejected (%v)\n", err)
 		return nil
 	}
-	defer resp.Body.Close()
-
-	switch resp.StatusCode {
-	case http.StatusOK:
-		fmt.Println("✓ Token verified against API")
-	case http.StatusUnauthorized, http.StatusForbidden:
-		fmt.Println("❌ Token rejected by API (expired/invalid)")
-	default:
-		fmt.Printf("⚠ Token verification returned unexpected status: %s\n", resp.Status)
+	fmt.Printf("Identity: %s <%s>\n", p.Name, p.Email)
+	if p.IsAdmin {
+		fmt.Println("Role:     platform admin")
 	}
-
 	return nil
-}
-
-func buildAPIURL(endpoint string) string {
-	baseURL := viper.GetString("api-url")
-	if baseURL == "" {
-		baseURL = "http://localhost:8080/api/v1"
-	}
-	baseURL = strings.TrimSuffix(baseURL, "/")
-	if endpoint == "" {
-		return baseURL
-	}
-	if !strings.HasPrefix(endpoint, "/") {
-		endpoint = "/" + endpoint
-	}
-	return baseURL + endpoint
 }
