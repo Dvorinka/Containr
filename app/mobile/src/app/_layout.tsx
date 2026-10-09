@@ -1,14 +1,26 @@
 import React, { useEffect } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient } from '@tanstack/react-query';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
+import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
 import { SessionProvider, useSession } from '../session';
 import { colors } from '../theme';
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { staleTime: 15_000, retry: 1 },
+    queries: { staleTime: 15_000, retry: 1, networkMode: 'offlineFirst' },
   },
+});
+
+// High-churn keys never hit disk — a stale notification count or log
+// tail is worse than none.
+const NEVER_PERSIST = new Set(['notifications', 'notification-channels', 'logs', 'connectivity']);
+
+const persister = createAsyncStoragePersister({
+  storage: AsyncStorage,
+  key: 'containr-query-cache-v1',
 });
 
 function AuthGate() {
@@ -48,11 +60,21 @@ function AuthGate() {
 
 export default function RootLayout() {
   return (
-    <QueryClientProvider client={queryClient}>
+    <PersistQueryClientProvider
+      client={queryClient}
+      persistOptions={{
+        persister,
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+        dehydrateOptions: {
+          shouldDehydrateQuery: (q) =>
+            q.state.status === 'success' && !NEVER_PERSIST.has(String(q.queryKey[0])),
+        },
+      }}
+    >
       <SessionProvider>
         <StatusBar style="light" />
         <AuthGate />
       </SessionProvider>
-    </QueryClientProvider>
+    </PersistQueryClientProvider>
   );
 }

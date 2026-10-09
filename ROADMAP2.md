@@ -512,10 +512,13 @@ and wired refs, one click or one CLI call.
     (ntfy + Gotify): every `insertUserNotification` fans out best-effort
     to enabled channels; CRUD + live test-ping via web settings, CLI
     `notifications channels`, and MCP. FCM/APNs remain optional.
-  - [ ] **Offline resilience** — cached last-known state + unreachable
-    banner.
-- [ ] **Status/offline resilience** — app + CLI degrade gracefully when
-  the instance is unreachable (cached last-known state, clear banner).
+  - [x] **Offline resilience** — AsyncStorage-persisted query cache
+    (7d, high-churn keys excluded) + banner when the instance is
+    unreachable (`/health` ping + expo-network).
+- [x] **Status/offline resilience** — web persists the query cache to
+  localStorage (24h) and PlatformShell shows a "last-known data" banner
+  on offline/unreachable; CLI exits `ExitUnavailable` with a clean
+  "cannot reach" message (no stack traces).
 
 ## 10. Carried-over debt (ROADMAP.md items still open)
 
