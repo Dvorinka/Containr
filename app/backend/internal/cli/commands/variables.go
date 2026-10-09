@@ -50,7 +50,7 @@ var varsSetCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		secret, _ := cmd.Flags().GetBool("secret")
 		redeploy, _ := cmd.Flags().GetBool("redeploy")
-		return mutateVars(args[0], redeploy, func(vars []map[string]interface{}) []map[string]interface{} {
+		return mutateVars(serviceVarsPath(args[0]), args[0], redeploy, func(vars []map[string]interface{}) []map[string]interface{} {
 			for _, pair := range args[1:] {
 				k, v, found := strings.Cut(pair, "=")
 				if !found || k == "" {
@@ -73,7 +73,7 @@ var varsUnsetCmd = &cobra.Command{
 			drop[k] = true
 		}
 		redeploy, _ := cmd.Flags().GetBool("redeploy")
-		return mutateVars(args[0], redeploy, func(vars []map[string]interface{}) []map[string]interface{} {
+		return mutateVars(serviceVarsPath(args[0]), args[0], redeploy, func(vars []map[string]interface{}) []map[string]interface{} {
 			out := vars[:0]
 			for _, v := range vars {
 				if !drop[str(v, "key")] {
@@ -85,20 +85,92 @@ var varsUnsetCmd = &cobra.Command{
 	},
 }
 
-func fetchVars(c *Client, serviceID string) ([]map[string]interface{}, error) {
-	data, err := c.Do("GET", "/services/"+serviceID+"/variables", nil)
-	if err != nil {
-		return nil, err
-	}
-	return unwrapList(data, "variables")
+// Shared variables — project scope, referenced as ${{shared.KEY}}.
+
+var varsSharedCmd = &cobra.Command{
+	Use:   "shared",
+	Short: "Manage project-level shared variables (${{shared.KEY}})",
 }
 
-func mutateVars(serviceID string, redeploy bool, mutate func([]map[string]interface{}) []map[string]interface{}) error {
+var sharedVarsListCmd = &cobra.Command{
+	Use:   "list <project-id>",
+	Short: "List shared project variables (secrets shown masked)",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := client()
+		if err != nil {
+			return err
+		}
+		data, err := c.Do("GET", projectVarsPath(args[0]), nil)
+		if err != nil {
+			return err
+		}
+		items, err := unwrapList(data, "variables")
+		if err != nil {
+			return err
+		}
+		rows := make([][]string, 0, len(items))
+		for _, v := range items {
+			rows = append(rows, []string{str(v, "key"), str(v, "value"), str(v, "is_secret")})
+		}
+		printRows(data, []string{"KEY", "VALUE", "SECRET"}, rows)
+		return nil
+	},
+}
+
+var sharedVarsSetCmd = &cobra.Command{
+	Use:   "set <project-id> KEY=VALUE [KEY=VALUE...]",
+	Short: "Set shared project variables",
+	Args:  cobra.MinimumNArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		secret, _ := cmd.Flags().GetBool("secret")
+		return mutateVars(projectVarsPath(args[0]), args[0], false, func(vars []map[string]interface{}) []map[string]interface{} {
+			for _, pair := range args[1:] {
+				k, v, found := strings.Cut(pair, "=")
+				if !found || k == "" {
+					continue
+				}
+				vars = upsertVar(vars, k, v, secret)
+			}
+			return vars
+		})
+	},
+}
+
+var sharedVarsUnsetCmd = &cobra.Command{
+	Use:   "unset <project-id> KEY [KEY...]",
+	Short: "Remove shared project variables",
+	Args:  cobra.MinimumNArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		drop := map[string]bool{}
+		for _, k := range args[1:] {
+			drop[k] = true
+		}
+		return mutateVars(projectVarsPath(args[0]), args[0], false, func(vars []map[string]interface{}) []map[string]interface{} {
+			out := vars[:0]
+			for _, v := range vars {
+				if !drop[str(v, "key")] {
+					out = append(out, v)
+				}
+			}
+			return out
+		})
+	},
+}
+
+func serviceVarsPath(serviceID string) string { return "/services/" + serviceID + "/variables" }
+func projectVarsPath(projectID string) string { return "/projects/" + projectID + "/variables" }
+
+func mutateVars(path, label string, redeploy bool, mutate func([]map[string]interface{}) []map[string]interface{}) error {
 	c, err := client()
 	if err != nil {
 		return err
 	}
-	vars, err := fetchVars(c, serviceID)
+	data, err := c.Do("GET", path, nil)
+	if err != nil {
+		return err
+	}
+	vars, err := unwrapList(data, "variables")
 	if err != nil {
 		return err
 	}
@@ -115,7 +187,7 @@ func mutateVars(serviceID string, redeploy bool, mutate func([]map[string]interf
 	if redeploy {
 		body["redeploy"] = true
 	}
-	data, err := c.Do("PUT", "/services/"+serviceID+"/variables", body)
+	data, err = c.Do("PUT", path, body)
 	if err != nil {
 		return err
 	}
@@ -125,9 +197,9 @@ func mutateVars(serviceID string, redeploy bool, mutate func([]map[string]interf
 	}
 	obj, _ := unwrapObject(data)
 	if obj["redeploy_queued"] == true {
-		fmt.Printf("Variables updated on %s — redeploy queued\n", serviceID)
+		fmt.Printf("Variables updated on %s — redeploy queued\n", label)
 	} else {
-		fmt.Printf("Variables updated on %s — redeploy to apply to running containers\n", serviceID)
+		fmt.Printf("Variables updated on %s — redeploy to apply to running containers\n", label)
 	}
 	return nil
 }
@@ -147,5 +219,7 @@ func init() {
 	varsSetCmd.Flags().Bool("secret", false, "mark the variable(s) as secret")
 	varsSetCmd.Flags().Bool("redeploy", false, "redeploy the service after saving")
 	varsUnsetCmd.Flags().Bool("redeploy", false, "redeploy the service after saving")
-	VariablesCmd.AddCommand(varsListCmd, varsSetCmd, varsUnsetCmd)
+	sharedVarsSetCmd.Flags().Bool("secret", false, "mark the variable(s) as secret")
+	varsSharedCmd.AddCommand(sharedVarsListCmd, sharedVarsSetCmd, sharedVarsUnsetCmd)
+	VariablesCmd.AddCommand(varsListCmd, varsSetCmd, varsUnsetCmd, varsSharedCmd)
 }
