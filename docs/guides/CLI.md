@@ -51,6 +51,7 @@ variables shared list|set|unset  project shared vars — referenced as ${{shared
 databases list|get|create|update|delete|action|backup|restore|download-backup|import-backup
                                import-backup <id> <file.tar.gz|-> uploads an archive as a restore
                                point; ships offsite too when a backup target is assigned
+databases list|get|create|update|delete|action|backup|restore|download-backup
                                create --public exposes the port on all interfaces;
                                update <id> --public/--public=false toggles it (container recreates, data persists)
 databases register <name>      register an external database (--type --host --port --database --username --password --ssl; probed before storing)
