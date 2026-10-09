@@ -271,8 +271,12 @@ func resolveNodePin(ctx context.Context, db *database.DB, requested string) (str
 		}
 		return id, nil
 	}
-	if _, err := q.GetAgent(ctx, requested); err != nil {
+	agent, err := q.GetAgent(ctx, requested)
+	if err != nil {
 		return "", fmt.Errorf("node not found")
+	}
+	if !agent.Schedulable {
+		return "", fmt.Errorf("node %s is cordoned — uncordon it before pinning", agent.Name)
 	}
 	return requested, nil
 }

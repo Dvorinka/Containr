@@ -5406,6 +5406,103 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /agents/{id}/cordon:
+    post:
+      tags:
+        - Agents
+      summary: Cordon a node
+      description: >-
+        Sets `schedulable=false`: new explicit pins are rejected and `auto`
+        placement skips the node. Already-pinned services keep running and can
+        still reconcile — drain to evict them.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AgentIdParam'
+      responses:
+        '200':
+          description: Node cordoned
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  schedulable: { type: boolean }
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /agents/{id}/uncordon:
+    post:
+      tags:
+        - Agents
+      summary: Uncordon a node
+      description: Re-opens the node for placement (`schedulable=true`).
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AgentIdParam'
+      responses:
+        '200':
+          description: Node uncordoned
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  schedulable: { type: boolean }
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /agents/{id}/drain:
+    post:
+      tags:
+        - Agents
+      summary: Drain a node
+      description: >-
+        Cordons the node, removes every service container via the agent
+        command queue, and clears the affected services' `node_id` pins —
+        they fall back to the local host on next deploy and can be re-pinned
+        elsewhere. Requires the node to be online so it can acknowledge the
+        removals.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AgentIdParam'
+      responses:
+        '200':
+          description: Node drained
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  schedulable: { type: boolean }
+                  services_drained: { type: integer }
+                  services_unpinned: { type: integer }
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Node is not online
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /agents/{id}/metrics:
     get:
       tags:
@@ -8940,6 +9037,11 @@ components:
         auto_prune:
           type: boolean
           description: Enqueue a bounded docker prune on this node once per day.
+        schedulable:
+          type: boolean
+          description: >-
+            False on a cordoned/drained node — `auto` placement skips it and
+            new explicit pins are rejected.
         last_heartbeat:
           type: string
           format: date-time

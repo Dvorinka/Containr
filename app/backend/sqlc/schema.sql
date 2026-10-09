@@ -194,7 +194,8 @@ CREATE TABLE node_agents (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     metadata JSONB,
-    auto_prune BOOLEAN NOT NULL DEFAULT false
+    auto_prune BOOLEAN NOT NULL DEFAULT false,
+    schedulable BOOLEAN NOT NULL DEFAULT true
 );
 
 CREATE TABLE container_instances (

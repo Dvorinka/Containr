@@ -147,6 +147,14 @@ Remote nodes run registry-pulled images only — git builds, domains
 stop, restart, redeploy, and delete all fan out to the pinned node's
 agent. `services get` shows the resolved `node_name`.
 
+Take a node out of rotation or empty it entirely (admin):
+
+```bash
+containr nodes cordon <id>    # no new pins; running replicas stay
+containr nodes uncordon <id>
+containr nodes drain <id>     # cordon + remove its containers + unpin services
+```
+
 ## Service domains and access
 
 A service can carry multiple hostnames; the default is mirrored to

@@ -284,10 +284,15 @@ and wired refs, one click or one CLI call.
   labels/limits), `container_instances` inventory per (agent, service,
   replica), remote stop/start/restart/delete fan-out, `GET
   /nodes/options`, `--node` on services create/update + MCP + OpenAPI +
-  service-detail Placement section. Remote nodes run registry-pulled
+  service-detail Placement section. Drain/cordon shipped:
+  `node_agents.schedulable`, `POST /agents/:id/cordon|uncordon|drain`
+  (drain evicts remote containers via the agent queue + unpins services
+  so they redeploy locally), `nodes cordon|uncordon|drain` CLI +
+  MCP (drain confirm-gated) + node-detail page controls; `auto` and
+  explicit pins skip cordoned nodes. Remote nodes run registry-pulled
   images only — git builds, Traefik domains, and remote sleep are
   documented ceilings. Remaining: `scheduling_rules` spread/affinity
-  policies, drain/cordon, deployment status reported back from agent
+  policies, deployment status reported back from agent
   results, per-node resource-aware `auto` (currently count-based).
 - [ ] **Build-on-node** — agents currently `docker run` prebuilt images
   only; extend agent to pull registry images (build stays central) —

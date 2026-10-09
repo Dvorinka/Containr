@@ -356,6 +356,7 @@ export type NodeAgentEntity = {
   capabilities: AgentCapabilities;
   resources: NodeResources;
   autoPrune: boolean;
+  schedulable: boolean;
   metadata: Record<string, unknown>;
   lastHeartbeat?: string;
   createdAt?: string;
@@ -1096,6 +1097,7 @@ function normalizeAgent(agent: RawNodeAgent): NodeAgentEntity | null {
     },
     lastHeartbeat: agent.last_heartbeat,
     autoPrune: agent.auto_prune ?? false,
+    schedulable: agent.schedulable ?? true,
     metadata: (agent.metadata ?? {}) as Record<string, unknown>,
     createdAt: agent.created_at,
     updatedAt: agent.updated_at,
@@ -1148,6 +1150,16 @@ export async function pruneAgent(id: string, body?: { until?: string; volumes?: 
     method: 'POST',
     body: JSON.stringify(body ?? {}),
   });
+}
+
+export async function cordonAgent(id: string, cordoned: boolean): Promise<void> {
+  await requestJson(`/agents/${id}/${cordoned ? 'cordon' : 'uncordon'}`, { method: 'POST' });
+}
+
+export type DrainResult = { services_drained: number; services_unpinned: number };
+
+export async function drainAgent(id: string): Promise<DrainResult> {
+  return requestJson<DrainResult>(`/agents/${id}/drain`, { method: 'POST' });
 }
 
 export async function getAgent(id: string): Promise<NodeAgentEntity | null> {

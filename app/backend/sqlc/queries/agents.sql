@@ -29,6 +29,7 @@ UPDATE node_agents SET
     last_heartbeat = $10,
     metadata = $11,
     auto_prune = $12,
+    schedulable = $13,
     updated_at = NOW()
 WHERE id = $1
 RETURNING *;
@@ -121,9 +122,15 @@ LEFT JOIN LATERAL (
     WHERE h.node_agent_id = a.id
     ORDER BY h.timestamp DESC LIMIT 1
 ) h ON true
-WHERE a.status = 'online'
+WHERE a.status = 'online' AND a.schedulable
 ORDER BY COALESCE(h.container_count, 0) ASC, a.created_at ASC
 LIMIT 1;
+
+-- name: SetAgentSchedulable :exec
+UPDATE node_agents SET schedulable = $2, updated_at = NOW() WHERE id = $1;
+
+-- name: ClearServiceNodePins :execrows
+UPDATE services SET node_id = NULL, updated_at = NOW() WHERE node_id = $1;
 
 -- name: UpsertServiceContainer :exec
 INSERT INTO container_instances (
