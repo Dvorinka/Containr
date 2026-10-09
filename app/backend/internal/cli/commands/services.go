@@ -117,6 +117,15 @@ var servicesCreateCmd = &cobra.Command{
 		if v, _ := cmd.Flags().GetBool("spread"); v {
 			body["spread"] = v
 		}
+		if v, _ := cmd.Flags().GetString("placement-tags"); v != "" {
+			tags := []string{}
+			for _, t := range strings.Split(v, ",") {
+				if t = strings.TrimSpace(t); t != "" {
+					tags = append(tags, t)
+				}
+			}
+			body["placement_tags"] = tags
+		}
 		data, err := c.Do("POST", "/projects/"+args[0]+"/services", body)
 		if err != nil {
 			return err
@@ -209,6 +218,16 @@ var servicesUpdateCmd = &cobra.Command{
 		if cmd.Flags().Changed("spread") {
 			v, _ := cmd.Flags().GetBool("spread")
 			body["spread"] = v
+		}
+		if cmd.Flags().Changed("placement-tags") {
+			v, _ := cmd.Flags().GetString("placement-tags")
+			tags := []string{}
+			for _, t := range strings.Split(v, ",") {
+				if t = strings.TrimSpace(t); t != "" {
+					tags = append(tags, t)
+				}
+			}
+			body["placement_tags"] = tags
 		}
 		if cmd.Flags().Changed("sleep-idle") {
 			v, _ := cmd.Flags().GetInt("sleep-idle")
@@ -503,6 +522,7 @@ func init() {
 	f.String("static-dir", "", "output dir for the static builder (default dist)")
 	f.String("node", "", "pin to a node agent id, or 'auto' for least-loaded (image services only)")
 	f.Bool("spread", false, "distribute replicas across all online schedulable nodes")
+	f.String("placement-tags", "", "comma-separated node tags required for remote placement (auto/spread only)")
 
 	uf := servicesUpdateCmd.Flags()
 	uf.String("name", "", "service name")
@@ -529,6 +549,7 @@ func init() {
 	uf.Int("sleep-idle", 0, "idle minutes before sleeping (1-1440)")
 	uf.String("node", "", "pin to a node agent id, 'auto' for least-loaded, 'local' to clear")
 	uf.Bool("spread", false, "spread replicas across all online schedulable nodes (--spread=false to disable)")
+	uf.String("placement-tags", "", "comma-separated node tags required for remote placement (empty clears)")
 
 	for _, a := range []string{"start", "stop", "restart", "redeploy", "sleep", "wake"} {
 		verb := a

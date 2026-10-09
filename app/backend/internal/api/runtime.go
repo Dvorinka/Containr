@@ -94,6 +94,7 @@ func serviceRuntimeSpec(db *database.DB, service Service) (deployment.RuntimeSpe
 		RestartPolicy: service.RestartPolicy,
 		NodeID:        serviceNodeID(db, service.ID),
 		Spread:        serviceSpread(db, service.ID),
+		PlacementTags: servicePlacementTags(db, service.ID),
 	}
 	// Best effort: reuse the host port from the last live deployment so the
 	// public URL survives restarts. Column exists post-migration; older DBs

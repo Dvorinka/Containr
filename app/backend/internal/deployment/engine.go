@@ -20,6 +20,10 @@ type NodeRunner interface {
 	// ReconcileSpread distributes the service's replicas across every online,
 	// schedulable agent — replica i lands on agents[i % len].
 	ReconcileSpread(ctx context.Context, spec RuntimeSpec) (*RuntimeState, error)
+	// ReconcileAuto picks the least-loaded online agent carrying every tag in
+	// spec.PlacementTags and reconciles all replicas onto it. Re-resolved on
+	// every reconcile — the service follows the tag, not a stored node.
+	ReconcileAuto(ctx context.Context, spec RuntimeSpec) (*RuntimeState, error)
 	// ControlService fans a lifecycle action ("start"|"stop"|"restart"|"remove")
 	// out to every replica of the service on the agent.
 	ControlService(ctx context.Context, serviceID, agentID, action string) error

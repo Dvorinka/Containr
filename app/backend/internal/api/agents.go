@@ -42,6 +42,9 @@ type NodeAgent struct {
 	LastHeartbeat time.Time              `json:"last_heartbeat"`
 	AutoPrune     bool                   `json:"auto_prune"`
 	Schedulable   bool                   `json:"schedulable"`
+	// Tags are operator-set placement labels; services with placement_tags
+	// only schedule onto agents carrying every required tag.
+	Tags          []string               `json:"tags"`
 	CreatedAt     time.Time              `json:"created_at"`
 	UpdatedAt     time.Time              `json:"updated_at"`
 	Metadata      map[string]interface{} `json:"metadata"`
@@ -242,10 +245,15 @@ func (h *NodeAgentHandler) ListNodeOptions(c *gin.Context) {
 	}
 	options := make([]gin.H, 0, len(rows))
 	for _, row := range rows {
+		var tags []string
+		if len(row.Tags) > 0 {
+			_ = json.Unmarshal(row.Tags, &tags)
+		}
 		options = append(options, gin.H{
 			"id":     row.ID,
 			"name":   row.Name,
 			"status": row.Status.String,
+			"tags":   tags,
 		})
 	}
 	c.JSON(http.StatusOK, gin.H{"nodes": options})
@@ -262,6 +270,7 @@ func agentFromRow(row sqlcdb.NodeAgent) NodeAgent {
 		Version:     row.Version.String,
 		AutoPrune:   row.AutoPrune,
 		Schedulable: row.Schedulable,
+		Tags:        []string{},
 		Metadata:    map[string]interface{}{},
 	}
 	if row.LastHeartbeat.Valid {
@@ -276,6 +285,9 @@ func agentFromRow(row sqlcdb.NodeAgent) NodeAgent {
 	unmarshalRaw(row.Capabilities, &agent.Capabilities)
 	unmarshalRaw(row.Resources, &agent.Resources)
 	unmarshalRaw(row.Metadata, &agent.Metadata)
+	if len(row.Tags) > 0 {
+		_ = json.Unmarshal(row.Tags, &agent.Tags)
+	}
 	return agent
 }
 
@@ -546,7 +558,26 @@ func (h *NodeAgentHandler) UpdateAgent(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"agent": agentFromRow(updated)})
+	// Tags persist through their own column write — UpdateAgent keeps the
+	// register-path signature untouched.
+	resp := agentFromRow(updated)
+	if raw, ok := updates["tags"]; ok {
+		var tags []string
+		if b, mErr := json.Marshal(raw); mErr == nil {
+			_ = json.Unmarshal(b, &tags)
+		}
+		tags = normalizePlacementTags(tags)
+		if err := h.q.SetAgentTags(ctx, sqlcdb.SetAgentTagsParams{
+			ID:      id,
+			Column2: json.RawMessage(tagsJSON(tags)),
+		}); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update agent tags"})
+			return
+		}
+		resp.Tags = tags
+	}
+
+	c.JSON(http.StatusOK, gin.H{"agent": resp})
 }
 
 // applyAgentUpdates merges whitelisted keys from an arbitrary update map.

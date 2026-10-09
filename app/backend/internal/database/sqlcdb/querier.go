@@ -7,6 +7,7 @@ package sqlcdb
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 
 	"github.com/google/uuid"
 )
@@ -95,6 +96,8 @@ type Querier interface {
 	// platform admin. Anonymous callers pass user_id = uuid.Nil, is_admin = false.
 	ListProjectsWithStatsByUser(ctx context.Context, arg ListProjectsWithStatsByUserParams) ([]ListProjectsWithStatsByUserRow, error)
 	ListSchedulableAgents(ctx context.Context) ([]ListSchedulableAgentsRow, error)
+	// Only agents carrying every required placement tag (jsonb array containment).
+	ListSchedulableAgentsMatching(ctx context.Context, dollar_1 json.RawMessage) ([]ListSchedulableAgentsMatchingRow, error)
 	ListServiceContainers(ctx context.Context, serviceID string) ([]ListServiceContainersRow, error)
 	ListServiceTemplatesByCategoryForUser(ctx context.Context, arg ListServiceTemplatesByCategoryForUserParams) ([]ServiceTemplate, error)
 	ListServiceTemplatesForUser(ctx context.Context, ownerID uuid.NullUUID) ([]ServiceTemplate, error)
@@ -107,10 +110,14 @@ type Querier interface {
 	// Resource-aware: lowest memory utilisation first, then cpu, then container
 	// count. Agents without telemetry sort last (NULL → worst score).
 	PickLeastLoadedAgent(ctx context.Context) (string, error)
+	// Same resource-aware ordering as PickLeastLoadedAgent, restricted to agents
+	// carrying every required placement tag.
+	PickLeastLoadedAgentMatching(ctx context.Context, dollar_1 json.RawMessage) (string, error)
 	RevokeAgentAuthToken(ctx context.Context, id uuid.UUID) (AgentAuthToken, error)
 	RevokeUserToken(ctx context.Context, arg RevokeUserTokenParams) (int64, error)
 	ScrubCommandPayload(ctx context.Context, arg ScrubCommandPayloadParams) error
 	SetAgentSchedulable(ctx context.Context, arg SetAgentSchedulableParams) error
+	SetAgentTags(ctx context.Context, arg SetAgentTagsParams) error
 	SetDatabaseBackupRemoteKeyByID(ctx context.Context, arg SetDatabaseBackupRemoteKeyByIDParams) error
 	SetDatabaseBackupScheduleByIDAndUser(ctx context.Context, arg SetDatabaseBackupScheduleByIDAndUserParams) error
 	SetDatabaseBackupStatusByID(ctx context.Context, arg SetDatabaseBackupStatusByIDParams) error

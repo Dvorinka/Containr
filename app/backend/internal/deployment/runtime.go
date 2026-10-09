@@ -60,6 +60,9 @@ type RuntimeSpec struct {
 	// Spread distributes replicas across all online, schedulable agents
 	// instead of a single node. Mutually exclusive with NodeID.
 	Spread bool
+	// PlacementTags restricts auto/spread candidates to agents carrying
+	// every listed tag. An explicit NodeID pin bypasses tag filtering.
+	PlacementTags []string
 }
 
 // RuntimeContainer describes one live replica.
@@ -170,6 +173,14 @@ func (de *DeploymentEngine) ReconcileService(ctx context.Context, spec RuntimeSp
 			return nil, fmt.Errorf("service is pinned to node %s but remote dispatch is unavailable", spec.NodeID)
 		}
 		return de.nodeRunner.ReconcileOnNode(ctx, spec)
+	}
+	// Placement tags without a pin/spread resolve to the least-loaded
+	// matching agent on every reconcile — soft affinity, re-evaluated.
+	if len(spec.PlacementTags) > 0 {
+		if de.nodeRunner == nil {
+			return nil, fmt.Errorf("service has placement tags but remote dispatch is unavailable")
+		}
+		return de.nodeRunner.ReconcileAuto(ctx, spec)
 	}
 	if spec.Replicas < 1 {
 		spec.Replicas = 1

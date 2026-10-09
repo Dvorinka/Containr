@@ -55,9 +55,12 @@ type Service struct {
 	NodeName string `json:"node_name,omitempty" db:"-"`
 	// Spread distributes replicas across every online, schedulable agent.
 	// Mutually exclusive with an explicit NodeID pin.
-	Spread    bool      `json:"spread" db:"-"`
-	CreatedAt time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+	Spread bool `json:"spread" db:"-"`
+	// PlacementTags restrict auto/spread candidates to agents carrying all
+	// listed tags. An explicit pin overrides them — pin + tags is rejected.
+	PlacementTags []string  `json:"placement_tags,omitempty" db:"-"`
+	CreatedAt     time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at" db:"updated_at"`
 }
 
 // loadServiceSleep fills the sleep-mode columns, which live outside the
@@ -91,12 +94,51 @@ func serviceSpread(db *database.DB, serviceID uuid.UUID) bool {
 	return false
 }
 
-// loadServiceNode fills the pin + spread + the agent's display name for
-// responses.
+// servicePlacementTags reads the placement_tags column with the lazy pattern.
+func servicePlacementTags(db *database.DB, serviceID uuid.UUID) []string {
+	var raw []byte
+	if err := db.QueryRow(`SELECT placement_tags FROM services WHERE id = $1`, serviceID).Scan(&raw); err != nil {
+		return nil
+	}
+	var tags []string
+	if err := json.Unmarshal(raw, &tags); err != nil {
+		return nil
+	}
+	return tags
+}
+
+// normalizePlacementTags trims, lowercases, and dedupes tag input. Tags are
+// matched verbatim against node_agents.tags.
+func normalizePlacementTags(tags []string) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(tags))
+	for _, t := range tags {
+		t = strings.ToLower(strings.TrimSpace(t))
+		if t == "" || seen[t] {
+			continue
+		}
+		seen[t] = true
+		out = append(out, t)
+	}
+	return out
+}
+
+// tagsJSON marshals a tag list for a jsonb column; empty stays an array, not null.
+func tagsJSON(tags []string) []byte {
+	if len(tags) == 0 {
+		return []byte("[]")
+	}
+	raw, _ := json.Marshal(tags)
+	return raw
+}
+
+// loadServiceNode fills the pin + spread + placement tags + the agent's
+// display name for responses.
 func loadServiceNode(db *database.DB, s *Service) {
 	var name sql.NullString
 	s.NodeID = serviceNodeID(db, s.ID)
 	s.Spread = serviceSpread(db, s.ID)
+	s.PlacementTags = servicePlacementTags(db, s.ID)
 	if s.NodeID == "" {
 		return
 	}
@@ -188,6 +230,9 @@ type CreateServiceRequest struct {
 	// Spread distributes replicas across every online, schedulable agent.
 	// Mutually exclusive with an explicit node pin.
 	Spread *bool `json:"spread"`
+	// PlacementTags restrict auto/spread candidates to agents carrying all
+	// listed tags. Mutually exclusive with an explicit node pin.
+	PlacementTags []string `json:"placement_tags"`
 }
 
 // UpdateServiceRequest represents a request to update a service
@@ -222,6 +267,10 @@ type UpdateServiceRequest struct {
 	// Spread toggles multi-node replica distribution; pointer so false is
 	// a real update, not a missing field.
 	Spread *bool `json:"spread"`
+	// PlacementTags restrict auto/spread candidates to agents carrying all
+	// listed tags; pointer so [] clears the requirement. Mutually exclusive
+	// with an explicit node pin.
+	PlacementTags *[]string `json:"placement_tags"`
 }
 
 // handleGetServices retrieves all services for a project
@@ -465,12 +514,17 @@ func handleCreateService(c *gin.Context) {
 	if req.Spread != nil {
 		service.Spread = *req.Spread
 	}
+	service.PlacementTags = normalizePlacementTags(req.PlacementTags)
 	if req.NodeID != "" {
-		if service.Spread && req.NodeID != "auto" {
+		if service.Spread && req.NodeID != "auto" && req.NodeID != "local" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "spread and an explicit node pin are mutually exclusive", "code": "VALIDATION"})
 			return
 		}
-		nodeID, nodeErr := resolveNodePin(c.Request.Context(), db.(*database.DB), req.NodeID)
+		if len(service.PlacementTags) > 0 && req.NodeID != "auto" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "placement tags only apply to remote placement — set node_id=\"auto\" or omit it", "code": "VALIDATION"})
+			return
+		}
+		nodeID, nodeErr := resolveNodePin(c.Request.Context(), db.(*database.DB), req.NodeID, service.PlacementTags)
 		if nodeErr != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": nodeErr.Error(), "code": "VALIDATION"})
 			return
@@ -488,9 +542,9 @@ func handleCreateService(c *gin.Context) {
 				 git_repo, git_branch, build_path, cpu, memory, replicas, port, domain,
 				 healthcheck_path, restart_policy, volumes,
 				 builder, cpu_reserve, memory_reserve, static_build_cmd, static_dir,
-				 node_id, spread, created_at, updated_at)
+				 node_id, spread, placement_tags, created_at, updated_at)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26,
-					$27, $28, $29, $30, $31, $32, $33, $34, $35)`,
+					$27, $28, $29, $30, $31, $32, $33, $34, $35, $36)`,
 		service.ID, service.ProjectID, service.Name, environmentID, service.Type,
 		sourceType, firstNonEmpty(service.GitRepo, service.Image), service.Image,
 		"", service.Command, service.Type, service.Status, service.Image, service.Command,
@@ -500,6 +554,7 @@ func handleCreateService(c *gin.Context) {
 		service.StaticBuildCmd, service.StaticDir,
 		sql.NullString{String: service.NodeID, Valid: service.NodeID != ""},
 		service.Spread,
+		tagsJSON(service.PlacementTags),
 		service.CreatedAt, service.UpdatedAt,
 	)
 
@@ -807,13 +862,22 @@ func handleUpdateService(c *gin.Context) {
 	} else {
 		existingService.Spread = serviceSpread(db.(*database.DB), serviceID)
 	}
+	if req.PlacementTags != nil {
+		existingService.PlacementTags = normalizePlacementTags(*req.PlacementTags)
+	} else {
+		existingService.PlacementTags = servicePlacementTags(db.(*database.DB), serviceID)
+	}
 	if req.NodeID != nil {
 		nodeValue := strings.TrimSpace(*req.NodeID)
 		if existingService.Spread && nodeValue != "" && nodeValue != "auto" && nodeValue != "local" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "spread and an explicit node pin are mutually exclusive — set spread=false first", "code": "VALIDATION"})
 			return
 		}
-		nodeID, nodeErr := resolveNodePin(c.Request.Context(), db.(*database.DB), nodeValue)
+		if len(existingService.PlacementTags) > 0 && nodeValue != "" && nodeValue != "auto" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "service has placement tags — clear them (placement_tags=[]) before pinning or going local", "code": "VALIDATION"})
+			return
+		}
+		nodeID, nodeErr := resolveNodePin(c.Request.Context(), db.(*database.DB), nodeValue, existingService.PlacementTags)
 		if nodeErr != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": nodeErr.Error(), "code": "VALIDATION"})
 			return
@@ -824,6 +888,10 @@ func handleUpdateService(c *gin.Context) {
 	}
 	if existingService.Spread && existingService.NodeID != "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "service already has an explicit node pin — clear it (node_id=\"local\") before enabling spread", "code": "VALIDATION"})
+		return
+	}
+	if len(existingService.PlacementTags) > 0 && existingService.NodeID != "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "service already has an explicit node pin — clear it (node_id=\"local\") before setting placement tags", "code": "VALIDATION"})
 		return
 	}
 
@@ -838,7 +906,8 @@ func handleUpdateService(c *gin.Context) {
 				restart_policy = $15, volumes = COALESCE($17::jsonb, volumes), updated_at = $16,
 				builder = $19, cpu_reserve = $20, memory_reserve = $21,
 				static_build_cmd = $22, static_dir = $23,
-				sleep_enabled = $24, sleep_idle_minutes = $25, node_id = $26, spread = $27
+				sleep_enabled = $24, sleep_idle_minutes = $25, node_id = $26, spread = $27,
+				placement_tags = $28::jsonb
 			WHERE id = $18`,
 		existingService.Name, existingService.Type, existingService.Image, existingService.Command,
 		existingService.Environment, existingService.GitRepo, existingService.GitBranch,
@@ -851,6 +920,7 @@ func handleUpdateService(c *gin.Context) {
 		existingService.SleepEnabled, existingService.SleepIdleMinutes,
 		sql.NullString{String: existingService.NodeID, Valid: existingService.NodeID != ""},
 		existingService.Spread,
+		tagsJSON(existingService.PlacementTags),
 	)
 
 	if err != nil {

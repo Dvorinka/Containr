@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -56,16 +57,39 @@ func (r *agentNodeRunner) ReconcileOnNode(ctx context.Context, spec deployment.R
 // sorted by id. Replicas wrap when they outnumber nodes. The local host is
 // not a spread target — pin "local" or leave unset for local execution.
 func (r *agentNodeRunner) ReconcileSpread(ctx context.Context, spec deployment.RuntimeSpec) (*deployment.RuntimeState, error) {
-	agents, err := r.q.ListSchedulableAgents(ctx)
+	tagsRaw, _ := json.Marshal(spec.PlacementTags)
+	if len(spec.PlacementTags) == 0 {
+		tagsRaw = []byte("[]")
+	}
+	agents, err := r.q.ListSchedulableAgentsMatching(ctx, json.RawMessage(tagsRaw))
 	if err != nil {
 		return nil, fmt.Errorf("list schedulable nodes: %w", err)
 	}
 	if len(agents) == 0 {
+		if len(spec.PlacementTags) > 0 {
+			return nil, fmt.Errorf("no online schedulable nodes carry placement tags %v — tag a node or relax the requirement", spec.PlacementTags)
+		}
 		return nil, fmt.Errorf("no online schedulable nodes — connect an agent or unset spread")
 	}
 	return r.reconcileOnAgents(ctx, spec, func(i int) string {
 		return agents[i%len(agents)].ID
 	})
+}
+
+// ReconcileAuto resolves the least-loaded online agent matching the
+// service's placement tags and reconciles every replica onto it. Stale
+// replicas on other agents retire through reconcileOnAgents — a service
+// follows its tags when the matching set changes.
+func (r *agentNodeRunner) ReconcileAuto(ctx context.Context, spec deployment.RuntimeSpec) (*deployment.RuntimeState, error) {
+	tagsRaw, _ := json.Marshal(spec.PlacementTags)
+	if len(spec.PlacementTags) == 0 {
+		tagsRaw = []byte("[]")
+	}
+	agentID, err := r.q.PickLeastLoadedAgentMatching(ctx, json.RawMessage(tagsRaw))
+	if err != nil {
+		return nil, fmt.Errorf("no online nodes carry placement tags %v", spec.PlacementTags)
+	}
+	return r.reconcileOnAgents(ctx, spec, func(int) string { return agentID })
 }
 
 // RemoteRuntimeState reads the service's remote replicas from inventory.
@@ -344,16 +368,25 @@ func (r *agentNodeRunner) enqueueAndWait(ctx context.Context, agentID, container
 }
 
 // resolveNodePin validates or resolves a node_id request value. "auto" picks
-// the least-loaded online agent; "" / "local" clears the pin.
-func resolveNodePin(ctx context.Context, db *database.DB, requested string) (string, error) {
+// the least-loaded online agent that carries every required placement tag;
+// "" / "local" clears the pin. An explicit pin bypasses tag filtering —
+// the operator is overriding placement on purpose.
+func resolveNodePin(ctx context.Context, db *database.DB, requested string, requiredTags []string) (string, error) {
 	requested = strings.TrimSpace(requested)
 	if requested == "" || requested == "local" {
 		return "", nil
 	}
 	q := sqlcdb.New(db.DB)
 	if requested == "auto" {
-		id, err := q.PickLeastLoadedAgent(ctx)
+		tagsRaw, _ := json.Marshal(requiredTags)
+		if len(requiredTags) == 0 {
+			tagsRaw = []byte("[]")
+		}
+		id, err := q.PickLeastLoadedAgentMatching(ctx, json.RawMessage(tagsRaw))
 		if err != nil {
+			if len(requiredTags) > 0 {
+				return "", fmt.Errorf("no online nodes carry placement tags %v", requiredTags)
+			}
 			return "", fmt.Errorf("no online nodes available")
 		}
 		return id, nil

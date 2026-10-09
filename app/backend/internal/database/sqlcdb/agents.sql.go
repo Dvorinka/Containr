@@ -75,7 +75,7 @@ INSERT INTO node_agents (
     id, name, hostname, ip_address, port, status, version,
     capabilities, resources, last_heartbeat, metadata
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-RETURNING id, name, hostname, ip_address, port, status, version, capabilities, resources, last_heartbeat, created_at, updated_at, metadata, auto_prune, schedulable
+RETURNING id, name, hostname, ip_address, port, status, version, capabilities, resources, last_heartbeat, created_at, updated_at, metadata, auto_prune, schedulable, tags
 `
 
 type CreateAgentParams struct {
@@ -123,6 +123,7 @@ func (q *Queries) CreateAgent(ctx context.Context, arg CreateAgentParams) (NodeA
 		&i.Metadata,
 		&i.AutoPrune,
 		&i.Schedulable,
+		&i.Tags,
 	)
 	return i, err
 }
@@ -257,7 +258,7 @@ func (q *Queries) DeleteServiceContainersOnAgent(ctx context.Context, arg Delete
 }
 
 const getAgent = `-- name: GetAgent :one
-SELECT id, name, hostname, ip_address, port, status, version, capabilities, resources, last_heartbeat, created_at, updated_at, metadata, auto_prune, schedulable FROM node_agents WHERE id = $1
+SELECT id, name, hostname, ip_address, port, status, version, capabilities, resources, last_heartbeat, created_at, updated_at, metadata, auto_prune, schedulable, tags FROM node_agents WHERE id = $1
 `
 
 func (q *Queries) GetAgent(ctx context.Context, id string) (NodeAgent, error) {
@@ -279,12 +280,13 @@ func (q *Queries) GetAgent(ctx context.Context, id string) (NodeAgent, error) {
 		&i.Metadata,
 		&i.AutoPrune,
 		&i.Schedulable,
+		&i.Tags,
 	)
 	return i, err
 }
 
 const getAgentByHostAndIP = `-- name: GetAgentByHostAndIP :one
-SELECT id, name, hostname, ip_address, port, status, version, capabilities, resources, last_heartbeat, created_at, updated_at, metadata, auto_prune, schedulable FROM node_agents
+SELECT id, name, hostname, ip_address, port, status, version, capabilities, resources, last_heartbeat, created_at, updated_at, metadata, auto_prune, schedulable, tags FROM node_agents
 WHERE hostname = $1 AND ip_address = $2
 LIMIT 1
 `
@@ -313,6 +315,7 @@ func (q *Queries) GetAgentByHostAndIP(ctx context.Context, arg GetAgentByHostAnd
 		&i.Metadata,
 		&i.AutoPrune,
 		&i.Schedulable,
+		&i.Tags,
 	)
 	return i, err
 }
@@ -520,7 +523,7 @@ func (q *Queries) ListAgentHeartbeatsSince(ctx context.Context, arg ListAgentHea
 }
 
 const listAgents = `-- name: ListAgents :many
-SELECT id, name, hostname, ip_address, port, status, version, capabilities, resources, last_heartbeat, created_at, updated_at, metadata, auto_prune, schedulable FROM node_agents ORDER BY created_at ASC
+SELECT id, name, hostname, ip_address, port, status, version, capabilities, resources, last_heartbeat, created_at, updated_at, metadata, auto_prune, schedulable, tags FROM node_agents ORDER BY created_at ASC
 `
 
 func (q *Queries) ListAgents(ctx context.Context) ([]NodeAgent, error) {
@@ -548,6 +551,7 @@ func (q *Queries) ListAgents(ctx context.Context) ([]NodeAgent, error) {
 			&i.Metadata,
 			&i.AutoPrune,
 			&i.Schedulable,
+			&i.Tags,
 		); err != nil {
 			return nil, err
 		}
@@ -725,6 +729,42 @@ func (q *Queries) ListSchedulableAgents(ctx context.Context) ([]ListSchedulableA
 	return items, nil
 }
 
+const listSchedulableAgentsMatching = `-- name: ListSchedulableAgentsMatching :many
+SELECT id, name FROM node_agents
+WHERE status = 'online' AND schedulable
+  AND tags @> $1::jsonb
+ORDER BY id
+`
+
+type ListSchedulableAgentsMatchingRow struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// Only agents carrying every required placement tag (jsonb array containment).
+func (q *Queries) ListSchedulableAgentsMatching(ctx context.Context, dollar_1 json.RawMessage) ([]ListSchedulableAgentsMatchingRow, error) {
+	rows, err := q.db.QueryContext(ctx, listSchedulableAgentsMatching, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSchedulableAgentsMatchingRow{}
+	for rows.Next() {
+		var i ListSchedulableAgentsMatchingRow
+		if err := rows.Scan(&i.ID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listServiceContainers = `-- name: ListServiceContainers :many
 SELECT id, name, node_agent_id, status FROM container_instances
 WHERE service_id = $1
@@ -794,6 +834,36 @@ func (q *Queries) PickLeastLoadedAgent(ctx context.Context) (string, error) {
 	return id, err
 }
 
+const pickLeastLoadedAgentMatching = `-- name: PickLeastLoadedAgentMatching :one
+SELECT a.id FROM node_agents a
+LEFT JOIN LATERAL (
+    SELECT h.container_count FROM agent_heartbeats h
+    WHERE h.node_agent_id = a.id
+    ORDER BY h.timestamp DESC LIMIT 1
+) h ON true
+WHERE a.status = 'online' AND a.schedulable
+  AND a.tags @> $1::jsonb
+ORDER BY
+    COALESCE(
+        (a.resources->'memory'->>'used')::double precision
+        / NULLIF((a.resources->'memory'->>'total')::double precision, 0),
+        1.0
+    ) ASC,
+    COALESCE((a.resources->'cpu'->>'usage')::double precision, 100.0) ASC,
+    COALESCE(h.container_count, 0) ASC,
+    a.created_at ASC
+LIMIT 1
+`
+
+// Same resource-aware ordering as PickLeastLoadedAgent, restricted to agents
+// carrying every required placement tag.
+func (q *Queries) PickLeastLoadedAgentMatching(ctx context.Context, dollar_1 json.RawMessage) (string, error) {
+	row := q.db.QueryRowContext(ctx, pickLeastLoadedAgentMatching, dollar_1)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
 const scrubCommandPayload = `-- name: ScrubCommandPayload :exec
 UPDATE agent_commands SET payload = $2, updated_at = NOW() WHERE id = $1
 `
@@ -822,6 +892,20 @@ func (q *Queries) SetAgentSchedulable(ctx context.Context, arg SetAgentSchedulab
 	return err
 }
 
+const setAgentTags = `-- name: SetAgentTags :exec
+UPDATE node_agents SET tags = $2::jsonb, updated_at = NOW() WHERE id = $1
+`
+
+type SetAgentTagsParams struct {
+	ID      string          `json:"id"`
+	Column2 json.RawMessage `json:"column_2"`
+}
+
+func (q *Queries) SetAgentTags(ctx context.Context, arg SetAgentTagsParams) error {
+	_, err := q.db.ExecContext(ctx, setAgentTags, arg.ID, arg.Column2)
+	return err
+}
+
 const updateAgent = `-- name: UpdateAgent :one
 UPDATE node_agents SET
     name = $2,
@@ -838,7 +922,7 @@ UPDATE node_agents SET
     schedulable = $13,
     updated_at = NOW()
 WHERE id = $1
-RETURNING id, name, hostname, ip_address, port, status, version, capabilities, resources, last_heartbeat, created_at, updated_at, metadata, auto_prune, schedulable
+RETURNING id, name, hostname, ip_address, port, status, version, capabilities, resources, last_heartbeat, created_at, updated_at, metadata, auto_prune, schedulable, tags
 `
 
 type UpdateAgentParams struct {
@@ -890,6 +974,7 @@ func (q *Queries) UpdateAgent(ctx context.Context, arg UpdateAgentParams) (NodeA
 		&i.Metadata,
 		&i.AutoPrune,
 		&i.Schedulable,
+		&i.Tags,
 	)
 	return i, err
 }
