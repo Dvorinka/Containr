@@ -47,6 +47,7 @@ deployments list|get|logs|rollback|cancel
 logs <service-id> [--follow]     runtime logs (SSE follow)
 exec <service-id> -- <cmd>       one-off container command
 variables list|set|unset         env vars (secrets masked; --redeploy applies them)
+variables shared list|set|unset  project shared vars — referenced as ${{shared.KEY}}
 databases list|get|create|delete|action|backup|restore|download-backup
 databases register <name>      register an external database (--type --host --port --database --username --password --ssl; probed before storing)
 databases test-connection      probe a connection — by id, or ad-hoc flags
