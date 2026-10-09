@@ -30,10 +30,12 @@ import {
   User,
   Users,
   Webhook,
+  WifiOff,
 } from 'lucide-react';
 import {
   getCurrentUserProfile,
   getUpgradeStatus,
+  pingServer,
   listNotifications,
   markAllNotificationsRead,
   markNotificationRead,
@@ -103,6 +105,42 @@ function getInitialTheme(): ThemeMode {
 
 function getInitialSidebar(): boolean {
   return readStorage('containr.sidebar.expanded') !== '0';
+}
+
+// ConnectivityBanner pings /health every 15s and listens for browser
+// online/offline events — when the instance is unreachable it shows a
+// slim bar so the persisted last-known data doesn't masquerade as live.
+function ConnectivityBanner() {
+  const [offline, setOffline] = useState(() => !navigator.onLine);
+  useEffect(() => {
+    const up = () => setOffline(false);
+    const down = () => setOffline(true);
+    window.addEventListener('online', up);
+    window.addEventListener('offline', down);
+    return () => {
+      window.removeEventListener('online', up);
+      window.removeEventListener('offline', down);
+    };
+  }, []);
+  const ping = useQuery({
+    queryKey: ['connectivity'],
+    queryFn: pingServer,
+    refetchInterval: 15_000,
+    retry: 0,
+    networkMode: 'always',
+    staleTime: 0,
+  });
+  if (!offline && !ping.isError) {
+    return null;
+  }
+  return (
+    <div className="flex items-center justify-center gap-2 border-b border-[var(--warning,var(--border-subtle))] bg-[var(--surface-muted)] px-4 py-1.5 text-xs text-[var(--text-secondary)]">
+      <WifiOff size={13} className="text-[var(--warning,#f59e0b)]" />
+      {offline
+        ? 'No network connection — showing last-known data.'
+        : 'Cannot reach this Containr instance — showing last-known data. Retrying…'}
+    </div>
+  );
 }
 
 export function PlatformShell() {
@@ -557,6 +595,7 @@ export function PlatformShell() {
             </nav>
           </header>
 
+          <ConnectivityBanner />
           <main className="flex-1 overflow-y-auto">
             <Outlet />
           </main>

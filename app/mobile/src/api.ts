@@ -102,6 +102,30 @@ export interface NotificationChannel {
   created_at?: string;
 }
 
+export interface CronJob {
+  id: string;
+  service_id?: string;
+  name: string;
+  schedule: string;
+  command: string;
+  timezone?: string;
+  enabled?: boolean;
+  last_run_at?: string;
+  next_run_at?: string;
+  last_status?: string;
+  last_output?: string;
+}
+
+export interface CronExecution {
+  id: string;
+  cron_job_id: string;
+  started_at?: string;
+  finished_at?: string;
+  status?: string;
+  output?: string;
+  error?: string;
+}
+
 // Masked value the API returns for secret variables; echoing it back on
 // update preserves the stored ciphertext.
 export const MASKED_SECRET = '********';
@@ -271,6 +295,24 @@ export class Api {
 
   testNotificationChannel(id: string) {
     return this.req<unknown>('POST', `/notifications/channels/${id}/test`, {});
+  }
+
+  cronJobs(serviceId: string) {
+    return this.req<{ cron_jobs: CronJob[] }>(
+      'GET',
+      `/cron-jobs?service_id=${serviceId}`,
+    ).then((r) => r.cron_jobs ?? []);
+  }
+
+  cronExecutions(jobId: string) {
+    return this.req<{ executions: CronExecution[] }>(
+      'GET',
+      `/cron-jobs/${jobId}/executions`,
+    ).then((r) => r.executions ?? []);
+  }
+
+  triggerCronJob(jobId: string) {
+    return this.req<unknown>('POST', `/cron-jobs/${jobId}/trigger`, {});
   }
 
   serviceDeployments(id: string) {
