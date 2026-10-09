@@ -341,6 +341,8 @@ export type NodeAgentEntity = {
   version: string;
   capabilities: AgentCapabilities;
   resources: NodeResources;
+  autoPrune: boolean;
+  metadata: Record<string, unknown>;
   lastHeartbeat?: string;
   createdAt?: string;
   updatedAt?: string;
@@ -1076,6 +1078,8 @@ function normalizeAgent(agent: RawNodeAgent): NodeAgentEntity | null {
       },
     },
     lastHeartbeat: agent.last_heartbeat,
+    autoPrune: agent.auto_prune ?? false,
+    metadata: (agent.metadata ?? {}) as Record<string, unknown>,
     createdAt: agent.created_at,
     updatedAt: agent.updated_at,
   };
@@ -1112,6 +1116,74 @@ export async function getHostMonitoring(): Promise<HostMonitoring> {
 export async function listAgents(): Promise<NodeAgentEntity[]> {
   const payload = await requestJson<{ agents?: RawNodeAgent[] }>(`/agents`);
   return normalizeAgentArray(payload.agents);
+}
+
+export async function updateAgent(id: string, body: { name?: string; auto_prune?: boolean }): Promise<NodeAgentEntity | null> {
+  const payload = await requestJson<{ agent?: RawNodeAgent }>(`/agents/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  });
+  return payload.agent ? normalizeAgent(payload.agent) : null;
+}
+
+export async function pruneAgent(id: string, body?: { until?: string; volumes?: boolean }): Promise<void> {
+  await requestJson(`/agents/${id}/prune`, {
+    method: 'POST',
+    body: JSON.stringify(body ?? {}),
+  });
+}
+
+export async function getAgent(id: string): Promise<NodeAgentEntity | null> {
+  const payload = await requestJson<{ agent?: RawNodeAgent }>(`/agents/${id}`);
+  return payload.agent ? normalizeAgent(payload.agent) : null;
+}
+
+export async function deleteAgent(id: string): Promise<void> {
+  await requestJson(`/agents/${id}`, { method: 'DELETE' });
+}
+
+export type AgentMetricPoint = {
+  timestamp: string;
+  cpu: { usage: number; usage_percent: number; cores: number };
+  memory: { usage: number; usage_percent: number; limit: number; available: number };
+  system_load: { load_1m: number; load_5m: number; load_15m: number };
+  container_count: number;
+};
+
+export async function getAgentMetrics(id: string, timeRange = '24h'): Promise<AgentMetricPoint[]> {
+  const payload = await requestJson<{ metrics?: AgentMetricPoint[] }>(
+    `/agents/${id}/metrics?time_range=${encodeURIComponent(timeRange)}`,
+  );
+  return payload.metrics ?? [];
+}
+
+export type AgentContainer = {
+  id?: string;
+  name?: string;
+  image?: string;
+  status?: string;
+  service_id?: string;
+  created_at?: string;
+};
+
+export async function listAgentContainers(id: string): Promise<AgentContainer[]> {
+  const payload = await requestJson<{ containers?: AgentContainer[] }>(`/agents/${id}/containers`);
+  return payload.containers ?? [];
+}
+
+export type AgentCommand = {
+  id?: string;
+  type?: string;
+  status?: string;
+  result?: string;
+  error?: string;
+  created_at?: string;
+  completed_at?: string;
+};
+
+export async function listAgentCommands(id: string): Promise<AgentCommand[]> {
+  const payload = await requestJson<{ commands?: AgentCommand[] }>(`/agents/${id}/commands`);
+  return payload.commands ?? [];
 }
 
 export type AgentAuthToken = components['schemas']['AgentAuthToken'];

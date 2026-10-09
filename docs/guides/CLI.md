@@ -72,6 +72,8 @@ import compose <project-id> <compose.yml|->
                                attached under their service name; --var K=V overrides
                                template variables
 nodes list|get|delete|tokens     node agents + onboarding tokens (admin)
+nodes add <user@host>            SSH bootstrap — one session installs the agent, then never needed again (--print for manual runs)
+nodes update|prune|commands      rename/auto-prune, bounded docker prune, command history
 scaling status|policies|services|scale
 ha status|alerts|health|policies|enable|disable|failover
 security scan|vulnerabilities|metrics

@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"database/sql"
+	_ "embed"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -13,6 +14,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -36,6 +38,7 @@ type NodeAgent struct {
 	Capabilities  AgentCapabilities      `json:"capabilities"`
 	Resources     NodeResources          `json:"resources"`
 	LastHeartbeat time.Time              `json:"last_heartbeat"`
+	AutoPrune     bool                   `json:"auto_prune"`
 	CreatedAt     time.Time              `json:"created_at"`
 	UpdatedAt     time.Time              `json:"updated_at"`
 	Metadata      map[string]interface{} `json:"metadata"`
@@ -234,6 +237,7 @@ func agentFromRow(row sqlcdb.NodeAgent) NodeAgent {
 		Port:      int(row.Port),
 		Status:    row.Status.String,
 		Version:   row.Version.String,
+		AutoPrune: row.AutoPrune,
 		Metadata:  map[string]interface{}{},
 	}
 	if row.LastHeartbeat.Valid {
@@ -327,6 +331,7 @@ func (h *NodeAgentHandler) RegisterAgent(c *gin.Context) {
 		Port         int               `json:"port" binding:"required"`
 		Capabilities AgentCapabilities `json:"capabilities" binding:"required"`
 		AuthToken    string            `json:"auth_token"`
+		Mesh         map[string]string `json:"mesh"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -341,12 +346,28 @@ func (h *NodeAgentHandler) RegisterAgent(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
+	metadata := map[string]interface{}{}
+	// req.Mesh is authoritative when present (newer agents always send it,
+	// possibly empty); nil means an older agent — keep any stored value.
+	if req.Mesh != nil {
+		metadata["mesh"] = req.Mesh
+	}
 
 	// Re-registering an existing host updates it in place.
 	if existing, err := h.q.GetAgentByHostAndIP(ctx, sqlcdb.GetAgentByHostAndIPParams{
 		Hostname:  req.Hostname,
 		IpAddress: req.IPAddress,
 	}); err == nil {
+		if existing.Metadata.Valid && len(existing.Metadata.RawMessage) > 0 {
+			var prev map[string]interface{}
+			if err := json.Unmarshal(existing.Metadata.RawMessage, &prev); err == nil {
+				for k, v := range prev {
+					if _, ok := metadata[k]; !ok {
+						metadata[k] = v
+					}
+				}
+			}
+		}
 		updated, err := h.q.UpdateAgent(ctx, sqlcdb.UpdateAgentParams{
 			ID:            existing.ID,
 			Name:          req.Name,
@@ -358,7 +379,7 @@ func (h *NodeAgentHandler) RegisterAgent(c *gin.Context) {
 			Capabilities:  rawJSON(req.Capabilities),
 			Resources:     existing.Resources,
 			LastHeartbeat: sql.NullTime{Time: time.Now(), Valid: true},
-			Metadata:      existing.Metadata,
+			Metadata:      rawJSON(metadata),
 		})
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update agent"})
@@ -408,7 +429,7 @@ func (h *NodeAgentHandler) RegisterAgent(c *gin.Context) {
 		Capabilities:  rawJSON(req.Capabilities),
 		Resources:     rawJSON(resources),
 		LastHeartbeat: sql.NullTime{Time: time.Now(), Valid: true},
-		Metadata:      rawJSON(map[string]interface{}{}),
+		Metadata:      rawJSON(metadata),
 	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create agent"})
@@ -489,6 +510,7 @@ func (h *NodeAgentHandler) UpdateAgent(c *gin.Context) {
 		Resources:     rawJSON(agent.Resources),
 		LastHeartbeat: sql.NullTime{Time: agent.LastHeartbeat, Valid: !agent.LastHeartbeat.IsZero()},
 		Metadata:      rawJSON(agent.Metadata),
+		AutoPrune:     agent.AutoPrune,
 	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update agent"})
@@ -516,6 +538,7 @@ func applyAgentUpdates(agent *NodeAgent, updates map[string]interface{}) {
 	remarshal("capabilities", &agent.Capabilities)
 	remarshal("resources", &agent.Resources)
 	remarshal("metadata", &agent.Metadata)
+	remarshal("auto_prune", &agent.AutoPrune)
 }
 
 // DeleteAgent removes an agent
@@ -801,6 +824,33 @@ func (h *NodeAgentHandler) CreateContainer(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"container": container})
+}
+
+// PruneAgent enqueues a bounded `docker system prune -af` command. Volumes
+// stay unless the caller explicitly opts in.
+func (h *NodeAgentHandler) PruneAgent(c *gin.Context) {
+	agentID := c.Param("id")
+	if _, err := h.q.GetAgent(c.Request.Context(), agentID); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Agent not found"})
+		return
+	}
+	var req struct {
+		Until   string `json:"until"`   // e.g. "168h" — only prune objects older than this
+		Volumes bool   `json:"volumes"` // destructive — off by default
+	}
+	_ = c.ShouldBindJSON(&req)
+
+	command, err := h.q.CreateCommand(c.Request.Context(), sqlcdb.CreateCommandParams{
+		ID:          uuid.New().String(),
+		Type:        "prune",
+		NodeAgentID: agentID,
+		Payload:     rawJSON(map[string]interface{}{"until": req.Until, "volumes": req.Volumes}),
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to enqueue prune"})
+		return
+	}
+	c.JSON(http.StatusAccepted, gin.H{"command": command})
 }
 
 // ExecuteCommand executes a command on an agent
@@ -1214,7 +1264,43 @@ func (h *NodeAgentHandler) SetupPublicRoutes(router *gin.RouterGroup) {
 		agents.POST("/heartbeat", h.SendHeartbeat)
 		agents.GET("/:id/commands", h.GetPendingCommandsForAgent)
 		agents.POST("/:id/commands/:commandId/result", h.CompleteCommand)
+
+		// Bootstrap surface — the install script and agent binaries are
+		// public; the enroll token is the actual secret.
+		agents.GET("/install.sh", h.ServeInstallScript)
+		agents.GET("/download/:platform", h.ServeAgentBinary)
 	}
+}
+
+//go:embed assets/install-agent.sh
+var agentInstallScript string
+
+// ServeInstallScript returns the agent bootstrap script. The script
+// downloads the binary from this instance first, GH releases second.
+func (h *NodeAgentHandler) ServeInstallScript(c *gin.Context) {
+	c.Data(http.StatusOK, "text/x-sh", []byte(agentInstallScript))
+}
+
+// ServeAgentBinary streams a bundled agent binary. Images ship the
+// linux binaries under CONTAINR_AGENT_BIN_DIR (default /agents).
+func (h *NodeAgentHandler) ServeAgentBinary(c *gin.Context) {
+	platform := c.Param("platform")
+	if platform != "linux-amd64" && platform != "linux-arm64" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported platform"})
+		return
+	}
+	dir := os.Getenv("CONTAINR_AGENT_BIN_DIR")
+	if dir == "" {
+		dir = "/agents"
+	}
+	path := filepath.Join(dir, "containr-agent-"+platform)
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() {
+		c.JSON(http.StatusNotFound, gin.H{"error": "no bundled binary for " + platform})
+		return
+	}
+	c.Header("Content-Disposition", `attachment; filename="containr-agent"`)
+	c.File(path)
 }
 
 // SetupAdminRoutes registers dashboard/control agent routes. Command
@@ -1243,6 +1329,7 @@ func (h *NodeAgentHandler) SetupAdminRoutes(router *gin.RouterGroup) {
 		agents.DELETE("/:id/containers/:containerId", h.ContainerAction)
 
 		agents.GET("/:id/metrics", h.GetAgentMetrics)
+		agents.POST("/:id/prune", h.PruneAgent)
 		agents.POST("/:id/commands", h.ExecuteCommand)
 		agents.GET("/:id/commands", h.GetAgentCommands)
 		agents.GET("/:id/commands/:commandId", h.GetCommandStatus)

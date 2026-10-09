@@ -7,6 +7,7 @@ package api
 
 import (
 	"containr/internal/database"
+	"containr/internal/database/sqlcdb"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -61,26 +62,28 @@ func StartAgentHealthSweep(ctx context.Context, db *database.DB) {
 	}()
 }
 
+type agentHealthRow struct {
+	id        string
+	name      string
+	status    string
+	stale     bool
+	autoPrune bool
+}
+
 func reconcileAgentHealth(db *database.DB, staleAfter time.Duration) {
 	cutoff := time.Now().Add(-staleAfter)
-	type agentRow struct {
-		id     string
-		name   string
-		status string
-		stale  bool
-	}
-	var agents []agentRow
+	var agents []agentHealthRow
 	rows, err := db.Query(
 		`SELECT id, COALESCE(name, hostname, id::text), COALESCE(status, ''),
-		        COALESCE(last_heartbeat < $1, TRUE)
+		        COALESCE(last_heartbeat < $1, TRUE), auto_prune
 		 FROM node_agents`, cutoff)
 	if err != nil {
 		log.Printf("containr: agent health sweep: %v", err)
 		return
 	}
 	for rows.Next() {
-		var a agentRow
-		if err := rows.Scan(&a.id, &a.name, &a.status, &a.stale); err == nil {
+		var a agentHealthRow
+		if err := rows.Scan(&a.id, &a.name, &a.status, &a.stale, &a.autoPrune); err == nil {
 			agents = append(agents, a)
 		}
 	}
@@ -102,6 +105,32 @@ func reconcileAgentHealth(db *database.DB, staleAfter time.Duration) {
 			}
 			notifyAdmins(db, "agent", "Node agent back online",
 				fmt.Sprintf("Agent %s resumed heartbeating.", a.name), "agent", a.id)
+		}
+	}
+
+	scheduleAutoPrune(db, agents)
+}
+
+// scheduleAutoPrune enqueues a `prune` command once per day for agents
+// with auto_prune enabled. Disk pressure is the most common small-VPS
+// failure — this is the dflow setServerAutoCleanup analog.
+func scheduleAutoPrune(db *database.DB, agents []agentHealthRow) {
+	q := sqlcdb.New(db.DB)
+	for _, a := range agents {
+		if !a.autoPrune || a.stale {
+			continue
+		}
+		last, err := q.GetLastAgentCommandByType(context.Background(),
+			sqlcdb.GetLastAgentCommandByTypeParams{NodeAgentID: a.id, Type: "prune"})
+		if err == nil && last.CreatedAt.Valid && time.Since(last.CreatedAt.Time) < 24*time.Hour {
+			continue
+		}
+		if _, err := q.CreateCommand(context.Background(), sqlcdb.CreateCommandParams{
+			ID:          uuid.New().String(),
+			Type:        "prune",
+			NodeAgentID: a.id,
+		}); err != nil {
+			log.Printf("containr: auto-prune enqueue failed for agent %s: %v", a.id, err)
 		}
 	}
 }

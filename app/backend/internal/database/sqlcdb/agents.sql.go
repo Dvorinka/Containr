@@ -63,7 +63,7 @@ INSERT INTO node_agents (
     id, name, hostname, ip_address, port, status, version,
     capabilities, resources, last_heartbeat, metadata
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-RETURNING id, name, hostname, ip_address, port, status, version, capabilities, resources, last_heartbeat, created_at, updated_at, metadata
+RETURNING id, name, hostname, ip_address, port, status, version, capabilities, resources, last_heartbeat, created_at, updated_at, metadata, auto_prune
 `
 
 type CreateAgentParams struct {
@@ -109,6 +109,7 @@ func (q *Queries) CreateAgent(ctx context.Context, arg CreateAgentParams) (NodeA
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Metadata,
+		&i.AutoPrune,
 	)
 	return i, err
 }
@@ -229,7 +230,7 @@ func (q *Queries) DeleteAgent(ctx context.Context, id string) error {
 }
 
 const getAgent = `-- name: GetAgent :one
-SELECT id, name, hostname, ip_address, port, status, version, capabilities, resources, last_heartbeat, created_at, updated_at, metadata FROM node_agents WHERE id = $1
+SELECT id, name, hostname, ip_address, port, status, version, capabilities, resources, last_heartbeat, created_at, updated_at, metadata, auto_prune FROM node_agents WHERE id = $1
 `
 
 func (q *Queries) GetAgent(ctx context.Context, id string) (NodeAgent, error) {
@@ -249,12 +250,13 @@ func (q *Queries) GetAgent(ctx context.Context, id string) (NodeAgent, error) {
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Metadata,
+		&i.AutoPrune,
 	)
 	return i, err
 }
 
 const getAgentByHostAndIP = `-- name: GetAgentByHostAndIP :one
-SELECT id, name, hostname, ip_address, port, status, version, capabilities, resources, last_heartbeat, created_at, updated_at, metadata FROM node_agents
+SELECT id, name, hostname, ip_address, port, status, version, capabilities, resources, last_heartbeat, created_at, updated_at, metadata, auto_prune FROM node_agents
 WHERE hostname = $1 AND ip_address = $2
 LIMIT 1
 `
@@ -281,6 +283,7 @@ func (q *Queries) GetAgentByHostAndIP(ctx context.Context, arg GetAgentByHostAnd
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Metadata,
+		&i.AutoPrune,
 	)
 	return i, err
 }
@@ -378,6 +381,36 @@ func (q *Queries) GetContainerForAgent(ctx context.Context, arg GetContainerForA
 	return i, err
 }
 
+const getLastAgentCommandByType = `-- name: GetLastAgentCommandByType :one
+SELECT id, type, node_agent_id, container_id, payload, status, result, error, created_at, updated_at, completed_at FROM agent_commands
+WHERE node_agent_id = $1 AND type = $2
+ORDER BY created_at DESC LIMIT 1
+`
+
+type GetLastAgentCommandByTypeParams struct {
+	NodeAgentID string `json:"node_agent_id"`
+	Type        string `json:"type"`
+}
+
+func (q *Queries) GetLastAgentCommandByType(ctx context.Context, arg GetLastAgentCommandByTypeParams) (AgentCommand, error) {
+	row := q.db.QueryRowContext(ctx, getLastAgentCommandByType, arg.NodeAgentID, arg.Type)
+	var i AgentCommand
+	err := row.Scan(
+		&i.ID,
+		&i.Type,
+		&i.NodeAgentID,
+		&i.ContainerID,
+		&i.Payload,
+		&i.Status,
+		&i.Result,
+		&i.Error,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CompletedAt,
+	)
+	return i, err
+}
+
 const insertAgentHeartbeat = `-- name: InsertAgentHeartbeat :exec
 INSERT INTO agent_heartbeats (
     id, node_agent_id, timestamp, status, resources,
@@ -458,7 +491,7 @@ func (q *Queries) ListAgentHeartbeatsSince(ctx context.Context, arg ListAgentHea
 }
 
 const listAgents = `-- name: ListAgents :many
-SELECT id, name, hostname, ip_address, port, status, version, capabilities, resources, last_heartbeat, created_at, updated_at, metadata FROM node_agents ORDER BY created_at ASC
+SELECT id, name, hostname, ip_address, port, status, version, capabilities, resources, last_heartbeat, created_at, updated_at, metadata, auto_prune FROM node_agents ORDER BY created_at ASC
 `
 
 func (q *Queries) ListAgents(ctx context.Context) ([]NodeAgent, error) {
@@ -484,6 +517,7 @@ func (q *Queries) ListAgents(ctx context.Context) ([]NodeAgent, error) {
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.Metadata,
+			&i.AutoPrune,
 		); err != nil {
 			return nil, err
 		}
@@ -639,9 +673,10 @@ UPDATE node_agents SET
     resources = $9,
     last_heartbeat = $10,
     metadata = $11,
+    auto_prune = $12,
     updated_at = NOW()
 WHERE id = $1
-RETURNING id, name, hostname, ip_address, port, status, version, capabilities, resources, last_heartbeat, created_at, updated_at, metadata
+RETURNING id, name, hostname, ip_address, port, status, version, capabilities, resources, last_heartbeat, created_at, updated_at, metadata, auto_prune
 `
 
 type UpdateAgentParams struct {
@@ -656,6 +691,7 @@ type UpdateAgentParams struct {
 	Resources     pqtype.NullRawMessage `json:"resources"`
 	LastHeartbeat sql.NullTime          `json:"last_heartbeat"`
 	Metadata      pqtype.NullRawMessage `json:"metadata"`
+	AutoPrune     bool                  `json:"auto_prune"`
 }
 
 func (q *Queries) UpdateAgent(ctx context.Context, arg UpdateAgentParams) (NodeAgent, error) {
@@ -671,6 +707,7 @@ func (q *Queries) UpdateAgent(ctx context.Context, arg UpdateAgentParams) (NodeA
 		arg.Resources,
 		arg.LastHeartbeat,
 		arg.Metadata,
+		arg.AutoPrune,
 	)
 	var i NodeAgent
 	err := row.Scan(
@@ -687,6 +724,7 @@ func (q *Queries) UpdateAgent(ctx context.Context, arg UpdateAgentParams) (NodeA
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Metadata,
+		&i.AutoPrune,
 	)
 	return i, err
 }
