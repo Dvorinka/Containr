@@ -226,6 +226,61 @@ var servicesUpdateCmd = &cobra.Command{
 	},
 }
 
+var servicesCloneCmd = &cobra.Command{
+	Use:   "clone <id>",
+	Short: "Clone a service (config, volumes, domains, variables)",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := client()
+		if err != nil {
+			return err
+		}
+		body := map[string]interface{}{}
+		for _, f := range []string{"name", "project", "environment"} {
+			if v, _ := cmd.Flags().GetString(f); v != "" {
+				key := f
+				if f == "project" {
+					key = "project_id"
+				}
+				body[key] = v
+			}
+		}
+		data, err := c.Do("POST", "/services/"+args[0]+"/clone", body)
+		if err != nil {
+			return err
+		}
+		if JSONMode() {
+			PrintRaw(data)
+			return nil
+		}
+		m, _ := unwrapObject(data)
+		fmt.Printf("Cloned to service %s (%s)\n", str(m, "service_id"), str(m, "name"))
+		return nil
+	},
+}
+
+var servicesMoveCmd = &cobra.Command{
+	Use:   "move <id> <project-id>",
+	Short: "Move a service to another project",
+	Args:  cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := client()
+		if err != nil {
+			return err
+		}
+		data, err := c.Do("POST", "/services/"+args[0]+"/move", map[string]interface{}{"project_id": args[1]})
+		if err != nil {
+			return err
+		}
+		if JSONMode() {
+			PrintRaw(data)
+			return nil
+		}
+		fmt.Printf("Moved service %s to project %s\n", args[0], args[1])
+		return nil
+	},
+}
+
 // volumeFlagValues parses repeated "src:target[:ro]" flags into API mount
 // objects. Bind mounts are type=bind, named volumes type=volume.
 func volumeFlagValues(cmd *cobra.Command, flags ...string) []map[string]interface{} {
@@ -459,7 +514,11 @@ func init() {
 			RunE:  serviceAction(verb),
 		})
 	}
+	servicesCloneCmd.Flags().String("name", "", "name for the clone (default <name>-copy)")
+	servicesCloneCmd.Flags().String("project", "", "target project id (default: same project)")
+	servicesCloneCmd.Flags().String("environment", "", "target environment (default: source's)")
+
 	domainsAddCmd.Flags().Bool("default", false, "set as the default domain")
 	servicesDomainsCmd.AddCommand(domainsListCmd, domainsAddCmd, domainsRemoveCmd, domainsDefaultCmd, domainsCheckCmd)
-	ServicesCmd.AddCommand(servicesListCmd, servicesGetCmd, servicesCreateCmd, servicesUpdateCmd, servicesDeleteCmd, servicesDomainsCmd)
+	ServicesCmd.AddCommand(servicesListCmd, servicesGetCmd, servicesCreateCmd, servicesUpdateCmd, servicesDeleteCmd, servicesDomainsCmd, servicesCloneCmd, servicesMoveCmd)
 }

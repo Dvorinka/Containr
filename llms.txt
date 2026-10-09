@@ -19,11 +19,13 @@ Base URL: `https://<host>/api/v1`. OpenAPI: `docs/api/openapi.yaml`.
 - **Volumes**: service mounts via `PUT /services/{id}` `volumes: [{type: volume|bind, source, target, read_only}]` — replaces the whole list (`[]` clears), applied on next deploy. `GET /admin/volumes` inventories node volumes with `in_use` flags; `DELETE /admin/volumes/{name}` removes unused ones (admin).
 - **Domains**: multiple hostnames per service via `GET|POST /services/{id}/domains`, `DELETE /services/{id}/domains/{domain_id}`, `POST …/{domain_id}/default` (mirrors `services.domain`). `GET /services/{id}/domains/check` returns `ok|wrong-target|pending` per domain vs `app_settings.public_ip`/`PUBLIC_IP`. `PUT` `maintenance_mode` redirects all traffic to `GET /maintenance` (needs `base_url`/`BASE_URL` setting); `basic_auth: [{username,password}]` stores bcrypt htpasswd and gates the route — responses return usernames only.
 - **Builders & resources**: service field `builder` = `auto|railpack|nixpacks|dockerfile|static` (auto detects; static builds assets with `static_build_cmd` and serves `static_dir` via nginx:80). `cpu`/`memory` are hard caps; `cpu_reserve`/`memory_reserve` are soft reservations (CPU shares / MemoryReservation) — empty string clears. `app_settings.default_cpu`/`default_memory` set instance defaults; `app_settings.capacity_policy=block` rejects deploys exceeding node memory (default `warn`).
+- **Clone & move**: `POST /services/{id}/clone` `{name?, project_id?, environment?}` copies config, volumes, domains, access gates, and variables (secret ciphertext verbatim; clone starts stopped). `POST /services/{id}/move` `{project_id}` re-parents a service — both require ownership of source and target; name conflicts → `CONFLICT`. Cloned domains are verbatim copies: the same hostname on two services makes routing ambiguous.
+- **Registries**: `GET|POST /registries`, `PUT|DELETE /registries/{id}` — owner-scoped private-image pull credentials, encrypted at rest, never returned (`has_password` signals presence). `host` matched against the image reference on image deploys (`docker.io` for Docker Hub; scheme/case normalized). Empty `password` on update keeps the stored credential.
 - **Identifiers**: all ids are UUIDs. Tokens: `cnp_` user PATs, `cagt_` agent onboarding tokens.
 
 ## Core objects
 
-`projects` → `services` (git/app deploys) → `deployments`; plus `databases`, `templates`, `cron-jobs`, `variables`, `volumes`, `preview-environments`, `nodes`, `scaling`, `security`, `gateway`, `admin`, `notifications`, `user/tokens`.
+`projects` → `services` (git/app deploys) → `deployments`; plus `databases`, `templates`, `cron-jobs`, `variables`, `volumes`, `domains`, `registries`, `preview-environments`, `nodes`, `scaling`, `security`, `gateway`, `admin`, `notifications`, `user/tokens`.
 
 ## Docs
 

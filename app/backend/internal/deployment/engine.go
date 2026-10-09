@@ -155,9 +155,12 @@ type BuildConfig struct {
 	StartCommand  string            `json:"start_command"`
 	BuildArgs     map[string]string `json:"build_args,omitempty"`
 	Environment   map[string]string `json:"environment"`
-	Branch        string            `json:"branch"`
-	Commit        string            `json:"commit"`
-	NoCache       bool              `json:"no_cache"`
+	// Pull credentials for private prebuilt images.
+	PullUsername string `json:"pull_username,omitempty"`
+	PullPassword string `json:"pull_password,omitempty"`
+	Branch       string `json:"branch"`
+	Commit       string `json:"commit"`
+	NoCache      bool   `json:"no_cache"`
 }
 
 type TriggerConfig struct {
@@ -300,6 +303,8 @@ func (de *DeploymentEngine) buildImage(ctx context.Context, deployment *Deployme
 		StartCommand:  buildConfig.StartCommand,
 		BuildArgs:     buildConfig.BuildArgs,
 		Environment:   buildConfig.Environment,
+		PullUsername:  buildConfig.PullUsername,
+		PullPassword:  buildConfig.PullPassword,
 		ProjectID:     deployment.ProjectID,
 		ServiceID:     deployment.ServiceID,
 		DeploymentID:  deployment.ID,

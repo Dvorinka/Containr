@@ -20,6 +20,10 @@ import {
   createUserToken,
   listUserTokens,
   revokeUserToken,
+  listRegistries,
+  createRegistry,
+  deleteRegistry,
+  type Registry,
   listDatabases,
   databaseAction,
   updateDatabaseBackupSchedule,
@@ -1430,6 +1434,135 @@ function UserTokensSection({ isAdmin }: { isAdmin: boolean }) {
   );
 }
 
+function RegistriesSection() {
+  const queryClient = useQueryClient();
+  const registriesQuery = useQuery({
+    queryKey: ['registries'],
+    queryFn: listRegistries,
+  });
+  const [name, setName] = useState('');
+  const [host, setHost] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+
+  const createMutation = useMutation({
+    mutationFn: () =>
+      createRegistry({
+        name: name.trim(),
+        host: host.trim(),
+        username: username.trim() || undefined,
+        password: password || undefined,
+      }),
+    onSuccess: () => {
+      setName('');
+      setHost('');
+      setUsername('');
+      setPassword('');
+      queryClient.invalidateQueries({ queryKey: ['registries'] });
+    },
+  });
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteRegistry(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['registries'] }),
+  });
+
+  const registries = registriesQuery.data ?? [];
+
+  return (
+    <section className="panel p-6">
+      <div className="flex items-center gap-3 mb-4">
+        <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
+          <Archive size={18} className="text-[var(--accent-primary)]" />
+        </div>
+        <div>
+          <h2 className="text-lg font-semibold text-[var(--text-primary)]">Registry credentials</h2>
+          <p className="text-xs text-[var(--text-tertiary)]">Pull private images on deploy - matched by image host, stored encrypted</p>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <div className="flex flex-wrap gap-2">
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Name (e.g. ghcr)"
+            className="h-9 flex-1 min-w-[120px] rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] transition-all"
+          />
+          <input
+            value={host}
+            onChange={(e) => setHost(e.target.value)}
+            placeholder="Host (ghcr.io, docker.io)"
+            className="h-9 flex-1 min-w-[160px] rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] transition-all"
+          />
+          <input
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="Username"
+            className="h-9 w-40 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] transition-all"
+          />
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Password / token"
+            className="h-9 w-44 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] transition-all"
+          />
+          <button
+            onClick={() => createMutation.mutate()}
+            disabled={createMutation.isPending || !name.trim() || !host.trim()}
+            className="h-9 px-4 rounded-[var(--radius-md)] text-sm font-medium text-[var(--accent-on)] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            style={{ background: 'var(--accent-primary)' }}
+          >
+            {createMutation.isPending ? 'Adding…' : 'Add registry'}
+          </button>
+        </div>
+
+        {createMutation.isError ? (
+          <p className="text-xs text-[var(--error)]">
+            {createMutation.error instanceof Error ? createMutation.error.message : 'Failed to add registry'}
+          </p>
+        ) : null}
+
+        {registriesQuery.isLoading ? (
+          <div className="py-4 text-center">
+            <Loader2 size={16} className="animate-spin mx-auto text-[var(--text-tertiary)]" />
+          </div>
+        ) : registries.length === 0 ? (
+          <p className="text-xs text-[var(--text-tertiary)]">
+            No credentials. Image pulls are anonymous unless a registry matching the image host exists here.
+          </p>
+        ) : (
+          <div className="space-y-1.5 border-t border-[var(--border-subtle)] pt-3">
+            {registries.map((r: Registry) => (
+              <div key={r.id} className="flex items-center justify-between gap-2 text-xs">
+                <div className="min-w-0">
+                  <span className="text-[var(--text-primary)]">{r.name}</span>
+                  <span className="ml-2 mono text-[var(--text-muted)]">{r.host}</span>
+                  {r.username ? <span className="ml-2 text-[var(--text-secondary)]">{r.username}</span> : null}
+                  <span className="ml-2 rounded px-1.5 py-0.5 bg-[var(--surface-muted)] text-[var(--text-secondary)]">
+                    {r.has_password ? 'password set' : 'anonymous'}
+                  </span>
+                </div>
+                <button
+                  onClick={() => {
+                    if (window.confirm(`Remove credentials for ${r.host}?`)) {
+                      deleteMutation.mutate(r.id);
+                    }
+                  }}
+                  disabled={deleteMutation.isPending}
+                  className="text-[var(--error)] hover:underline disabled:opacity-50 shrink-0"
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 export function SettingsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -1603,6 +1736,7 @@ export function SettingsPage() {
 
           {/* Personal Access Tokens */}
           <UserTokensSection isAdmin={profileQuery.data?.isAdmin ?? false} />
+          <RegistriesSection />
 
           {/* Platform Settings - owner only */}
           {profileQuery.data?.isAdmin ? <PlatformSettingsSection /> : null}

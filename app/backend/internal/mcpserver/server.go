@@ -59,6 +59,8 @@ func init() {
 	register(spec{"containr_services_stop", "Stop a service", "POST", "/services/{id}/stop", []string{"id"}, nil, false})
 	register(spec{"containr_services_restart", "Restart a service", "POST", "/services/{id}/restart", []string{"id"}, nil, false})
 	register(spec{"containr_services_redeploy", "Rebuild and redeploy a service", "POST", "/services/{id}/redeploy", []string{"id"}, nil, false})
+	register(spec{"containr_services_clone", "Clone a service (config, volumes, domains, variables) into the same or another project. Args: id, name, project_id, environment.", "POST", "/services/{id}/clone", []string{"id"}, nil, false})
+	register(spec{"containr_services_move", "Move a service to another project the caller owns. Args: id, project_id (required).", "POST", "/services/{id}/move", []string{"id"}, []string{"project_id"}, false})
 	register(spec{"containr_services_logs", "Get service runtime logs. Args: id, tail (default 100).", "GET", "/services/{id}/logs", []string{"id"}, nil, false})
 	register(spec{"containr_services_exec", "Run a one-off command in the service container (30s ceiling). Args: id, command (required).", "POST", "/services/{id}/exec", []string{"id"}, []string{"command"}, false})
 	register(spec{"containr_services_update", "Update a service. Args: id, name, image, command, domain, restart_policy, healthcheck_path, cpu, memory, replicas, port, volumes = [{type: volume|bind, source, target, read_only}] — volumes replaces the whole mount list; pass [] to clear. maintenance_mode (bool), basic_auth = [{username, password}] — replaces all creds; [] clears. builder = auto|railpack|nixpacks|dockerfile|static, cpu_reserve, memory_reserve, static_build_cmd, static_dir (empty string clears reserves/static fields).", "PUT", "/services/{id}", []string{"id"}, nil, false})
@@ -69,6 +71,12 @@ func init() {
 	register(spec{"containr_domains_remove", "Detach a domain. Args: id (service), domain_id.", "DELETE", "/services/{id}/domains/{domain_id}", []string{"id", "domain_id"}, nil, false})
 	register(spec{"containr_domains_default", "Set the default domain. Args: id (service), domain_id.", "POST", "/services/{id}/domains/{domain_id}/default", []string{"id", "domain_id"}, nil, false})
 	register(spec{"containr_domains_check", "DNS preflight for all service domains — returns ok|wrong-target|pending per domain", "GET", "/services/{id}/domains/check", []string{"id"}, nil, false})
+
+	// Registries — private-image pull credentials, owner-scoped.
+	register(spec{"containr_registries_list", "List registry credentials (passwords never returned)", "GET", "/registries", nil, nil, false})
+	register(spec{"containr_registries_create", "Add a registry credential. Args: name (required), host (required — e.g. ghcr.io, docker.io), username, password (stored encrypted).", "POST", "/registries", nil, []string{"name", "host"}, false})
+	register(spec{"containr_registries_update", "Update a registry credential. Args: id, name, host (required), username, password (empty keeps stored).", "PUT", "/registries/{id}", []string{"id"}, []string{"name", "host"}, false})
+	register(spec{"containr_registries_delete", "Remove a registry credential. Requires confirm:true.", "DELETE", "/registries/{id}", []string{"id"}, nil, true})
 
 	// Docker volumes (admin)
 	register(spec{"containr_volumes_list", "List docker volumes on the node with in-use flags (admin)", "GET", "/admin/volumes", nil, nil, false})

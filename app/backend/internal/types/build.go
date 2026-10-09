@@ -29,6 +29,10 @@ type BuildRequest struct {
 	Branch       string `json:"branch"`        // Git branch
 	Commit       string `json:"commit"`        // Git commit SHA
 	NoCache      bool   `json:"no_cache"`      // Disable Docker layer cache
+
+	// Registry credentials for pulling a private prebuilt image.
+	PullUsername string `json:"pull_username,omitempty"`
+	PullPassword string `json:"pull_password,omitempty"`
 }
 
 // BuildResponse represents the response from a build operation

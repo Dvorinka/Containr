@@ -100,7 +100,7 @@ func (bm *BuildManager) buildPrebuilt(ctx context.Context, req *types.BuildReque
 
 	// Pull the prebuilt image — must drain the pull stream or the daemon
 	// aborts it and the tag below races a missing image.
-	auth := registry.AuthConfig{}
+	auth := registry.AuthConfig{Username: req.PullUsername, Password: req.PullPassword}
 	if err := bm.dockerClient.PullImageWait(ctx, req.PrebuiltImage, auth); err != nil {
 		return nil, fmt.Errorf("failed to pull prebuilt image: %w", err)
 	}

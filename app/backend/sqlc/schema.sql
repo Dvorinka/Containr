@@ -69,6 +69,18 @@ CREATE TABLE services (
     static_dir VARCHAR(255) NOT NULL DEFAULT ''
 );
 
+CREATE TABLE registries (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    host VARCHAR(255) NOT NULL,
+    username VARCHAR(255) NOT NULL DEFAULT '',
+    password TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (owner_id, host)
+);
+
 CREATE TABLE service_domains (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     service_id UUID NOT NULL REFERENCES services(id) ON DELETE CASCADE,
