@@ -390,9 +390,12 @@ and wired refs, one click or one CLI call.
   deploys a compose file straight into a project; CLI `import compose`,
   MCP tool, workspace import modal; project delete cascades to
   graph-provisioned managed databases (`database_services.project_id`).
-- [ ] **Template registry** — optional `CONTAINR_TEMPLATE_REGISTRY_URL`
-  fetch/publish; bundled catalog works offline (dflow's self-contained
-  principle — nothing phones home).
+- [x] **Template registry** — `CONTAINR_TEMPLATE_REGISTRY_URL` merges a
+  remote Containr catalog into `GET /templates` as `source:"registry"`
+  (60s cache, dead registry never blocks local). `GET /templates/:id`
+  falls through to the registry; deploy materializes a deterministic
+  `reg-<hash>` private copy for the deployer so re-deploys don't dup.
+  `api/templateregistry.go`, `.env.example`.
 
 ## 9b. Phase I — Companion surfaces
 

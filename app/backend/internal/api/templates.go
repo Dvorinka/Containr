@@ -21,18 +21,20 @@ import (
 )
 
 type ServiceTemplate struct {
-	ID          string    `json:"id" db:"id"`
-	Name        string    `json:"name" db:"name"`
-	Description string    `json:"description" db:"description"`
-	Category    string    `json:"category" db:"category"`
-	Logo        string    `json:"logo" db:"logo"`
-	Config      string    `json:"config" db:"config"`
-	Variables   string    `json:"variables" db:"variables"`
-	IsOfficial  bool      `json:"is_official" db:"is_official"`
-	OwnerID     string    `json:"owner_id,omitempty" db:"owner_id"`
-	IsPublic    bool      `json:"is_public" db:"is_public"`
-	CreatedAt   time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at" db:"updated_at"`
+	ID          string `json:"id" db:"id"`
+	Name        string `json:"name" db:"name"`
+	Description string `json:"description" db:"description"`
+	Category    string `json:"category" db:"category"`
+	Logo        string `json:"logo" db:"logo"`
+	Config      string `json:"config" db:"config"`
+	Variables   string `json:"variables" db:"variables"`
+	IsOfficial  bool   `json:"is_official" db:"is_official"`
+	OwnerID     string `json:"owner_id,omitempty" db:"owner_id"`
+	IsPublic    bool   `json:"is_public" db:"is_public"`
+	// Source marks catalog origin: "" (local/official) or "registry".
+	Source    string    `json:"source,omitempty" db:"-"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 }
 
 type TemplateConfig struct {
@@ -97,8 +99,22 @@ func handleGetTemplates(c *gin.Context) {
 	}
 
 	templates := make([]ServiceTemplate, 0, len(templateRows))
+	localIDs := make(map[string]bool, len(templateRows))
 	for _, row := range templateRows {
+		localIDs[row.ID] = true
 		templates = append(templates, mapSQLCTemplate(row))
+	}
+
+	// Merge the configured remote registry (CONTAINR_TEMPLATE_REGISTRY_URL).
+	// Registry ids never shadow local templates.
+	for _, t := range fetchRegistryTemplates(ctx) {
+		if localIDs[t.ID] {
+			continue
+		}
+		if category != "" && t.Category != category {
+			continue
+		}
+		templates = append(templates, t)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"templates": templates})
@@ -112,6 +128,11 @@ func handleGetTemplate(c *gin.Context) {
 	row, err := queries.GetServiceTemplateByID(c.Request.Context(), templateID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			// Registry fallback — remote templates materialize read-only.
+			if rt := fetchRegistryTemplate(c.Request.Context(), templateID); rt != nil {
+				respondRegistryTemplate(c, rt)
+				return
+			}
 			c.JSON(http.StatusNotFound, gin.H{"error": "Template not found"})
 			return
 		}
@@ -190,11 +211,18 @@ func handleCreateFromTemplate(c *gin.Context) {
 	templateRow, err := queries.GetServiceTemplateByID(ctx, templateID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Template not found"})
+			// Registry template — materialize a local copy for the
+			// deployer, then continue down the normal deploy path.
+			row, mErr := materializeRegistryTemplate(c, queries, userID, templateID)
+			if mErr != nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Template not found"})
+				return
+			}
+			templateRow = row
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch template"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch template"})
-		return
 	}
 
 	template := mapSQLCTemplate(templateRow)

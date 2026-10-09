@@ -7393,6 +7393,9 @@ components:
         is_public:
           type: boolean
           description: Whether a user-created template is published to the public catalog
+        source:
+          type: string
+          description: 'Catalog origin: absent for local/official templates; "registry" for entries merged from CONTAINR_TEMPLATE_REGISTRY_URL. Deploying a registry template materializes a local copy first.'
         created_at:
           type: string
           format: date-time
