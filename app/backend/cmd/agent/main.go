@@ -272,7 +272,12 @@ func executeCommand(item command) (string, error) {
 	case "restart_container":
 		return runDocker("restart", commandTarget(item.Payload))
 	case "remove_container":
-		return runDocker("rm", "-f", commandTarget(item.Payload))
+		out, err := runDocker("rm", "-f", commandTarget(item.Payload))
+		// A missing container is the desired end state — report success.
+		if err != nil && strings.Contains(out, "No such container") {
+			return out, nil
+		}
+		return out, err
 	case "prune":
 		return dockerPrune(item.Payload)
 	case "system_df":
@@ -460,7 +465,25 @@ func createContainer(payload map[string]interface{}) (string, error) {
 		logs, _ := runDocker("logs", "--tail", "5", name)
 		return "", fmt.Errorf("container %s is %q after start: %s", name, state, logs)
 	}
-	return name, nil
+	// Report the real host port bindings — ephemeral publishes pick a port
+	// the server can't guess, and remote ingress needs the actual mapping.
+	hostPorts := map[string]string{}
+	portsJSON, _ := runDocker("inspect", "-f", "{{json .NetworkSettings.Ports}}", name)
+	var bindings map[string][]struct {
+		HostIP   string `json:"HostIp"`
+		HostPort string `json:"HostPort"`
+	}
+	if json.Unmarshal([]byte(portsJSON), &bindings) == nil {
+		for cport, addrs := range bindings {
+			for _, a := range addrs {
+				if a.HostPort != "" && a.HostPort != "0" {
+					hostPorts[cport] = a.HostPort
+				}
+			}
+		}
+	}
+	out, _ := json.Marshal(map[string]interface{}{"name": name, "host_ports": hostPorts})
+	return string(out), nil
 }
 
 // registryHostOf mirrors the server's registryHost: first path segment with

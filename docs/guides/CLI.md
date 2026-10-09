@@ -161,10 +161,12 @@ containr nodes update <id> --tags gpu,eu-west
 containr services update <id> --placement-tags gpu     # only gpu nodes are eligible
 ```
 
-Remote nodes run registry-pulled images only — git builds, domains
-(Traefik lives on the host), and sleep detection stay local. Start,
-stop, restart, redeploy, and delete all fan out to the pinned node's
-agent. `services get` shows the resolved `node_name`.
+Remote nodes run registry-pulled images only — git builds and sleep
+detection stay local. Domains work remotely: the agent publishes the
+service port and the backend writes a Traefik file-provider route to the
+node's mesh IP (TRAEFIK_DYNAMIC_DIR — wired by the infra compose).
+Start, stop, restart, redeploy, and delete all fan out to the pinned
+node's agent. `services get` shows the resolved `node_name`.
 
 Take a node out of rotation or empty it entirely (admin):
 

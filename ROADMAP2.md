@@ -296,9 +296,15 @@ and wired refs, one click or one CLI call.
   utilisation, then cpu, then container count, with uninstrumented
   agents sorting last. Lifecycle and `GET /runtime` are
   inventory-driven, so remote replicas show up and tear down wherever
-  they run. Remote nodes run registry-pulled
-  images only — git builds, Traefik domains, and remote sleep are
-  documented ceilings. Tag affinity shipped: `node_agents.tags`
+  they run. Remote ingress shipped: the agent reports assigned host
+  ports in the `create_container` result, the backend renders a
+  Traefik file-provider config per remote service into
+  `TRAEFIK_DYNAMIC_DIR` (shared volume, `watch=true`) pointing the
+  loadbalancer at each replica's mesh IP + published port; route files
+  are rewritten on every remote reconcile and removed on teardown or
+  local placement. Remote nodes run registry-pulled
+  images only — git builds and remote sleep are documented ceilings.
+  Tag affinity shipped: `node_agents.tags`
   (operator-set via `PUT /agents/:id` / `nodes update --tags`) +
   `services.placement_tags` — `auto` and `spread` only consider
   online schedulable agents carrying every required tag, tags are

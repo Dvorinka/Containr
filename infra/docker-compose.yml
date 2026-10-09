@@ -7,7 +7,8 @@ services:
       - "--api.insecure=${TRAEFIK_API_INSECURE:-true}"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
-      - "--providers.file.filename=/etc/traefik/traefik-dynamic.yml"
+      - "--providers.file.directory=/traefik-dynamic"
+      - "--providers.file.watch=true"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
       - "--entrypoints.traefik.address=:8080"
@@ -26,7 +27,8 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ../data/letsencrypt:/letsencrypt
-      - ./traefik-dynamic.yml:/etc/traefik/traefik-dynamic.yml:ro
+      - traefik_dynamic:/traefik-dynamic
+      - ./traefik-dynamic.yml:/traefik-dynamic/00-base.yml:ro
     networks:
       - containr-network
     restart: unless-stopped
@@ -100,6 +102,7 @@ services:
       - JWT_SECRET=${JWT_SECRET:-dev_jwt_secret_key_change_in_production}
       - CONTAINR_AGENT_AUTH_TOKEN=${CONTAINR_AGENT_AUTH_TOKEN:-}
       - CONTAINR_AGENT_AUTH_TOKENS=${CONTAINR_AGENT_AUTH_TOKENS:-}
+      - TRAEFIK_DYNAMIC_DIR=/traefik-dynamic
       - COOKIE_SECURE=${COOKIE_SECURE:-true}
       - TRUSTED_PROXY_CIDR=${TRUSTED_PROXY_CIDR:-172.20.0.0/16}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost,http://localhost:3000}
@@ -136,6 +139,7 @@ services:
       - GITEA_BASE_URL=${GITEA_BASE_URL:-https://gitea.example.com}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - traefik_dynamic:/traefik-dynamic
     group_add:
       - "${DOCKER_GID:-0}"
     networks:
@@ -212,6 +216,8 @@ volumes:
   postgres_data:
     driver: local
   dragonfly_data:
+    driver: local
+  traefik_dynamic:
     driver: local
 
 networks:

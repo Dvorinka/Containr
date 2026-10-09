@@ -765,8 +765,36 @@ func (q *Queries) ListSchedulableAgentsMatching(ctx context.Context, dollar_1 js
 	return items, nil
 }
 
+const listServiceAgents = `-- name: ListServiceAgents :many
+SELECT DISTINCT node_agent_id FROM container_instances WHERE service_id = $1
+`
+
+// Distinct agents holding inventory rows for a service.
+func (q *Queries) ListServiceAgents(ctx context.Context, serviceID string) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listServiceAgents, serviceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var node_agent_id string
+		if err := rows.Scan(&node_agent_id); err != nil {
+			return nil, err
+		}
+		items = append(items, node_agent_id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listServiceContainers = `-- name: ListServiceContainers :many
-SELECT id, name, node_agent_id, status FROM container_instances
+SELECT id, name, node_agent_id, status, ports FROM container_instances
 WHERE service_id = $1
 `
 
@@ -775,6 +803,7 @@ type ListServiceContainersRow struct {
 	Name        string                `json:"name"`
 	NodeAgentID string                `json:"node_agent_id"`
 	Status      pqtype.NullRawMessage `json:"status"`
+	Ports       pqtype.NullRawMessage `json:"ports"`
 }
 
 func (q *Queries) ListServiceContainers(ctx context.Context, serviceID string) ([]ListServiceContainersRow, error) {
@@ -791,6 +820,7 @@ func (q *Queries) ListServiceContainers(ctx context.Context, serviceID string) (
 			&i.Name,
 			&i.NodeAgentID,
 			&i.Status,
+			&i.Ports,
 		); err != nil {
 			return nil, err
 		}
@@ -1002,6 +1032,24 @@ func (q *Queries) UpdateAgentHeartbeat(ctx context.Context, arg UpdateAgentHeart
 		arg.Resources,
 		arg.LastHeartbeat,
 	)
+	return err
+}
+
+const updateContainerPorts = `-- name: UpdateContainerPorts :exec
+UPDATE container_instances SET status = $2, ports = $3, updated_at = NOW()
+WHERE id = $1
+`
+
+type UpdateContainerPortsParams struct {
+	ID     string                `json:"id"`
+	Status pqtype.NullRawMessage `json:"status"`
+	Ports  pqtype.NullRawMessage `json:"ports"`
+}
+
+// Agent reports the real host bindings after create — persist them with
+// the status flip so ingress can route to the assigned port.
+func (q *Queries) UpdateContainerPorts(ctx context.Context, arg UpdateContainerPortsParams) error {
+	_, err := q.db.ExecContext(ctx, updateContainerPorts, arg.ID, arg.Status, arg.Ports)
 	return err
 }
 
