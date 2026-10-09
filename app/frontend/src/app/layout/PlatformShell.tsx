@@ -9,6 +9,7 @@ import {
   ChartBar,
   CheckCircle2,
   ChevronsLeft,
+  Clock,
   Container,
   Database,
   FileText,
@@ -59,6 +60,7 @@ const navSections: NavSection[] = [
     title: 'Operate',
     items: [
       { label: 'Operations', href: '/operations', icon: Activity, hint: 'Live jobs & failures' },
+      { label: 'Activity', href: '/activity', icon: Clock, hint: 'Platform event feed' },
       { label: 'Databases', href: '/databases', icon: Database, hint: 'Managed data services' },
       { label: 'High Availability', href: '/ha', icon: ShieldCheck, hint: 'Failover & health' },
       { label: 'Security', href: '/security', icon: Shield, hint: 'Scans & compliance' },

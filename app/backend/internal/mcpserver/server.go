@@ -165,6 +165,8 @@ func init() {
 	register(spec{"containr_github_app_status", "Show GitHub App provisioning status (admin).", "GET", "/admin/git/github-app", nil, nil, false})
 	register(spec{"containr_github_app_manifest", "Build a GitHub App manifest for self-provisioning (admin). Args: base_url (required, https public URL), name (optional), organization (optional).", "POST", "/admin/git/github-app/manifest", nil, []string{"base_url", "name", "organization"}, false})
 	register(spec{"containr_github_app_convert", "Exchange the GitHub manifest callback code for app credentials (admin). Args: code.", "POST", "/admin/git/github-app/convert", nil, []string{"code"}, false})
+	register(spec{"containr_activity_list", "Activity feed — enriched audit events (severity/category/label). Args: severity, category, resource, project_id, since, page, limit.", "GET", "/activity", nil, []string{"severity", "category", "resource", "project_id", "since", "page", "limit"}, false})
+	register(spec{"containr_project_activity", "Per-project activity timeline. Args: id (project id), page, limit.", "GET", "/projects/{id}/activity", []string{"id"}, []string{"page", "limit"}, false})
 
 	// Nodes / agent tokens (admin)
 	register(spec{"containr_nodes_list", "List node agents (admin)", "GET", "/agents", nil, nil, false})

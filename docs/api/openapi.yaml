@@ -2620,6 +2620,67 @@ paths:
                     items:
                       type: object
 
+  /activity:
+    get:
+      tags:
+        - Operations
+      summary: Activity feed
+      description: >-
+        Enriched audit events (severity, category, label) scoped to the
+        caller's visible projects; admins see everything.
+      security:
+        - bearerAuth: []
+      parameters:
+        - {name: severity, in: query, schema: {type: string, enum: [info, success, warning, error]}}
+        - {name: category, in: query, schema: {type: string}}
+        - {name: resource, in: query, schema: {type: string}}
+        - {name: project_id, in: query, schema: {type: string, format: uuid}}
+        - {name: since, in: query, schema: {type: string, format: date-time}}
+        - {name: page, in: query, schema: {type: integer, default: 1}}
+        - {name: limit, in: query, schema: {type: integer, default: 50, maximum: 200}}
+      responses:
+        '200':
+          description: Feed entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  activity:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AuditLog'
+                  page: {type: integer}
+                  limit: {type: integer}
+                  has_more: {type: boolean}
+
+  /projects/{id}/activity:
+    get:
+      tags:
+        - Operations
+      summary: Per-project activity timeline
+      description: Audit events correlated to this project's services, deployments, databases and the project record itself.
+      security:
+        - bearerAuth: []
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+        - {name: page, in: query, schema: {type: integer, default: 1}}
+        - {name: limit, in: query, schema: {type: integer, default: 50, maximum: 200}}
+      responses:
+        '200':
+          description: Feed entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  activity:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AuditLog'
+        '404':
+          description: Project not found or not visible
+
   /banners/active:
     get:
       tags:
@@ -7584,6 +7645,16 @@ components:
         user_agent:
           type: string
           description: Source user agent
+        severity:
+          type: string
+          enum: [info, success, warning, error]
+          description: Event severity for feed display
+        category:
+          type: string
+          description: Coarse category (service, deployment, project, user, security, system, …)
+        label:
+          type: string
+          description: Human-readable event label
         created_at:
           type: string
           format: date-time

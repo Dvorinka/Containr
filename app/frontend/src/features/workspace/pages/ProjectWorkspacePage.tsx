@@ -13,6 +13,7 @@ import {
   listGitBranches,
   listGitProviders,
   listGitRepositories,
+  listProjectActivity,
   listServiceLogs,
   listServiceVariables,
   listServicesByProject,
@@ -49,12 +50,13 @@ import {
   FileUp,
 } from 'lucide-react';
 
-type WorkspaceView = 'canvas' | 'observability' | 'logs' | 'settings';
+type WorkspaceView = 'canvas' | 'observability' | 'logs' | 'activity' | 'settings';
 
 const viewItems: Array<{ key: WorkspaceView; label: string; icon: typeof LayoutGrid; authOnly?: boolean }> = [
   { key: 'canvas', label: 'Canvas', icon: LayoutGrid },
   { key: 'observability', label: 'Observability', icon: Activity },
   { key: 'logs', label: 'Logs', icon: FileText, authOnly: true },
+  { key: 'activity', label: 'Activity', icon: Clock, authOnly: true },
   { key: 'settings', label: 'Settings', icon: Settings },
 ];
 
@@ -640,6 +642,13 @@ export function ProjectWorkspacePage() {
     retry: false,
   });
 
+  const activityQuery = useQuery({
+    queryKey: ['project-activity', projectId],
+    queryFn: () => listProjectActivity(projectId!),
+    enabled: !isDemoMode && signedIn && activeView === 'activity' && !!projectId,
+    refetchInterval: 15000,
+  });
+
   const runningServices = useMemo(() => services.filter((service) => service.status === 'running').length, [services]);
   const serviceHref = (serviceId: string) =>
     isDemoMode
@@ -937,6 +946,42 @@ export function ProjectWorkspacePage() {
                         </p>
                       ))}
                     </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activeView === 'activity' && (
+              <div className="panel p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
+                    <Clock size={20} className="text-[var(--accent-primary)]" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-semibold text-[var(--text-primary)]">Activity</h2>
+                    <p className="text-sm text-[var(--text-secondary)]">Project timeline — deploys, config, membership</p>
+                  </div>
+                </div>
+                <div className="divide-y divide-[var(--border-subtle)] border border-[var(--border-subtle)] rounded-[var(--radius-md)]">
+                  {activityQuery.isLoading ? (
+                    <p className="px-4 py-6 text-xs text-[var(--text-muted)]">Loading…</p>
+                  ) : (activityQuery.data?.activity?.length ?? 0) === 0 ? (
+                    <p className="px-4 py-6 text-xs text-[var(--text-muted)]">No project events yet.</p>
+                  ) : (
+                    activityQuery.data!.activity.map((e) => (
+                      <div key={e.id} className="flex items-center gap-3 px-4 py-2.5">
+                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                          e.severity === 'error' ? 'bg-[var(--error)]' :
+                          e.severity === 'warning' ? 'bg-[var(--warning)]' :
+                          e.severity === 'success' ? 'bg-[var(--success)]' : 'bg-[var(--accent-primary)]'
+                        }`} />
+                        <div className="flex-1 min-w-0">
+                          <span className="text-[13px] text-[var(--text-primary)]">{e.label || e.action}</span>
+                          <span className="v-mono text-[10px] text-[var(--text-muted)] ml-2">{e.user_email}</span>
+                        </div>
+                        <span className="v-mono text-[10px] text-[var(--text-muted)]">{formatRelative(e.created_at)}</span>
+                      </div>
+                    ))
                   )}
                 </div>
               </div>
