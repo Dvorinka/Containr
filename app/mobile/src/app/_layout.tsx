@@ -19,9 +19,10 @@ function AuthGate() {
   useEffect(() => {
     if (!ready) return;
     const inLogin = segments[0] === 'login';
-    if (!api && !inLogin) router.replace('/login');
-    else if (api && inLogin) router.replace('/');
+    if (api && inLogin) router.replace('/');
   }, [ready, api, segments, router]);
+
+  if (!ready) return null;
 
   return (
     <Stack
@@ -31,11 +32,13 @@ function AuthGate() {
         contentStyle: { backgroundColor: colors.bg },
       }}
     >
+      <Stack.Protected guard={!!api}>
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="project/[id]" options={{ title: 'Project' }} />
+        <Stack.Screen name="service/[id]" options={{ title: 'Service' }} />
+        <Stack.Screen name="service/logs" options={{ title: 'Logs' }} />
+      </Stack.Protected>
       <Stack.Screen name="login" options={{ headerShown: false }} />
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="project/[id]" options={{ title: 'Project' }} />
-      <Stack.Screen name="service/[id]" options={{ title: 'Service' }} />
-      <Stack.Screen name="service/logs" options={{ title: 'Logs' }} />
     </Stack>
   );
 }
