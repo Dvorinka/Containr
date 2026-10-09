@@ -51,8 +51,11 @@ type Service struct {
 	SleepIdleMinutes int             `json:"sleep_idle_minutes" db:"-"`
 	// NodeID pins the service to a node agent ("" = local Docker host,
 	// resolved "auto" picks the least-loaded online agent at write time).
-	NodeID    string    `json:"node_id,omitempty" db:"-"`
-	NodeName  string    `json:"node_name,omitempty" db:"-"`
+	NodeID   string `json:"node_id,omitempty" db:"-"`
+	NodeName string `json:"node_name,omitempty" db:"-"`
+	// Spread distributes replicas across every online, schedulable agent.
+	// Mutually exclusive with an explicit NodeID pin.
+	Spread    bool      `json:"spread" db:"-"`
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 }
@@ -79,10 +82,21 @@ func serviceNodeID(db *database.DB, serviceID uuid.UUID) string {
 	return ""
 }
 
-// loadServiceNode fills the pin + the agent's display name for responses.
+// serviceSpread reads the spread column with the same lazy pattern.
+func serviceSpread(db *database.DB, serviceID uuid.UUID) bool {
+	var spread bool
+	if err := db.QueryRow(`SELECT COALESCE(spread, false) FROM services WHERE id = $1`, serviceID).Scan(&spread); err == nil {
+		return spread
+	}
+	return false
+}
+
+// loadServiceNode fills the pin + spread + the agent's display name for
+// responses.
 func loadServiceNode(db *database.DB, s *Service) {
 	var name sql.NullString
 	s.NodeID = serviceNodeID(db, s.ID)
+	s.Spread = serviceSpread(db, s.ID)
 	if s.NodeID == "" {
 		return
 	}
@@ -171,6 +185,9 @@ type CreateServiceRequest struct {
 	// NodeID pins placement to a node agent; "auto" picks the least-loaded
 	// online agent, "local"/"" runs on the Containr host.
 	NodeID string `json:"node_id"`
+	// Spread distributes replicas across every online, schedulable agent.
+	// Mutually exclusive with an explicit node pin.
+	Spread *bool `json:"spread"`
 }
 
 // UpdateServiceRequest represents a request to update a service
@@ -202,6 +219,9 @@ type UpdateServiceRequest struct {
 	SleepIdleMinutes *int             `json:"sleep_idle_minutes"`
 	// NodeID pins placement; pointer so "local"/"" explicitly clears the pin.
 	NodeID *string `json:"node_id"`
+	// Spread toggles multi-node replica distribution; pointer so false is
+	// a real update, not a missing field.
+	Spread *bool `json:"spread"`
 }
 
 // handleGetServices retrieves all services for a project
@@ -442,13 +462,22 @@ func handleCreateService(c *gin.Context) {
 
 	sourceType := inferServiceSourceType(service)
 
+	if req.Spread != nil {
+		service.Spread = *req.Spread
+	}
 	if req.NodeID != "" {
+		if service.Spread && req.NodeID != "auto" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "spread and an explicit node pin are mutually exclusive", "code": "VALIDATION"})
+			return
+		}
 		nodeID, nodeErr := resolveNodePin(c.Request.Context(), db.(*database.DB), req.NodeID)
 		if nodeErr != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": nodeErr.Error(), "code": "VALIDATION"})
 			return
 		}
-		service.NodeID = nodeID
+		if !service.Spread {
+			service.NodeID = nodeID
+		}
 	}
 
 	// Insert service into database
@@ -459,9 +488,9 @@ func handleCreateService(c *gin.Context) {
 				 git_repo, git_branch, build_path, cpu, memory, replicas, port, domain,
 				 healthcheck_path, restart_policy, volumes,
 				 builder, cpu_reserve, memory_reserve, static_build_cmd, static_dir,
-				 node_id, created_at, updated_at)
+				 node_id, spread, created_at, updated_at)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26,
-					$27, $28, $29, $30, $31, $32, $33, $34)`,
+					$27, $28, $29, $30, $31, $32, $33, $34, $35)`,
 		service.ID, service.ProjectID, service.Name, environmentID, service.Type,
 		sourceType, firstNonEmpty(service.GitRepo, service.Image), service.Image,
 		"", service.Command, service.Type, service.Status, service.Image, service.Command,
@@ -470,6 +499,7 @@ func handleCreateService(c *gin.Context) {
 		volumesJSON, service.Builder, service.CPUReserve, service.MemoryReserve,
 		service.StaticBuildCmd, service.StaticDir,
 		sql.NullString{String: service.NodeID, Valid: service.NodeID != ""},
+		service.Spread,
 		service.CreatedAt, service.UpdatedAt,
 	)
 
@@ -772,8 +802,18 @@ func handleUpdateService(c *gin.Context) {
 		volumesArg = volumesJSON
 	}
 
+	if req.Spread != nil {
+		existingService.Spread = *req.Spread
+	} else {
+		existingService.Spread = serviceSpread(db.(*database.DB), serviceID)
+	}
 	if req.NodeID != nil {
-		nodeID, nodeErr := resolveNodePin(c.Request.Context(), db.(*database.DB), *req.NodeID)
+		nodeValue := strings.TrimSpace(*req.NodeID)
+		if existingService.Spread && nodeValue != "" && nodeValue != "auto" && nodeValue != "local" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "spread and an explicit node pin are mutually exclusive — set spread=false first", "code": "VALIDATION"})
+			return
+		}
+		nodeID, nodeErr := resolveNodePin(c.Request.Context(), db.(*database.DB), nodeValue)
 		if nodeErr != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": nodeErr.Error(), "code": "VALIDATION"})
 			return
@@ -781,6 +821,10 @@ func handleUpdateService(c *gin.Context) {
 		existingService.NodeID = nodeID
 	} else {
 		existingService.NodeID = serviceNodeID(db.(*database.DB), serviceID)
+	}
+	if existingService.Spread && existingService.NodeID != "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "service already has an explicit node pin — clear it (node_id=\"local\") before enabling spread", "code": "VALIDATION"})
+		return
 	}
 
 	existingService.UpdatedAt = time.Now()
@@ -794,7 +838,7 @@ func handleUpdateService(c *gin.Context) {
 				restart_policy = $15, volumes = COALESCE($17::jsonb, volumes), updated_at = $16,
 				builder = $19, cpu_reserve = $20, memory_reserve = $21,
 				static_build_cmd = $22, static_dir = $23,
-				sleep_enabled = $24, sleep_idle_minutes = $25, node_id = $26
+				sleep_enabled = $24, sleep_idle_minutes = $25, node_id = $26, spread = $27
 			WHERE id = $18`,
 		existingService.Name, existingService.Type, existingService.Image, existingService.Command,
 		existingService.Environment, existingService.GitRepo, existingService.GitBranch,
@@ -806,6 +850,7 @@ func handleUpdateService(c *gin.Context) {
 		existingService.StaticBuildCmd, existingService.StaticDir,
 		existingService.SleepEnabled, existingService.SleepIdleMinutes,
 		sql.NullString{String: existingService.NodeID, Valid: existingService.NodeID != ""},
+		existingService.Spread,
 	)
 
 	if err != nil {

@@ -57,6 +57,9 @@ type RuntimeSpec struct {
 	BasicAuthUsers string        // htpasswd-format user:hash pairs, comma-separated
 	// NodeID pins the service to a node agent; "" runs on the local host.
 	NodeID string
+	// Spread distributes replicas across all online, schedulable agents
+	// instead of a single node. Mutually exclusive with NodeID.
+	Spread bool
 }
 
 // RuntimeContainer describes one live replica.
@@ -156,6 +159,12 @@ func (de *DeploymentEngine) ListServiceContainers(ctx context.Context, serviceID
 // otherwise only the replica delta is applied. A pinned NodeID routes the
 // whole reconcile to that agent's command queue instead of local Docker.
 func (de *DeploymentEngine) ReconcileService(ctx context.Context, spec RuntimeSpec) (*RuntimeState, error) {
+	if spec.Spread && spec.NodeID == "" {
+		if de.nodeRunner == nil {
+			return nil, fmt.Errorf("service has spread placement but remote dispatch is unavailable")
+		}
+		return de.nodeRunner.ReconcileSpread(ctx, spec)
+	}
 	if spec.NodeID != "" {
 		if de.nodeRunner == nil {
 			return nil, fmt.Errorf("service is pinned to node %s but remote dispatch is unavailable", spec.NodeID)
@@ -524,6 +533,15 @@ func (de *DeploymentEngine) RemoveServiceContainersOnNode(ctx context.Context, s
 		return fmt.Errorf("remote node control is not configured")
 	}
 	return de.nodeRunner.RemoveService(ctx, serviceID, nodeID)
+}
+
+// RemoteRuntimeState exposes inventory-backed remote container state; nil
+// runner means no node support was wired at boot.
+func (de *DeploymentEngine) RemoteRuntimeState(ctx context.Context, serviceID string) (*RuntimeState, error) {
+	if de.nodeRunner == nil {
+		return nil, nil
+	}
+	return de.nodeRunner.RemoteRuntimeState(ctx, serviceID)
 }
 
 // RemoveProjectContainers deletes every managed container in a project.

@@ -67,7 +67,8 @@ CREATE TABLE services (
     memory_reserve VARCHAR(20) NOT NULL DEFAULT '',
     static_build_cmd VARCHAR(255) NOT NULL DEFAULT '',
     static_dir VARCHAR(255) NOT NULL DEFAULT '',
-    node_id VARCHAR(255)
+    node_id VARCHAR(255),
+    spread BOOLEAN NOT NULL DEFAULT false
 );
 
 CREATE TABLE registries (

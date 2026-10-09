@@ -143,6 +143,15 @@ containr services update <id> --node auto    # least-loaded online node
 containr services update <id> --node local   # move back to this server
 ```
 
+`auto` scores nodes by real headroom — lowest memory utilisation, then
+cpu, then container count. Or spread replicas across every online,
+schedulable node (mutually exclusive with a pin):
+
+```bash
+containr services update <id> --replicas 4 --spread    # replica i → node[i % n]
+containr services update <id> --spread=false           # back to single placement
+```
+
 Remote nodes run registry-pulled images only — git builds, domains
 (Traefik lives on the host), and sleep detection stay local. Start,
 stop, restart, redeploy, and delete all fan out to the pinned node's

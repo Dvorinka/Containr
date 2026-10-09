@@ -114,6 +114,9 @@ var servicesCreateCmd = &cobra.Command{
 		if v, _ := cmd.Flags().GetInt("replicas"); v > 0 {
 			body["replicas"] = v
 		}
+		if v, _ := cmd.Flags().GetBool("spread"); v {
+			body["spread"] = v
+		}
 		data, err := c.Do("POST", "/projects/"+args[0]+"/services", body)
 		if err != nil {
 			return err
@@ -202,6 +205,10 @@ var servicesUpdateCmd = &cobra.Command{
 		if cmd.Flags().Changed("sleep") {
 			v, _ := cmd.Flags().GetBool("sleep")
 			body["sleep_enabled"] = v
+		}
+		if cmd.Flags().Changed("spread") {
+			v, _ := cmd.Flags().GetBool("spread")
+			body["spread"] = v
 		}
 		if cmd.Flags().Changed("sleep-idle") {
 			v, _ := cmd.Flags().GetInt("sleep-idle")
@@ -495,6 +502,7 @@ func init() {
 	f.String("static-cmd", "", "build command for the static builder")
 	f.String("static-dir", "", "output dir for the static builder (default dist)")
 	f.String("node", "", "pin to a node agent id, or 'auto' for least-loaded (image services only)")
+	f.Bool("spread", false, "distribute replicas across all online schedulable nodes")
 
 	uf := servicesUpdateCmd.Flags()
 	uf.String("name", "", "service name")
@@ -520,6 +528,7 @@ func init() {
 	uf.Bool("sleep", false, "enable scale-to-zero on idle (sleep mode)")
 	uf.Int("sleep-idle", 0, "idle minutes before sleeping (1-1440)")
 	uf.String("node", "", "pin to a node agent id, 'auto' for least-loaded, 'local' to clear")
+	uf.Bool("spread", false, "spread replicas across all online schedulable nodes (--spread=false to disable)")
 
 	for _, a := range []string{"start", "stop", "restart", "redeploy", "sleep", "wake"} {
 		verb := a

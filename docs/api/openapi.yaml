@@ -6974,6 +6974,9 @@ components:
         node_name:
           type: string
           description: Display name of the pinned node agent (read-only)
+        spread:
+          type: boolean
+          description: Replicas are distributed across every online, schedulable node agent (replica i → agents[i mod n]). Mutually exclusive with an explicit node_id pin.
         public_url:
           type: string
           description: Computed public URL (published port or domain)
@@ -7068,6 +7071,9 @@ components:
         node_id:
           type: string
           description: Node agent id to pin to, 'auto' = least-loaded online agent; omit/empty = local host
+        spread:
+          type: boolean
+          description: Distribute replicas across every online, schedulable node agent; mutually exclusive with an explicit node_id pin
 
     UpdateServiceRequest:
       type: object
@@ -7157,6 +7163,9 @@ components:
         node_id:
           type: string
           description: Node agent id to pin to, 'auto' = least-loaded online agent, 'local' = run on the Containr host (clears the pin)
+        spread:
+          type: boolean
+          description: Distribute replicas across every online, schedulable node agent; mutually exclusive with an explicit node_id pin — send 'local' first to clear a pin
 
     ServiceDomain:
       type: object

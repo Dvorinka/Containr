@@ -2404,10 +2404,12 @@ export function ServiceDetailPage() {
                 </div>
                 <div className="flex items-center gap-3 text-xs">
                   <select
-                    value={nodeDraft ?? (service.nodeId || 'local')}
+                    value={service.spread ? '__spread__' : (nodeDraft ?? (service.nodeId || 'local'))}
+                    disabled={service.spread}
                     onChange={(e) => setNodeDraft(e.target.value)}
-                    className="px-2 py-1.5 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)]"
+                    className="px-2 py-1.5 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)] disabled:opacity-50"
                   >
+                    {service.spread && <option value="__spread__">All nodes (spread)</option>}
                     <option value="local">This server (local Docker)</option>
                     <option value="auto">Auto — least-loaded online node</option>
                     {(nodesQuery.data ?? []).map((n) => (
@@ -2416,6 +2418,17 @@ export function ServiceDetailPage() {
                       </option>
                     ))}
                   </select>
+                  <label className="flex items-center gap-1.5 text-[var(--text-secondary)]">
+                    <input
+                      type="checkbox"
+                      checked={service.spread ?? false}
+                      disabled={updateServiceMutation.isPending || (!!service.nodeId && !service.spread)}
+                      title={service.nodeId && !service.spread ? 'Clear the node pin first (choose "This server")' : undefined}
+                      onChange={(e) => updateServiceMutation.mutate({ spread: e.target.checked })}
+                      className="accent-[var(--accent-primary)]"
+                    />
+                    spread replicas across nodes
+                  </label>
                   {nodeDraft !== null && (
                     <>
                       <button

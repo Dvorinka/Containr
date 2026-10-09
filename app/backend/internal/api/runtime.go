@@ -18,13 +18,37 @@ import (
 	"github.com/google/uuid"
 )
 
-// serviceLifecycle routes a start/stop/restart action to the node agent when
-// the service is pinned, or to the local Docker engine otherwise. Remote
-// actions block on the agent's poll loop; that matches the synchronous
-// behavior the local path already has.
+// remoteAgentsForService lists every agent holding inventory rows for the
+// service — covers pinned placements, spread replicas, and leftovers from a
+// since-cleared pin.
+func remoteAgentsForService(ctx context.Context, db *database.DB, serviceID uuid.UUID) []string {
+	rows, err := db.Query(
+		`SELECT DISTINCT node_agent_id FROM container_instances WHERE service_id = $1`,
+		serviceID,
+	)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if rows.Scan(&id) == nil && id != "" {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+// serviceLifecycle routes a start/stop/restart action to every agent holding
+// the service's replicas, then to the local Docker engine. Both run — a
+// service can't be pinned and local at once, but stale containers from a
+// cleared pin shouldn't survive a stop.
 func serviceLifecycle(ctx context.Context, db *database.DB, engine *deployment.DeploymentEngine, serviceID uuid.UUID, action string) error {
-	if nodeID := serviceNodeID(db, serviceID); nodeID != "" {
-		return engine.ControlServiceOnNode(ctx, serviceID.String(), nodeID, action)
+	for _, agentID := range remoteAgentsForService(ctx, db, serviceID) {
+		if err := engine.ControlServiceOnNode(ctx, serviceID.String(), agentID, action); err != nil {
+			return err
+		}
 	}
 	switch action {
 	case "start":
@@ -40,12 +64,11 @@ func serviceLifecycle(ctx context.Context, db *database.DB, engine *deployment.D
 	return fmt.Errorf("unsupported lifecycle action %q", action)
 }
 
-// removeServiceRuntime tears down replicas wherever they run — remote node
-// when pinned, local Docker otherwise.
+// removeServiceRuntime tears down replicas wherever they run — remote nodes
+// (pinned or spread) and the local Docker host.
 func removeServiceRuntime(ctx context.Context, db *database.DB, engine *deployment.DeploymentEngine, serviceID uuid.UUID) {
-	if nodeID := serviceNodeID(db, serviceID); nodeID != "" {
-		_ = engine.RemoveServiceContainersOnNode(ctx, serviceID.String(), nodeID)
-		return
+	for _, agentID := range remoteAgentsForService(ctx, db, serviceID) {
+		_ = engine.RemoveServiceContainersOnNode(ctx, serviceID.String(), agentID)
 	}
 	_ = engine.RemoveServiceContainers(ctx, serviceID.String())
 }
@@ -70,6 +93,7 @@ func serviceRuntimeSpec(db *database.DB, service Service) (deployment.RuntimeSpe
 		HealthPath:    service.HealthCheckPath,
 		RestartPolicy: service.RestartPolicy,
 		NodeID:        serviceNodeID(db, service.ID),
+		Spread:        serviceSpread(db, service.ID),
 	}
 	// Best effort: reuse the host port from the last live deployment so the
 	// public URL survives restarts. Column exists post-migration; older DBs
@@ -374,6 +398,7 @@ func handleGetServiceRuntime(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	mergeRemoteRuntime(c.Request.Context(), engine, service.ID.String(), state)
 	engine.ProbeServiceHealth(c.Request.Context(), state, service.ProjectID.String(), service.Name, service.Port, service.HealthCheckPath)
 	persistPublishedPort(db, service.ID, state.Ports)
 	if host := requestHostname(c); host != "" {
@@ -564,6 +589,37 @@ func enqueueServiceRedeploy(c *gin.Context, db *database.DB, service Service) bo
 	return true
 }
 
+// mergeRemoteRuntime folds inventory-backed remote replica state into a
+// local runtime view so pinned and spread services report their containers.
+// Remote rows carry deterministic UUIDs, local ones Docker IDs — no overlap.
+func mergeRemoteRuntime(ctx context.Context, engine *deployment.DeploymentEngine, serviceID string, state *deployment.RuntimeState) {
+	remote, err := engine.RemoteRuntimeState(ctx, serviceID)
+	if err != nil || remote == nil {
+		return
+	}
+	running := 0
+	for _, c := range state.Containers {
+		if c.State == "running" {
+			running++
+		}
+	}
+	for _, rc := range remote.Containers {
+		state.Containers = append(state.Containers, rc)
+		if rc.State == "running" {
+			running++
+		}
+	}
+	switch {
+	case len(state.Containers) == 0:
+	case running == 0:
+		state.Status = "stopped"
+	case running < state.Desired:
+		state.Status = "degraded"
+	default:
+		state.Status = "running"
+	}
+}
+
 // persistPublishedPort records the host port Docker actually bound so later
 // redeploys can reuse it. Idempotent — only writes when the value changed.
 func persistPublishedPort(db *database.DB, serviceID uuid.UUID, ports []uint16) {
@@ -587,7 +643,11 @@ func liveServiceStatus(c *gin.Context, db *database.DB, service *Service) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 3*time.Second)
 	defer cancel()
 	state, err := engine.RuntimeState(ctx, service.ID.String(), service.Replicas)
-	if err != nil || state == nil || len(state.Containers) == 0 {
+	if err != nil || state == nil {
+		return
+	}
+	mergeRemoteRuntime(ctx, engine, service.ID.String(), state)
+	if len(state.Containers) == 0 {
 		return
 	}
 	if state.Status != service.Status {

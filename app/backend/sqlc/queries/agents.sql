@@ -116,6 +116,8 @@ WHERE node_agent_id = $1 AND type = $2
 ORDER BY created_at DESC LIMIT 1;
 
 -- name: PickLeastLoadedAgent :one
+-- Resource-aware: lowest memory utilisation first, then cpu, then container
+-- count. Agents without telemetry sort last (NULL → worst score).
 SELECT a.id FROM node_agents a
 LEFT JOIN LATERAL (
     SELECT h.container_count FROM agent_heartbeats h
@@ -123,8 +125,25 @@ LEFT JOIN LATERAL (
     ORDER BY h.timestamp DESC LIMIT 1
 ) h ON true
 WHERE a.status = 'online' AND a.schedulable
-ORDER BY COALESCE(h.container_count, 0) ASC, a.created_at ASC
+ORDER BY
+    COALESCE(
+        (a.resources->'memory'->>'used')::double precision
+        / NULLIF((a.resources->'memory'->>'total')::double precision, 0),
+        1.0
+    ) ASC,
+    COALESCE((a.resources->'cpu'->>'usage')::double precision, 100.0) ASC,
+    COALESCE(h.container_count, 0) ASC,
+    a.created_at ASC
 LIMIT 1;
+
+-- name: ListSchedulableAgents :many
+SELECT id, name FROM node_agents
+WHERE status = 'online' AND schedulable
+ORDER BY id;
+
+-- name: ListServiceContainers :many
+SELECT id, name, node_agent_id, status FROM container_instances
+WHERE service_id = $1;
 
 -- name: SetAgentSchedulable :exec
 UPDATE node_agents SET schedulable = $2, updated_at = NOW() WHERE id = $1;
