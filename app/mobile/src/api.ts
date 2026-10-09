@@ -68,6 +68,36 @@ export interface Template {
   icon?: string;
 }
 
+export interface Variable {
+  id?: string;
+  key: string;
+  value: string;
+  is_secret: boolean;
+}
+
+export interface ServiceDomain {
+  id: string;
+  domain: string;
+  is_default: boolean;
+  cert_type?: string;
+  cert_status?: string;
+}
+
+export interface AppNotification {
+  id: string;
+  kind: string;
+  title: string;
+  body?: string;
+  resource_type?: string;
+  resource_id?: string;
+  read_at?: string | null;
+  created_at?: string;
+}
+
+// Masked value the API returns for secret variables; echoing it back on
+// update preserves the stored ciphertext.
+export const MASKED_SECRET = '********';
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -143,6 +173,69 @@ export class Api {
 
   envCheck(id: string) {
     return this.req<EnvCheck>('GET', `/services/${id}/env-check`);
+  }
+
+  serviceVariables(id: string) {
+    return this.req<{ variables: Variable[] }>('GET', `/services/${id}/variables`).then(
+      (r) => r.variables ?? [],
+    );
+  }
+
+  updateVariables(id: string, variables: { key: string; value: string; is_secret: boolean }[]) {
+    return this.req<unknown>('PUT', `/services/${id}/variables`, { variables });
+  }
+
+  serviceDomains(id: string) {
+    return this.req<{ domains: ServiceDomain[] }>('GET', `/services/${id}/domains`).then(
+      (r) => r.domains ?? [],
+    );
+  }
+
+  addDomain(id: string, domain: string) {
+    return this.req<unknown>('POST', `/services/${id}/domains`, { domain });
+  }
+
+  deleteDomain(id: string, domainId: string) {
+    return this.req<unknown>('DELETE', `/services/${id}/domains/${domainId}`);
+  }
+
+  setDefaultDomain(id: string, domainId: string) {
+    return this.req<unknown>('POST', `/services/${id}/domains/${domainId}/default`);
+  }
+
+  updateService(
+    id: string,
+    patch: Partial<{
+      name: string;
+      command: string;
+      replicas: number;
+      port: number;
+      domain: string;
+      restart_policy: string;
+      healthcheck_path: string;
+      cpu: string;
+      memory: string;
+      sleep_enabled: boolean;
+      sleep_idle_minutes: number;
+      maintenance_mode: boolean;
+    }>,
+  ) {
+    return this.req<unknown>('PUT', `/services/${id}`, patch);
+  }
+
+  notifications() {
+    return this.req<{ notifications: AppNotification[]; unread: number }>(
+      'GET',
+      '/notifications?limit=50',
+    );
+  }
+
+  markNotificationRead(id: string) {
+    return this.req<unknown>('POST', `/notifications/${id}/read`);
+  }
+
+  markAllNotificationsRead() {
+    return this.req<unknown>('POST', '/notifications/read-all');
   }
 
   serviceDeployments(id: string) {
