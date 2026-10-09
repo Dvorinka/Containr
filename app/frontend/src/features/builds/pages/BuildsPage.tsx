@@ -102,7 +102,7 @@ export function BuildsPage() {
       listBuilds({
         projectId: projectFilter || undefined,
         serviceId: serviceFilter || undefined,
-        status: statusFilter || undefined,
+        status: (statusFilter || undefined) as BuildStatus | undefined,
         page: 1,
         limit,
       }),

@@ -59,10 +59,13 @@ function accessorOf<T>(config: FilterConfig<T>): (item: T) => unknown {
 }
 
 export class FilterEngine<T> {
-  constructor(
-    private data: T[],
-    private schema: FilterConfig<T>[],
-  ) {}
+  private data: T[];
+  private schema: FilterConfig<T>[];
+
+  constructor(data: T[], schema: FilterConfig<T>[]) {
+    this.data = data;
+    this.schema = schema;
+  }
 
   /** Fill in option lists (with counts) for configs that didn't declare them. */
   options(): FilterConfig<T>[] {
