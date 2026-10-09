@@ -310,7 +310,11 @@ and wired refs, one click or one CLI call.
   `POST /auth/accept-invite` registers — works while public signup is
   closed. `/auth/accept-invite` page, admin manage/revoke UI,
   `containr invites` CLI + MCP tools.
-- [ ] **Impersonate user** — admin support tool, audit-logged.
+- [x] **Impersonate user** — `POST /admin/users/:id/impersonate`
+  mints a 15-minute bearer token (`impersonated_by` claim),
+  audit-logged; admin accounts are not impersonatable. CLI
+  `admin impersonate`, MCP tool, admin UI token modal. Remaining:
+  in-browser session swap needs a session bridge.
 - [ ] **GitHub App manifest flow** — `POST /git/github-app/manifest`
   returns manifest + redirect; instance self-provisions its App
   (dflow pattern — removes the env-setup barrier).

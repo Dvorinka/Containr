@@ -2622,6 +2622,18 @@ export async function listAdminUsers(): Promise<AdminUser[]> {
   return payload.users ?? [];
 }
 
+export type ImpersonationResult = {
+  token: string;
+  expires_at: string;
+  user: { id: string; email: string; name: string };
+};
+
+export async function impersonateUser(userId: string): Promise<ImpersonationResult> {
+  return requestJson<ImpersonationResult>(`/admin/users/${encodeURIComponent(userId)}/impersonate`, {
+    method: 'POST',
+  });
+}
+
 export async function setUserAdmin(userId: string, isAdmin: boolean): Promise<void> {
   await requestJson(`/admin/users/${encodeURIComponent(userId)}`, {
     method: 'PATCH',

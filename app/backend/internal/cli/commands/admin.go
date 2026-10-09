@@ -56,6 +56,25 @@ var adminUsersCmd = &cobra.Command{
 	},
 }
 
+var adminImpersonateCmd = &cobra.Command{
+	Use:   "impersonate <user-id>",
+	Short: "Mint a 15-minute token acting as a user (audit-logged)",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := client()
+		if err != nil {
+			return err
+		}
+		data, err := c.Do("POST", "/admin/users/"+args[0]+"/impersonate", map[string]interface{}{})
+		if err != nil {
+			return err
+		}
+		PrintRaw(data)
+		fmt.Fprintln(cmd.ErrOrStderr(), "\nUse it with: CONTAINR_TOKEN=<token> containr <command>")
+		return nil
+	},
+}
+
 var adminSettingsCmd = &cobra.Command{
 	Use:   "settings",
 	Short: "Show platform settings",
@@ -353,7 +372,7 @@ func init() {
 	securityScanCmd.Flags().String("type", "configuration", "dependency|configuration|comprehensive")
 	securityScanCmd.Flags().String("service", "", "limit scan to one service")
 
-	AdminCmd.AddCommand(adminOverviewCmd, adminUsersCmd, adminSettingsCmd, adminAuditCmd)
+	AdminCmd.AddCommand(adminOverviewCmd, adminUsersCmd, adminSettingsCmd, adminAuditCmd, adminImpersonateCmd)
 	GatewayCmd.AddCommand(gatewayServicesCmd, gatewayKeysCmd, gatewayAnalyticsCmd)
 	HACmd.AddCommand(haStatusCmd, haAlertsCmd, haHealthCmd, haPoliciesCmd, haEnableCmd, haDisableCmd, haFailoverCmd)
 	ScalingCmd.AddCommand(scalingStatusCmd, scalingPoliciesCmd, scalingServicesCmd, scalingScaleCmd)

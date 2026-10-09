@@ -477,6 +477,7 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			admin.GET("/admin/overview", handleAdminOverview)
 			admin.GET("/admin/users", handleAdminListUsers)
 			admin.PATCH("/admin/users/:id", handleAdminSetUserAdmin)
+			admin.POST("/admin/users/:id/impersonate", handleAdminImpersonateUser)
 			admin.PATCH("/admin/projects/:id", handleAdminSetProjectApproval)
 
 			admin.POST("/users", handleCreateUser)

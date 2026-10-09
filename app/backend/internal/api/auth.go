@@ -546,6 +546,19 @@ func generateJWT(userID, email, secret string) (string, error) {
 	return token.SignedString([]byte(secret))
 }
 
+// generateImpersonationJWT mints a short-lived token acting as `userID`,
+// tagged with the admin who minted it so downstream callers can attribute
+// actions taken while impersonating.
+func generateImpersonationJWT(userID, email, actorID, secret string, expiresAt time.Time) (string, error) {
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"user_id":         userID,
+		"email":           email,
+		"impersonated_by": actorID,
+		"exp":             expiresAt.Unix(),
+	})
+	return token.SignedString([]byte(secret))
+}
+
 // ValidateJWT validates a JWT token and returns the claims
 func ValidateJWT(tokenString, secret string) (jwt.MapClaims, error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {

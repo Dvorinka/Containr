@@ -2717,6 +2717,63 @@ export interface paths {
         };
         trace?: never;
     };
+    "/admin/users/{id}/impersonate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impersonate a user
+         * @description Mint a 15-minute bearer token acting as the target user. Admin-only; admin accounts cannot be impersonated and every mint is audit-logged. The token carries an `impersonated_by` claim.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Impersonation token */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            token?: string;
+                            /** Format: date-time */
+                            expires_at?: string;
+                            user?: {
+                                id?: string;
+                                email?: string;
+                                name?: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Target is an admin account */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/projects/{id}": {
         parameters: {
             query?: never;

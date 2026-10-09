@@ -246,6 +246,57 @@ func handleAdminSetUserAdmin(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "User updated"})
 }
 
+// POST /admin/users/:id/impersonate — mints a 15-minute bearer token acting
+// as the target user. Admin-only; admin accounts cannot be impersonated
+// (would blur audit attribution). Every use is audit-logged at mint time;
+// token carries `impersonated_by` for downstream attribution.
+func handleAdminImpersonateUser(c *gin.Context) {
+	db := c.MustGet("db").(*database.DB)
+	targetID := strings.TrimSpace(c.Param("id"))
+	if _, err := uuid.Parse(targetID); err != nil {
+		respondError(c, http.StatusBadRequest, "INVALID_ID", "invalid user id")
+		return
+	}
+
+	var email, name string
+	var isAdmin bool
+	err := db.QueryRowContext(c.Request.Context(),
+		`SELECT email, COALESCE(name, ''), is_admin FROM users WHERE id = $1`, targetID).
+		Scan(&email, &name, &isAdmin)
+	if err != nil {
+		respondError(c, http.StatusNotFound, "NOT_FOUND", "user not found")
+		return
+	}
+	if isAdmin {
+		respondError(c, http.StatusForbidden, "FORBIDDEN", "admin accounts cannot be impersonated")
+		return
+	}
+	actorID := optionalUserID(c)
+	if actorID == targetID {
+		respondError(c, http.StatusBadRequest, "VALIDATION", "cannot impersonate yourself")
+		return
+	}
+
+	expiresAt := time.Now().UTC().Add(15 * time.Minute)
+	jwtSecret := c.MustGet("jwt_secret").(string)
+	token, err := generateImpersonationJWT(targetID, email, actorID, jwtSecret, expiresAt)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, "INTERNAL", "failed to generate token")
+		return
+	}
+
+	LogAuditWithRequest(c, "user", targetID, "impersonate", map[string]interface{}{
+		"actor_id":    actorID,
+		"target_email": email,
+		"expires_at":  expiresAt.Format(time.RFC3339),
+	})
+	c.JSON(http.StatusOK, gin.H{
+		"token":      token,
+		"expires_at": expiresAt.Format(time.RFC3339),
+		"user":       gin.H{"id": targetID, "email": email, "name": name},
+	})
+}
+
 func handleAdminSetProjectApproval(c *gin.Context) {
 	db := c.MustGet("db").(*database.DB)
 	queries := sqlcdb.New(db.DB)

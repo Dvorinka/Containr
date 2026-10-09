@@ -1791,6 +1791,45 @@ paths:
                   message:
                     type: string
 
+  /admin/users/{id}/impersonate:
+    post:
+      tags:
+        - Admin
+      summary: Impersonate a user
+      description: >-
+        Mint a 15-minute bearer token acting as the target user. Admin-only;
+        admin accounts cannot be impersonated and every mint is audit-logged.
+        The token carries an `impersonated_by` claim.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Impersonation token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  expires_at:
+                    type: string
+                    format: date-time
+                  user:
+                    type: object
+                    properties:
+                      id: {type: string}
+                      email: {type: string}
+                      name: {type: string}
+        '403':
+          description: Target is an admin account
+
   /admin/projects/{id}:
     patch:
       tags:
