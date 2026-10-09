@@ -12,6 +12,17 @@ import (
 	"github.com/google/uuid"
 )
 
+const countEnvironmentServices = `-- name: CountEnvironmentServices :one
+SELECT COUNT(*) FROM services WHERE environment_id = $1
+`
+
+func (q *Queries) CountEnvironmentServices(ctx context.Context, environmentID uuid.UUID) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countEnvironmentServices, environmentID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countProjectsByUser = `-- name: CountProjectsByUser :one
 SELECT COUNT(*)::bigint AS total
 FROM projects p
@@ -86,6 +97,20 @@ func (q *Queries) DeleteProjectByID(ctx context.Context, projectID uuid.UUID) (i
 	return result.RowsAffected()
 }
 
+const deleteProjectEnvironment = `-- name: DeleteProjectEnvironment :exec
+DELETE FROM environments WHERE id = $1 AND project_id = $2
+`
+
+type DeleteProjectEnvironmentParams struct {
+	ID        uuid.UUID `json:"id"`
+	ProjectID uuid.UUID `json:"project_id"`
+}
+
+func (q *Queries) DeleteProjectEnvironment(ctx context.Context, arg DeleteProjectEnvironmentParams) error {
+	_, err := q.db.ExecContext(ctx, deleteProjectEnvironment, arg.ID, arg.ProjectID)
+	return err
+}
+
 const getProjectByIDForUser = `-- name: GetProjectByIDForUser :one
 SELECT p.id, p.name, p.description, p.owner_id, p.is_approved, p.created_at, p.updated_at
 FROM projects p
@@ -117,6 +142,30 @@ func (q *Queries) GetProjectByIDForUser(ctx context.Context, arg GetProjectByIDF
 		&i.Description,
 		&i.OwnerID,
 		&i.IsApproved,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getProjectEnvironmentByName = `-- name: GetProjectEnvironmentByName :one
+SELECT id, name, project_id, created_at, updated_at
+FROM environments
+WHERE project_id = $1 AND name = $2
+`
+
+type GetProjectEnvironmentByNameParams struct {
+	ProjectID uuid.UUID `json:"project_id"`
+	Name      string    `json:"name"`
+}
+
+func (q *Queries) GetProjectEnvironmentByName(ctx context.Context, arg GetProjectEnvironmentByNameParams) (Environment, error) {
+	row := q.db.QueryRowContext(ctx, getProjectEnvironmentByName, arg.ProjectID, arg.Name)
+	var i Environment
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.ProjectID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -198,6 +247,53 @@ func (q *Queries) ListPendingProjects(ctx context.Context) ([]Project, error) {
 			&i.IsApproved,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listProjectEnvironments = `-- name: ListProjectEnvironments :many
+SELECT e.id, e.name, e.project_id, e.created_at, e.updated_at,
+       (SELECT COUNT(*) FROM services s WHERE s.environment_id = e.id) AS service_count
+FROM environments e
+WHERE e.project_id = $1
+ORDER BY e.created_at
+`
+
+type ListProjectEnvironmentsRow struct {
+	ID           uuid.UUID    `json:"id"`
+	Name         string       `json:"name"`
+	ProjectID    uuid.UUID    `json:"project_id"`
+	CreatedAt    sql.NullTime `json:"created_at"`
+	UpdatedAt    sql.NullTime `json:"updated_at"`
+	ServiceCount int64        `json:"service_count"`
+}
+
+func (q *Queries) ListProjectEnvironments(ctx context.Context, projectID uuid.UUID) ([]ListProjectEnvironmentsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listProjectEnvironments, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListProjectEnvironmentsRow{}
+	for rows.Next() {
+		var i ListProjectEnvironmentsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.ProjectID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ServiceCount,
 		); err != nil {
 			return nil, err
 		}

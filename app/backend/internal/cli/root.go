@@ -95,6 +95,7 @@ func init() {
 	rootCmd.AddCommand(commands.InvitesCmd)
 	rootCmd.AddCommand(commands.UpCmd)
 	rootCmd.AddCommand(commands.MigrateCmd)
+	rootCmd.AddCommand(commands.EnvironmentsCmd)
 }
 
 func initConfig() {

@@ -17,6 +17,7 @@ type Querier interface {
 	CompleteCommand(ctx context.Context, arg CompleteCommandParams) (AgentCommand, error)
 	CountDatabaseServicesByUserAndName(ctx context.Context, arg CountDatabaseServicesByUserAndNameParams) (int64, error)
 	CountDatabasesUsingBackupTarget(ctx context.Context, targetID sql.NullString) (int64, error)
+	CountEnvironmentServices(ctx context.Context, environmentID uuid.UUID) (int64, error)
 	CountProjectsByUser(ctx context.Context, arg CountProjectsByUserParams) (int64, error)
 	CountServicesByProjectAndName(ctx context.Context, arg CountServicesByProjectAndNameParams) (int64, error)
 	CountUnreadNotificationsByUser(ctx context.Context, userID uuid.UUID) (int64, error)
@@ -45,6 +46,7 @@ type Querier interface {
 	DeleteDatabaseServiceByIDAndUser(ctx context.Context, arg DeleteDatabaseServiceByIDAndUserParams) error
 	DeleteOutboundWebhookByIDAndUser(ctx context.Context, arg DeleteOutboundWebhookByIDAndUserParams) error
 	DeleteProjectByID(ctx context.Context, projectID uuid.UUID) (int64, error)
+	DeleteProjectEnvironment(ctx context.Context, arg DeleteProjectEnvironmentParams) error
 	DeleteServiceContainersOnAgent(ctx context.Context, arg DeleteServiceContainersOnAgentParams) error
 	DeleteUserInvite(ctx context.Context, id uuid.UUID) error
 	DeleteUserTemplate(ctx context.Context, arg DeleteUserTemplateParams) (int64, error)
@@ -65,6 +67,7 @@ type Querier interface {
 	GetOutboundWebhookByID(ctx context.Context, id uuid.UUID) (OutboundWebhook, error)
 	GetOutboundWebhookByIDAndUser(ctx context.Context, arg GetOutboundWebhookByIDAndUserParams) (OutboundWebhook, error)
 	GetProjectByIDForUser(ctx context.Context, arg GetProjectByIDForUserParams) (Project, error)
+	GetProjectEnvironmentByName(ctx context.Context, arg GetProjectEnvironmentByNameParams) (Environment, error)
 	GetProjectOwnerByID(ctx context.Context, projectID uuid.UUID) (uuid.UUID, error)
 	GetProjectOwnerID(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	GetProjectRoleForUser(ctx context.Context, arg GetProjectRoleForUserParams) (string, error)
@@ -91,6 +94,7 @@ type Querier interface {
 	ListOutboundWebhooksByUser(ctx context.Context, userID uuid.UUID) ([]OutboundWebhook, error)
 	ListPendingCommands(ctx context.Context, nodeAgentID string) ([]AgentCommand, error)
 	ListPendingProjects(ctx context.Context) ([]Project, error)
+	ListProjectEnvironments(ctx context.Context, projectID uuid.UUID) ([]ListProjectEnvironmentsRow, error)
 	// Visibility model: a project is readable when it is approved for public
 	// display, when the caller owns or is a member of it, or when the caller is a
 	// platform admin. Anonymous callers pass user_id = uuid.Nil, is_admin = false.

@@ -5939,6 +5939,82 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  # Environments
+  /projects/{id}/environments:
+    get:
+      tags:
+        - Environments
+      summary: List project environments
+      description: Returns each environment lane with a live service count — the data behind the environment switcher.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProjectIdParam'
+      responses:
+        '200':
+          description: Project environments
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  environments:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ProjectEnvironment'
+    post:
+      tags:
+        - Environments
+      summary: Create an environment
+      description: Adds a named environment lane. Names are lowercase alphanumeric with dashes, 1-50 chars, unique per project.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProjectIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+      responses:
+        '201':
+          description: Created environment
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  environment:
+                    $ref: '#/components/schemas/ProjectEnvironment'
+        '409':
+          description: Environment already exists
+
+  /environments/{id}:
+    delete:
+      tags:
+        - Environments
+      summary: Delete an empty environment
+      description: Removes an environment lane; fails with 409 while it still holds services.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Environment deleted
+        '409':
+          description: Environment still contains services
+
   # Preview environments
   /projects/{id}/preview-environments:
     get:
@@ -9551,6 +9627,26 @@ components:
           type: object
         health_check:
           type: object
+
+    ProjectEnvironment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        project_id:
+          type: string
+          format: uuid
+        service_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
 
     PreviewEnvironment:
       type: object

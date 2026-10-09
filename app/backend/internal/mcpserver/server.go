@@ -50,6 +50,11 @@ func init() {
 	register(spec{"containr_projects_create", "Create a project. Args: name (required), description.", "POST", "/projects", nil, []string{"name", "description"}, false})
 	register(spec{"containr_projects_delete", "Delete a project and all its services. Requires confirm:true.", "DELETE", "/projects/{id}", []string{"id"}, nil, true})
 
+	// Environments
+	register(spec{"containr_environments_list", "List environments in a project with service counts", "GET", "/projects/{id}/environments", []string{"id"}, nil, false})
+	register(spec{"containr_environments_create", "Create an environment. Args: name (required — lowercase alphanumeric with dashes, 1-50 chars).", "POST", "/projects/{id}/environments", []string{"id"}, []string{"name"}, false})
+	register(spec{"containr_environments_delete", "Delete an empty environment. Requires confirm:true.", "DELETE", "/environments/{id}", []string{"id"}, nil, true})
+
 	// Services
 	register(spec{"containr_services_list", "List services in a project", "GET", "/projects/{project_id}/services", []string{"project_id"}, nil, false})
 	register(spec{"containr_services_get", "Get a service by id", "GET", "/services/{id}", []string{"id"}, nil, false})

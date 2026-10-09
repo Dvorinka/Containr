@@ -125,3 +125,21 @@ SELECT p.id, p.name, p.description, p.owner_id, p.is_approved, p.created_at, p.u
 FROM projects p
 WHERE p.is_approved = false
 ORDER BY p.created_at DESC;
+
+-- name: ListProjectEnvironments :many
+SELECT e.id, e.name, e.project_id, e.created_at, e.updated_at,
+       (SELECT COUNT(*) FROM services s WHERE s.environment_id = e.id) AS service_count
+FROM environments e
+WHERE e.project_id = $1
+ORDER BY e.created_at;
+
+-- name: GetProjectEnvironmentByName :one
+SELECT id, name, project_id, created_at, updated_at
+FROM environments
+WHERE project_id = $1 AND name = $2;
+
+-- name: DeleteProjectEnvironment :exec
+DELETE FROM environments WHERE id = $1 AND project_id = $2;
+
+-- name: CountEnvironmentServices :one
+SELECT COUNT(*) FROM services WHERE environment_id = $1;

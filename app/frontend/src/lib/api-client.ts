@@ -1321,6 +1321,34 @@ export async function listServicesByProject(projectId: string): Promise<ServiceE
   return normalizeServiceArray(rows);
 }
 
+export interface ProjectEnvironment {
+  id: string;
+  name: string;
+  project_id: string;
+  service_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function listProjectEnvironments(projectId: string): Promise<ProjectEnvironment[]> {
+  const payload = await requestJson<{ environments?: ProjectEnvironment[] }>(
+    `/projects/${projectId}/environments`,
+  );
+  return payload.environments ?? [];
+}
+
+export async function createProjectEnvironment(projectId: string, name: string): Promise<ProjectEnvironment> {
+  const payload = await requestJson<{ environment: ProjectEnvironment }>(
+    `/projects/${projectId}/environments`,
+    { method: 'POST', body: JSON.stringify({ name }) },
+  );
+  return payload.environment;
+}
+
+export async function deleteProjectEnvironment(environmentId: string): Promise<void> {
+  await requestJson(`/environments/${encodeURIComponent(environmentId)}`, { method: 'DELETE' });
+}
+
 export async function getServiceById(serviceId: string): Promise<ServiceEntity> {
   const payload = await requestJson<RawService | { service?: RawService }>(`/services/${serviceId}`);
   const row = (payload as { service?: RawService }).service ?? (payload as RawService);
