@@ -258,6 +258,7 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			public.POST("/auth/login", handleLogin)
 			public.POST("/auth/register", handleRegister)
 			public.GET("/maintenance", handleMaintenancePage)
+			public.GET("/branding", handleGetBranding)
 
 			// Wake callback for sleep-mode placeholders. Unauthenticated but
 			// non-destructive: it only reconciles the service back to running.

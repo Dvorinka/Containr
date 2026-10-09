@@ -48,6 +48,8 @@ import {
   updateCurrentUserProfile,
   getPlatformSettings,
   updatePlatformSettings,
+  type Branding,
+  type BrandingInput,
   getHAStatus,
   setHAEnabled,
   triggerFailover,
@@ -1158,6 +1160,7 @@ function PlatformSettingsSection() {
 
   const [signupDraft, setSignupDraft] = useState<boolean | null>(null);
   const [tokenDraft, setTokenDraft] = useState('');
+  const [brandDraft, setBrandDraft] = useState<BrandingInput>({});
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -1168,8 +1171,10 @@ function PlatformSettingsSection() {
     mutationFn: updatePlatformSettings,
     onSuccess: (settings) => {
       queryClient.setQueryData(['platform-settings'], settings);
+      queryClient.invalidateQueries({ queryKey: ['branding'] });
       setSignupDraft(null);
       setTokenDraft('');
+      setBrandDraft({});
       setFeedback('Settings saved.');
       setError(null);
     },
@@ -1277,6 +1282,59 @@ function PlatformSettingsSection() {
               Open Cloudflare Zero Trust dashboard - Networks → Tunnels → Create
               <ExternalLink size={12} />
             </a>
+          </div>
+
+          <div className="p-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)]">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Branding</span>
+              <span className="text-xs text-[var(--text-tertiary)]">leave blank to keep Containr defaults</span>
+            </div>
+            <p className="text-xs text-[var(--text-secondary)] mb-3">
+              White-label this instance — product name, logo, accent color and links apply
+              to the shell, login page and document title.
+            </p>
+            <div className="grid grid-cols-2 gap-2 max-sm:grid-cols-1">
+              {(
+                [
+                  ['productName', 'Product name'],
+                  ['logoUrl', 'Logo URL'],
+                  ['faviconUrl', 'Favicon URL'],
+                  ['accentColor', 'Accent color (#hex)'],
+                  ['docsUrl', 'Docs URL'],
+                  ['supportUrl', 'Support URL'],
+                ] as const
+              ).map(([field, label]) => (
+                <label key={field} className="block">
+                  <span className="mb-1 block text-[11px] text-[var(--text-tertiary)]">{label}</span>
+                  <input
+                    value={brandDraft[field] ?? settingsQuery.data?.branding[field] ?? ''}
+                    onChange={(e) => setBrandDraft((d) => ({ ...d, [field]: e.target.value }))}
+                    className="h-9 w-full px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-void)] text-sm focus:border-[var(--accent-primary)] transition-colors"
+                  />
+                </label>
+              ))}
+            </div>
+            <div className="flex gap-2 mt-3">
+              <button
+                onClick={() => {
+                  const b = { ...(settingsQuery.data?.branding ?? {}), ...brandDraft } as Branding;
+                  saveMutation.mutate({ branding: b });
+                }}
+                disabled={saveMutation.isPending || Object.keys(brandDraft).length === 0}
+                className="h-9 px-4 rounded-[var(--radius-md)] text-sm font-medium text-[var(--accent-on)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                style={{ background: 'var(--accent-primary)' }}
+              >
+                Save branding
+              </button>
+              {Object.keys(brandDraft).length > 0 ? (
+                <button
+                  onClick={() => setBrandDraft({})}
+                  className="h-9 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-sm text-[var(--text-secondary)]"
+                >
+                  Reset draft
+                </button>
+              ) : null}
+            </div>
           </div>
 
           {feedback ? <p className="text-xs text-[var(--success)]">{feedback}</p> : null}

@@ -10,3 +10,4 @@ export * from './CommandPalette';
 export * from './StatusBadge';
 export { useToast } from '../hooks/use-toast';
 export type { ToastType, ToastContextValue } from '../hooks/use-toast';
+export * from './BrandWordmark';

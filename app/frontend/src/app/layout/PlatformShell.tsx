@@ -41,7 +41,7 @@ import {
 import { signOutAuthSession } from '@/lib/auth-client';
 import { isDemoSearch } from '@/lib/demo-mode';
 import { useAuthSession } from '@/lib/use-auth-session';
-import { BannerBar, useToast } from '@/shared/components';
+import { BannerBar, BrandWordmark, useToast } from '@/shared/components';
 
 type NavItem = { label: string; href: string; icon: typeof FolderKanban; hint: string };
 type NavSection = { title: string; items: NavItem[] };
@@ -398,7 +398,7 @@ export function PlatformShell() {
             }}
           >
             <NavLink to={href('/projects')} className="mr-5 text-sm font-extrabold tracking-tight text-[var(--text-primary)]" style={{ fontFamily: 'Inter, sans-serif' }}>
-              contain<span style={{ color: 'var(--accent-primary)' }}>r</span>
+              <BrandWordmark />
             </NavLink>
 
             <div className="flex items-center gap-5">
