@@ -12495,6 +12495,11 @@ export interface components {
             project_id?: string;
             /** Format: uuid */
             service_id?: string;
+            /**
+             * Format: uuid
+             * @description The cloned service the preview actually deploys; its live status drives the preview status.
+             */
+            preview_service_id?: string;
             branch_name?: string;
             pr_number?: number;
             /** @description Generated name, e.g. preview-{branch}-{ts} */

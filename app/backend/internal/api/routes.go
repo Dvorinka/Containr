@@ -111,6 +111,7 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 
 	// Sleep sweeper — scales idle services to zero and prunes wake containers.
 	StartSleepSweeper(context.Background(), db, dockerClient, deploymentEngine, cfg.Port)
+	StartPreviewSweeper(context.Background(), db, deploymentEngine)
 
 	// Audit retention — prunes rows past AUDIT_RETENTION_DAYS (default 90).
 	StartAuditRetention(context.Background(), db)

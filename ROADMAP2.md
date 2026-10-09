@@ -520,8 +520,9 @@ and wired refs, one click or one CLI call.
 - [x] **Gateway traffic path** — `/g/:slug/*` mounted → api_key auth →
   rpm + monthly quota → `gateway/proxy.go` → usage_counters /
   metrics_timeseries / incident_events.
-- [ ] **Preview environments runtime** — real build+deploy+subdomain+TTL
-  (bookkeeping only now). Pairs with clone + multi-domain.
+- [x] **Preview environments runtime** — previews are real service clones:
+  branch override, queued deployment, node-domain hostnames, TTL sweeper,
+  promote = redeploy of the source at the preview branch.
 - [ ] **Environments** — env switcher, per-env vars/domains, promote.
 - [ ] **sqlc port** — ~140 raw `database/sql` sites → `sqlc/queries/`.
 - [ ] **Tests** — canvas/wizard frontend coverage, deployment/template/
