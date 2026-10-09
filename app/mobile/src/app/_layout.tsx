@@ -37,6 +37,9 @@ function AuthGate() {
         <Stack.Screen name="project/[id]" options={{ title: 'Project' }} />
         <Stack.Screen name="service/[id]" options={{ title: 'Service' }} />
         <Stack.Screen name="service/logs" options={{ title: 'Logs' }} />
+        <Stack.Screen name="service/variables" options={{ title: 'Variables' }} />
+        <Stack.Screen name="service/domains" options={{ title: 'Domains' }} />
+        <Stack.Screen name="service/settings" options={{ title: 'Service settings' }} />
       </Stack.Protected>
       <Stack.Screen name="login" options={{ headerShown: false }} />
     </Stack>

@@ -11,6 +11,7 @@ import {
   Empty,
   ErrorBox,
   Loading,
+  Row,
   SectionTitle,
   StatusBadge,
 } from '../../components';
@@ -141,6 +142,28 @@ export default function ServiceDetail() {
           onPress={() => router.push(`/service/logs?id=${s.id}&name=${encodeURIComponent(s.name)}`)}
         />
       </View>
+
+      <SectionTitle>Manage</SectionTitle>
+      <Card>
+        <Row
+          title="Variables"
+          subtitle="Environment and secrets"
+          onPress={() =>
+            router.push(`/service/variables?id=${s.id}&name=${encodeURIComponent(s.name)}`)
+          }
+        />
+        <Row
+          title="Domains"
+          subtitle={s.domain ?? 'Hostnames routed to this service'}
+          onPress={() => router.push(`/service/domains?id=${s.id}`)}
+        />
+        <Row
+          title="Scale & sleep"
+          subtitle={`${s.replicas ?? 1} replica${(s.replicas ?? 1) === 1 ? '' : 's'}` +
+            (s.sleep_enabled ? ` · sleeps after ${s.sleep_idle_minutes}m idle` : '')}
+          onPress={() => router.push(`/service/settings?id=${s.id}`)}
+        />
+      </Card>
 
       {s.sleep_enabled ? (
         <Text style={styles.hint}>

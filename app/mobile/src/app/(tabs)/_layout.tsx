@@ -1,9 +1,19 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useQuery } from '@tanstack/react-query';
+import { useApi } from '../../session';
 import { colors } from '../../theme';
 
 export default function TabsLayout() {
+  const api = useApi();
+  const notifs = useQuery({
+    queryKey: ['notifications'],
+    queryFn: () => api.notifications(),
+    refetchInterval: 60_000,
+  });
+  const unread = notifs.data?.unread ?? 0;
+
   return (
     <Tabs
       screenOptions={{
@@ -38,6 +48,16 @@ export default function TabsLayout() {
           title: 'Databases',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="server-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="notifications"
+        options={{
+          title: 'Alerts',
+          tabBarBadge: unread > 0 ? unread : undefined,
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="notifications-outline" size={size} color={color} />
           ),
         }}
       />
