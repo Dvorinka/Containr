@@ -164,7 +164,20 @@ export type TemplateEntity = {
   updatedAt?: string;
 };
 
+export type TemplateServiceSpecEntity = {
+  key: string;
+  name?: string;
+  type: string;
+  runtime?: string;
+  repo?: string;
+  branch?: string;
+  port?: number;
+  dependsOn?: string[];
+  environment: Record<string, string>;
+};
+
 export type TemplateConfigEntity = {
+  version?: number;
   type: string;
   runtime: string;
   buildCommand: string;
@@ -174,6 +187,7 @@ export type TemplateConfigEntity = {
   environment: Record<string, string>;
   dockerfile?: string;
   nixpacksConfig: Record<string, string>;
+  services?: TemplateServiceSpecEntity[];
 };
 
 export type TemplateVariableEntity = {
@@ -197,12 +211,15 @@ export type ListTemplatesInput = {
 
 export type DeployTemplateInput = {
   projectId: string;
-  name: string;
+  name?: string;
   variables?: Record<string, string>;
 };
 
 export type DeployTemplateResult = {
-  serviceId: string;
+  resource: string;
+  serviceId?: string;
+  databaseId?: string;
+  created?: { key: string; kind: string; id: string; name: string; deploymentId?: string }[];
   message: string;
 };
 
@@ -696,7 +713,21 @@ function normalizeStringRecord(raw: unknown): Record<string, string> {
 }
 
 function normalizeTemplateConfig(config?: RawTemplateConfig): TemplateConfigEntity {
+  const services = Array.isArray(config?.services)
+    ? config.services.map((s) => ({
+        key: s?.key ?? '',
+        name: s?.name ?? undefined,
+        type: s?.type ?? 'web',
+        runtime: s?.runtime ?? undefined,
+        repo: s?.repo ?? undefined,
+        branch: s?.branch ?? undefined,
+        port: s?.port ?? undefined,
+        dependsOn: Array.isArray(s?.depends_on) ? s.depends_on.filter((d): d is string => typeof d === 'string') : undefined,
+        environment: normalizeStringRecord(s?.environment),
+      }))
+    : undefined;
   return {
+    version: config?.version ?? undefined,
     type: config?.type ?? '',
     runtime: config?.runtime ?? '',
     buildCommand: config?.build_command ?? '',
@@ -706,6 +737,7 @@ function normalizeTemplateConfig(config?: RawTemplateConfig): TemplateConfigEnti
     environment: normalizeStringRecord(config?.environment),
     dockerfile: config?.dockerfile ?? undefined,
     nixpacksConfig: normalizeStringRecord(config?.nixpacks_config),
+    services,
   };
 }
 
@@ -1602,19 +1634,101 @@ export async function deployTemplate(
     method: 'POST',
     body: JSON.stringify({
       project_id: input.projectId,
-      name: input.name,
+      name: input.name ?? '',
       variables: input.variables ?? {},
     }),
   });
 
-  if (!payload.service_id) {
-    throw new ApiError('Template deployment response is invalid', 500);
-  }
+  const created = Array.isArray(payload.created)
+    ? payload.created
+        .filter((m) => m && typeof m.id === 'string')
+        .map((m) => ({
+          key: m.key ?? '',
+          kind: m.kind ?? '',
+          id: m.id ?? '',
+          name: m.name ?? '',
+          deploymentId: m.deployment_id ?? undefined,
+        }))
+    : undefined;
 
   return {
-    serviceId: payload.service_id,
-    message: payload.message ?? 'Service created from template',
+    resource: payload.resource ?? 'service',
+    serviceId: payload.service_id ?? undefined,
+    databaseId: payload.database_id ?? undefined,
+    created,
+    message: payload.message ?? 'Template deployed',
   };
+}
+
+export type TemplatePlanMember = {
+  key: string;
+  name: string;
+  type: string;
+  runtime?: string;
+  port?: number;
+  dependsOn?: string[];
+  environment: Record<string, string>;
+};
+
+export type TemplatePlanResult = {
+  members: TemplatePlanMember[];
+  missingVariables: string[];
+  unresolved: string[];
+};
+
+export async function planTemplate(
+  templateId: string,
+  input: { projectId?: string; variables?: Record<string, string> },
+): Promise<TemplatePlanResult> {
+  const payload = await requestJson<{
+    members?: {
+      key?: string;
+      name?: string;
+      type?: string;
+      runtime?: string;
+      port?: number;
+      depends_on?: string[];
+      environment?: Record<string, string>;
+    }[];
+    missing_variables?: string[];
+    unresolved?: string[];
+  }>(`/templates/${templateId}/plan`, {
+    method: 'POST',
+    body: JSON.stringify({
+      project_id: input.projectId ?? '',
+      variables: input.variables ?? {},
+    }),
+  });
+
+  return {
+    members: (payload.members ?? []).map((m) => ({
+      key: m.key ?? '',
+      name: m.name ?? '',
+      type: m.type ?? '',
+      runtime: m.runtime ?? undefined,
+      port: m.port ?? undefined,
+      dependsOn: m.depends_on ?? undefined,
+      environment: normalizeStringRecord(m.environment),
+    })),
+    missingVariables: payload.missing_variables ?? [],
+    unresolved: payload.unresolved ?? [],
+  };
+}
+
+export type ComposeImportResult = {
+  config: Record<string, unknown>;
+  warnings: string[];
+};
+
+export async function importComposeTemplate(composeYaml: string): Promise<ComposeImportResult> {
+  const payload = await requestJson<{ config?: Record<string, unknown>; warnings?: string[] }>(
+    '/templates/import/compose',
+    { method: 'POST', body: JSON.stringify({ compose_yaml: composeYaml }) },
+  );
+  if (!payload.config || typeof payload.config !== 'object') {
+    throw new ApiError('Compose import response is invalid', 500);
+  }
+  return { config: payload.config, warnings: payload.warnings ?? [] };
 }
 
 export function serviceStatusClass(status: ServiceStatus): string {

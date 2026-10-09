@@ -421,6 +421,9 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			authed.PUT("/templates/:id", handleUpdateTemplate)
 			authed.DELETE("/templates/:id", handleDeleteTemplate)
 			authed.POST("/templates/:id/deploy", handleCreateFromTemplate)
+			authed.POST("/templates/:id/plan", handlePlanTemplate)
+			authed.POST("/templates/import/compose", handleImportCompose)
+			authed.POST("/templates/deploy", handleDeployInlineGraph)
 
 			authed.POST("/cron-jobs", handleCreateCronJob)
 			authed.PUT("/cron-jobs/:id", handleUpdateCronJob)

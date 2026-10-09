@@ -3,6 +3,7 @@ package api
 import (
 	"archive/tar"
 	"containr/internal/database/sqlcdb"
+	"containr/internal/deployment"
 	"containr/internal/docker"
 	"containr/internal/secrets"
 	"context"
@@ -331,6 +332,11 @@ type managedDatabaseCreateRequest struct {
 	Region           string
 	PublicPort       bool
 	RuntimeVariables map[string]string
+	// ProjectID + NetworkAlias attach the container to a project network
+	// under Alias — set by graph-template deploys so sibling services can
+	// resolve the database by name.
+	ProjectID    string
+	NetworkAlias string
 }
 
 func (h *DatabaseHandler) createManagedDatabase(ctx context.Context, userID string, req managedDatabaseCreateRequest) (databaseID string, name string, dbType string, err error) {
@@ -398,8 +404,15 @@ func (h *DatabaseHandler) createManagedDatabaseAndProvision(ctx context.Context,
 		return "", err
 	}
 
-	go h.provisionDatabaseWithVariables(databaseID, name, dbType, req.RuntimeVariables)
+	go h.provisionDatabaseWithVariables(databaseID, name, dbType, req.RuntimeVariables, dbNetworkAttach{ProjectID: req.ProjectID, Alias: req.NetworkAlias})
 	return databaseID, nil
+}
+
+// dbNetworkAttach carries the optional project-network membership for a
+// managed database provisioned by a graph template.
+type dbNetworkAttach struct {
+	ProjectID string
+	Alias     string
 }
 
 // UpdateDatabase updates a database service
@@ -1350,7 +1363,7 @@ type databaseRuntimePlan struct {
 }
 
 func (h *DatabaseHandler) provisionDatabase(databaseID, databaseName, dbType string) {
-	h.provisionDatabaseWithVariables(databaseID, databaseName, dbType, nil)
+	h.provisionDatabaseWithVariables(databaseID, databaseName, dbType, nil, dbNetworkAttach{})
 }
 
 // reprovisionManagedDatabase recreates a managed container so changed
@@ -1364,7 +1377,7 @@ func (h *DatabaseHandler) reprovisionManagedDatabase(databaseID, databaseName, d
 	h.provisionDatabase(databaseID, databaseName, dbType)
 }
 
-func (h *DatabaseHandler) provisionDatabaseWithVariables(databaseID, databaseName, dbType string, runtimeVariables map[string]string) {
+func (h *DatabaseHandler) provisionDatabaseWithVariables(databaseID, databaseName, dbType string, runtimeVariables map[string]string, attach dbNetworkAttach) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
@@ -1373,7 +1386,7 @@ func (h *DatabaseHandler) provisionDatabaseWithVariables(databaseID, databaseNam
 		return
 	}
 
-	connectionURL, err := h.provisionDatabaseRuntime(ctx, databaseID, databaseName, dbType, runtimeVariables)
+	connectionURL, err := h.provisionDatabaseRuntime(ctx, databaseID, databaseName, dbType, runtimeVariables, attach)
 	if err != nil {
 		log.Printf("containr: managed database %s (%s) provisioning failed: %v", databaseID, dbType, err)
 		_ = h.setDatabaseStatusAndConnection(databaseID, "error", sql.NullString{})
@@ -1395,7 +1408,7 @@ func (h *DatabaseHandler) setDatabaseStatusAndConnection(databaseID, status stri
 	})
 }
 
-func (h *DatabaseHandler) provisionDatabaseRuntime(ctx context.Context, databaseID, databaseName, dbType string, runtimeVariables map[string]string) (string, error) {
+func (h *DatabaseHandler) provisionDatabaseRuntime(ctx context.Context, databaseID, databaseName, dbType string, runtimeVariables map[string]string, attach dbNetworkAttach) (string, error) {
 	plan, err := buildDatabaseRuntimePlan(dbType, databaseName, runtimeVariables)
 	if err != nil {
 		return "", err
@@ -1481,6 +1494,17 @@ func (h *DatabaseHandler) provisionDatabaseRuntime(ctx context.Context, database
 
 	if err := h.dockerClient.StartContainer(ctx, containerID); err != nil {
 		return "", fmt.Errorf("failed to start container: %w", err)
+	}
+
+	// Graph-template deploys attach the database to the project network so
+	// sibling services resolve it by alias ({{service.<key>.host}}).
+	if attach.ProjectID != "" && attach.Alias != "" {
+		projectNet := deployment.ProjectNetworkName(attach.ProjectID)
+		if err := h.dockerClient.ConnectNetwork(ctx, projectNet, containerID, network.EndpointSettings{
+			Aliases: []string{attach.Alias},
+		}); err != nil {
+			log.Printf("containr: database %s attach to %s failed: %v", databaseID, projectNet, err)
+		}
 	}
 
 	hostPort, err := h.resolvePublishedHostPort(ctx, containerID, plan.Port)

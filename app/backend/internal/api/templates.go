@@ -3,6 +3,8 @@ package api
 import (
 	"containr/internal/database"
 	"containr/internal/database/sqlcdb"
+	"containr/internal/deployment"
+	"containr/internal/secrets"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -34,6 +36,7 @@ type ServiceTemplate struct {
 }
 
 type TemplateConfig struct {
+	Version        int               `json:"version,omitempty"`
 	Type           string            `json:"type"`
 	Runtime        string            `json:"runtime"`
 	BuildCommand   string            `json:"build_command"`
@@ -43,6 +46,9 @@ type TemplateConfig struct {
 	Environment    map[string]string `json:"environment"`
 	Dockerfile     string            `json:"dockerfile,omitempty"`
 	NixpacksConfig map[string]string `json:"nixpacks_config,omitempty"`
+	// Services makes this a v2 graph template. When non-empty the flat
+	// fields above are ignored and deployTemplateGraph handles the deploy.
+	Services []TemplateServiceSpec `json:"services,omitempty"`
 }
 
 type TemplateVariable struct {
@@ -147,7 +153,7 @@ func handleCreateFromTemplate(c *gin.Context) {
 
 	var req struct {
 		ProjectID string            `json:"project_id" binding:"required"`
-		Name      string            `json:"name" binding:"required"`
+		Name      string            `json:"name"`
 		Plan      string            `json:"plan,omitempty"`
 		Region    string            `json:"region,omitempty"`
 		Variables map[string]string `json:"variables"`
@@ -160,10 +166,6 @@ func handleCreateFromTemplate(c *gin.Context) {
 
 	req.ProjectID = strings.TrimSpace(req.ProjectID)
 	req.Name = strings.TrimSpace(req.Name)
-	if req.Name == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "name is required"})
-		return
-	}
 
 	projectID, err := uuid.Parse(req.ProjectID)
 	if err != nil {
@@ -210,6 +212,51 @@ func handleCreateFromTemplate(c *gin.Context) {
 	var templateVars []TemplateVariable
 	if err := json.Unmarshal([]byte(template.Variables), &templateVars); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Template variables are invalid"})
+		return
+	}
+
+	if len(config.Services) > 0 {
+		var engine *deployment.DeploymentEngine
+		if v, exists := c.Get("deployment_engine"); exists && v != nil {
+			engine, _ = v.(*deployment.DeploymentEngine)
+		}
+		var dbHandler *DatabaseHandler
+		if v, exists := c.Get("database_handler"); exists {
+			dbHandler, _ = v.(*DatabaseHandler)
+		}
+
+		userVars := map[string]string{}
+		for _, v := range templateVars {
+			if override, ok := req.Variables[v.Key]; ok {
+				userVars[v.Key] = override
+			} else if v.Default != "" {
+				userVars[v.Key] = v.Default
+			}
+		}
+		for k, v := range req.Variables {
+			userVars[k] = v
+		}
+
+		created, fail := deployTemplateGraph(c, db, engine, dbHandler, projectID, userID,
+			config.Services, templateVars, userVars, req.Plan, req.Region, "template:"+templateID)
+		if fail != nil {
+			status := http.StatusBadRequest
+			if (*fail)["code"] == "CONFLICT" {
+				status = http.StatusConflict
+			}
+			c.JSON(status, *fail)
+			return
+		}
+		c.JSON(http.StatusCreated, gin.H{
+			"resource": "stack",
+			"created":  created,
+			"message":  fmt.Sprintf("Deployed %d resources from template %s", len(created), template.Name),
+		})
+		return
+	}
+
+	if req.Name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "name is required"})
 		return
 	}
 
@@ -351,11 +398,15 @@ func handleCreateFromTemplate(c *gin.Context) {
 			continue
 		}
 
+		stored := value
+		if secretKeys[key] {
+			stored = secrets.Encrypt(value)
+		}
 		err = txQueries.UpsertEnvironmentVariable(ctx, sqlcdb.UpsertEnvironmentVariableParams{
 			ID:        uuid.New(),
 			ServiceID: serviceID,
 			Key:       key,
-			Value:     value,
+			Value:     stored,
 			IsSecret:  sql.NullBool{Bool: secretKeys[key], Valid: true},
 			CreatedAt: sql.NullTime{Time: now, Valid: true},
 			UpdatedAt: sql.NullTime{Time: now, Valid: true},
@@ -926,6 +977,34 @@ func SeedTemplates() []ServiceTemplate {
 			Config:      `{"type":"web","runtime":"binwiederhier/ntfy:latest","start_command":"serve","port":80,"health_check":"/v1/health"}`,
 			Variables:   `[]`,
 			IsOfficial:  true,
+		},
+		// Multi-service stacks — v2 graph configs. Database members become
+		// managed databases attached to the project network under their key.
+		{
+			ID:          "tpl-wordpress-stack",
+			Name:        "WordPress + MySQL",
+			Description: "WordPress with a managed MySQL database on a private project network",
+			Category:    "stack",
+			Logo:        "https://cdn.simpleicons.org/wordpress",
+			Config: `{"version":2,"services":[
+				{"key":"db","type":"database","runtime":"mysql","environment":{"MYSQL_DATABASE":"wordpress"}},
+				{"key":"web","name":"wordpress","type":"web","runtime":"wordpress:6-apache","port":80,"health_check":"/wp-login.php","depends_on":["db"],
+				 "environment":{"WORDPRESS_DB_HOST":"{{service.db.host}}","WORDPRESS_DB_USER":"{{service.db.user}}","WORDPRESS_DB_PASSWORD":"{{service.db.password}}","WORDPRESS_DB_NAME":"{{service.db.database}}"}}]}`,
+			Variables:  `[]`,
+			IsOfficial: true,
+		},
+		{
+			ID:          "tpl-n8n-stack",
+			Name:        "n8n + PostgreSQL",
+			Description: "n8n workflow automation backed by a managed PostgreSQL database",
+			Category:    "stack",
+			Logo:        "https://cdn.simpleicons.org/n8n",
+			Config: `{"version":2,"services":[
+				{"key":"db","type":"database","runtime":"postgresql"},
+				{"key":"n8n","type":"web","runtime":"n8nio/n8n:latest","port":5678,"health_check":"/healthz","depends_on":["db"],
+				 "environment":{"DB_TYPE":"postgresdb","DB_POSTGRESDB_HOST":"{{service.db.host}}","DB_POSTGRESDB_PORT":"{{service.db.port}}","DB_POSTGRESDB_DATABASE":"{{service.db.database}}","DB_POSTGRESDB_USER":"{{service.db.user}}","DB_POSTGRESDB_PASSWORD":"{{service.db.password}}","N8N_ENCRYPTION_KEY":"{{secret}}"}}]}`,
+			Variables:  `[]`,
+			IsOfficial: true,
 		},
 	}
 	return templates
