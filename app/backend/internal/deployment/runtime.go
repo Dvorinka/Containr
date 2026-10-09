@@ -55,6 +55,10 @@ type RuntimeSpec struct {
 	Maintenance    bool          // redirect traffic to MaintenanceURL
 	MaintenanceURL string        // absolute URL; empty = serve empty response
 	BasicAuthUsers string        // htpasswd-format user:hash pairs, comma-separated
+	// TraefikLabels defines extra middlewares for this service's router —
+	// keys "middlewares.<name>.<type>[.<field>]" (API-validated against an
+	// allowlist). Defined middlewares attach to the router after builtins.
+	TraefikLabels map[string]string
 	// NodeID pins the service to a node agent; "" runs on the local host.
 	NodeID string
 	// Spread distributes replicas across all online, schedulable agents
@@ -274,44 +278,9 @@ func (de *DeploymentEngine) createReplica(ctx context.Context, spec RuntimeSpec,
 		projectNet: {Aliases: []string{spec.Name}},
 	}
 	if edgeNet != "" {
-		router := "svc-" + spec.ServiceID[:8]
-		domains := spec.Domains
-		if len(domains) == 0 && spec.Domain != "" {
-			domains = []string{spec.Domain}
-		}
-		sort.Strings(domains)
-		rules := make([]string, 0, len(domains))
-		for _, d := range domains {
-			rules = append(rules, "Host(`"+d+"`)")
-		}
 		endpoints[edgeNet] = &network.EndpointSettings{}
-		labels["traefik.enable"] = "true"
-		labels["traefik.docker.network"] = edgeNet
-		labels["traefik.http.routers."+router+".rule"] = strings.Join(rules, " || ")
-		labels["traefik.http.routers."+router+".entrypoints"] = "web"
-		labels["traefik.http.services."+router+".loadbalancer.server.port"] = fmt.Sprintf("%d", spec.Port)
-
-		var middlewares []string
-		if spec.Maintenance {
-			if spec.MaintenanceURL != "" {
-				mw := router + "-maint"
-				labels["traefik.http.middlewares."+mw+".redirectregex.regex"] = "^https?://[^/]+/.*"
-				labels["traefik.http.middlewares."+mw+".redirectregex.replacement"] = spec.MaintenanceURL
-				labels["traefik.http.middlewares."+mw+".redirectregex.permanent"] = "false"
-				middlewares = append(middlewares, mw)
-			} else {
-				// No redirect target configured — take the site offline with
-				// empty responses instead of leaking traffic to the app.
-				labels["traefik.http.routers."+router+".service"] = "noop@internal"
-			}
-		}
-		if spec.BasicAuthUsers != "" {
-			mw := router + "-auth"
-			labels["traefik.http.middlewares."+mw+".basicauth.users"] = spec.BasicAuthUsers
-			middlewares = append(middlewares, mw)
-		}
-		if len(middlewares) > 0 {
-			labels["traefik.http.routers."+router+".middlewares"] = strings.Join(middlewares, ",")
+		for k, v := range edgeLabels(spec, edgeNet) {
+			labels[k] = v
 		}
 	}
 
@@ -398,6 +367,81 @@ func (de *DeploymentEngine) createReplica(ctx context.Context, spec RuntimeSpec,
 // requested host port (seen on Docker Desktop, which reports success while
 // vpnkit drops a conflicting binding).
 var errPortNotBound = errors.New("requested host port not bound")
+
+// edgeLabels builds the Traefik router/service/middleware labels for a
+// replica on the edge network: host rules, load balancer port, builtin
+// maintenance/basic-auth middlewares, then operator-defined overrides.
+func edgeLabels(spec RuntimeSpec, edgeNet string) map[string]string {
+	router := "svc-" + spec.ServiceID[:8]
+	domains := spec.Domains
+	if len(domains) == 0 && spec.Domain != "" {
+		domains = []string{spec.Domain}
+	}
+	sort.Strings(domains)
+	rules := make([]string, 0, len(domains))
+	for _, d := range domains {
+		rules = append(rules, "Host(`"+d+"`)")
+	}
+
+	labels := map[string]string{
+		"traefik.enable":                                                "true",
+		"traefik.docker.network":                                        edgeNet,
+		"traefik.http.routers." + router + ".rule":                      strings.Join(rules, " || "),
+		"traefik.http.routers." + router + ".entrypoints":               "web",
+		"traefik.http.services." + router + ".loadbalancer.server.port": fmt.Sprintf("%d", spec.Port),
+	}
+
+	var middlewares []string
+	if spec.Maintenance {
+		if spec.MaintenanceURL != "" {
+			mw := router + "-maint"
+			labels["traefik.http.middlewares."+mw+".redirectregex.regex"] = "^https?://[^/]+/.*"
+			labels["traefik.http.middlewares."+mw+".redirectregex.replacement"] = spec.MaintenanceURL
+			labels["traefik.http.middlewares."+mw+".redirectregex.permanent"] = "false"
+			middlewares = append(middlewares, mw)
+		} else {
+			// No redirect target configured — take the site offline with
+			// empty responses instead of leaking traffic to the app.
+			labels["traefik.http.routers."+router+".service"] = "noop@internal"
+		}
+	}
+	if spec.BasicAuthUsers != "" {
+		mw := router + "-auth"
+		labels["traefik.http.middlewares."+mw+".basicauth.users"] = spec.BasicAuthUsers
+		middlewares = append(middlewares, mw)
+	}
+	// Operator-defined middlewares: "middlewares.<name>.<rest>" becomes
+	// "<router>-<name>.<rest>", and every defined name joins the router's
+	// chain after builtins. Names sort for a deterministic chain order.
+	customMWs := map[string][]string{}
+	for k, v := range spec.TraefikLabels {
+		rest := strings.TrimPrefix(k, "middlewares.")
+		dot := strings.Index(rest, ".")
+		if dot <= 0 {
+			continue
+		}
+		customMWs[rest[:dot]] = append(customMWs[rest[:dot]], rest[dot+1:]+"="+v)
+	}
+	mwNames := make([]string, 0, len(customMWs))
+	for name := range customMWs {
+		mwNames = append(mwNames, name)
+	}
+	sort.Strings(mwNames)
+	for _, name := range mwNames {
+		mw := router + "-" + name
+		sort.Strings(customMWs[name])
+		for _, kv := range customMWs[name] {
+			if i := strings.Index(kv, "="); i > 0 {
+				labels["traefik.http.middlewares."+mw+"."+kv[:i]] = kv[i+1:]
+			}
+		}
+		middlewares = append(middlewares, mw)
+	}
+	if len(middlewares) > 0 {
+		labels["traefik.http.routers."+router+".middlewares"] = strings.Join(middlewares, ",")
+	}
+	return labels
+}
 
 // isPortConflict reports whether a container create failed because the
 // requested host port was already bound.

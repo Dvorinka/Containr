@@ -192,8 +192,11 @@ goroutines; this fixes correctness *and* unlocks the ops surface.
   compares vs edge IP → `ok|wrong-target|pending`.
 - [x] **Maintenance mode + basic-auth gate** — Traefik middleware labels;
   no proxy code needed.
-- [ ] **Routing overrides** — `services.traefik_labels` jsonb with
-  allowlist validation (middlewares, headers, redirects).
+- [x] **Routing overrides** — `services.traefik_labels` jsonb with
+  allowlist validation. Keys `middlewares.<name>.<type>[.<field>]` scope
+  to the service router (`svc-<id>-<name>`), auto-attach after builtins;
+  router/service/provider-level keys rejected. API + CLI
+  (`--traefik-label`) + MCP + service page Access editor.
 - [x] **Builder override** — `services.builder` enum
   `auto|railpack|nixpacks|dockerfile|static`; static builder = build +
   nginx serve. Fixed hardcoded `nixpacks` + `BuildImage` stream drain bug.
@@ -341,14 +344,13 @@ and wired refs, one click or one CLI call.
   CLI, `containr_nodes_upgrade` MCP (confirm-gated), node-detail page
   button (online-gated). Ceilings: linux amd64/arm64 only; agents on
   other platforms get a `NO_BINARY` 409.
-- [🟡] **Build-on-node** — private registry pulls shipped: the dispatch
-  payload carries the project owner's `registries` credentials for the
-  image host; the agent `docker login`s for the pull and logs out after,
-  and command payloads are scrubbed of passwords on completion. Agent
-  also verifies the container is still running ~1.5s after `run` so
-  crash-loops fail the deploy instead of reporting healthy. Remaining:
-  real builds on the node (source checkout + build daemon) — pulls
-  already work.
+- [x] **Build-on-node** — private registry pulls + real builds shipped.
+  Git sources materialize via `internal/source` checkout (branch/commit,
+  `GIT_ASKPASS` credential injection, dumb-transport fallback), package
+  through `BuildManager.PackageContext`, ship as agent-token artifacts,
+  and `docker build` on the node (`build_image` command). Remote rollbacks
+  `docker save` → artifact → `load_image` on the node. Verified end-to-end
+  on a live agent (PR #60).
 - [ ] **IaC provisioning (ROADMAP §2.2, unchanged)** — Terraform/
   OpenTofu, `infra_connections`, Proxmox + AWS modules, + Hetzner module
   (dflow's second provider), cloud-init → auto-enroll.
@@ -426,8 +428,11 @@ and wired refs, one click or one CLI call.
   filters. Applied: audit logs (server-backed), builds (server + client
   date-range), activity (severity server + client category/search).
   Notifications table has no list surface yet — apply when one lands.
-- [ ] **Notification producers round-out** — backups, agent offline,
-  upgrade available, security findings.
+- [x] **Notification producers round-out** — all shipped: deployments
+  (deployments.go), backups (databases.go `createBackupProcess` → owner),
+  agent offline/online sweep (`reconcileAgentHealth` → admins),
+  upgrade-available (`checkForUpgrade`, tag-persisted) and security-scan
+  findings (`scanner.OnScanComplete` → project owner).
 - [x] **Sleep-on-idle / wake-on-traffic** (serverless-lite) —
   `services.sleep_enabled` + `sleep_idle_minutes` (PR #29). Sweeper
   polls container NetworkIO deltas; idle past threshold → workload
@@ -492,8 +497,9 @@ and wired refs, one click or one CLI call.
     a prior deployment, database start/stop/restart/backup-now.
   - **Observe** — polling log tail (300 lines, 5s refresh), per-service
     deployment history, env-doctor issues surfaced on the service view.
-  - [ ] **env var edit + apply-redeploy, domain management, replica
-    scaling, cron execution history** — next iteration.
+  - [x] **env var edit + domain management + replica scaling** (PR #61 —
+    mobile v1.5: variables editor, domains screen, scale + sleep
+    settings, notifications tab). **cron execution history** still open.
   - [ ] **Push notifications** — zero-infra path = self-hosted
     ntfy/Gotify relay (no Firebase dependency), FCM/APNs optional.
   - [ ] **Offline resilience** — cached last-known state + unreachable

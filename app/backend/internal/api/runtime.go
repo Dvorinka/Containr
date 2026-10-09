@@ -121,6 +121,7 @@ func serviceRuntimeSpec(db *database.DB, service Service) (deployment.RuntimeSpe
 	spec.Volumes = loadServiceVolumes(db, service.ID)
 	spec.Domains = serviceDomainNames(db, service.ID, service.Domain)
 	spec.Maintenance, spec.BasicAuthUsers = serviceAccess(db, service.ID)
+	spec.TraefikLabels = serviceTraefikLabels(db, service.ID)
 	if spec.Maintenance {
 		spec.MaintenanceURL = maintenanceURL(db)
 	}

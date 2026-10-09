@@ -69,7 +69,8 @@ CREATE TABLE services (
     static_dir VARCHAR(255) NOT NULL DEFAULT '',
     node_id VARCHAR(255),
     spread BOOLEAN NOT NULL DEFAULT false,
-    placement_tags JSONB NOT NULL DEFAULT '[]'
+    placement_tags JSONB NOT NULL DEFAULT '[]',
+    traefik_labels JSONB NOT NULL DEFAULT '{}'
 );
 
 CREATE TABLE registries (

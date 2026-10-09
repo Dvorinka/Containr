@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -58,9 +59,12 @@ type Service struct {
 	Spread bool `json:"spread" db:"-"`
 	// PlacementTags restrict auto/spread candidates to agents carrying all
 	// listed tags. An explicit pin overrides them — pin + tags is rejected.
-	PlacementTags []string  `json:"placement_tags,omitempty" db:"-"`
-	CreatedAt     time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at" db:"updated_at"`
+	PlacementTags []string `json:"placement_tags,omitempty" db:"-"`
+	// TraefikLabels holds per-service middleware overrides —
+	// "middlewares.<name>.<type>.<field>" → value. Lazy-read.
+	TraefikLabels map[string]string `json:"traefik_labels,omitempty" db:"-"`
+	CreatedAt     time.Time         `json:"created_at" db:"created_at"`
+	UpdatedAt     time.Time         `json:"updated_at" db:"updated_at"`
 }
 
 // loadServiceSleep fills the sleep-mode columns, which live outside the
@@ -123,6 +127,78 @@ func normalizePlacementTags(tags []string) []string {
 	return out
 }
 
+// traefikLabelKey matches "middlewares.<name>.<type>" with an optional
+// ".<subkey>" tail — e.g. "middlewares.rl.ratelimit.average".
+var traefikLabelKey = regexp.MustCompile(`^middlewares\.([A-Za-z0-9][A-Za-z0-9_-]{0,39})\.([A-Za-z]+)(\.[A-Za-z0-9_.*+-]+)?$`)
+
+// traefikMiddlewareTypes are the Traefik middleware kinds a service may
+// define. Router/service/provider-level keys are never accepted — those
+// would let a tenant hijack someone else's routing.
+var traefikMiddlewareTypes = map[string]bool{
+	"addprefix": true, "basicauth": true, "buffering": true, "chain": true,
+	"circuitbreaker": true, "compress": true, "digestauth": true,
+	"errors": true, "forwardauth": true, "grpcweb": true, "headers": true,
+	"inflightreq": true, "ipallowlist": true, "ipwhitelist": true,
+	"passtlsclientcert": true, "ratelimit": true, "redirectregex": true,
+	"redirectscheme": true, "replacepath": true, "replacepathregex": true,
+	"retry": true, "stripprefix": true, "stripprefixregex": true,
+}
+
+// normalizeTraefikLabels validates a raw override map. Returns the cleaned
+// map (middleware type lowercased — Traefik label keys are canonical-lower)
+// or an error naming the offending key.
+func normalizeTraefikLabels(raw map[string]string) (map[string]string, error) {
+	if len(raw) > 32 {
+		return nil, fmt.Errorf("traefik_labels: at most 32 entries (got %d)", len(raw))
+	}
+	out := make(map[string]string, len(raw))
+	names := map[string]bool{}
+	for k, v := range raw {
+		m := traefikLabelKey.FindStringSubmatch(k)
+		if m == nil {
+			return nil, fmt.Errorf("traefik_labels: invalid key %q — want middlewares.<name>.<type>[.<field>]", k)
+		}
+		mwType := strings.ToLower(m[2])
+		if !traefikMiddlewareTypes[mwType] {
+			return nil, fmt.Errorf("traefik_labels: unsupported middleware type %q", m[2])
+		}
+		if len(v) == 0 {
+			return nil, fmt.Errorf("traefik_labels: %q has an empty value", k)
+		}
+		if len(v) > 512 || strings.ContainsAny(v, "\r\n") {
+			return nil, fmt.Errorf("traefik_labels: %q value must be a single line under 512 chars", k)
+		}
+		out["middlewares."+m[1]+"."+mwType+m[3]] = v
+		names[m[1]] = true
+	}
+	if len(names) > 16 {
+		return nil, fmt.Errorf("traefik_labels: at most 16 middleware names")
+	}
+	return out, nil
+}
+
+// serviceTraefikLabels lazy-reads the traefik_labels column.
+func serviceTraefikLabels(db *database.DB, serviceID uuid.UUID) map[string]string {
+	var raw []byte
+	if err := db.QueryRow(`SELECT traefik_labels FROM services WHERE id = $1`, serviceID).Scan(&raw); err != nil {
+		return nil
+	}
+	var labels map[string]string
+	if err := json.Unmarshal(raw, &labels); err != nil || len(labels) == 0 {
+		return nil
+	}
+	return labels
+}
+
+// traefikLabelsJSON marshals an override map for the jsonb column.
+func traefikLabelsJSON(labels map[string]string) []byte {
+	if len(labels) == 0 {
+		return []byte("{}")
+	}
+	raw, _ := json.Marshal(labels)
+	return raw
+}
+
 // tagsJSON marshals a tag list for a jsonb column; empty stays an array, not null.
 func tagsJSON(tags []string) []byte {
 	if len(tags) == 0 {
@@ -139,6 +215,7 @@ func loadServiceNode(db *database.DB, s *Service) {
 	s.NodeID = serviceNodeID(db, s.ID)
 	s.Spread = serviceSpread(db, s.ID)
 	s.PlacementTags = servicePlacementTags(db, s.ID)
+	s.TraefikLabels = serviceTraefikLabels(db, s.ID)
 	if s.NodeID == "" {
 		return
 	}
@@ -237,6 +314,10 @@ type CreateServiceRequest struct {
 	// PlacementTags restrict auto/spread candidates to agents carrying all
 	// listed tags. Mutually exclusive with an explicit node pin.
 	PlacementTags []string `json:"placement_tags"`
+	// TraefikLabels defines extra Traefik middlewares for this service's
+	// router — keys "middlewares.<name>.<type>[.<field>]", validated against
+	// an allowlist. Defined middlewares attach to the router automatically.
+	TraefikLabels map[string]string `json:"traefik_labels"`
 }
 
 // UpdateServiceRequest represents a request to update a service
@@ -275,6 +356,9 @@ type UpdateServiceRequest struct {
 	// listed tags; pointer so [] clears the requirement. Mutually exclusive
 	// with an explicit node pin.
 	PlacementTags *[]string `json:"placement_tags"`
+	// TraefikLabels replaces the service's middleware overrides; pointer so
+	// {} clears them and nil leaves them untouched.
+	TraefikLabels *map[string]string `json:"traefik_labels"`
 }
 
 // handleGetServices retrieves all services for a project
@@ -478,6 +562,14 @@ func handleCreateService(c *gin.Context) {
 	if service.Builder == "static" && service.StaticDir == "" {
 		service.StaticDir = "dist"
 	}
+	if len(req.TraefikLabels) > 0 {
+		labels, err := normalizeTraefikLabels(req.TraefikLabels)
+		if err != nil {
+			respondError(c, http.StatusBadRequest, "VALIDATION", err.Error())
+			return
+		}
+		service.TraefikLabels = labels
+	}
 	for label, check := range map[string]func(string) error{
 		"cpu": validateCPUSpec, "cpu_reserve": validateCPUSpec,
 		"memory": validateMemorySpec, "memory_reserve": validateMemorySpec,
@@ -557,9 +649,9 @@ func handleCreateService(c *gin.Context) {
 				 healthcheck_path, restart_policy, volumes,
 				 builder, cpu_reserve, memory_reserve, static_build_cmd, static_dir,
 				 node_id, spread, placement_tags, sleep_enabled, sleep_idle_minutes,
-			 created_at, updated_at)
+				 traefik_labels, created_at, updated_at)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26,
-					$27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38)`,
+					$27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39)`,
 		service.ID, service.ProjectID, service.Name, environmentID, service.Type,
 		sourceType, firstNonEmpty(service.GitRepo, service.Image), service.Image,
 		"", service.Command, service.Type, service.Status, service.Image, service.Command,
@@ -572,6 +664,7 @@ func handleCreateService(c *gin.Context) {
 		tagsJSON(service.PlacementTags),
 		service.SleepEnabled,
 		sql.NullInt32{Int32: int32(service.SleepIdleMinutes), Valid: service.SleepIdleMinutes > 0},
+		traefikLabelsJSON(service.TraefikLabels),
 		service.CreatedAt, service.UpdatedAt,
 	)
 
@@ -848,6 +941,16 @@ func handleUpdateService(c *gin.Context) {
 		}
 		existingService.SleepIdleMinutes = *req.SleepIdleMinutes
 	}
+	if req.TraefikLabels != nil {
+		labels, err := normalizeTraefikLabels(*req.TraefikLabels)
+		if err != nil {
+			respondError(c, http.StatusBadRequest, "VALIDATION", err.Error())
+			return
+		}
+		existingService.TraefikLabels = labels
+	} else {
+		existingService.TraefikLabels = serviceTraefikLabels(db.(*database.DB), serviceID)
+	}
 	for label, check := range map[string]func(string) error{
 		"cpu": validateCPUSpec, "cpu_reserve": validateCPUSpec,
 		"memory": validateMemorySpec, "memory_reserve": validateMemorySpec,
@@ -924,7 +1027,7 @@ func handleUpdateService(c *gin.Context) {
 				builder = $19, cpu_reserve = $20, memory_reserve = $21,
 				static_build_cmd = $22, static_dir = $23,
 				sleep_enabled = $24, sleep_idle_minutes = $25, node_id = $26, spread = $27,
-				placement_tags = $28::jsonb
+				placement_tags = $28::jsonb, traefik_labels = $29::jsonb
 			WHERE id = $18`,
 		existingService.Name, existingService.Type, existingService.Image, existingService.Command,
 		existingService.Environment, existingService.GitRepo, existingService.GitBranch,
@@ -938,6 +1041,7 @@ func handleUpdateService(c *gin.Context) {
 		sql.NullString{String: existingService.NodeID, Valid: existingService.NodeID != ""},
 		existingService.Spread,
 		tagsJSON(existingService.PlacementTags),
+		traefikLabelsJSON(existingService.TraefikLabels),
 	)
 
 	if err != nil {

@@ -134,6 +134,11 @@ var servicesCreateCmd = &cobra.Command{
 			}
 			body["placement_tags"] = tags
 		}
+		if labels, err := traefikLabelFlag(cmd); err != nil {
+			return err
+		} else if labels != nil {
+			body["traefik_labels"] = labels
+		}
 		data, err := c.Do("POST", "/projects/"+args[0]+"/services", body)
 		if err != nil {
 			return err
@@ -146,6 +151,28 @@ var servicesCreateCmd = &cobra.Command{
 		fmt.Printf("Created service %s (%s)\n", str(s, "name"), str(s, "id"))
 		return nil
 	},
+}
+
+// traefikLabelFlag parses --traefik-label key=value pairs into the API's
+// map shape. Returns nil when the flag was never passed; an empty map when
+// only empty values were given (clears overrides on update).
+func traefikLabelFlag(cmd *cobra.Command) (map[string]string, error) {
+	if !cmd.Flags().Changed("traefik-label") {
+		return nil, nil
+	}
+	pairs, _ := cmd.Flags().GetStringArray("traefik-label")
+	labels := map[string]string{}
+	for _, p := range pairs {
+		if strings.TrimSpace(p) == "" {
+			continue
+		}
+		k, v, ok := strings.Cut(p, "=")
+		if !ok || strings.TrimSpace(k) == "" {
+			return nil, &APIError{Message: fmt.Sprintf("invalid --traefik-label %q — want key=value", p), ExitCode: ExitError}
+		}
+		labels[strings.TrimSpace(k)] = v
+	}
+	return labels, nil
 }
 
 var servicesDeleteCmd = &cobra.Command{
@@ -240,6 +267,11 @@ var servicesUpdateCmd = &cobra.Command{
 		if cmd.Flags().Changed("sleep-idle") {
 			v, _ := cmd.Flags().GetInt("sleep-idle")
 			body["sleep_idle_minutes"] = v
+		}
+		if labels, err := traefikLabelFlag(cmd); err != nil {
+			return err
+		} else if labels != nil {
+			body["traefik_labels"] = labels
 		}
 		if cmd.Flags().Changed("maintenance") {
 			v, _ := cmd.Flags().GetString("maintenance")
@@ -533,6 +565,7 @@ func init() {
 	f.Bool("sleep", false, "enable scale-to-zero on idle (sleep mode)")
 	f.Int("sleep-idle", 0, "idle minutes before sleeping (1-1440)")
 	f.String("placement-tags", "", "comma-separated node tags required for remote placement (auto/spread only)")
+	f.StringArray("traefik-label", nil, "Traefik middleware override, key=value (e.g. middlewares.rl.ratelimit.average=100); repeatable")
 
 	uf := servicesUpdateCmd.Flags()
 	uf.String("name", "", "service name")
@@ -557,6 +590,7 @@ func init() {
 	uf.String("static-dir", "", "output dir for the static builder (empty clears)")
 	uf.Bool("sleep", false, "enable scale-to-zero on idle (sleep mode)")
 	uf.Int("sleep-idle", 0, "idle minutes before sleeping (1-1440)")
+	uf.StringArray("traefik-label", nil, "Traefik middleware override, key=value; repeatable; empty list clears via --traefik-label ''")
 	uf.String("node", "", "pin to a node agent id, 'auto' for least-loaded, 'local' to clear")
 	uf.Bool("spread", false, "spread replicas across all online schedulable nodes (--spread=false to disable)")
 	uf.String("placement-tags", "", "comma-separated node tags required for remote placement (empty clears)")

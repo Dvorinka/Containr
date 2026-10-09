@@ -7080,6 +7080,10 @@ components:
           type: array
           items: { type: string }
           description: Node tags required for remote placement — auto/spread only consider agents carrying every tag; re-resolved each reconcile. Mutually exclusive with an explicit node_id pin (read-only on responses when a pin is set).
+        traefik_labels:
+          type: object
+          additionalProperties: { type: string }
+          description: Extra Traefik middlewares defined for this service's router — keys 'middlewares.<name>.<type>[.<field>]' (e.g. 'middlewares.rl.ratelimit.average'), allowlist-validated; each defined middleware attaches to the router after builtins
         public_url:
           type: string
           description: Computed public URL (published port or domain)
@@ -7181,6 +7185,10 @@ components:
           type: array
           items: { type: string }
           description: Restrict remote placement to agents carrying every listed tag; mutually exclusive with an explicit pin or 'local'
+        traefik_labels:
+          type: object
+          additionalProperties: { type: string }
+          description: Extra Traefik middlewares on the service router — keys 'middlewares.<name>.<type>[.<field>]'; allowlist-validated
 
     UpdateServiceRequest:
       type: object
@@ -7277,6 +7285,10 @@ components:
           type: array
           items: { type: string }
           description: Restrict remote placement to agents carrying every listed tag; [] clears. Mutually exclusive with a pin or 'local' — clear the pin first
+        traefik_labels:
+          type: object
+          additionalProperties: { type: string }
+          description: Replace the service's Traefik middleware overrides — keys 'middlewares.<name>.<type>[.<field>]'; {} clears
 
     ServiceDomain:
       type: object
