@@ -117,6 +117,14 @@ var servicesCreateCmd = &cobra.Command{
 		if v, _ := cmd.Flags().GetBool("spread"); v {
 			body["spread"] = v
 		}
+		if cmd.Flags().Changed("sleep") {
+			v, _ := cmd.Flags().GetBool("sleep")
+			body["sleep_enabled"] = v
+		}
+		if cmd.Flags().Changed("sleep-idle") {
+			v, _ := cmd.Flags().GetInt("sleep-idle")
+			body["sleep_idle_minutes"] = v
+		}
 		if v, _ := cmd.Flags().GetString("placement-tags"); v != "" {
 			tags := []string{}
 			for _, t := range strings.Split(v, ",") {
@@ -520,8 +528,10 @@ func init() {
 	f.String("memory-reserve", "", "soft memory reservation (e.g. 128Mi)")
 	f.String("static-cmd", "", "build command for the static builder")
 	f.String("static-dir", "", "output dir for the static builder (default dist)")
-	f.String("node", "", "pin to a node agent id, or 'auto' for least-loaded (image services only)")
+	f.String("node", "", "pin to a node agent id, or 'auto' for least-loaded")
 	f.Bool("spread", false, "distribute replicas across all online schedulable nodes")
+	f.Bool("sleep", false, "enable scale-to-zero on idle (sleep mode)")
+	f.Int("sleep-idle", 0, "idle minutes before sleeping (1-1440)")
 	f.String("placement-tags", "", "comma-separated node tags required for remote placement (auto/spread only)")
 
 	uf := servicesUpdateCmd.Flags()

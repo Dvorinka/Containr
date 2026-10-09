@@ -264,9 +264,20 @@ func putToSleep(ctx context.Context, db *database.DB, dc *docker.Client, engine 
 	}
 }
 
+// wakeCGIScript is installed as /cgi-bin/wake in the wake container. It
+// fires the wake callback on the first reachable candidate URL, in the
+// background, then serves the reloading placeholder page. Deliberately
+// single-quote-free — the file is written through printf '%s'.
+const wakeCGIScript = `#!/bin/sh
+for u in $WAKE_URLS; do wget -q -O /dev/null --timeout=20 "$u" && break; done >/dev/null 2>&1 &
+printf "Content-Type: text/html\r\n\r\n"
+printf "%s" "$WAKE_PAGE"
+`
+
 // spawnWakeContainer runs a busybox httpd holding the service's Traefik
-// host rule at higher priority. On boot it calls the wake endpoint, then
-// keeps serving a reloading page until the next reconcile removes it.
+// host rule at higher priority. Inbound hits redirect to /cgi-bin/wake,
+// which calls the internal wake endpoint and serves a reloading page
+// until the reconcile removes the placeholder.
 func spawnWakeContainer(ctx context.Context, db *database.DB, dc *docker.Client, engine *deployment.DeploymentEngine, svc sleepCandidate, domains []string, apiPort int) error {
 	edgeNet := ""
 	for _, n := range networkList(ctx, dc) {
@@ -296,19 +307,25 @@ func spawnWakeContainer(ctx context.Context, db *database.DB, dc *docker.Client,
 		"traefik.http.services." + router + ".loadbalancer.server.port": "80",
 	}
 
-	wakeURL := wakeEndpointURL(ctx, dc, apiPort, svc.ID, edgeNet)
+	wakeURLs := wakeEndpointURLs(ctx, dc, apiPort, svc.ID, edgeNet)
 	page := `<!doctype html><html><head><meta http-equiv="refresh" content="4"><title>Waking up</title>` +
 		`<style>body{font-family:system-ui,sans-serif;background:#0b0d12;color:#dde2ea;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}` +
 		`.card{text-align:center;max-width:34rem;padding:2rem}h1{font-size:1.25rem;font-weight:600}p{color:#98a2b3}</style></head>` +
 		`<body><div class="card"><h1>Service is waking up</h1><p>This Containr service was sleeping and is resuming now. The page reloads automatically.</p></div></body></html>`
-	// httpd without -f daemonizes, so the sequence is: write page, start
-	// httpd, fire the wake callback, then hold PID1 on sleep infinity.
+	// The wake callback must fire when a request arrives, not at boot —
+	// firing unconditionally makes the service flap sleep→wake forever.
+	// index.html redirects to /cgi-bin/wake; the CGI fires the callback
+	// (first reachable URL wins) and serves the reloading page.
+	indexPage := `<!doctype html><html><head><meta http-equiv="refresh" content="0;url=/cgi-bin/wake"></head><body></body></html>`
+	// httpd without -f daemonizes, so PID1 ends on sleep infinity. URLs
+	// and the page travel via env so the CGI script needs no quoting.
 	cmd := fmt.Sprintf(
-		`mkdir -p /www && printf '%%s' '%s' > /www/index.html && `+
-			`httpd -p 80 -h /www && `+
-			`(sleep 2; wget -q -O /dev/null --timeout=20 '%s' 2>/dev/null || true) && `+
-			`sleep infinity`,
-		strings.ReplaceAll(page, "'", "'\\''"), wakeURL)
+		`mkdir -p /www/cgi-bin && printf '%%s' '%s' > /www/index.html && `+
+			`printf '%%s' '%s' > /www/cgi-bin/wake && chmod +x /www/cgi-bin/wake && `+
+			`printf '%%s\n' 'E404:/cgi-bin/wake' > /www/httpd.conf && `+
+			`httpd -p 80 -h /www && sleep infinity`,
+		strings.ReplaceAll(indexPage, "'", "'\\''"),
+		strings.ReplaceAll(wakeCGIScript, "'", "'\\''"))
 
 	endpoints := map[string]*network.EndpointSettings{edgeNet: {}}
 	if ownNet := dc.OwnNetworkName(ctx); ownNet != "" && ownNet != edgeNet {
@@ -329,9 +346,13 @@ func spawnWakeContainer(ctx context.Context, db *database.DB, dc *docker.Client,
 	}
 
 	id, err := dc.CreateContainer(ctx, docker.ContainerConfig{
-		Name:     name,
-		Image:    wakeImage,
-		Cmd:      []string{"sh", "-c", cmd},
+		Name:  name,
+		Image: wakeImage,
+		Cmd:   []string{"sh", "-c", cmd},
+		Env: []string{
+			"WAKE_URLS=" + strings.Join(wakeURLs, " "),
+			"WAKE_PAGE=" + page,
+		},
 		Labels:   labels,
 		Networks: endpoints,
 	})
@@ -353,25 +374,41 @@ func networkList(ctx context.Context, dc *docker.Client) []string {
 	return names
 }
 
-// wakeEndpointURL builds the internal URL the wake container calls. The
-// edge network's gateway reaches the host's published API port; when the
-// API itself is containerized its own name resolves on the shared network.
-func wakeEndpointURL(ctx context.Context, dc *docker.Client, apiPort int, serviceID uuid.UUID, edgeNet string) string {
+// wakeEndpointURLs builds ordered candidate URLs for the wake container to
+// call, deduplicated. No single address covers every topology: a containerized
+// API resolves by name on the shared network; Docker Desktop containers reach
+// the host via host.docker.internal; on native Docker the edge network's
+// gateway routes to host-published ports. busybox wget walks the chain until
+// one answers.
+func wakeEndpointURLs(ctx context.Context, dc *docker.Client, apiPort int, serviceID uuid.UUID, edgeNet string) []string {
+	var hosts []string
 	if dc.OwnNetworkName(ctx) != "" {
 		if self, err := dc.GetContainer(ctx, selfID()); err == nil {
-			name := strings.TrimPrefix(self.Name, "/")
-			if name != "" {
-				return fmt.Sprintf("http://%s:%d/api/v1/internal/wake/%s", name, apiPort, serviceID)
+			if name := strings.TrimPrefix(self.Name, "/"); name != "" {
+				hosts = append(hosts, name)
 			}
 		}
 	}
+	hosts = append(hosts, "host.docker.internal")
 	if gw := networkGateway(ctx, dc, edgeNet); gw != "" {
-		return fmt.Sprintf("http://%s:%d/api/v1/internal/wake/%s", gw, apiPort, serviceID)
+		hosts = append(hosts, gw)
 	}
 	if probe := dc.HostProbeHost(ctx); probe != "" {
-		return fmt.Sprintf("http://%s:%d/api/v1/internal/wake/%s", probe, apiPort, serviceID)
+		hosts = append(hosts, probe)
 	}
-	return fmt.Sprintf("http://127.0.0.1:%d/api/v1/internal/wake/%s", apiPort, serviceID)
+	seen := map[string]bool{}
+	var urls []string
+	for _, h := range hosts {
+		if h == "" || seen[h] {
+			continue
+		}
+		seen[h] = true
+		urls = append(urls, fmt.Sprintf("http://%s:%d/api/v1/internal/wake/%s", h, apiPort, serviceID))
+	}
+	if len(urls) == 0 {
+		urls = append(urls, fmt.Sprintf("http://127.0.0.1:%d/api/v1/internal/wake/%s", apiPort, serviceID))
+	}
+	return urls
 }
 
 func networkGateway(ctx context.Context, dc *docker.Client, name string) string {
@@ -490,10 +527,13 @@ func triggerServiceWake(c *gin.Context) (int, gin.H) {
 		defer cancel()
 		spec, err := serviceRuntimeSpec(db, service)
 		if err != nil {
+			log.Printf("wake: runtime spec for %s failed: %v", service.ID, err)
+			_, _ = db.Exec(`UPDATE services SET status = 'failed', updated_at = $1 WHERE id = $2`, time.Now(), service.ID)
 			return
 		}
 		state, err := engine.ReconcileService(ctx, spec)
 		if err != nil {
+			log.Printf("wake: reconcile for %s failed: %v", service.ID, err)
 			_, _ = db.Exec(`UPDATE services SET status = 'failed', updated_at = $1 WHERE id = $2`, time.Now(), service.ID)
 			return
 		}

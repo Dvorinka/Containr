@@ -10939,7 +10939,7 @@ export interface components {
             sleep_enabled?: boolean;
             /** @description Idle timeout in minutes before sleeping (1-1440, default 15) */
             sleep_idle_minutes?: number;
-            /** @description Node agent id this service is pinned to; empty/null = local Docker host. 'auto' on create/update resolves to the least-loaded online agent. Remote nodes run registry-pulled images only (no git builds, no Traefik domains). */
+            /** @description Node agent id this service is pinned to; empty/null = local Docker host. 'auto' on create/update resolves to the least-loaded online agent. Git-sourced services build on the node itself (build context ships as an agent-token artifact); rollbacks of locally-built tags ship the image via docker save/load. */
             node_id?: string;
             /** @description Display name of the pinned node agent (read-only) */
             node_name?: string;

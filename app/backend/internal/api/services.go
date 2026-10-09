@@ -224,6 +224,10 @@ type CreateServiceRequest struct {
 	MemoryReserve   string          `json:"memory_reserve"`
 	StaticBuildCmd  string          `json:"static_build_cmd"`
 	StaticDir       string          `json:"static_dir"`
+	// SleepEnabled/SleepIdleMinutes opt the service into scale-to-zero at
+	// create time — previously update-only, which surprised API/CLI users.
+	SleepEnabled     *bool `json:"sleep_enabled"`
+	SleepIdleMinutes *int  `json:"sleep_idle_minutes"`
 	// NodeID pins placement to a node agent; "auto" picks the least-loaded
 	// online agent, "local"/"" runs on the Containr host.
 	NodeID string `json:"node_id"`
@@ -511,6 +515,16 @@ func handleCreateService(c *gin.Context) {
 
 	sourceType := inferServiceSourceType(service)
 
+	if req.SleepEnabled != nil {
+		service.SleepEnabled = *req.SleepEnabled
+	}
+	if req.SleepIdleMinutes != nil {
+		if *req.SleepIdleMinutes < 1 || *req.SleepIdleMinutes > 1440 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "sleep_idle_minutes must be 1-1440", "code": "VALIDATION"})
+			return
+		}
+		service.SleepIdleMinutes = *req.SleepIdleMinutes
+	}
 	if req.Spread != nil {
 		service.Spread = *req.Spread
 	}
@@ -542,9 +556,10 @@ func handleCreateService(c *gin.Context) {
 				 git_repo, git_branch, build_path, cpu, memory, replicas, port, domain,
 				 healthcheck_path, restart_policy, volumes,
 				 builder, cpu_reserve, memory_reserve, static_build_cmd, static_dir,
-				 node_id, spread, placement_tags, created_at, updated_at)
+				 node_id, spread, placement_tags, sleep_enabled, sleep_idle_minutes,
+			 created_at, updated_at)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26,
-					$27, $28, $29, $30, $31, $32, $33, $34, $35, $36)`,
+					$27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38)`,
 		service.ID, service.ProjectID, service.Name, environmentID, service.Type,
 		sourceType, firstNonEmpty(service.GitRepo, service.Image), service.Image,
 		"", service.Command, service.Type, service.Status, service.Image, service.Command,
@@ -555,6 +570,8 @@ func handleCreateService(c *gin.Context) {
 		sql.NullString{String: service.NodeID, Valid: service.NodeID != ""},
 		service.Spread,
 		tagsJSON(service.PlacementTags),
+		service.SleepEnabled,
+		sql.NullInt32{Int32: int32(service.SleepIdleMinutes), Valid: service.SleepIdleMinutes > 0},
 		service.CreatedAt, service.UpdatedAt,
 	)
 
