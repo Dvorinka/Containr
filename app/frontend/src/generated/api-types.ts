@@ -932,6 +932,130 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/services/{id}/sleep": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sleep service
+         * @description Scale the service to zero immediately. When it has public domains a wake placeholder holds the route and resumes the service on the next request.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Sleep initiated */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/services/{id}/wake": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Wake service
+         * @description Reconcile a sleeping service back to running on demand
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Wake initiated */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/internal/wake/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Wake callback (internal)
+         * @description Unauthenticated wake endpoint hit by the busybox wake placeholder while a slept service resumes. Idempotent and non-destructive.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Wake accepted */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Service not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/services/{id}/redeploy": {
         parameters: {
             query?: never;
@@ -9028,6 +9152,10 @@ export interface components {
             static_build_cmd?: string;
             /** @description Output directory for the static builder (default dist) */
             static_dir?: string;
+            /** @description Scale to zero after sleep_idle_minutes without inbound traffic; a wake placeholder answers requests while the service resumes */
+            sleep_enabled?: boolean;
+            /** @description Idle timeout in minutes before sleeping (1-1440, default 15) */
+            sleep_idle_minutes?: number;
             /** @description Computed public URL (published port or domain) */
             public_url?: string;
             /**
@@ -9155,6 +9283,10 @@ export interface components {
             static_build_cmd?: string;
             /** @description Output directory for the static builder (empty string clears) */
             static_dir?: string;
+            /** @description Scale to zero after sleep_idle_minutes without inbound traffic; a wake placeholder answers requests while resuming */
+            sleep_enabled?: boolean;
+            /** @description Idle timeout in minutes before sleeping (1-1440) */
+            sleep_idle_minutes?: number;
         };
         ServiceDomain: {
             /** Format: uuid */

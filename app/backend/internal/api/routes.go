@@ -98,6 +98,9 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 	// Start the cron scheduler — executes due cron_jobs via docker exec.
 	StartCronScheduler(context.Background(), db, dockerClient)
 
+	// Sleep sweeper — scales idle services to zero and prunes wake containers.
+	StartSleepSweeper(context.Background(), db, dockerClient, deploymentEngine, cfg.Port)
+
 	// Initialize database handler
 	databaseHandler := NewDatabaseHandler(db.DB, dockerClient)
 
@@ -158,6 +161,7 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			c.Set("deployment_engine", deploymentEngine)
 		}
 		c.Set("deploy_queue", deployQueue)
+		c.Set("api_port", cfg.Port)
 		c.Set("scheduler", scheduler)
 		c.Set("metrics_collector", metricsCollector)
 		c.Set("auto_scaler", autoScaler)
@@ -249,6 +253,10 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			public.POST("/auth/login", handleLogin)
 			public.POST("/auth/register", handleRegister)
 			public.GET("/maintenance", handleMaintenancePage)
+
+			// Wake callback for sleep-mode placeholders. Unauthenticated but
+			// non-destructive: it only reconciles the service back to running.
+			public.Any("/internal/wake/:id", handleServiceWake)
 		}
 
 		// Read routes — public browsing. OptionalAuth resolves a session when
@@ -335,6 +343,8 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			authed.POST("/services/:id/start", handleServiceStart)
 			authed.POST("/services/:id/stop", handleServiceStop)
 			authed.POST("/services/:id/restart", handleServiceRestart)
+			authed.POST("/services/:id/sleep", handleServiceSleep)
+			authed.POST("/services/:id/wake", handleServiceWakeNow)
 			authed.POST("/services/:id/redeploy", handleServiceRedeploy)
 			authed.POST("/services/:id/clone", handleCloneService)
 			authed.POST("/services/:id/move", handleMoveService)

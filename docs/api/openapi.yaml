@@ -649,6 +649,60 @@ paths:
         '200':
           description: Service restarted
 
+  /services/{id}/sleep:
+    post:
+      tags:
+        - Services
+      summary: Sleep service
+      description: Scale the service to zero immediately. When it has public domains a wake placeholder holds the route and resumes the service on the next request.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '202':
+          description: Sleep initiated
+
+  /services/{id}/wake:
+    post:
+      tags:
+        - Services
+      summary: Wake service
+      description: Reconcile a sleeping service back to running on demand
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '202':
+          description: Wake initiated
+
+  /internal/wake/{id}:
+    get:
+      tags:
+        - Services
+      summary: Wake callback (internal)
+      description: Unauthenticated wake endpoint hit by the busybox wake placeholder while a slept service resumes. Idempotent and non-destructive.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '202':
+          description: Wake accepted
+        '404':
+          description: Service not found
+
   /services/{id}/redeploy:
     post:
       tags:
@@ -5835,6 +5889,12 @@ components:
         static_dir:
           type: string
           description: Output directory for the static builder (default dist)
+        sleep_enabled:
+          type: boolean
+          description: Scale to zero after sleep_idle_minutes without inbound traffic; a wake placeholder answers requests while the service resumes
+        sleep_idle_minutes:
+          type: integer
+          description: Idle timeout in minutes before sleeping (1-1440, default 15)
         public_url:
           type: string
           description: Computed public URL (published port or domain)
@@ -6006,6 +6066,12 @@ components:
         static_dir:
           type: string
           description: Output directory for the static builder (empty string clears)
+        sleep_enabled:
+          type: boolean
+          description: Scale to zero after sleep_idle_minutes without inbound traffic; a wake placeholder answers requests while resuming
+        sleep_idle_minutes:
+          type: integer
+          description: Idle timeout in minutes before sleeping (1-1440)
 
     ServiceDomain:
       type: object
