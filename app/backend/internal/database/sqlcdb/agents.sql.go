@@ -75,7 +75,7 @@ INSERT INTO node_agents (
     id, name, hostname, ip_address, port, status, version,
     capabilities, resources, last_heartbeat, metadata
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-RETURNING id, name, hostname, ip_address, port, status, version, capabilities, resources, last_heartbeat, created_at, updated_at, metadata, auto_prune, schedulable, tags
+RETURNING id, name, hostname, ip_address, port, status, version, capabilities, resources, last_heartbeat, created_at, updated_at, metadata, auto_prune, schedulable, tags, default_domain
 `
 
 type CreateAgentParams struct {
@@ -124,6 +124,7 @@ func (q *Queries) CreateAgent(ctx context.Context, arg CreateAgentParams) (NodeA
 		&i.AutoPrune,
 		&i.Schedulable,
 		&i.Tags,
+		&i.DefaultDomain,
 	)
 	return i, err
 }
@@ -258,7 +259,7 @@ func (q *Queries) DeleteServiceContainersOnAgent(ctx context.Context, arg Delete
 }
 
 const getAgent = `-- name: GetAgent :one
-SELECT id, name, hostname, ip_address, port, status, version, capabilities, resources, last_heartbeat, created_at, updated_at, metadata, auto_prune, schedulable, tags FROM node_agents WHERE id = $1
+SELECT id, name, hostname, ip_address, port, status, version, capabilities, resources, last_heartbeat, created_at, updated_at, metadata, auto_prune, schedulable, tags, default_domain FROM node_agents WHERE id = $1
 `
 
 func (q *Queries) GetAgent(ctx context.Context, id string) (NodeAgent, error) {
@@ -281,12 +282,13 @@ func (q *Queries) GetAgent(ctx context.Context, id string) (NodeAgent, error) {
 		&i.AutoPrune,
 		&i.Schedulable,
 		&i.Tags,
+		&i.DefaultDomain,
 	)
 	return i, err
 }
 
 const getAgentByHostAndIP = `-- name: GetAgentByHostAndIP :one
-SELECT id, name, hostname, ip_address, port, status, version, capabilities, resources, last_heartbeat, created_at, updated_at, metadata, auto_prune, schedulable, tags FROM node_agents
+SELECT id, name, hostname, ip_address, port, status, version, capabilities, resources, last_heartbeat, created_at, updated_at, metadata, auto_prune, schedulable, tags, default_domain FROM node_agents
 WHERE hostname = $1 AND ip_address = $2
 LIMIT 1
 `
@@ -316,6 +318,7 @@ func (q *Queries) GetAgentByHostAndIP(ctx context.Context, arg GetAgentByHostAnd
 		&i.AutoPrune,
 		&i.Schedulable,
 		&i.Tags,
+		&i.DefaultDomain,
 	)
 	return i, err
 }
@@ -523,7 +526,7 @@ func (q *Queries) ListAgentHeartbeatsSince(ctx context.Context, arg ListAgentHea
 }
 
 const listAgents = `-- name: ListAgents :many
-SELECT id, name, hostname, ip_address, port, status, version, capabilities, resources, last_heartbeat, created_at, updated_at, metadata, auto_prune, schedulable, tags FROM node_agents ORDER BY created_at ASC
+SELECT id, name, hostname, ip_address, port, status, version, capabilities, resources, last_heartbeat, created_at, updated_at, metadata, auto_prune, schedulable, tags, default_domain FROM node_agents ORDER BY created_at ASC
 `
 
 func (q *Queries) ListAgents(ctx context.Context) ([]NodeAgent, error) {
@@ -552,6 +555,7 @@ func (q *Queries) ListAgents(ctx context.Context) ([]NodeAgent, error) {
 			&i.AutoPrune,
 			&i.Schedulable,
 			&i.Tags,
+			&i.DefaultDomain,
 		); err != nil {
 			return nil, err
 		}
@@ -685,6 +689,39 @@ func (q *Queries) ListPendingCommands(ctx context.Context, nodeAgentID string) (
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSchedulableAgentDomains = `-- name: ListSchedulableAgentDomains :many
+SELECT DISTINCT default_domain FROM node_agents
+WHERE status = 'online' AND schedulable
+  AND default_domain <> ''
+  AND tags @> $1::jsonb
+ORDER BY default_domain
+`
+
+// Base domains of every online, schedulable agent carrying the required
+// placement tags — auto-domain candidates for spread services.
+func (q *Queries) ListSchedulableAgentDomains(ctx context.Context, dollar_1 json.RawMessage) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listSchedulableAgentDomains, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var default_domain string
+		if err := rows.Scan(&default_domain); err != nil {
+			return nil, err
+		}
+		items = append(items, default_domain)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -910,6 +947,20 @@ func (q *Queries) ScrubCommandPayload(ctx context.Context, arg ScrubCommandPaylo
 	return err
 }
 
+const setAgentDefaultDomain = `-- name: SetAgentDefaultDomain :exec
+UPDATE node_agents SET default_domain = $2, updated_at = NOW() WHERE id = $1
+`
+
+type SetAgentDefaultDomainParams struct {
+	ID            string `json:"id"`
+	DefaultDomain string `json:"default_domain"`
+}
+
+func (q *Queries) SetAgentDefaultDomain(ctx context.Context, arg SetAgentDefaultDomainParams) error {
+	_, err := q.db.ExecContext(ctx, setAgentDefaultDomain, arg.ID, arg.DefaultDomain)
+	return err
+}
+
 const setAgentSchedulable = `-- name: SetAgentSchedulable :exec
 UPDATE node_agents SET schedulable = $2, updated_at = NOW() WHERE id = $1
 `
@@ -954,7 +1005,7 @@ UPDATE node_agents SET
     schedulable = $13,
     updated_at = NOW()
 WHERE id = $1
-RETURNING id, name, hostname, ip_address, port, status, version, capabilities, resources, last_heartbeat, created_at, updated_at, metadata, auto_prune, schedulable, tags
+RETURNING id, name, hostname, ip_address, port, status, version, capabilities, resources, last_heartbeat, created_at, updated_at, metadata, auto_prune, schedulable, tags, default_domain
 `
 
 type UpdateAgentParams struct {
@@ -1007,6 +1058,7 @@ func (q *Queries) UpdateAgent(ctx context.Context, arg UpdateAgentParams) (NodeA
 		&i.AutoPrune,
 		&i.Schedulable,
 		&i.Tags,
+		&i.DefaultDomain,
 	)
 	return i, err
 }

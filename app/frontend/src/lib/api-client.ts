@@ -362,6 +362,7 @@ export type NodeAgentEntity = {
   autoPrune: boolean;
   schedulable: boolean;
   tags: string[];
+  defaultDomain?: string;
   metadata: Record<string, unknown>;
   lastHeartbeat?: string;
   createdAt?: string;
@@ -1107,6 +1108,7 @@ function normalizeAgent(agent: RawNodeAgent): NodeAgentEntity | null {
     autoPrune: agent.auto_prune ?? false,
     schedulable: agent.schedulable ?? true,
     tags: Array.isArray(agent.tags) ? agent.tags : [],
+    defaultDomain: agent.default_domain || '',
     metadata: (agent.metadata ?? {}) as Record<string, unknown>,
     createdAt: agent.created_at,
     updatedAt: agent.updated_at,
@@ -1146,7 +1148,7 @@ export async function listAgents(): Promise<NodeAgentEntity[]> {
   return normalizeAgentArray(payload.agents);
 }
 
-export async function updateAgent(id: string, body: { name?: string; auto_prune?: boolean; tags?: string[] }): Promise<NodeAgentEntity | null> {
+export async function updateAgent(id: string, body: { name?: string; auto_prune?: boolean; tags?: string[]; default_domain?: string }): Promise<NodeAgentEntity | null> {
   const payload = await requestJson<{ agent?: RawNodeAgent }>(`/agents/${id}`, {
     method: 'PUT',
     body: JSON.stringify(body),

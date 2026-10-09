@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"net"
 	"net/http"
 	"regexp"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"containr/internal/database"
+	"containr/internal/database/sqlcdb"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -67,6 +69,72 @@ func serviceDomainNames(db *database.DB, serviceID uuid.UUID, fallback string) [
 	}
 	if len(out) == 0 && fallback != "" {
 		out = []string{fallback}
+	}
+	if len(out) == 0 {
+		out = serviceAutoDomains(db, serviceID)
+	}
+	return out
+}
+
+// dnsLabel normalizes a service name into a DNS label: lowercase alnum
+// plus single dashes, never leading/trailing, ≤63 chars.
+func dnsLabel(name string) string {
+	var b strings.Builder
+	lastWasSep := false
+	for _, r := range strings.ToLower(strings.TrimSpace(name)) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			lastWasSep = false
+			continue
+		}
+		if !lastWasSep && b.Len() > 0 {
+			b.WriteByte('-')
+			lastWasSep = true
+		}
+	}
+	out := strings.Trim(b.String(), "-")
+	if len(out) > 63 {
+		out = strings.Trim(out[:63], "-")
+	}
+	return out
+}
+
+// serviceAutoDomains generates <service>.<node-default-domain> hostnames
+// for services with no explicit domains. Pinned services take their node's
+// base domain; spread services union every eligible node's base domain.
+// Local services get nothing — there is no instance-level base domain yet.
+func serviceAutoDomains(db *database.DB, serviceID uuid.UUID) []string {
+	var name string
+	var nodeID sql.NullString
+	var spread bool
+	if err := db.QueryRow(
+		`SELECT name, node_id, COALESCE(spread, false) FROM services WHERE id = $1`, serviceID,
+	).Scan(&name, &nodeID, &spread); err != nil {
+		return nil
+	}
+	label := dnsLabel(name)
+	if label == "" {
+		return nil
+	}
+
+	var bases []string
+	ctx := context.Background()
+	q := sqlcdb.New(db.DB)
+	switch {
+	case nodeID.Valid && nodeID.String != "":
+		if a, err := q.GetAgent(ctx, nodeID.String); err == nil && a.DefaultDomain != "" {
+			bases = []string{a.DefaultDomain}
+		}
+	case spread:
+		var err error
+		bases, err = q.ListSchedulableAgentDomains(ctx, json.RawMessage(tagsJSON(servicePlacementTags(db, serviceID))))
+		if err != nil {
+			bases = nil
+		}
+	}
+	out := make([]string, 0, len(bases))
+	for _, base := range bases {
+		out = append(out, label+"."+base)
 	}
 	return out
 }

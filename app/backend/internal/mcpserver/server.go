@@ -174,7 +174,7 @@ func init() {
 	register(spec{"containr_nodes_get", "Get a node agent (admin)", "GET", "/agents/{id}", []string{"id"}, nil, false})
 	register(spec{"containr_agent_tokens_issue", "Issue an agent onboarding token (admin). Args: label.", "POST", "/agent-tokens", nil, []string{"label"}, false})
 	register(spec{"containr_agent_tokens_list", "List agent onboarding tokens (admin)", "GET", "/agent-tokens", nil, nil, false})
-	register(spec{"containr_nodes_update", "Update a node agent (admin). Args: id; optional auto_prune, name, tags (string array — placement labels services can require via placement_tags; [] clears).", "PUT", "/agents/{id}", []string{"id"}, []string{"auto_prune", "name", "tags"}, false})
+	register(spec{"containr_nodes_update", "Update a node agent (admin). Args: id; optional auto_prune, name, tags (string array — placement labels services can require via placement_tags; [] clears), default_domain (base domain — services placed on this node with no explicit domains get <name>.<default_domain>; empty clears).", "PUT", "/agents/{id}", []string{"id"}, []string{"auto_prune", "name", "tags", "default_domain"}, false})
 	register(spec{"containr_nodes_cordon", "Cordon a node: blocks new pins and 'auto' placements; running replicas stay (admin). Args: id.", "POST", "/agents/{id}/cordon", []string{"id"}, nil, false})
 	register(spec{"containr_nodes_uncordon", "Re-open a node for placement (admin). Args: id.", "POST", "/agents/{id}/uncordon", []string{"id"}, nil, false})
 	register(spec{"containr_nodes_drain", "Drain a node: cordon + remove all service containers via the agent + unpin affected services so they redeploy locally. Requires the node online (admin). Args: id.", "POST", "/agents/{id}/drain", []string{"id"}, nil, true})

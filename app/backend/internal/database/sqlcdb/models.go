@@ -178,6 +178,7 @@ type NodeAgent struct {
 	AutoPrune     bool                  `json:"auto_prune"`
 	Schedulable   bool                  `json:"schedulable"`
 	Tags          json.RawMessage       `json:"tags"`
+	DefaultDomain string                `json:"default_domain"`
 }
 
 type Notification struct {
@@ -279,6 +280,7 @@ type Service struct {
 	NodeID          sql.NullString  `json:"node_id"`
 	Spread          bool            `json:"spread"`
 	PlacementTags   json.RawMessage `json:"placement_tags"`
+	TraefikLabels   json.RawMessage `json:"traefik_labels"`
 }
 
 type ServiceDomain struct {

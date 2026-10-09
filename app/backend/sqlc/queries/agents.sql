@@ -179,6 +179,18 @@ LIMIT 1;
 -- name: SetAgentTags :exec
 UPDATE node_agents SET tags = $2::jsonb, updated_at = NOW() WHERE id = $1;
 
+-- name: SetAgentDefaultDomain :exec
+UPDATE node_agents SET default_domain = $2, updated_at = NOW() WHERE id = $1;
+
+-- name: ListSchedulableAgentDomains :many
+-- Base domains of every online, schedulable agent carrying the required
+-- placement tags — auto-domain candidates for spread services.
+SELECT DISTINCT default_domain FROM node_agents
+WHERE status = 'online' AND schedulable
+  AND default_domain <> ''
+  AND tags @> $1::jsonb
+ORDER BY default_domain;
+
 -- name: ListServiceContainers :many
 SELECT id, name, node_agent_id, status, ports, resources FROM container_instances
 WHERE service_id = $1;
