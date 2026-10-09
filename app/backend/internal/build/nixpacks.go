@@ -476,17 +476,22 @@ func (n *NixpacksBuilder) Build(ctx context.Context, req *types.BuildRequest) (*
 	}
 
 	// Create temporary Dockerfile
-	dockerfile, err := n.generateDockerfile(plan)
+	dockerfilePath, err := n.generateDockerfile(plan)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate Dockerfile: %w", err)
 	}
-	defer os.Remove(dockerfile)
+	defer os.Remove(dockerfilePath)
 
 	// Build Docker image
 	imageName := fmt.Sprintf("%s:%s", req.ImageName, req.ImageTag)
 
-	// Create build context tar
-	buildCtx, err := createBuildContext(req.SourcePath, dockerfile)
+	// Create build context tar — createBuildContext takes the Dockerfile
+	// contents, not its path.
+	dockerfileData, err := os.ReadFile(dockerfilePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read generated Dockerfile: %w", err)
+	}
+	buildCtx, err := createBuildContext(req.SourcePath, string(dockerfileData))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create build context: %w", err)
 	}

@@ -5,11 +5,15 @@ import (
 	"containr/internal/deployment"
 	"containr/internal/deployqueue"
 	"containr/internal/docker"
+	"containr/internal/source"
+	"containr/internal/types"
 	"context"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -377,6 +381,23 @@ func runDeploymentAndSyncWithImage(
 	ctx, cancel := context.WithTimeout(parentCtx, 30*time.Minute)
 	defer cancel()
 
+	// The checkout and any shipped artifacts die with this deployment.
+	var artifactIDs []string
+	checkoutRoot := filepath.Join(containrWorkDir, "repos", dbDeployment.ID.String())
+	defer func() {
+		_ = os.RemoveAll(checkoutRoot)
+		for _, id := range artifactIDs {
+			removeArtifact(id)
+		}
+	}()
+	failDeploy := func(msg string) {
+		failedAt := time.Now()
+		_, _ = db.Exec(
+			`UPDATE deployments SET status = 'failed', error = $1, completed_at = $2, updated_at = $2 WHERE id = $3`,
+			msg, failedAt, dbDeployment.ID,
+		)
+	}
+
 	sourcePath := strings.TrimSpace(service.BuildPath)
 	if sourcePath == "" {
 		sourcePath = "."
@@ -421,19 +442,31 @@ func runDeploymentAndSyncWithImage(
 		maintURL = maintenanceURL(db)
 	}
 
-	// Node-pinned services dispatch to the agent's command queue. Builds run
-	// on the local host, so remote placement only works for registry-pulled
-	// images — git-sourced and rollback deploys fail fast with that message.
+	// Node-pinned and spread services dispatch to agent command queues.
 	nodeID := serviceNodeID(db, service.ID)
 	spread := serviceSpread(db, service.ID)
-	if (nodeID != "" || spread) && (service.GitRepo != "" || imageOverride != "") {
-		failedAt := time.Now()
-		msg := "service uses remote node placement but remote nodes only run registry-pulled images (git builds and rollbacks stay local — build-on-node is not yet supported)"
-		_, _ = db.Exec(
-			`UPDATE deployments SET status = 'failed', error = $1, completed_at = $2, updated_at = $2 WHERE id = $3`,
-			msg, failedAt, dbDeployment.ID,
-		)
-		return
+	remote := nodeID != "" || spread
+
+	// Materialize the git checkout — local builds consume it directly;
+	// remote builds package it into a context artifact the node builds.
+	if service.GitRepo != "" && imageOverride == "" {
+		var ownerID string
+		_ = db.QueryRow(`SELECT owner_id FROM projects WHERE id = $1`, service.ProjectID).Scan(&ownerID)
+		branch := req.Branch
+		if branch == "" {
+			branch = service.GitBranch
+		}
+		cloneSpec, err := resolveGitCloneSpec(db, ownerID, service.GitRepo, branch, req.CommitHash, service.BuildPath)
+		if err != nil {
+			failDeploy("resolve git source: " + err.Error())
+			return
+		}
+		src, err := source.Checkout(ctx, checkoutRoot, cloneSpec)
+		if err != nil {
+			failDeploy("git checkout: " + err.Error())
+			return
+		}
+		sourcePath = src
 	}
 
 	deployReq := &deployment.DeploymentRequest{
@@ -480,14 +513,36 @@ func runDeploymentAndSyncWithImage(
 		if image == "" {
 			image = service.Image
 		}
-		var ownerID string
-		_ = db.QueryRow(`SELECT owner_id FROM projects WHERE id = $1`, service.ProjectID).Scan(&ownerID)
-		auth := registryAuthFor(db, ownerID, image)
-		deployReq.BuildConfig = &deployment.BuildConfig{
-			BuildType:     "prebuilt",
-			PrebuiltImage: image,
-			PullUsername:  auth.Username,
-			PullPassword:  auth.Password,
+		if remote && strings.HasPrefix(image, "containr-") {
+			// Locally-built tag — no registry serves it. Ship the image
+			// itself as a docker-save artifact; the node loads it.
+			rc, err := engine.DockerClient().SaveImage(ctx, image)
+			if err != nil {
+				failDeploy("export rollback image: " + err.Error())
+				return
+			}
+			artifactID, err := putArtifact(rc)
+			_ = rc.Close()
+			if err != nil {
+				failDeploy("store rollback image artifact: " + err.Error())
+				return
+			}
+			artifactIDs = append(artifactIDs, artifactID)
+			deployReq.Config.RemoteLoad = &deployment.RemoteLoadSpec{ArtifactID: artifactID}
+			deployReq.BuildConfig = &deployment.BuildConfig{
+				BuildType:     "remote",
+				PrebuiltImage: image,
+			}
+		} else {
+			var ownerID string
+			_ = db.QueryRow(`SELECT owner_id FROM projects WHERE id = $1`, service.ProjectID).Scan(&ownerID)
+			auth := registryAuthFor(db, ownerID, image)
+			deployReq.BuildConfig = &deployment.BuildConfig{
+				BuildType:     "prebuilt",
+				PrebuiltImage: image,
+				PullUsername:  auth.Username,
+				PullPassword:  auth.Password,
+			}
 		}
 	} else {
 		// "auto" leaves BuildType empty so the manager detects it; the static
@@ -497,16 +552,54 @@ func runDeploymentAndSyncWithImage(
 		if service.Builder != "" && service.Builder != "auto" {
 			buildType = service.Builder
 		}
-		deployReq.BuildConfig = &deployment.BuildConfig{
-			BuildType:  buildType,
-			SourcePath: sourcePath,
-			Branch:     req.Branch,
-			Commit:     req.CommitHash,
-			NoCache:    req.NoCache,
-		}
+		buildArgs := map[string]string{}
+		buildCommand := ""
 		if buildType == "static" {
-			deployReq.BuildConfig.BuildCommand = firstNonEmpty(service.StaticBuildCmd, "npm ci && npm run build")
-			deployReq.BuildConfig.BuildArgs = map[string]string{"STATIC_DIR": firstNonEmpty(service.StaticDir, "dist")}
+			buildCommand = firstNonEmpty(service.StaticBuildCmd, "npm ci && npm run build")
+			buildArgs["STATIC_DIR"] = firstNonEmpty(service.StaticDir, "dist")
+		}
+		if remote {
+			// Package the context — the node docker-builds it itself.
+			packReq := &types.BuildRequest{
+				BuildType:    buildType,
+				SourcePath:   sourcePath,
+				BuildCommand: buildCommand,
+				BuildArgs:    buildArgs,
+				Environment:  env,
+			}
+			rc, err := engine.BuildManager().PackageContext(ctx, packReq)
+			if err != nil {
+				failDeploy("package build context: " + err.Error())
+				return
+			}
+			artifactID, err := putArtifact(rc)
+			_ = rc.Close()
+			if err != nil {
+				failDeploy("store build context artifact: " + err.Error())
+				return
+			}
+			artifactIDs = append(artifactIDs, artifactID)
+			deployReq.Config.RemoteBuild = &deployment.RemoteBuildSpec{
+				ArtifactID: artifactID,
+				BuildArgs:  buildArgs,
+				NoCache:    req.NoCache,
+			}
+			deployReq.BuildConfig = &deployment.BuildConfig{
+				BuildType: "remote",
+				Branch:    req.Branch,
+				Commit:    req.CommitHash,
+				NoCache:   req.NoCache,
+			}
+		} else {
+			deployReq.BuildConfig = &deployment.BuildConfig{
+				BuildType:    buildType,
+				SourcePath:   sourcePath,
+				BuildCommand: buildCommand,
+				BuildArgs:    buildArgs,
+				Branch:       req.Branch,
+				Commit:       req.CommitHash,
+				NoCache:      req.NoCache,
+			}
 		}
 	}
 

@@ -3,6 +3,8 @@ package build
 import (
 	"context"
 	"fmt"
+	"io"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -90,6 +92,75 @@ func (bm *BuildManager) Build(ctx context.Context, req *types.BuildRequest) (*ty
 	default:
 		return nil, fmt.Errorf("unsupported build type: %s", req.BuildType)
 	}
+}
+
+// PackageContext produces the same build-context tar Build would hand the
+// local daemon, without building it. Node agents download the tar and run
+// docker build themselves — the Dockerfile lands at the tar root.
+func (bm *BuildManager) PackageContext(ctx context.Context, req *types.BuildRequest) (io.ReadCloser, error) {
+	if req.BuildType == "" {
+		detectedType, err := bm.DetectBuildType(ctx, req.SourcePath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to detect build type: %w", err)
+		}
+		req.BuildType = string(detectedType)
+	}
+
+	var dockerfileContent string
+	switch BuildType(req.BuildType) {
+	case BuildTypeDockerfile:
+		name, err := bm.dockerfileBuilder.DetectDockerfile(ctx, req.SourcePath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to detect Dockerfile: %w", err)
+		}
+		path := filepath.Join(req.SourcePath, name)
+		if optimized, err := bm.dockerfileBuilder.OptimizeDockerfile(ctx, path); err == nil {
+			path = optimized
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read Dockerfile: %w", err)
+		}
+		dockerfileContent = string(data)
+	case BuildTypeRailpack:
+		if err := bm.railpackBuilder.DetectRailpack(ctx, req.SourcePath); err != nil {
+			return nil, fmt.Errorf("Railpack cannot build this project: %w", err)
+		}
+		content, err := bm.railpackBuilder.generateDockerfile(ctx, req.SourcePath, &RailpackConfig{
+			BuildCmd: req.BuildCommand,
+			StartCmd: req.StartCommand,
+			Env:      req.Environment,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate Dockerfile with Railpack: %w", err)
+		}
+		dockerfileContent = content
+	case BuildTypeNixpacks:
+		plan, err := bm.nixpacksBuilder.GeneratePlan(ctx, req.SourcePath, &NixpacksConfig{
+			BuildCmd: req.BuildCommand,
+			StartCmd: req.StartCommand,
+			Env:      req.Environment,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate build plan: %w", err)
+		}
+		path, err := bm.nixpacksBuilder.generateDockerfile(plan)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate Dockerfile: %w", err)
+		}
+		defer os.Remove(path)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read generated Dockerfile: %w", err)
+		}
+		dockerfileContent = string(data)
+	case BuildTypeStatic:
+		dockerfileContent = staticDockerfile
+	default:
+		return nil, fmt.Errorf("unsupported build type for remote packaging: %s", req.BuildType)
+	}
+
+	return createBuildContext(req.SourcePath, dockerfileContent)
 }
 
 // buildPrebuilt handles prebuilt image deployments
