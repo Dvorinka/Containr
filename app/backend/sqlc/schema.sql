@@ -147,6 +147,7 @@ CREATE TABLE database_services (
     external_password TEXT NOT NULL DEFAULT '',
     external_ssl BOOLEAN NOT NULL DEFAULT false,
     public_port BOOLEAN NOT NULL DEFAULT false,
+    backup_target_id VARCHAR(255),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -157,8 +158,24 @@ CREATE TABLE database_backups (
     size VARCHAR(50) NOT NULL,
     status VARCHAR(50) NOT NULL DEFAULT 'in_progress',
     backup_path TEXT,
+    remote_key VARCHAR(512),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     completed_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE TABLE backup_targets (
+    id VARCHAR(255) PRIMARY KEY,
+    user_id VARCHAR(255) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    endpoint VARCHAR(512) NOT NULL,
+    bucket VARCHAR(255) NOT NULL,
+    region VARCHAR(100) NOT NULL DEFAULT '',
+    prefix VARCHAR(255) NOT NULL DEFAULT '',
+    access_key TEXT NOT NULL DEFAULT '',
+    secret_key TEXT NOT NULL DEFAULT '',
+    use_tls BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 CREATE TABLE node_agents (

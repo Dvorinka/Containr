@@ -53,6 +53,10 @@ databases list|get|create|update|delete|action|backup|restore|download-backup
                                update <id> --public/--public=false toggles it (container recreates, data persists)
 databases register <name>      register an external database (--type --host --port --database --username --password --ssl; probed before storing)
 databases test-connection      probe a connection — by id, or ad-hoc flags
+backup-targets list|add|update|remove|test
+                               S3-compatible archive destinations; add/update probe the bucket
+                               first, empty --access-key/--secret-key on update keep stored keys;
+                               update <db-id> --backup-target assigns a target ("" clears it)
 cron list|get|create|delete|trigger|executions
 templates list|get|create|delete|deploy
 nodes list|get|delete|tokens     node agents + onboarding tokens (admin)

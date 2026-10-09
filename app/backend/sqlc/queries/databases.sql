@@ -78,7 +78,7 @@ SET status = $1, connection_url = $2, updated_at = $3
 WHERE id = $4;
 
 -- name: ListDatabaseBackupsByDatabaseAndUser :many
-SELECT b.id, b.database_id, b.size, b.status, b.backup_path, b.created_at, b.completed_at
+SELECT b.id, b.database_id, b.size, b.status, b.backup_path, b.remote_key, b.created_at, b.completed_at
 FROM database_backups b
 JOIN database_services s ON s.id = b.database_id
 WHERE b.database_id = $1 AND s.user_id = $2
@@ -86,7 +86,7 @@ ORDER BY b.created_at DESC
 LIMIT $3;
 
 -- name: GetDatabaseBackupByIDAndDatabaseAndUser :one
-SELECT b.id, b.database_id, b.size, b.status, b.backup_path, b.created_at, b.completed_at
+SELECT b.id, b.database_id, b.size, b.status, b.backup_path, b.remote_key, b.created_at, b.completed_at
 FROM database_backups b
 JOIN database_services s ON s.id = b.database_id
 WHERE b.id = $1 AND b.database_id = $2 AND s.user_id = $3;

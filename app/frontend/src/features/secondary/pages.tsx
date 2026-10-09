@@ -32,6 +32,10 @@ import {
   createManagedDatabase,
   registerExternalDatabase,
   updateDatabase,
+  listBackupTargets,
+  createBackupTarget,
+  deleteBackupTarget,
+  testBackupTarget,
   testDatabaseConnection,
   testDatabaseConnectionByID,
   type ExternalDatabaseInput,
@@ -1568,6 +1572,139 @@ function RegistriesSection() {
   );
 }
 
+function BackupTargetsSection() {
+  const queryClient = useQueryClient();
+  const targetsQuery = useQuery({
+    queryKey: ['backup-targets'],
+    queryFn: listBackupTargets,
+  });
+  const [form, setForm] = useState({ name: '', endpoint: '', bucket: '', region: '', prefix: '', accessKey: '', secretKey: '', noTls: false });
+  const [testResult, setTestResult] = useState<Record<string, { ok: boolean; latency_ms?: number; error?: string }>>({});
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['backup-targets'] });
+  const createMutation = useMutation({
+    mutationFn: () =>
+      createBackupTarget({
+        name: form.name.trim(),
+        endpoint: form.endpoint.trim(),
+        bucket: form.bucket.trim(),
+        region: form.region.trim() || undefined,
+        prefix: form.prefix.trim() || undefined,
+        access_key: form.accessKey || undefined,
+        secret_key: form.secretKey || undefined,
+        use_tls: !form.noTls,
+      }),
+    onSuccess: () => {
+      setForm({ name: '', endpoint: '', bucket: '', region: '', prefix: '', accessKey: '', secretKey: '', noTls: false });
+      invalidate();
+    },
+  });
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteBackupTarget(id),
+    onSuccess: invalidate,
+  });
+  const testMutation = useMutation({
+    mutationFn: (id: string) => testBackupTarget(id),
+    onSuccess: (result, id) => setTestResult((prev) => ({ ...prev, [id]: result })),
+    onError: (error, id) =>
+      setTestResult((prev) => ({ ...prev, [id]: { ok: false, error: error instanceof Error ? error.message : 'probe failed' } })),
+  });
+
+  const targets = targetsQuery.data ?? [];
+  const fieldCls = 'h-9 flex-1 min-w-[130px] rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] transition-all';
+
+  return (
+    <section className="panel p-6">
+      <div className="flex items-center gap-3 mb-4">
+        <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
+          <HardDrive size={18} className="text-[var(--accent-primary)]" />
+        </div>
+        <div>
+          <h2 className="text-lg font-semibold text-[var(--text-primary)]">Backup targets</h2>
+          <p className="text-xs text-[var(--text-tertiary)]">S3-compatible destinations for database archives — keys stored encrypted</p>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <div className="flex flex-wrap gap-2">
+          <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Name (e.g. garage)" className={fieldCls} />
+          <input value={form.endpoint} onChange={(e) => setForm((f) => ({ ...f, endpoint: e.target.value }))} placeholder="Endpoint host:port" className={fieldCls} />
+          <input value={form.bucket} onChange={(e) => setForm((f) => ({ ...f, bucket: e.target.value }))} placeholder="Bucket" className="h-9 w-36 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] transition-all" />
+          <input value={form.accessKey} onChange={(e) => setForm((f) => ({ ...f, accessKey: e.target.value }))} placeholder="Access key" className={fieldCls} />
+          <input type="password" value={form.secretKey} onChange={(e) => setForm((f) => ({ ...f, secretKey: e.target.value }))} placeholder="Secret key" className={fieldCls} />
+          <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
+            <input type="checkbox" checked={form.noTls} onChange={(e) => setForm((f) => ({ ...f, noTls: e.target.checked }))} className="accent-[var(--accent-primary)]" />
+            No TLS
+          </label>
+          <button
+            onClick={() => createMutation.mutate()}
+            disabled={createMutation.isPending || !form.name.trim() || !form.endpoint.trim() || !form.bucket.trim()}
+            className="h-9 px-4 rounded-[var(--radius-md)] text-sm font-medium text-[var(--accent-on)] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            style={{ background: 'var(--accent-primary)' }}
+          >
+            {createMutation.isPending ? 'Checking…' : 'Add target'}
+          </button>
+        </div>
+
+        {createMutation.isError ? (
+          <p className="text-xs text-[var(--error)]">
+            {createMutation.error instanceof Error ? createMutation.error.message : 'Failed to add target'}
+          </p>
+        ) : null}
+
+        {targetsQuery.isLoading ? (
+          <div className="py-4 text-center">
+            <Loader2 size={16} className="animate-spin mx-auto text-[var(--text-tertiary)]" />
+          </div>
+        ) : targets.length === 0 ? (
+          <p className="text-xs text-[var(--text-tertiary)]">
+            No backup targets. Database archives stay in the local backups volume until a target is configured.
+          </p>
+        ) : (
+          <div className="space-y-1.5 border-t border-[var(--border-subtle)] pt-3">
+            {targets.map((t) => (
+              <div key={t.id} className="flex items-center justify-between gap-2 text-xs">
+                <div className="min-w-0">
+                  <span className="text-[var(--text-primary)]">{t.name}</span>
+                  <span className="ml-2 mono text-[var(--text-muted)]">{t.endpoint}/{t.bucket}{t.prefix ? `/${t.prefix}` : ''}</span>
+                  <span className="ml-2 rounded px-1.5 py-0.5 bg-[var(--surface-muted)] text-[var(--text-secondary)]">
+                    {t.has_credentials ? 'keys set' : 'anonymous'}{t.use_tls ? '' : ' · no TLS'}
+                  </span>
+                  {testResult[t.id ?? ''] && (
+                    <span className={`ml-2 ${testResult[t.id ?? '']?.ok ? 'text-[var(--success)]' : 'text-[var(--error)]'}`}>
+                      {testResult[t.id ?? '']?.ok ? `reachable (${testResult[t.id ?? '']?.latency_ms ?? 0}ms)` : `unreachable — ${testResult[t.id ?? '']?.error ?? 'probe failed'}`}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  <button
+                    onClick={() => testMutation.mutate(t.id ?? '')}
+                    disabled={testMutation.isPending}
+                    className="text-[var(--accent-primary)] hover:underline disabled:opacity-50"
+                  >
+                    Test
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (window.confirm(`Delete backup target ${t.name}?`)) {
+                        deleteMutation.mutate(t.id ?? '');
+                      }
+                    }}
+                    disabled={deleteMutation.isPending}
+                    className="text-[var(--error)] hover:underline disabled:opacity-50"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 export function SettingsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -1742,6 +1879,7 @@ export function SettingsPage() {
           {/* Personal Access Tokens */}
           <UserTokensSection isAdmin={profileQuery.data?.isAdmin ?? false} />
           <RegistriesSection />
+          <BackupTargetsSection />
 
           {/* Platform Settings - owner only */}
           {profileQuery.data?.isAdmin ? <PlatformSettingsSection /> : null}
@@ -1918,6 +2056,11 @@ export function DatabasesPage() {
     refetchInterval: 15_000,
     enabled: !isDemoMode,
   });
+  const backupTargetsQuery = useQuery({
+    queryKey: ['backup-targets'],
+    queryFn: listBackupTargets,
+    enabled: !isDemoMode,
+  });
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['databases'] });
   const createMutation = useMutation({
@@ -1971,6 +2114,11 @@ export function DatabasesPage() {
     mutationFn: ({ id, publicPort }: { id: string; publicPort: boolean }) =>
       updateDatabase(id, { public_port: publicPort }),
     onSuccess: () => window.setTimeout(invalidate, 1500),
+  });
+  const backupTargetMutation = useMutation({
+    mutationFn: ({ id, targetId }: { id: string; targetId: string }) =>
+      updateDatabase(id, { backup_target_id: targetId }),
+    onSuccess: invalidate,
   });
   const testByIdMutation = useMutation({
     mutationFn: (id: string) => testDatabaseConnectionByID(id),
@@ -2196,6 +2344,20 @@ export function DatabasesPage() {
                         <div className="mb-2 flex items-center justify-between">
                           <p className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Backups</p>
                           {signedIn ? (
+                          <div className="flex items-center gap-2">
+                            {(backupTargetsQuery.data?.length ?? 0) > 0 && (
+                              <select
+                                value={db.backup_target_id ?? ''}
+                                onChange={(e) => backupTargetMutation.mutate({ id: db.id ?? '', targetId: e.target.value })}
+                                title="Offsite archive destination"
+                                className="h-7 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-2 text-xs text-[var(--text-secondary)]"
+                              >
+                                <option value="">local only</option>
+                                {(backupTargetsQuery.data ?? []).map((t) => (
+                                  <option key={t.id} value={t.id}>{t.name} ({t.bucket})</option>
+                                ))}
+                              </select>
+                            )}
                           <button
                             onClick={() => backupMutation.mutate(db.id ?? '')}
                             disabled={!running || backupMutation.isPending}
@@ -2205,6 +2367,7 @@ export function DatabasesPage() {
                             <Archive size={11} />
                             {backupMutation.isPending ? 'Starting…' : 'New backup'}
                           </button>
+                          </div>
                           ) : null}
                         </div>
                         <BackupScheduleRow
@@ -2221,6 +2384,7 @@ export function DatabasesPage() {
                                 <span className="text-[var(--text-secondary)]">{formatRelative(b.created_at)}</span>
                                 <span className="mono text-[var(--text-muted)]">{b.size}</span>
                                 <span className={`${b.status === 'completed' ? 'text-[var(--success)]' : b.status === 'in_progress' ? 'text-[var(--warning)]' : 'text-[var(--error)]'}`}>{b.status}</span>
+                                {b.remote && <span className="rounded bg-[var(--surface-card)] px-1.5 py-0.5 text-[var(--accent-primary)]" title="Also shipped to the configured backup target">offsite</span>}
                                 {b.status === 'completed' && (
                                   <span className="ml-auto flex items-center gap-3">
                                     <a

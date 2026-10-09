@@ -1789,6 +1789,40 @@ export async function testDatabaseConnectionByID(id: string): Promise<{ ok: bool
   return requestJson(`/databases/${encodeURIComponent(id)}/test-connection`, { method: 'POST' });
 }
 
+export type BackupTarget = components['schemas']['BackupTarget'];
+export type BackupTargetInput = components['schemas']['BackupTargetRequest'];
+
+export async function listBackupTargets(): Promise<BackupTarget[]> {
+  const payload = await requestJson<{ backup_targets?: BackupTarget[] }>('/backup-targets');
+  return payload.backup_targets ?? [];
+}
+
+export async function createBackupTarget(input: BackupTargetInput): Promise<BackupTarget> {
+  const payload = await requestJson<{ backup_target?: BackupTarget }>('/backup-targets', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  if (!payload.backup_target) {
+    throw new ApiError('Backup target response is invalid', 500);
+  }
+  return payload.backup_target;
+}
+
+export async function updateBackupTarget(id: string, input: BackupTargetInput): Promise<void> {
+  await requestJson(`/backup-targets/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteBackupTarget(id: string): Promise<void> {
+  await requestJson(`/backup-targets/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export async function testBackupTarget(id: string): Promise<{ ok: boolean; latency_ms?: number; error?: string }> {
+  return requestJson(`/backup-targets/${encodeURIComponent(id)}/test`, { method: 'POST' });
+}
+
 export type ConnectGitRepositoryInput = components['schemas']['ConnectGitRepoRequest'];
 export type CreateGitWebhookInput = components['schemas']['CreateWebhookRequest'];
 export type GitWebhookEntity = components['schemas']['GitWebhook'];

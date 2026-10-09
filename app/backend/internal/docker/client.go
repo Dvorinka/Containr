@@ -238,6 +238,11 @@ func (c *Client) CopyFromContainer(ctx context.Context, containerID, srcPath str
 	return reader, err
 }
 
+// CopyToContainer copies a tar archive stream into a container path.
+func (c *Client) CopyToContainer(ctx context.Context, containerID, dstPath string, content io.Reader) error {
+	return c.cli.CopyToContainer(ctx, containerID, dstPath, content, container.CopyToContainerOptions{})
+}
+
 // GetContainerStats returns real-time resource usage statistics for a container
 func (c *Client) GetContainerStats(ctx context.Context, containerID string, stream bool) (*container.StatsResponseReader, error) {
 	resp, err := c.cli.ContainerStats(ctx, containerID, stream)

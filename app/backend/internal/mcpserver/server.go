@@ -101,7 +101,7 @@ func init() {
 	register(spec{"containr_databases_list", "List managed databases", "GET", "/databases", nil, nil, false})
 	register(spec{"containr_databases_get", "Get a database (connection URL included)", "GET", "/databases/{id}", []string{"id"}, nil, false})
 	register(spec{"containr_databases_create", "Provision a managed database. Args: name, type (postgres|mysql|mariadb|mongodb|redis|dragonfly|clickhouse), public_port (bind on all interfaces, default localhost-only).", "POST", "/databases", nil, nil, false})
-	register(spec{"containr_databases_update", "Update a database. Args: id, name, backup_schedule (empty clears), public_port — toggling recreates the container so the new bind scope applies.", "PUT", "/databases/{id}", []string{"id"}, nil, false})
+	register(spec{"containr_databases_update", "Update a database. Args: id, name, backup_schedule (empty clears), backup_target_id (empty clears), public_port — toggling recreates the container so the new bind scope applies.", "PUT", "/databases/{id}", []string{"id"}, nil, false})
 	register(spec{"containr_databases_register_external", "Register a database hosted elsewhere — probed first, password stored encrypted. Args: name (required), type (required), host (required), port, database, username, password, ssl.", "POST", "/databases/register-external", nil, []string{"name", "type", "host"}, false})
 	register(spec{"containr_databases_test_connection", "Probe a DB connection ad-hoc. Args: type, host (required), port, database, username, password, ssl.", "POST", "/databases/test-connection", nil, []string{"type", "host"}, false})
 	register(spec{"containr_databases_test_connection_by_id", "Re-probe a registered external database with its stored credentials. Args: id.", "POST", "/databases/{id}/test-connection", []string{"id"}, nil, false})
@@ -109,6 +109,13 @@ func init() {
 	register(spec{"containr_databases_backup", "Take a manual backup snapshot", "POST", "/databases/{id}/backup", []string{"id"}, nil, false})
 	register(spec{"containr_databases_restore", "Restore a database from a backup — overwrites current data. Requires confirm:true.", "POST", "/databases/{id}/restore", []string{"id"}, []string{"backup_id"}, true})
 	register(spec{"containr_databases_delete", "Delete a database and its data. Requires confirm:true.", "DELETE", "/databases/{id}", []string{"id"}, nil, true})
+
+	// S3-compatible backup targets
+	register(spec{"containr_backup_targets_list", "List S3-compatible backup targets (credentials never returned)", "GET", "/backup-targets", nil, nil, false})
+	register(spec{"containr_backup_targets_create", "Register a backup target — probed first, keys stored encrypted. Args: name, endpoint (required), bucket (required), region, prefix, access_key, secret_key, use_tls.", "POST", "/backup-targets", nil, []string{"endpoint", "bucket"}, false})
+	register(spec{"containr_backup_targets_update", "Update a backup target; empty credentials keep stored keys. Args: id, name, endpoint, bucket, region, prefix, access_key, secret_key, use_tls.", "PUT", "/backup-targets/{id}", []string{"id"}, nil, false})
+	register(spec{"containr_backup_targets_delete", "Delete a backup target — fails while databases still point at it. Requires confirm:true.", "DELETE", "/backup-targets/{id}", []string{"id"}, nil, true})
+	register(spec{"containr_backup_targets_test", "Re-probe a backup target's bucket access. Args: id.", "POST", "/backup-targets/{id}/test", []string{"id"}, nil, false})
 
 	// Cron
 	register(spec{"containr_cron_list", "List cron jobs", "GET", "/cron-jobs", nil, nil, false})
