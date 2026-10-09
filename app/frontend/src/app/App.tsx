@@ -13,6 +13,7 @@ import { WebhooksPage } from '@/features/webhooks/pages/WebhooksPage';
 import { OperationsPage } from '@/features/operations/pages/OperationsPage';
 import { AdminPage } from '@/features/admin/pages/AdminPage';
 import { LandingPage } from '@/features/landing/LandingPage';
+import { useBranding } from '@/lib/use-branding';
 import {
   DocsPage,
   PeoplePage,
@@ -126,6 +127,7 @@ function NotFoundPage() {
 }
 
 export default function App() {
+  useBranding();
   return (
     <ErrorBoundary>
       <Routes>

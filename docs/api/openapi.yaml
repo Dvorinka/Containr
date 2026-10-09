@@ -2702,6 +2702,24 @@ paths:
         '204':
           description: Deleted
 
+  /branding:
+    get:
+      tags:
+        - Branding
+      summary: White-label branding (public)
+      description: |
+        Instance branding payload — product name, logo/favicon URLs,
+        accent color, docs/support links. Unauthenticated so the login
+        page and shell can brand themselves before a session exists.
+        Unset fields return Containr defaults.
+      responses:
+        '200':
+          description: Branding configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Branding'
+
   # Audit Logs
   /audit-logs:
     get:
@@ -3325,6 +3343,16 @@ paths:
                 cloudflare_tunnel_token:
                   type: string
                   description: Cloudflare Tunnel token. Empty string clears the stored token and removes the cloudflared container.
+                branding:
+                  type: object
+                  description: White-label fields. Empty string clears a field back to the Containr default.
+                  properties:
+                    product_name: {type: string}
+                    logo_url: {type: string}
+                    favicon_url: {type: string}
+                    accent_color: {type: string}
+                    docs_url: {type: string}
+                    support_url: {type: string}
       responses:
         '200':
           description: Updated platform settings
@@ -6090,6 +6118,25 @@ components:
             container:
               type: string
               description: cloudflared container state - running/exited/missing, or unavailable when Docker is unreachable
+        branding:
+          $ref: '#/components/schemas/Branding'
+
+    Branding:
+      type: object
+      description: White-label instance branding. Unset fields fall back to Containr defaults.
+      properties:
+        product_name:
+          type: string
+        logo_url:
+          type: string
+        favicon_url:
+          type: string
+        accent_color:
+          type: string
+        docs_url:
+          type: string
+        support_url:
+          type: string
 
     User:
       type: object

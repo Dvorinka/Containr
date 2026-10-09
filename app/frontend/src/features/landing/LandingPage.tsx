@@ -15,6 +15,8 @@ import { listProjects, listTemplates } from '@/lib/api-client';
 import { DocsBrowser } from '@/features/docs/DocsBrowser';
 import { useAuthSession } from '@/lib/use-auth-session';
 import { useDemoMode } from '@/lib/demo-mode';
+import { useBranding } from '@/lib/use-branding';
+import { BrandWordmark } from '@/shared/components';
 import { demoProjects, demoTemplates } from '@/lib/demo-data';
 
 const features = [
@@ -28,6 +30,7 @@ const features = [
 
 export function LandingPage() {
   const isDemoMode = useDemoMode();
+  const { logoUrl, productName } = useBranding();
   const sessionQuery = useAuthSession({ enabled: !isDemoMode });
   const signedIn = !isDemoMode && Boolean(sessionQuery.data);
   const demo = isDemoMode ? '?demo=1' : '';
@@ -45,9 +48,9 @@ export function LandingPage() {
       <header className="sticky top-0 z-40 border-b border-[var(--border-subtle)] bg-[var(--bg-base)]/80 backdrop-blur-xl">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-5">
           <Link to="/" className="flex items-center gap-2.5">
-            <img src="/containr.svg" alt="Containr" className="h-7 w-7 rounded-lg" />
+            <img src={logoUrl || '/containr.svg'} alt={productName} className="h-7 w-7 rounded-lg object-contain" />
             <span className="text-[15px] font-extrabold tracking-tight text-[var(--text-primary)]">
-              contain<span style={{ color: 'var(--accent-primary)' }}>r</span>
+              <BrandWordmark />
             </span>
           </Link>
           <nav className="flex items-center gap-1 text-[13px]">

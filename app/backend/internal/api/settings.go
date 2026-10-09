@@ -23,9 +23,48 @@ const (
 	settingSignupEnabled         = "signup_enabled"
 	settingCloudflareTunnelToken = "cloudflare_tunnel_token"
 
+	// White-label branding keys — unset fields fall back to Containr
+	// defaults. Self-hosters rebrand their instance via these.
+	settingBrandProductName = "branding.product_name"
+	settingBrandLogoURL     = "branding.logo_url"
+	settingBrandFaviconURL  = "branding.favicon_url"
+	settingBrandAccent      = "branding.accent_color"
+	settingBrandDocsURL     = "branding.docs_url"
+	settingBrandSupportURL  = "branding.support_url"
+
 	cloudflaredContainerName = "containr-cloudflared"
 	cloudflaredImage         = "cloudflare/cloudflared:latest"
 )
+
+// brandingConfig is the public white-label payload. Fields are always
+// populated — defaults keep the instance Containr-branded.
+type brandingConfig struct {
+	ProductName string `json:"product_name"`
+	LogoURL     string `json:"logo_url"`
+	FaviconURL  string `json:"favicon_url"`
+	AccentColor string `json:"accent_color"`
+	DocsURL     string `json:"docs_url"`
+	SupportURL  string `json:"support_url"`
+}
+
+func resolveBranding(db *database.DB) brandingConfig {
+	return brandingConfig{
+		ProductName: settingValue(db, settingBrandProductName, "BRAND_NAME", "Containr"),
+		LogoURL:     settingValue(db, settingBrandLogoURL, "BRAND_LOGO_URL", ""),
+		FaviconURL:  settingValue(db, settingBrandFaviconURL, "BRAND_FAVICON_URL", ""),
+		AccentColor: settingValue(db, settingBrandAccent, "BRAND_ACCENT_COLOR", ""),
+		DocsURL:     settingValue(db, settingBrandDocsURL, "BRAND_DOCS_URL", ""),
+		SupportURL:  settingValue(db, settingBrandSupportURL, "BRAND_SUPPORT_URL", ""),
+	}
+}
+
+// GET /branding — public so the login page and shell can brand themselves
+// before a session exists.
+func handleGetBranding(c *gin.Context) {
+	db, _ := c.Get("db")
+	database, _ := db.(*database.DB)
+	c.JSON(http.StatusOK, resolveBranding(database))
+}
 
 // settingValue resolves a setting: app_settings row first, env fallback,
 // then the caller's default.
@@ -110,6 +149,7 @@ func handleGetSettings(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"signup_enabled":    signupEnabled(db),
 		"cloudflare_tunnel": cloudflareTunnelState(c.Request.Context(), db, client),
+		"branding":          resolveBranding(db),
 	})
 }
 
@@ -122,6 +162,14 @@ func handleUpdateSettings(c *gin.Context) {
 	var req struct {
 		SignupEnabled         *bool   `json:"signup_enabled"`
 		CloudflareTunnelToken *string `json:"cloudflare_tunnel_token"`
+		Branding              *struct {
+			ProductName *string `json:"product_name"`
+			LogoURL     *string `json:"logo_url"`
+			FaviconURL  *string `json:"favicon_url"`
+			AccentColor *string `json:"accent_color"`
+			DocsURL     *string `json:"docs_url"`
+			SupportURL  *string `json:"support_url"`
+		} `json:"branding"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -154,6 +202,36 @@ func handleUpdateSettings(c *gin.Context) {
 		if dockerClient, exists := c.Get("docker_client"); exists {
 			if client, ok := dockerClient.(*docker.Client); ok && client != nil {
 				go applyCloudflaredTunnel(client, token)
+			}
+		}
+	}
+
+	if req.Branding != nil {
+		fields := []struct {
+			key   string
+			value *string
+		}{
+			{settingBrandProductName, req.Branding.ProductName},
+			{settingBrandLogoURL, req.Branding.LogoURL},
+			{settingBrandFaviconURL, req.Branding.FaviconURL},
+			{settingBrandAccent, req.Branding.AccentColor},
+			{settingBrandDocsURL, req.Branding.DocsURL},
+			{settingBrandSupportURL, req.Branding.SupportURL},
+		}
+		for _, f := range fields {
+			if f.value == nil {
+				continue
+			}
+			v := strings.TrimSpace(*f.value)
+			var err error
+			if v == "" {
+				err = deleteSetting(db, f.key)
+			} else {
+				err = setSetting(db, f.key, v, false)
+			}
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save branding"})
+				return
 			}
 		}
 	}

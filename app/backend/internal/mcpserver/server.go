@@ -155,6 +155,9 @@ func init() {
 	register(spec{"containr_banners_update", "Update an announcement banner (admin). Args: id plus fields to change.", "PATCH", "/admin/banners/{id}", []string{"id"}, []string{"title", "body", "level", "active", "dismissible", "starts_at", "ends_at"}, false})
 	register(spec{"containr_banners_delete", "Delete an announcement banner (admin). Args: id. Requires confirm=true.", "DELETE", "/admin/banners/{id}", []string{"id"}, nil, true})
 
+	register(spec{"containr_branding_get", "Get instance white-label branding (product name, logo, accent, links).", "GET", "/branding", nil, nil, false})
+	register(spec{"containr_settings_update", "Update platform settings (admin). Args: signup_enabled (bool), cloudflare_tunnel_token (string, empty clears), branding (object: product_name, logo_url, favicon_url, accent_color, docs_url, support_url — empty string resets a field).", "PUT", "/settings", nil, []string{"signup_enabled", "cloudflare_tunnel_token", "branding"}, false})
+
 	// Nodes / agent tokens (admin)
 	register(spec{"containr_nodes_list", "List node agents (admin)", "GET", "/agents", nil, nil, false})
 	register(spec{"containr_nodes_get", "Get a node agent (admin)", "GET", "/agents/{id}", []string{"id"}, nil, false})

@@ -24,6 +24,24 @@ export type UserProfile = {
   updatedAt?: string;
 };
 
+export type Branding = {
+  productName: string;
+  logoUrl: string;
+  faviconUrl: string;
+  accentColor: string;
+  docsUrl: string;
+  supportUrl: string;
+};
+
+export type BrandingInput = Partial<{
+  productName: string;
+  logoUrl: string;
+  faviconUrl: string;
+  accentColor: string;
+  docsUrl: string;
+  supportUrl: string;
+}>;
+
 export type PlatformSettings = {
   signupEnabled: boolean;
   cloudflareTunnel: {
@@ -31,6 +49,7 @@ export type PlatformSettings = {
     source: 'app' | 'env' | 'none';
     container: string;
   };
+  branding: Branding;
 };
 
 export type ServiceEntity = {
@@ -542,6 +561,37 @@ function normalizeUserProfile(profile: RawUserProfile): UserProfile | null {
   };
 }
 
+function normalizeBranding(raw: {
+  product_name?: string;
+  logo_url?: string;
+  favicon_url?: string;
+  accent_color?: string;
+  docs_url?: string;
+  support_url?: string;
+} | undefined | null): Branding {
+  return {
+    productName: raw?.product_name ?? 'Containr',
+    logoUrl: raw?.logo_url ?? '',
+    faviconUrl: raw?.favicon_url ?? '',
+    accentColor: raw?.accent_color ?? '',
+    docsUrl: raw?.docs_url ?? '',
+    supportUrl: raw?.support_url ?? '',
+  };
+}
+
+// GET /branding is public — used before login to theme the shell.
+export async function getBranding(): Promise<Branding> {
+  const raw = await requestJson<{
+    product_name?: string;
+    logo_url?: string;
+    favicon_url?: string;
+    accent_color?: string;
+    docs_url?: string;
+    support_url?: string;
+  }>('/branding');
+  return normalizeBranding(raw);
+}
+
 function normalizePlatformSettings(raw: components['schemas']['PlatformSettings']): PlatformSettings {
   return {
     signupEnabled: raw.signup_enabled ?? false,
@@ -550,6 +600,7 @@ function normalizePlatformSettings(raw: components['schemas']['PlatformSettings'
       source: raw.cloudflare_tunnel?.source ?? 'none',
       container: raw.cloudflare_tunnel?.container ?? 'missing',
     },
+    branding: normalizeBranding(raw.branding),
   };
 }
 
@@ -561,6 +612,7 @@ export async function getPlatformSettings(): Promise<PlatformSettings> {
 export async function updatePlatformSettings(input: {
   signupEnabled?: boolean;
   cloudflareTunnelToken?: string;
+  branding?: BrandingInput;
 }): Promise<PlatformSettings> {
   const body: Record<string, unknown> = {};
   if (input.signupEnabled !== undefined) {
@@ -568,6 +620,16 @@ export async function updatePlatformSettings(input: {
   }
   if (input.cloudflareTunnelToken !== undefined) {
     body.cloudflare_tunnel_token = input.cloudflareTunnelToken;
+  }
+  if (input.branding !== undefined) {
+    const b: Record<string, string> = {};
+    if (input.branding.productName !== undefined) b.product_name = input.branding.productName;
+    if (input.branding.logoUrl !== undefined) b.logo_url = input.branding.logoUrl;
+    if (input.branding.faviconUrl !== undefined) b.favicon_url = input.branding.faviconUrl;
+    if (input.branding.accentColor !== undefined) b.accent_color = input.branding.accentColor;
+    if (input.branding.docsUrl !== undefined) b.docs_url = input.branding.docsUrl;
+    if (input.branding.supportUrl !== undefined) b.support_url = input.branding.supportUrl;
+    body.branding = b;
   }
   const raw = await requestJson<components['schemas']['PlatformSettings']>('/settings', {
     method: 'PUT',
