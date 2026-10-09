@@ -1010,6 +1010,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/services/{id}/env-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Environment diagnostics
+         * @description Reports empty variables, unresolved ${{service.KEY}} references, and secrets whose stored ciphertext fails to decrypt. Values are never returned.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Diagnostic result */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            ok?: boolean;
+                            unresolved?: string[];
+                            empty?: string[];
+                            unreadable?: string[];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/internal/wake/{id}": {
         parameters: {
             query?: never;

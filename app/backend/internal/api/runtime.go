@@ -641,3 +641,112 @@ func runtimeScaleService(c *gin.Context, serviceID string, replicas int) error {
 	_, _ = db.Exec(`UPDATE services SET replicas = $1, updated_at = $2 WHERE id = $3`, replicas, time.Now(), service.ID)
 	return nil
 }
+
+// handleServiceEnvCheck reports environment problems without exposing
+// values: empty vars, ${{service.KEY}} refs that fail to resolve, and
+// secrets whose ciphertext can't be decrypted (key rotation).
+func handleServiceEnvCheck(c *gin.Context) {
+	dbVal, exists := c.Get("db")
+	if !exists {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database connection not available"})
+		return
+	}
+	db := dbVal.(*database.DB)
+	service, ok := loadReadableService(c, db)
+	if !ok {
+		return
+	}
+
+	rows, err := db.Query(
+		`SELECT key, value, COALESCE(is_secret, false) FROM environment_variables WHERE service_id = $1`,
+		service.ID,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	var unresolved, empty, unreadable []string
+	var raw []struct{ key, val string }
+	for rows.Next() {
+		var k, v string
+		var secret bool
+		if err := rows.Scan(&k, &v, &secret); err != nil {
+			continue
+		}
+		decrypted := secrets.Decrypt(v)
+		if secret && secrets.IsEncrypted(v) && decrypted == v {
+			// Ciphertext failed to decrypt — Decrypt returns the input.
+			unreadable = append(unreadable, k)
+			continue
+		}
+		if strings.TrimSpace(decrypted) == "" {
+			empty = append(empty, k)
+		}
+		raw = append(raw, struct{ key, val string }{k, decrypted})
+	}
+
+	// Project siblings for ${{name.KEY}} resolution.
+	siblingIDs := map[string]string{}
+	svcRows, err := db.Query(`SELECT id, name FROM services WHERE project_id = $1`, service.ProjectID)
+	if err == nil {
+		for svcRows.Next() {
+			var id, name string
+			if err := svcRows.Scan(&id, &name); err == nil {
+				siblingIDs[strings.ToLower(name)] = id
+			}
+		}
+		svcRows.Close()
+	}
+
+	resolvable := func(serviceName, key string) bool {
+		id, ok := siblingIDs[strings.ToLower(serviceName)]
+		if !ok {
+			return false
+		}
+		if strings.EqualFold(key, "HOST") {
+			return true
+		}
+		if strings.EqualFold(key, "PORT") {
+			var port int
+			if err := db.QueryRow(`SELECT COALESCE(port, 0) FROM services WHERE id = $1`, id).Scan(&port); err == nil {
+				return port > 0
+			}
+			return false
+		}
+		var n int
+		if err := db.QueryRow(
+			`SELECT COUNT(*) FROM environment_variables WHERE service_id = $1 AND key = $2`,
+			id, key,
+		).Scan(&n); err == nil {
+			return n > 0
+		}
+		return false
+	}
+
+	for _, kv := range raw {
+		for _, match := range refVarPattern.FindAllStringSubmatch(kv.val, -1) {
+			if len(match) == 3 && !resolvable(match[1], match[2]) {
+				unresolved = append(unresolved, fmt.Sprintf("%s → %s", kv.key, match[0]))
+			}
+		}
+	}
+
+	if unresolved == nil {
+		unresolved = []string{}
+	}
+	if empty == nil {
+		empty = []string{}
+	}
+	if unreadable == nil {
+		unreadable = []string{}
+	}
+	okResult := len(unresolved) == 0 && len(empty) == 0 && len(unreadable) == 0
+	c.JSON(http.StatusOK, gin.H{
+		"ok":         okResult,
+		"unresolved": unresolved,
+		"empty":      empty,
+		"unreadable": unreadable,
+	})
+}

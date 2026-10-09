@@ -36,6 +36,7 @@ import {
   sleepService,
   wakeService,
   getServiceRuntime,
+  getServiceEnvCheck,
   type CronJobEntity,
   type ServiceVolume,
   type ServiceDomain,
@@ -186,6 +187,12 @@ export function ServiceDetailPage() {
   const variablesQuery = useQuery({
     queryKey: ['service-variables', serviceId],
     queryFn: () => listServiceVariables(serviceId),
+    enabled: Boolean(serviceId) && !isDemoMode && activeSection === 'variables',
+  });
+
+  const envCheckQuery = useQuery({
+    queryKey: ['service-env-check', serviceId],
+    queryFn: () => getServiceEnvCheck(serviceId),
     enabled: Boolean(serviceId) && !isDemoMode && activeSection === 'variables',
   });
 
@@ -1302,6 +1309,23 @@ export function ServiceDetailPage() {
                 </button>
               </div>
             </div>
+
+            {envCheckQuery.data && !envCheckQuery.data.ok && (
+              <div className="mb-4 rounded-[var(--radius-md)] border border-[var(--warning)]/40 bg-[var(--warning-soft)] p-4">
+                <p className="text-xs font-semibold text-[var(--warning)] mb-2">Environment issues detected</p>
+                <ul className="space-y-1 text-xs text-[var(--text-secondary)]">
+                  {(envCheckQuery.data.unresolved ?? []).map((u) => (
+                    <li key={u} className="mono">Unresolved reference: {u}</li>
+                  ))}
+                  {(envCheckQuery.data.empty ?? []).map((k) => (
+                    <li key={k} className="mono">Empty value: {k}</li>
+                  ))}
+                  {(envCheckQuery.data.unreadable ?? []).map((k) => (
+                    <li key={k} className="mono">Cannot decrypt secret (key rotated?): {k}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {bulkOpen && (
               <div className="mb-4 panel-soft p-4">

@@ -170,6 +170,7 @@ containr services update <id> --sleep --sleep-idle 15   # enable, 15 min idle ti
 containr services update <id> --sleep=false            # disable
 containr services sleep <id>                           # sleep now
 containr services wake <id>                            # resume now
+containr services env-check <id>                      # flag empty vars + unresolved ${{refs}}
 ```
 
 Idleness is measured as flat container network I/O over the configured

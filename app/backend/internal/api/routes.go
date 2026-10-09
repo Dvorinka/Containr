@@ -279,6 +279,7 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			read.GET("/services/:id/deployments", handleGetDeployments)
 			read.GET("/services/:id/domains", handleListServiceDomains)
 			read.GET("/services/:id/domains/check", handleCheckServiceDomains)
+			read.GET("/services/:id/env-check", handleServiceEnvCheck)
 			read.GET("/deployments", handleGetRecentDeployments)
 			read.GET("/deployments/:id", handleGetDeployment)
 

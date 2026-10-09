@@ -1304,6 +1304,17 @@ export const restartService = (serviceId: string) => serviceAction(serviceId, 'r
 export const sleepService = (serviceId: string) => serviceAction(serviceId, 'sleep');
 export const wakeService = (serviceId: string) => serviceAction(serviceId, 'wake');
 
+export type EnvCheckResult = {
+  ok: boolean;
+  unresolved?: string[];
+  empty?: string[];
+  unreadable?: string[];
+};
+
+export async function getServiceEnvCheck(serviceId: string): Promise<EnvCheckResult> {
+  return requestJson<EnvCheckResult>(`/services/${serviceId}/env-check`);
+}
+
 export async function redeployService(serviceId: string): Promise<ServiceRuntime> {
   const payload = await requestJson<{ runtime?: ServiceRuntime }>(`/services/${serviceId}/redeploy`, {
     method: 'POST',

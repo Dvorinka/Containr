@@ -73,6 +73,7 @@ else
     PG_PASS="$(gen)"; REDIS_PASS="$(gen)"
     setvar ENVIRONMENT "production"
     setvar JWT_SECRET "$(gen)"
+    setvar SECRETS_KEY "$(gen)"
     setvar BETTER_AUTH_SECRET "$(gen)"
     setvar BETTER_AUTH_INTERNAL_TOKEN "$(gen)"
     setvar CONTAINR_AGENT_AUTH_TOKEN "$(gen)"
