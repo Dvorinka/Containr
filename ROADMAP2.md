@@ -308,28 +308,6 @@ and wired refs, one click or one CLI call.
   audit logs, deployments, notifications tables.
 - [ ] **Notification producers round-out** — backups, agent offline,
   upgrade available, security findings.
-<<<<<<< HEAD
-- [ ] **Sleep-on-idle / wake-on-traffic** (serverless-lite) —
-  `services.sleep_after_idle` (duration, empty=off). Reaper loop stops
-  containers past idle threshold (last-seen from Traefik access logs or
-  request-tracking middleware); edge middleware returns a "waking"
-  page/503-with-retry, starts the container, then routes normally.
-  Per-service toggle + status badge (`sleeping`). Railway calls this
-  "app sleep"; it is the single biggest cost saver for hobby services.
-- [ ] **Env doctor** — template/service required-var manifest:
-  `POST /templates/:id/plan` and service env UI surface *missing* and
-  *auto-generated* vars before deploy; never silently deploy with
-  empty required values. Secrets get `{{secret(len)}}` defaults.
-- [ ] **One-click install** — `install.sh` (curl|sh): detects docker,
-  writes compose + .env with generated secrets, pulls images, runs
-  migrations, prints admin URL. Companion `docker-compose.prod.yml`
-  + `Dockerfile` images published to GHCR so installs never build
-  from source.
-- [ ] **CI/CD v2** — required-checks workflow (backend test/vet,
-  frontend build, sqlc-diff check), path-filtered jobs for speed,
-  and a release pipeline: merge to main → tag → GoReleaser binaries
-  (CLI + MCP) → GHCR images (api, web, agent) → GitHub Release notes.
-=======
 - [x] **Sleep-on-idle / wake-on-traffic** (serverless-lite) —
   `services.sleep_enabled` + `sleep_idle_minutes` (PR #29). Sweeper
   polls container NetworkIO deltas; idle past threshold → workload
@@ -356,7 +334,6 @@ and wired refs, one click or one CLI call.
   conventional-commit version bump → tag → GHCR images (backend,
   frontend) → cross-platform CLI + MCP binaries → SHA-256 checksums
   → GitHub Release → Trivy scans (PR #33).
->>>>>>> origin/main
 - [ ] **Custom roles/RBAC** — defer until demanded; PAT scopes designed
   forward-compatible now.
 
@@ -376,15 +353,6 @@ and wired refs, one click or one CLI call.
 
 ## 9b. Phase I — Companion surfaces
 
-<<<<<<< HEAD
-- [ ] **Phone app** — read-heavy mobile client over the existing API
-  (PAT auth already works). Scope v1: project/service list, status,
-  deploy trigger + log tail, restart/stop, notifications push via
-  existing notification rows (APNs/FCM relay optional, self-hosted
-  webhook → ntfy/Gotify as zero-infra alternative). React Native or
-  native-lean PWA; the API surface is already agent-shaped so the app
-  is a thin client. Design: dark UI, deploy status as first-class view.
-=======
 - [x] **Phone app (v1)** — `app/mobile`, Expo/React Native thin client
   over the agent-shaped API; dark UI mirroring the design system. PAT
   auth against any instance URL, stored in platform secure storage.
@@ -400,7 +368,6 @@ and wired refs, one click or one CLI call.
     ntfy/Gotify relay (no Firebase dependency), FCM/APNs optional.
   - [ ] **Offline resilience** — cached last-known state + unreachable
     banner.
->>>>>>> origin/main
 - [ ] **Status/offline resilience** — app + CLI degrade gracefully when
   the instance is unreachable (cached last-known state, clear banner).
 
