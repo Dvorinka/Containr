@@ -158,6 +158,11 @@ export default function ServiceDetail() {
           onPress={() => router.push(`/service/domains?id=${s.id}`)}
         />
         <Row
+          title="Cron jobs"
+          subtitle="Schedules, run now, history"
+          onPress={() => router.push(`/service/cron?id=${s.id}`)}
+        />
+        <Row
           title="Scale & sleep"
           subtitle={`${s.replicas ?? 1} replica${(s.replicas ?? 1) === 1 ? '' : 's'}` +
             (s.sleep_enabled ? ` · sleeps after ${s.sleep_idle_minutes}m idle` : '')}

@@ -507,7 +507,8 @@ and wired refs, one click or one CLI call.
     deployment history, env-doctor issues surfaced on the service view.
   - [x] **env var edit + domain management + replica scaling** (PR #61 —
     mobile v1.5: variables editor, domains screen, scale + sleep
-    settings, notifications tab). **cron execution history** still open.
+    settings, notifications tab, cron jobs screen with run-now and
+    execution history).
   - [x] **Push notifications** — per-user `notification_channels`
     (ntfy + Gotify): every `insertUserNotification` fans out best-effort
     to enabled channels; CRUD + live test-ping via web settings, CLI

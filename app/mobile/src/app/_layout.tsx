@@ -51,6 +51,7 @@ function AuthGate() {
         <Stack.Screen name="service/logs" options={{ title: 'Logs' }} />
         <Stack.Screen name="service/variables" options={{ title: 'Variables' }} />
         <Stack.Screen name="service/domains" options={{ title: 'Domains' }} />
+        <Stack.Screen name="service/cron" options={{ title: 'Cron jobs' }} />
         <Stack.Screen name="service/settings" options={{ title: 'Service settings' }} />
       </Stack.Protected>
       <Stack.Screen name="login" options={{ headerShown: false }} />
