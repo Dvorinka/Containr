@@ -29,6 +29,7 @@ UPDATE node_agents SET
     last_heartbeat = $10,
     metadata = $11,
     auto_prune = $12,
+    schedulable = $13,
     updated_at = NOW()
 WHERE id = $1
 RETURNING *;
@@ -113,3 +114,37 @@ WHERE id = $1;
 SELECT * FROM agent_commands
 WHERE node_agent_id = $1 AND type = $2
 ORDER BY created_at DESC LIMIT 1;
+
+-- name: PickLeastLoadedAgent :one
+SELECT a.id FROM node_agents a
+LEFT JOIN LATERAL (
+    SELECT h.container_count FROM agent_heartbeats h
+    WHERE h.node_agent_id = a.id
+    ORDER BY h.timestamp DESC LIMIT 1
+) h ON true
+WHERE a.status = 'online' AND a.schedulable
+ORDER BY COALESCE(h.container_count, 0) ASC, a.created_at ASC
+LIMIT 1;
+
+-- name: SetAgentSchedulable :exec
+UPDATE node_agents SET schedulable = $2, updated_at = NOW() WHERE id = $1;
+
+-- name: ClearServiceNodePins :execrows
+UPDATE services SET node_id = NULL, updated_at = NOW() WHERE node_id = $1;
+
+-- name: UpsertServiceContainer :exec
+INSERT INTO container_instances (
+    id, name, image, project_id, service_id, node_agent_id,
+    status, resources, ports, environment, volumes, networks,
+    restart_policy, health_check
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+ON CONFLICT (id) DO UPDATE SET
+    image = EXCLUDED.image,
+    status = EXCLUDED.status,
+    updated_at = NOW();
+
+-- name: DeleteServiceContainersOnAgent :exec
+DELETE FROM container_instances WHERE node_agent_id = $1 AND service_id = $2;
+
+-- name: ScrubCommandPayload :exec
+UPDATE agent_commands SET payload = $2, updated_at = NOW() WHERE id = $1;

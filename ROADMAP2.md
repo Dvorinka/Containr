@@ -277,12 +277,31 @@ and wired refs, one click or one CLI call.
   `nodes commands`, MCP `containr_nodes_update|prune|commands`
   (confirm-gated), Usage-page per-node Prune button + auto toggle.
   `cmd/agent/main.go`, `notification_producers.go:scheduleAutoPrune`.
-- [ ] **Multi-node scheduling** — wire `scheduling_rules` (table exists):
-  pin/spread/affinity, prefer-lowest-usage; deploy engine routes to
-  `services.node_id` via agent commands (agent already runs containers).
-- [ ] **Build-on-node** — agents currently `docker run` prebuilt images
-  only; extend agent to pull registry images (build stays central) —
-  private registry creds flow through Phase C.
+- [🟡] **Multi-node scheduling** — phase 1 shipped: `services.node_id`
+  pin (explicit / `auto` = least-loaded online / `local` = clear),
+  `NodeRunner` seam in the deploy engine routes reconcile to the agent's
+  command queue (`create_container` with image/env/cmd/ports/volumes/
+  labels/limits), `container_instances` inventory per (agent, service,
+  replica), remote stop/start/restart/delete fan-out, `GET
+  /nodes/options`, `--node` on services create/update + MCP + OpenAPI +
+  service-detail Placement section. Drain/cordon shipped:
+  `node_agents.schedulable`, `POST /agents/:id/cordon|uncordon|drain`
+  (drain evicts remote containers via the agent queue + unpins services
+  so they redeploy locally), `nodes cordon|uncordon|drain` CLI +
+  MCP (drain confirm-gated) + node-detail page controls; `auto` and
+  explicit pins skip cordoned nodes. Remote nodes run registry-pulled
+  images only — git builds, Traefik domains, and remote sleep are
+  documented ceilings. Remaining: `scheduling_rules` spread/affinity
+  policies, deployment status reported back from agent
+  results, per-node resource-aware `auto` (currently count-based).
+- [🟡] **Build-on-node** — private registry pulls shipped: the dispatch
+  payload carries the project owner's `registries` credentials for the
+  image host; the agent `docker login`s for the pull and logs out after,
+  and command payloads are scrubbed of passwords on completion. Agent
+  also verifies the container is still running ~1.5s after `run` so
+  crash-loops fail the deploy instead of reporting healthy. Remaining:
+  real builds on the node (source checkout + build daemon) — pulls
+  already work.
 - [ ] **IaC provisioning (ROADMAP §2.2, unchanged)** — Terraform/
   OpenTofu, `infra_connections`, Proxmox + AWS modules, + Hetzner module
   (dflow's second provider), cloud-init → auto-enroll.

@@ -7977,6 +7977,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/nodes/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Node options for service placement
+         * @description Minimal id/name/status list of registered node agents — available to any authenticated user for the service placement picker. Full agent data is admin-only under /agents.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Node options */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            nodes?: {
+                                id?: string;
+                                name?: string;
+                                status?: string;
+                            }[];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/agents": {
         parameters: {
             query?: never;
@@ -8499,6 +8544,179 @@ export interface paths {
                 };
                 /** @description Agent not found */
                 404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/{id}/cordon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cordon a node
+         * @description Sets `schedulable=false`: new explicit pins are rejected and `auto` placement skips the node. Already-pinned services keep running and can still reconcile — drain to evict them.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Node agent ID */
+                    id: components["parameters"]["AgentIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Node cordoned */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            id?: string;
+                            schedulable?: boolean;
+                        };
+                    };
+                };
+                /** @description Agent not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/{id}/uncordon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Uncordon a node
+         * @description Re-opens the node for placement (`schedulable=true`).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Node agent ID */
+                    id: components["parameters"]["AgentIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Node uncordoned */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            id?: string;
+                            schedulable?: boolean;
+                        };
+                    };
+                };
+                /** @description Agent not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/{id}/drain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Drain a node
+         * @description Cordons the node, removes every service container via the agent command queue, and clears the affected services' `node_id` pins — they fall back to the local host on next deploy and can be re-pinned elsewhere. Requires the node to be online so it can acknowledge the removals.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Node agent ID */
+                    id: components["parameters"]["AgentIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Node drained */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            id?: string;
+                            schedulable?: boolean;
+                            services_drained?: number;
+                            services_unpinned?: number;
+                        };
+                    };
+                };
+                /** @description Agent not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Node is not online */
+                409: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -10656,6 +10874,10 @@ export interface components {
             sleep_enabled?: boolean;
             /** @description Idle timeout in minutes before sleeping (1-1440, default 15) */
             sleep_idle_minutes?: number;
+            /** @description Node agent id this service is pinned to; empty/null = local Docker host. 'auto' on create/update resolves to the least-loaded online agent. Remote nodes run registry-pulled images only (no git builds, no Traefik domains). */
+            node_id?: string;
+            /** @description Display name of the pinned node agent (read-only) */
+            node_name?: string;
             /** @description Computed public URL (published port or domain) */
             public_url?: string;
             /**
@@ -10726,6 +10948,8 @@ export interface components {
             static_build_cmd?: string;
             /** @description Output directory for the static builder (default dist) */
             static_dir?: string;
+            /** @description Node agent id to pin to, 'auto' = least-loaded online agent; omit/empty = local host */
+            node_id?: string;
         };
         UpdateServiceRequest: {
             /** @description Service name */
@@ -10787,6 +11011,8 @@ export interface components {
             sleep_enabled?: boolean;
             /** @description Idle timeout in minutes before sleeping (1-1440) */
             sleep_idle_minutes?: number;
+            /** @description Node agent id to pin to, 'auto' = least-loaded online agent, 'local' = run on the Containr host (clears the pin) */
+            node_id?: string;
         };
         ServiceDomain: {
             /** Format: uuid */
@@ -11904,6 +12130,8 @@ export interface components {
             };
             /** @description Enqueue a bounded docker prune on this node once per day. */
             auto_prune?: boolean;
+            /** @description False on a cordoned/drained node — `auto` placement skips it and new explicit pins are rejected. */
+            schedulable?: boolean;
             /** Format: date-time */
             last_heartbeat?: string;
             /** Format: date-time */

@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"math"
 	"net/http"
 	"os"
@@ -39,6 +40,7 @@ type NodeAgent struct {
 	Resources     NodeResources          `json:"resources"`
 	LastHeartbeat time.Time              `json:"last_heartbeat"`
 	AutoPrune     bool                   `json:"auto_prune"`
+	Schedulable   bool                   `json:"schedulable"`
 	CreatedAt     time.Time              `json:"created_at"`
 	UpdatedAt     time.Time              `json:"updated_at"`
 	Metadata      map[string]interface{} `json:"metadata"`
@@ -228,17 +230,38 @@ func unmarshalRaw(raw pqtype.NullRawMessage, dst interface{}) {
 	}
 }
 
+// ListNodeOptions returns the minimal id/name/status list used by the service
+// placement picker — available to any authenticated user (no hostnames, IPs,
+// or telemetry).
+func (h *NodeAgentHandler) ListNodeOptions(c *gin.Context) {
+	rows, err := h.q.ListAgents(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list nodes"})
+		return
+	}
+	options := make([]gin.H, 0, len(rows))
+	for _, row := range rows {
+		options = append(options, gin.H{
+			"id":     row.ID,
+			"name":   row.Name,
+			"status": row.Status.String,
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"nodes": options})
+}
+
 func agentFromRow(row sqlcdb.NodeAgent) NodeAgent {
 	agent := NodeAgent{
-		ID:        row.ID,
-		Name:      row.Name,
-		Hostname:  row.Hostname,
-		IPAddress: row.IpAddress,
-		Port:      int(row.Port),
-		Status:    row.Status.String,
-		Version:   row.Version.String,
-		AutoPrune: row.AutoPrune,
-		Metadata:  map[string]interface{}{},
+		ID:          row.ID,
+		Name:        row.Name,
+		Hostname:    row.Hostname,
+		IPAddress:   row.IpAddress,
+		Port:        int(row.Port),
+		Status:      row.Status.String,
+		Version:     row.Version.String,
+		AutoPrune:   row.AutoPrune,
+		Schedulable: row.Schedulable,
+		Metadata:    map[string]interface{}{},
 	}
 	if row.LastHeartbeat.Valid {
 		agent.LastHeartbeat = row.LastHeartbeat.Time
@@ -380,6 +403,8 @@ func (h *NodeAgentHandler) RegisterAgent(c *gin.Context) {
 			Resources:     existing.Resources,
 			LastHeartbeat: sql.NullTime{Time: time.Now(), Valid: true},
 			Metadata:      rawJSON(metadata),
+			AutoPrune:     existing.AutoPrune,
+			Schedulable:   existing.Schedulable,
 		})
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update agent"})
@@ -511,6 +536,7 @@ func (h *NodeAgentHandler) UpdateAgent(c *gin.Context) {
 		LastHeartbeat: sql.NullTime{Time: agent.LastHeartbeat, Valid: !agent.LastHeartbeat.IsZero()},
 		Metadata:      rawJSON(agent.Metadata),
 		AutoPrune:     agent.AutoPrune,
+		Schedulable:   agent.Schedulable,
 	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update agent"})
@@ -539,6 +565,7 @@ func applyAgentUpdates(agent *NodeAgent, updates map[string]interface{}) {
 	remarshal("resources", &agent.Resources)
 	remarshal("metadata", &agent.Metadata)
 	remarshal("auto_prune", &agent.AutoPrune)
+	remarshal("schedulable", &agent.Schedulable)
 }
 
 // DeleteAgent removes an agent
@@ -673,7 +700,38 @@ func (h *NodeAgentHandler) CompleteCommand(c *gin.Context) {
 		h.updateContainerStatusAfterCommand(ctx, out)
 	}
 
+	// Command payloads can carry registry credentials — scrub them once the
+	// command is settled so secrets don't linger in the queue rows.
+	scrubCommandSecrets(ctx, h.q, commandID, command.Payload)
+
 	c.JSON(http.StatusOK, gin.H{"command": out})
+}
+
+// scrubCommandSecrets rewrites a completed command's payload with any
+// registry password blanked. Best-effort — a failed scrub leaves the row.
+func scrubCommandSecrets(ctx context.Context, q *sqlcdb.Queries, commandID string, payload pqtype.NullRawMessage) {
+	if !payload.Valid || len(payload.RawMessage) == 0 {
+		return
+	}
+	var doc map[string]interface{}
+	if err := json.Unmarshal(payload.RawMessage, &doc); err != nil {
+		return
+	}
+	container, ok := doc["container"].(map[string]interface{})
+	if !ok {
+		return
+	}
+	reg, ok := container["registry"].(map[string]interface{})
+	if !ok || reg["password"] == nil {
+		return
+	}
+	reg["password"] = "***"
+	if err := q.ScrubCommandPayload(ctx, sqlcdb.ScrubCommandPayloadParams{
+		ID:      commandID,
+		Payload: rawJSON(doc),
+	}); err != nil {
+		log.Printf("agents: scrub command %s payload: %v", commandID, err)
+	}
 }
 
 func (h *NodeAgentHandler) updateContainerStatusAfterCommand(ctx context.Context, command AgentCommand) {
@@ -1329,9 +1387,94 @@ func (h *NodeAgentHandler) SetupAdminRoutes(router *gin.RouterGroup) {
 		agents.DELETE("/:id/containers/:containerId", h.ContainerAction)
 
 		agents.GET("/:id/metrics", h.GetAgentMetrics)
+		agents.POST("/:id/cordon", h.CordonAgent)
+		agents.POST("/:id/uncordon", h.UncordonAgent)
+		agents.POST("/:id/drain", h.DrainAgent)
 		agents.POST("/:id/prune", h.PruneAgent)
 		agents.POST("/:id/commands", h.ExecuteCommand)
 		agents.GET("/:id/commands", h.GetAgentCommands)
 		agents.GET("/:id/commands/:commandId", h.GetCommandStatus)
 	}
+}
+
+// setSchedulable flips the node's scheduling gate. Cordoned nodes keep
+// running their placed replicas but take no new pins or `auto` placements.
+func (h *NodeAgentHandler) setSchedulable(c *gin.Context, schedulable bool) {
+	id := c.Param("id")
+	if _, err := h.q.GetAgent(c.Request.Context(), id); err != nil {
+		respondError(c, http.StatusNotFound, "NOT_FOUND", "Agent not found")
+		return
+	}
+	if err := h.q.SetAgentSchedulable(c.Request.Context(), sqlcdb.SetAgentSchedulableParams{
+		ID: id, Schedulable: schedulable,
+	}); err != nil {
+		respondError(c, http.StatusInternalServerError, "INTERNAL", "failed to update node")
+		return
+	}
+	LogAuditWithRequest(c, "node", id, map[bool]string{true: "uncordon", false: "cordon"}[schedulable], nil)
+	c.JSON(http.StatusOK, gin.H{"id": id, "schedulable": schedulable})
+}
+
+// CordonAgent blocks new placements on the node (explicit pins and `auto`).
+func (h *NodeAgentHandler) CordonAgent(c *gin.Context) { h.setSchedulable(c, false) }
+
+// UncordonAgent re-opens the node for placement.
+func (h *NodeAgentHandler) UncordonAgent(c *gin.Context) { h.setSchedulable(c, true) }
+
+// DrainAgent cordons the node, removes every service container via the agent
+// command queue, and clears the affected services' pins — they fall back to
+// the local host on next deploy and can be re-pinned to another node.
+// Requires the node to be online; an offline node can't acknowledge the
+// removals.
+func (h *NodeAgentHandler) DrainAgent(c *gin.Context) {
+	ctx := c.Request.Context()
+	id := c.Param("id")
+	agent, err := h.q.GetAgent(ctx, id)
+	if err != nil {
+		respondError(c, http.StatusNotFound, "NOT_FOUND", "Agent not found")
+		return
+	}
+	if agent.Status.String != "online" {
+		respondError(c, http.StatusConflict, "NODE_OFFLINE",
+			"node is not online — reconnect it, or remove the containers manually")
+		return
+	}
+	if err := h.q.SetAgentSchedulable(ctx, sqlcdb.SetAgentSchedulableParams{
+		ID: id, Schedulable: false,
+	}); err != nil {
+		respondError(c, http.StatusInternalServerError, "INTERNAL", "failed to cordon node")
+		return
+	}
+
+	runner := &agentNodeRunner{q: h.q}
+	rows, err := h.q.ListContainersForAgent(ctx, id)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, "INTERNAL", "failed to list node containers")
+		return
+	}
+	services := map[string]bool{}
+	for _, row := range rows {
+		services[row.ServiceID] = true
+	}
+	var drained int
+	var firstErr error
+	for serviceID := range services {
+		if err := runner.RemoveService(ctx, serviceID, id); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		drained += 1
+	}
+	unpinned, _ := h.q.ClearServiceNodePins(ctx, sql.NullString{String: id, Valid: true})
+	if firstErr != nil {
+		respondError(c, http.StatusBadGateway, "DRAIN_PARTIAL",
+			fmt.Sprintf("drained %d service(s), unpinned %d — one failed: %v", drained, unpinned, firstErr))
+		return
+	}
+	LogAuditWithRequest(c, "node", id, "drain", map[string]interface{}{
+		"services": drained, "unpinned": unpinned,
+	})
+	c.JSON(http.StatusOK, gin.H{"id": id, "schedulable": false, "services_drained": drained, "services_unpinned": unpinned})
 }

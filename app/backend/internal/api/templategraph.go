@@ -637,7 +637,7 @@ func deployTemplateGraph(
 	cleanup := func() {
 		for _, sid := range createdServiceIDs {
 			if engine != nil {
-				_ = engine.RemoveServiceContainers(context.Background(), sid.String())
+				removeServiceRuntime(context.Background(), db, engine, sid)
 			}
 			_, _ = db.Exec(`DELETE FROM environment_variables WHERE service_id = $1`, sid)
 			_, _ = db.Exec(`DELETE FROM services WHERE id = $1`, sid)

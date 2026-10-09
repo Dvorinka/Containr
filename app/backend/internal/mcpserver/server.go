@@ -53,7 +53,7 @@ func init() {
 	// Services
 	register(spec{"containr_services_list", "List services in a project", "GET", "/projects/{project_id}/services", []string{"project_id"}, nil, false})
 	register(spec{"containr_services_get", "Get a service by id", "GET", "/services/{id}", []string{"id"}, nil, false})
-	register(spec{"containr_services_create", "Create a service in a project. Args: name (required), type, image, git_repo, git_branch, environment, port, domain, replicas, volumes = [{type: volume|bind, source, target, read_only}], builder = auto|railpack|nixpacks|dockerfile|static, cpu, memory, cpu_reserve, memory_reserve, static_build_cmd, static_dir.", "POST", "/projects/{project_id}/services", []string{"project_id"}, nil, false})
+	register(spec{"containr_services_create", "Create a service in a project. Args: name (required), type, image, git_repo, git_branch, environment, port, domain, replicas, volumes = [{type: volume|bind, source, target, read_only}], builder = auto|railpack|nixpacks|dockerfile|static, cpu, memory, cpu_reserve, memory_reserve, static_build_cmd, static_dir, node_id (agent id | 'auto' = least-loaded online node; image services only — remote nodes can't run git builds).", "POST", "/projects/{project_id}/services", []string{"project_id"}, nil, false})
 	register(spec{"containr_services_delete", "Delete a service. Requires confirm:true.", "DELETE", "/services/{id}", []string{"id"}, nil, true})
 	register(spec{"containr_services_start", "Start a service", "POST", "/services/{id}/start", []string{"id"}, nil, false})
 	register(spec{"containr_services_stop", "Stop a service", "POST", "/services/{id}/stop", []string{"id"}, nil, false})
@@ -66,7 +66,7 @@ func init() {
 	register(spec{"containr_services_move", "Move a service to another project the caller owns. Args: id, project_id (required).", "POST", "/services/{id}/move", []string{"id"}, []string{"project_id"}, false})
 	register(spec{"containr_services_logs", "Get service runtime logs. Args: id, tail (default 100).", "GET", "/services/{id}/logs", []string{"id"}, nil, false})
 	register(spec{"containr_services_exec", "Run a one-off command in the service container (30s ceiling). Args: id, command (required).", "POST", "/services/{id}/exec", []string{"id"}, []string{"command"}, false})
-	register(spec{"containr_services_update", "Update a service. Args: id, name, image, command, domain, restart_policy, healthcheck_path, cpu, memory, replicas, port, volumes = [{type: volume|bind, source, target, read_only}] — volumes replaces the whole mount list; pass [] to clear. maintenance_mode (bool), basic_auth = [{username, password}] — replaces all creds; [] clears. builder = auto|railpack|nixpacks|dockerfile|static, cpu_reserve, memory_reserve, static_build_cmd, static_dir (empty string clears reserves/static fields). sleep_enabled (bool) + sleep_idle_minutes (1-1440) enable scale-to-zero on idle; a wake placeholder answers traffic while the service resumes.", "PUT", "/services/{id}", []string{"id"}, nil, false})
+	register(spec{"containr_services_update", "Update a service. Args: id, name, image, command, domain, restart_policy, healthcheck_path, cpu, memory, replicas, port, volumes = [{type: volume|bind, source, target, read_only}] — volumes replaces the whole mount list; pass [] to clear. maintenance_mode (bool), basic_auth = [{username, password}] — replaces all creds; [] clears. builder = auto|railpack|nixpacks|dockerfile|static, cpu_reserve, memory_reserve, static_build_cmd, static_dir (empty string clears reserves/static fields). sleep_enabled (bool) + sleep_idle_minutes (1-1440) enable scale-to-zero on idle; a wake placeholder answers traffic while the service resumes. node_id pins placement to a node agent ('auto' = least-loaded, 'local' = run on the Containr host).", "PUT", "/services/{id}", []string{"id"}, nil, false})
 
 	// Domains
 	register(spec{"containr_domains_list", "List domains attached to a service", "GET", "/services/{id}/domains", []string{"id"}, nil, false})
@@ -174,6 +174,9 @@ func init() {
 	register(spec{"containr_agent_tokens_issue", "Issue an agent onboarding token (admin). Args: label.", "POST", "/agent-tokens", nil, []string{"label"}, false})
 	register(spec{"containr_agent_tokens_list", "List agent onboarding tokens (admin)", "GET", "/agent-tokens", nil, nil, false})
 	register(spec{"containr_nodes_update", "Update a node agent (admin). Args: id; optional auto_prune, name.", "PUT", "/agents/{id}", []string{"id"}, []string{"auto_prune", "name"}, false})
+	register(spec{"containr_nodes_cordon", "Cordon a node: blocks new pins and 'auto' placements; running replicas stay (admin). Args: id.", "POST", "/agents/{id}/cordon", []string{"id"}, nil, false})
+	register(spec{"containr_nodes_uncordon", "Re-open a node for placement (admin). Args: id.", "POST", "/agents/{id}/uncordon", []string{"id"}, nil, false})
+	register(spec{"containr_nodes_drain", "Drain a node: cordon + remove all service containers via the agent + unpin affected services so they redeploy locally. Requires the node online (admin). Args: id.", "POST", "/agents/{id}/drain", []string{"id"}, nil, true})
 	register(spec{"containr_nodes_prune", "Enqueue a bounded docker system prune on a node (admin). Args: id; optional until (e.g. 168h), volumes (danger, off by default).", "POST", "/agents/{id}/prune", []string{"id"}, []string{"until", "volumes"}, true})
 	register(spec{"containr_nodes_commands", "List recent commands sent to a node agent (admin). Args: id.", "GET", "/agents/{id}/commands", []string{"id"}, nil, false})
 

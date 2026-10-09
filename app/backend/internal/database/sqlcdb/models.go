@@ -176,6 +176,7 @@ type NodeAgent struct {
 	UpdatedAt     sql.NullTime          `json:"updated_at"`
 	Metadata      pqtype.NullRawMessage `json:"metadata"`
 	AutoPrune     bool                  `json:"auto_prune"`
+	Schedulable   bool                  `json:"schedulable"`
 }
 
 type Notification struct {
@@ -274,6 +275,7 @@ type Service struct {
 	MemoryReserve   string          `json:"memory_reserve"`
 	StaticBuildCmd  string          `json:"static_build_cmd"`
 	StaticDir       string          `json:"static_dir"`
+	NodeID          sql.NullString  `json:"node_id"`
 }
 
 type ServiceDomain struct {

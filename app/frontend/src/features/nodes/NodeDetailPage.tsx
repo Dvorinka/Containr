@@ -2,7 +2,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
+  cordonAgent,
   deleteAgent,
+  drainAgent,
   getAgent,
   getAgentMetrics,
   listAgentCommands,
@@ -43,6 +45,7 @@ export function NodeDetailPage() {
   const [rename, setRename] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmVolumes, setConfirmVolumes] = useState(false);
+  const [confirmDrain, setConfirmDrain] = useState(false);
 
   const agentQuery = useQuery({
     queryKey: ['node-agent', id],
@@ -85,6 +88,14 @@ export function NodeDetailPage() {
   const deleteMutation = useMutation({
     mutationFn: () => deleteAgent(id),
     onSuccess: () => navigate('/usage'),
+  });
+  const cordonMutation = useMutation({
+    mutationFn: (cordoned: boolean) => cordonAgent(id, cordoned),
+    onSuccess: invalidate,
+  });
+  const drainMutation = useMutation({
+    mutationFn: () => drainAgent(id),
+    onSuccess: () => { setConfirmDrain(false); invalidate(); },
   });
 
   const agent = agentQuery.data;
@@ -168,6 +179,11 @@ export function NodeDetailPage() {
                 : 'border-[var(--error)]/40 text-[var(--error)]'}`}>
                 {agent.status}
               </span>
+              {!agent.schedulable && (
+                <span className="v-mono text-[11px] px-2 py-1 rounded-md border border-[var(--warning)]/40 text-[var(--warning)]">
+                  cordoned
+                </span>
+              )}
               {isAdmin && (
                 <>
                   <label className="flex items-center gap-1.5 v-mono text-[11px] text-[var(--text-tertiary)] cursor-pointer" title="Daily automatic docker prune">
@@ -179,6 +195,26 @@ export function NodeDetailPage() {
                     />
                     auto-prune
                   </label>
+                  <button
+                    onClick={() => cordonMutation.mutate(agent.schedulable)}
+                    disabled={cordonMutation.isPending}
+                    title={agent.schedulable
+                      ? 'Block new placements — running replicas stay'
+                      : 'Re-open for placement'}
+                    className="v-mono text-[11px] px-3 py-1.5 rounded-md border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-50"
+                  >
+                    {agent.schedulable ? 'cordon' : 'uncordon'}
+                  </button>
+                  <button
+                    onClick={() => setConfirmDrain(true)}
+                    disabled={drainMutation.isPending || !online}
+                    title={online
+                      ? 'Cordon + remove all service containers + unpin services (they redeploy locally)'
+                      : 'Node must be online to drain'}
+                    className="v-mono text-[11px] px-3 py-1.5 rounded-md border border-[var(--warning)]/40 text-[var(--warning)] hover:bg-[var(--warning)]/10 disabled:opacity-50"
+                  >
+                    drain
+                  </button>
                   <button
                     onClick={() => setConfirmVolumes(true)}
                     disabled={pruneMutation.isPending}
@@ -300,6 +336,17 @@ export function NodeDetailPage() {
             pruneMutation.mutate(volumes);
           }}
           pending={pruneMutation.isPending}
+        />
+      )}
+      {confirmDrain && (
+        <ConfirmModal
+          title={`Drain ${agent.name}?`}
+          body="Every service container on this node is removed and the affected services are unpinned — they redeploy on the local host until re-pinned elsewhere. The node stays cordoned."
+          confirmLabel="drain node"
+          danger
+          onCancel={() => setConfirmDrain(false)}
+          onConfirm={() => drainMutation.mutate()}
+          pending={drainMutation.isPending}
         />
       )}
       {confirmDelete && (

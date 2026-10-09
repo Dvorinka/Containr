@@ -55,6 +55,8 @@ type RuntimeSpec struct {
 	Maintenance    bool          // redirect traffic to MaintenanceURL
 	MaintenanceURL string        // absolute URL; empty = serve empty response
 	BasicAuthUsers string        // htpasswd-format user:hash pairs, comma-separated
+	// NodeID pins the service to a node agent; "" runs on the local host.
+	NodeID string
 }
 
 // RuntimeContainer describes one live replica.
@@ -151,8 +153,15 @@ func (de *DeploymentEngine) ListServiceContainers(ctx context.Context, serviceID
 
 // ReconcileService brings live containers in line with the spec. When the
 // spec hash changed (image/env/ports/etc.) all replicas are recreated;
-// otherwise only the replica delta is applied.
+// otherwise only the replica delta is applied. A pinned NodeID routes the
+// whole reconcile to that agent's command queue instead of local Docker.
 func (de *DeploymentEngine) ReconcileService(ctx context.Context, spec RuntimeSpec) (*RuntimeState, error) {
+	if spec.NodeID != "" {
+		if de.nodeRunner == nil {
+			return nil, fmt.Errorf("service is pinned to node %s but remote dispatch is unavailable", spec.NodeID)
+		}
+		return de.nodeRunner.ReconcileOnNode(ctx, spec)
+	}
 	if spec.Replicas < 1 {
 		spec.Replicas = 1
 	}
@@ -496,6 +505,25 @@ func (de *DeploymentEngine) RemoveServiceContainers(ctx context.Context, service
 		_ = de.dockerClient.RemoveContainer(ctx, c.ID, true)
 	}
 	return nil
+}
+
+// ControlServiceOnNode fans a lifecycle action out to the service's replicas
+// on a remote node agent. Callers resolve the pin; nil runner means the
+// platform was booted without node support.
+func (de *DeploymentEngine) ControlServiceOnNode(ctx context.Context, serviceID, nodeID, action string) error {
+	if de.nodeRunner == nil {
+		return fmt.Errorf("remote node control is not configured")
+	}
+	return de.nodeRunner.ControlService(ctx, serviceID, nodeID, action)
+}
+
+// RemoveServiceContainersOnNode tears down the service's replicas on a remote
+// node agent.
+func (de *DeploymentEngine) RemoveServiceContainersOnNode(ctx context.Context, serviceID, nodeID string) error {
+	if de.nodeRunner == nil {
+		return fmt.Errorf("remote node control is not configured")
+	}
+	return de.nodeRunner.RemoveService(ctx, serviceID, nodeID)
 }
 
 // RemoveProjectContainers deletes every managed container in a project.

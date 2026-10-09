@@ -133,6 +133,63 @@ var nodesPruneCmd = &cobra.Command{
 	},
 }
 
+var nodesCordonCmd = &cobra.Command{
+	Use:   "cordon <id>",
+	Short: "Stop new placements on a node (running replicas stay)",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := client()
+		if err != nil {
+			return err
+		}
+		data, err := c.Do("POST", "/agents/"+args[0]+"/cordon", nil)
+		if err != nil {
+			return err
+		}
+		PrintRaw(data)
+		return nil
+	},
+}
+
+var nodesUncordonCmd = &cobra.Command{
+	Use:   "uncordon <id>",
+	Short: "Re-open a node for placement",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := client()
+		if err != nil {
+			return err
+		}
+		data, err := c.Do("POST", "/agents/"+args[0]+"/uncordon", nil)
+		if err != nil {
+			return err
+		}
+		PrintRaw(data)
+		return nil
+	},
+}
+
+var nodesDrainCmd = &cobra.Command{
+	Use:   "drain <id>",
+	Short: "Cordon a node, remove its service containers, unpin affected services",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := client()
+		if err != nil {
+			return err
+		}
+		if !Confirm(fmt.Sprintf("Drain node %s? Its service containers are removed and services unpinned (they redeploy locally).", args[0])) {
+			return &APIError{Message: "aborted (pass --yes to skip confirmation)", ExitCode: ExitError}
+		}
+		data, err := c.Do("POST", "/agents/"+args[0]+"/drain", nil)
+		if err != nil {
+			return err
+		}
+		PrintRaw(data)
+		return nil
+	},
+}
+
 var nodesCommandsCmd = &cobra.Command{
 	Use:   "commands <id>",
 	Short: "List recent commands sent to a node agent",
@@ -220,5 +277,5 @@ func init() {
 	nodesPruneCmd.Flags().String("until", "", "only prune objects older than this duration (e.g. 168h)")
 	nodesPruneCmd.Flags().Bool("volumes", false, "also prune volumes (destructive — asks twice)")
 	nodeTokensCmd.AddCommand(nodeTokensIssueCmd, nodeTokensListCmd, nodeTokensRevokeCmd)
-	NodesCmd.AddCommand(nodesListCmd, nodesGetCmd, nodesUpdateCmd, nodesPruneCmd, nodesCommandsCmd, nodesDeleteCmd, nodeTokensCmd)
+	NodesCmd.AddCommand(nodesListCmd, nodesGetCmd, nodesUpdateCmd, nodesCordonCmd, nodesUncordonCmd, nodesDrainCmd, nodesPruneCmd, nodesCommandsCmd, nodesDeleteCmd, nodeTokensCmd)
 }

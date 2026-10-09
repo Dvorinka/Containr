@@ -5080,6 +5080,34 @@ paths:
                 $ref: '#/components/schemas/MessageResponse'
 
   # Node agents — management (JWT-authenticated)
+  /nodes/options:
+    get:
+      tags:
+        - Agents
+      summary: Node options for service placement
+      description: Minimal id/name/status list of registered node agents — available to any authenticated user for the service placement picker. Full agent data is admin-only under /agents.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Node options
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nodes:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        status:
+                          type: string
+
   /agents:
     get:
       tags:
@@ -5373,6 +5401,103 @@ paths:
                     $ref: '#/components/schemas/AgentCommand'
         '404':
           description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /agents/{id}/cordon:
+    post:
+      tags:
+        - Agents
+      summary: Cordon a node
+      description: >-
+        Sets `schedulable=false`: new explicit pins are rejected and `auto`
+        placement skips the node. Already-pinned services keep running and can
+        still reconcile — drain to evict them.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AgentIdParam'
+      responses:
+        '200':
+          description: Node cordoned
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  schedulable: { type: boolean }
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /agents/{id}/uncordon:
+    post:
+      tags:
+        - Agents
+      summary: Uncordon a node
+      description: Re-opens the node for placement (`schedulable=true`).
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AgentIdParam'
+      responses:
+        '200':
+          description: Node uncordoned
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  schedulable: { type: boolean }
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /agents/{id}/drain:
+    post:
+      tags:
+        - Agents
+      summary: Drain a node
+      description: >-
+        Cordons the node, removes every service container via the agent
+        command queue, and clears the affected services' `node_id` pins —
+        they fall back to the local host on next deploy and can be re-pinned
+        elsewhere. Requires the node to be online so it can acknowledge the
+        removals.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AgentIdParam'
+      responses:
+        '200':
+          description: Node drained
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  schedulable: { type: boolean }
+                  services_drained: { type: integer }
+                  services_unpinned: { type: integer }
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Node is not online
           content:
             application/json:
               schema:
@@ -6843,6 +6968,12 @@ components:
         sleep_idle_minutes:
           type: integer
           description: Idle timeout in minutes before sleeping (1-1440, default 15)
+        node_id:
+          type: string
+          description: Node agent id this service is pinned to; empty/null = local Docker host. 'auto' on create/update resolves to the least-loaded online agent. Remote nodes run registry-pulled images only (no git builds, no Traefik domains).
+        node_name:
+          type: string
+          description: Display name of the pinned node agent (read-only)
         public_url:
           type: string
           description: Computed public URL (published port or domain)
@@ -6934,6 +7065,9 @@ components:
         static_dir:
           type: string
           description: Output directory for the static builder (default dist)
+        node_id:
+          type: string
+          description: Node agent id to pin to, 'auto' = least-loaded online agent; omit/empty = local host
 
     UpdateServiceRequest:
       type: object
@@ -7020,6 +7154,9 @@ components:
         sleep_idle_minutes:
           type: integer
           description: Idle timeout in minutes before sleeping (1-1440)
+        node_id:
+          type: string
+          description: Node agent id to pin to, 'auto' = least-loaded online agent, 'local' = run on the Containr host (clears the pin)
 
     ServiceDomain:
       type: object
@@ -8900,6 +9037,11 @@ components:
         auto_prune:
           type: boolean
           description: Enqueue a bounded docker prune on this node once per day.
+        schedulable:
+          type: boolean
+          description: >-
+            False on a cordoned/drained node — `auto` placement skips it and
+            new explicit pins are rejected.
         last_heartbeat:
           type: string
           format: date-time

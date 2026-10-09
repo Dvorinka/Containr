@@ -66,7 +66,8 @@ CREATE TABLE services (
     cpu_reserve VARCHAR(20) NOT NULL DEFAULT '',
     memory_reserve VARCHAR(20) NOT NULL DEFAULT '',
     static_build_cmd VARCHAR(255) NOT NULL DEFAULT '',
-    static_dir VARCHAR(255) NOT NULL DEFAULT ''
+    static_dir VARCHAR(255) NOT NULL DEFAULT '',
+    node_id VARCHAR(255)
 );
 
 CREATE TABLE registries (
@@ -193,7 +194,8 @@ CREATE TABLE node_agents (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     metadata JSONB,
-    auto_prune BOOLEAN NOT NULL DEFAULT false
+    auto_prune BOOLEAN NOT NULL DEFAULT false,
+    schedulable BOOLEAN NOT NULL DEFAULT true
 );
 
 CREATE TABLE container_instances (

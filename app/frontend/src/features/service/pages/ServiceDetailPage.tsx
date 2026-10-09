@@ -48,6 +48,7 @@ import {
   cloneService,
   moveService,
   listProjects,
+  listNodeOptions,
 } from '@/lib/api-client';
 import { getDemoProjectById, getDemoServiceById, getDemoCronJobsByService } from '@/lib/demo-data';
 import { useDemoMode } from '@/lib/demo-mode';
@@ -466,6 +467,7 @@ export function ServiceDetailPage() {
     onSuccess: () => {
       setNetworkForm(null);
       setSleepDraft(null);
+      setNodeDraft(null);
       invalidateService();
     },
   });
@@ -485,6 +487,13 @@ export function ServiceDetailPage() {
   const [domainChecks, setDomainChecks] = useState<Record<string, DomainCheckResult> | null>(null);
   const [accessForm, setAccessForm] = useState<{ maintenance: boolean; basicAuth: string } | null>(null);
   const [sleepDraft, setSleepDraft] = useState<{ id: string; enabled: boolean; minutes: string } | null>(null);
+  const [nodeDraft, setNodeDraft] = useState<string | null>(null);
+  const nodesQuery = useQuery({
+    queryKey: ['node-options'],
+    queryFn: listNodeOptions,
+    enabled: !isDemoMode,
+    staleTime: 30_000,
+  });
   const [buildForm, setBuildForm] = useState<{
     builder: string; cpuReserve: string; memoryReserve: string; staticCmd: string; staticDir: string;
   } | null>(null);
@@ -2381,6 +2390,58 @@ export function ServiceDetailPage() {
                     <span className="text-[var(--text-tertiary)]">unsaved</span>
                   )}
                 </div>
+              </div>
+            )}
+
+            {!isDemoMode && (nodesQuery.data?.length ?? 0) > 0 && (
+              <div className="mt-6 pt-6 border-t border-[var(--border-subtle)]">
+                <div className="mb-3">
+                  <h3 className="text-sm font-medium text-[var(--text-primary)]">Placement</h3>
+                  <p className="text-xs text-[var(--text-tertiary)] mt-0.5">
+                    Which node runs this service's containers. Remote nodes pull the image
+                    from its registry — git builds and domains stay on the local host.
+                  </p>
+                </div>
+                <div className="flex items-center gap-3 text-xs">
+                  <select
+                    value={nodeDraft ?? (service.nodeId || 'local')}
+                    onChange={(e) => setNodeDraft(e.target.value)}
+                    className="px-2 py-1.5 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)]"
+                  >
+                    <option value="local">This server (local Docker)</option>
+                    <option value="auto">Auto — least-loaded online node</option>
+                    {(nodesQuery.data ?? []).map((n) => (
+                      <option key={n.id} value={n.id}>
+                        {n.name}{n.status !== 'online' ? ' (offline)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {nodeDraft !== null && (
+                    <>
+                      <button
+                        type="button"
+                        disabled={updateServiceMutation.isPending}
+                        onClick={() => updateServiceMutation.mutate({ node_id: nodeDraft })}
+                        className="px-3 py-1.5 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-on)] text-xs font-medium disabled:opacity-50"
+                      >
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setNodeDraft(null)}
+                        className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  )}
+                  {service.nodeName && nodeDraft === null && (
+                    <span className="text-[var(--text-tertiary)]">running on {service.nodeName}</span>
+                  )}
+                </div>
+                {updateServiceMutation.isError && (
+                  <p className="mt-2 text-xs text-[var(--error)]">{(updateServiceMutation.error as Error).message}</p>
+                )}
               </div>
             )}
 
