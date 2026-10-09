@@ -329,8 +329,13 @@ and wired refs, one click or one CLI call.
   events (HMAC-verified) and enqueues matching services. Settings→env
   fallback wired into install-URL + installation-token paths.
   `containr admin github-app` CLI + MCP + OpenAPI.
-- [ ] **fork-sync trigger** — accept repo-sync events on webhook
-  receiver.
+- [x] **fork-sync trigger** — webhook receiver accepts `sync`,
+  `repository_dispatch`, and `workflow_run` events (no `ref`) alongside
+  pushes: branch falls back to the webhook filter, then the service's
+  own `git_branch`; repo-only matching when no branch is known.
+  Also fixed a latent bug where the webhook's deployment insert omitted
+  the NOT NULL `version` column — push-triggered deploys silently
+  failed for every service.
 - [ ] **Dynamic filter framework** — port dflow's `filter.utils`
   pattern (typed filter configs → URL state → client filtering) for
   audit logs, deployments, notifications tables.

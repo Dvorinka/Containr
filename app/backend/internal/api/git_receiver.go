@@ -7,6 +7,7 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -90,11 +91,24 @@ func handleGitWebhookPush(c *gin.Context) {
 		return
 	}
 
-	if !strings.HasPrefix(payload.Ref, "refs/heads/") {
+	// Non-push events that still mean "the repo changed": fork-sync bots
+	// (sync), repository_dispatch, workflow_run completions. They carry no
+	// `ref`, so fall back to the webhook's branch filter (or the service's
+	// own git_branch via the repo match below).
+	event := c.Request.Header.Get("X-GitHub-Event")
+	if event == "" {
+		event = c.Request.Header.Get("X-Gitea-Event")
+	}
+	syncEvent := event == "sync" || event == "repository_dispatch" || event == "workflow_run"
+
+	if !strings.HasPrefix(payload.Ref, "refs/heads/") && !syncEvent {
 		c.JSON(http.StatusAccepted, gin.H{"received": true, "ignored": "not a branch push"})
 		return
 	}
 	branch := strings.TrimPrefix(payload.Ref, "refs/heads/")
+	if branch == "" {
+		branch = branchFilter
+	}
 	if branchFilter != "" && branchFilter != branch {
 		c.JSON(http.StatusAccepted, gin.H{"received": true, "ignored": "branch not watched"})
 		return
@@ -133,12 +147,17 @@ func handleGitWebhookPush(c *gin.Context) {
 // the pushed repo+branch. Shared by the per-repo webhook receiver and the
 // GitHub App webhook endpoint.
 func dispatchPushToServices(c *gin.Context, db *database.DB, engine *deployment.DeploymentEngine, cloneURL, fullName, branch, commit, repoUserID string) (int, error) {
-	rows, err := db.Query(`
+	// Sync-style events may carry no branch — match services on repo only.
+	branchClause := "s.git_branch = $1"
+	if branch == "" {
+		branchClause = "TRUE"
+	}
+	rows, err := db.Query(fmt.Sprintf(`
 		SELECT s.id, s.project_id, s.name, s.type, s.status, s.image, s.command,
 		       s.environment, s.git_repo, s.git_branch, s.build_path, s.cpu, s.memory,
 		       s.created_at, s.updated_at
 		FROM services s
-		WHERE s.git_branch = $1 AND (s.git_repo = $2 OR s.git_repo = $3)`,
+		WHERE %s AND (s.git_repo = $2 OR s.git_repo = $3)`, branchClause),
 		branch, cloneURL, fullName)
 	if err != nil {
 		return 0, err
@@ -175,9 +194,9 @@ func dispatchPushToServices(c *gin.Context, db *database.DB, engine *deployment.
 		}
 		if _, err := db.Exec(
 			`INSERT INTO deployments
-			 (id, service_id, commit_hash, status, image_name, image_tag, created_at, updated_at)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-			d.ID, d.ServiceID, d.CommitHash, d.Status, d.ImageName, d.ImageTag, d.CreatedAt, d.UpdatedAt,
+			 (id, service_id, version, commit_hash, status, image_name, image_tag, created_at, updated_at)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+			d.ID, d.ServiceID, fmt.Sprintf("v%d", now.Unix()), d.CommitHash, d.Status, d.ImageName, d.ImageTag, d.CreatedAt, d.UpdatedAt,
 		); err != nil {
 			continue
 		}
@@ -196,7 +215,11 @@ func dispatchPushToServices(c *gin.Context, db *database.DB, engine *deployment.
 		)
 		// Webhook pushes default to a clean build — stale layers are the
 		// classic silent-rollback failure (dflow convention).
-		webhookReq := CreateDeploymentRequest{CommitHash: commit, Branch: branch, Trigger: "webhook", NoCache: true}
+		branchForBuild := branch
+		if branchForBuild == "" {
+			branchForBuild = service.GitBranch
+		}
+		webhookReq := CreateDeploymentRequest{CommitHash: commit, Branch: branchForBuild, Trigger: "webhook", NoCache: true}
 		if pos := getDeployQueue(c).Enqueue(service.ID, deployqueue.Job{
 			DeploymentID: d.ID,
 			Run: func(jctx context.Context) {
