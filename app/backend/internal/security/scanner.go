@@ -54,6 +54,9 @@ type ScanSummary struct {
 // Scanner handles security scanning operations
 type Scanner struct {
 	db *database.DB
+	// OnScanComplete fires after a scan finishes (goroutine context) —
+	// wired by the api layer for notifications. Optional.
+	OnScanComplete func(scan *SecurityScan)
 }
 
 // NewScanner creates a new security scanner
@@ -115,8 +118,11 @@ func (s *Scanner) performScan(scan *SecurityScan) {
 
 	// Update scan with results
 	completedAt := time.Now()
+	scan.CompletedAt = &completedAt
+	scan.Summary = summary
+	scan.Status = "completed"
 	_, err := s.db.Exec(`
-		UPDATE security_scans 
+		UPDATE security_scans
 		SET status = $1, completed_at = $2, summary = $3
 		WHERE id = $4
 	`, "completed", completedAt, summaryToJSON(summary), scan.ID)
@@ -136,6 +142,10 @@ func (s *Scanner) performScan(scan *SecurityScan) {
 		if err != nil {
 			log.Printf("Failed to store vulnerability %s: %v", vuln.ID, err)
 		}
+	}
+
+	if s.OnScanComplete != nil {
+		s.OnScanComplete(scan)
 	}
 }
 

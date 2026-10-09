@@ -109,6 +109,13 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 	// Audit retention — prunes rows past AUDIT_RETENTION_DAYS (default 90).
 	StartAuditRetention(context.Background(), db)
 
+	// Agent health — marks stale heartbeats offline, notifies admins on
+	// offline/recovery transitions.
+	StartAgentHealthSweep(context.Background(), db)
+
+	// Daily upgrade check — notifies admins when a newer release exists.
+	StartUpgradeCheck(context.Background(), db, Version)
+
 	// Initialize database handler
 	databaseHandler := NewDatabaseHandler(db.DB, dockerClient)
 

@@ -29,9 +29,27 @@ type SecurityHandler struct {
 func NewSecurityHandler(db *database.DB, encryptionKey string) *SecurityHandler {
 	encryptionManager, _ := security.NewEncryptionManager(encryptionKey)
 
+	scanner := security.NewScanner(db)
+	// Notify the project owner when a background scan completes — criticals
+	// earn a distinct title so they stand out in the notification list.
+	scanner.OnScanComplete = func(scan *security.SecurityScan) {
+		var ownerID string
+		if err := db.QueryRow(`SELECT owner_id::text FROM projects WHERE id = $1`, scan.ProjectID).Scan(&ownerID); err != nil || ownerID == "" {
+			return
+		}
+		title := "Security scan completed"
+		if scan.Summary.Critical > 0 || scan.Summary.High > 0 {
+			title = "Security scan found issues"
+		}
+		insertUserNotification(db, ownerID, "security", title,
+			fmt.Sprintf("%s scan finished: %d critical, %d high, %d total findings (score %d/100).",
+				scan.ScanType, scan.Summary.Critical, scan.Summary.High, scan.Summary.Total, scan.Summary.Score),
+			"project", scan.ProjectID)
+	}
+
 	return &SecurityHandler{
 		db:                   db,
-		scanner:              security.NewScanner(db),
+		scanner:              scanner,
 		complianceManager:    security.NewComplianceManager(db),
 		encryptionManager:    encryptionManager,
 		dataRetentionManager: security.NewDataRetentionManager(encryptionManager),
