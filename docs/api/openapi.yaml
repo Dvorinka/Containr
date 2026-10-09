@@ -2702,6 +2702,112 @@ paths:
         '204':
           description: Deleted
 
+  /auth/invites/{token}:
+    get:
+      tags:
+        - Invites
+      summary: Validate an invite token (public)
+      responses:
+        '200':
+          description: Invite state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid: {type: boolean}
+                  used: {type: boolean}
+                  expired: {type: boolean}
+                  email: {type: string, nullable: true}
+                  expires_at: {type: string, format: date-time}
+        '404':
+          description: Invite not found
+
+  /auth/accept-invite:
+    post:
+      tags:
+        - Invites
+      summary: Register via an invite link (public)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, name, email, password]
+              properties:
+                token: {type: string}
+                name: {type: string}
+                email: {type: string}
+                password: {type: string, minLength: 8}
+      responses:
+        '201':
+          description: Created session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '410':
+          description: Invite used or expired
+
+  /admin/invites:
+    get:
+      tags:
+        - Invites
+      summary: List invites (admin)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: All invites
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invites:
+                    type: array
+                    items:
+                      type: object
+    post:
+      tags:
+        - Invites
+      summary: Create an invite link (admin)
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: {type: string, description: Optionally bind the invite to this email}
+                expires_in_hours: {type: integer, default: 168, minimum: 1, maximum: 2160}
+      responses:
+        '201':
+          description: Created invite with one-time token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invite: {type: object}
+                  token: {type: string, description: Shown once}
+                  url: {type: string}
+
+  /admin/invites/{id}:
+    delete:
+      tags:
+        - Invites
+      summary: Revoke an invite (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        '204':
+          description: Revoked
+
   /branding:
     get:
       tags:

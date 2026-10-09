@@ -304,8 +304,12 @@ and wired refs, one click or one CLI call.
 - [ ] **Interactive terminal** — upgrade exec to WS PTY (`xterm.js`);
   `nodes/:id/terminal` via agent (dflow's wetty without the extra
   container).
-- [ ] **Team invites** — `POST /invites` → signed link → join flow;
-  replaces manual-only user creation.
+- [x] **Team invites** — `POST /admin/invites` returns a one-time
+  link (sha256-hashed token at rest, optional email binding, TTL);
+  public `GET /auth/invites/:token` validates and
+  `POST /auth/accept-invite` registers — works while public signup is
+  closed. `/auth/accept-invite` page, admin manage/revoke UI,
+  `containr invites` CLI + MCP tools.
 - [ ] **Impersonate user** — admin support tool, audit-logged.
 - [ ] **GitHub App manifest flow** — `POST /git/github-app/manifest`
   returns manifest + redirect; instance self-provisions its App

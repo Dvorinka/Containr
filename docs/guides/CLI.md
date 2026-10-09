@@ -86,6 +86,8 @@ operations                       live ops view: active deploys, queue depth,
                                24h failures, cron runs, backups
 banners list|create|update|delete  announcement banners (admin);
                                active banners print on `auth status`
+invites list|create|revoke       team invite links (admin); create
+                               prints the one-time acceptance URL
 up                               deploy the current directory
 ```
 

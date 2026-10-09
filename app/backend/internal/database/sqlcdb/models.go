@@ -301,6 +301,17 @@ type ServiceTemplate struct {
 	UpdatedAt   sql.NullTime          `json:"updated_at"`
 }
 
+type UserInvite struct {
+	ID        uuid.UUID      `json:"id"`
+	TokenHash string         `json:"token_hash"`
+	Email     sql.NullString `json:"email"`
+	CreatedBy uuid.NullUUID  `json:"created_by"`
+	ExpiresAt time.Time      `json:"expires_at"`
+	UsedBy    uuid.NullUUID  `json:"used_by"`
+	UsedAt    sql.NullTime   `json:"used_at"`
+	CreatedAt sql.NullTime   `json:"created_at"`
+}
+
 type UserToken struct {
 	ID         uuid.UUID    `json:"id"`
 	UserID     uuid.UUID    `json:"user_id"`
