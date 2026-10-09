@@ -41,7 +41,7 @@ import {
 import { signOutAuthSession } from '@/lib/auth-client';
 import { isDemoSearch } from '@/lib/demo-mode';
 import { useAuthSession } from '@/lib/use-auth-session';
-import { useToast } from '@/shared/components';
+import { BannerBar, useToast } from '@/shared/components';
 
 type NavItem = { label: string; href: string; icon: typeof FolderKanban; hint: string };
 type NavSection = { title: string; items: NavItem[] };
@@ -387,6 +387,7 @@ export function PlatformShell() {
         </aside>
 
         <div className="relative z-10 flex min-h-screen min-w-0 flex-1 flex-col overflow-hidden">
+          <BannerBar />
           <header
             className="hidden h-[46px] shrink-0 items-center border-b px-5 md:flex"
             style={{

@@ -3809,6 +3809,212 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/banners/active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Active announcement banners
+         * @description Banners currently active (enabled and within their optional schedule window).
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Active banners */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            banners?: {
+                                id?: string;
+                                title?: string;
+                                body?: string;
+                                /** @enum {string} */
+                                level?: "info" | "success" | "warning" | "error";
+                                active?: boolean;
+                                dismissible?: boolean;
+                                /** Format: date-time */
+                                starts_at?: string | null;
+                                /** Format: date-time */
+                                ends_at?: string | null;
+                                /** Format: date-time */
+                                created_at?: string;
+                            }[];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/banners": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List all banners (admin) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description All banners */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            banners?: Record<string, never>[];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Create a banner (admin) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        title: string;
+                        body?: string;
+                        /**
+                         * @default info
+                         * @enum {string}
+                         */
+                        level?: "info" | "success" | "warning" | "error";
+                        /** @default true */
+                        active?: boolean;
+                        /** @default true */
+                        dismissible?: boolean;
+                        /** Format: date-time */
+                        starts_at?: string;
+                        /** Format: date-time */
+                        ends_at?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Created banner */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": Record<string, never>;
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/banners/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a banner (admin) */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Deleted */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        /** Update a banner (admin) */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        title?: string;
+                        body?: string;
+                        /** @enum {string} */
+                        level?: "info" | "success" | "warning" | "error";
+                        active?: boolean;
+                        dismissible?: boolean;
+                        /** Format: date-time */
+                        starts_at?: string;
+                        /** Format: date-time */
+                        ends_at?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Updated banner */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": Record<string, never>;
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
     "/audit-logs": {
         parameters: {
             query?: never;

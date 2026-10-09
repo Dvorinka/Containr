@@ -64,6 +64,20 @@ type BackupTarget struct {
 	UpdatedAt sql.NullTime `json:"updated_at"`
 }
 
+type Banner struct {
+	ID          uuid.UUID     `json:"id"`
+	Title       string        `json:"title"`
+	Body        string        `json:"body"`
+	Level       string        `json:"level"`
+	Active      bool          `json:"active"`
+	Dismissible bool          `json:"dismissible"`
+	CreatedBy   uuid.NullUUID `json:"created_by"`
+	StartsAt    sql.NullTime  `json:"starts_at"`
+	EndsAt      sql.NullTime  `json:"ends_at"`
+	CreatedAt   sql.NullTime  `json:"created_at"`
+	UpdatedAt   sql.NullTime  `json:"updated_at"`
+}
+
 type ContainerInstance struct {
 	ID            string                `json:"id"`
 	Name          string                `json:"name"`

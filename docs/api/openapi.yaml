@@ -2581,6 +2581,127 @@ paths:
                     items:
                       type: object
 
+  /banners/active:
+    get:
+      tags:
+        - Banners
+      summary: Active announcement banners
+      description: Banners currently active (enabled and within their optional schedule window).
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Active banners
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  banners:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: {type: string}
+                        title: {type: string}
+                        body: {type: string}
+                        level: {type: string, enum: [info, success, warning, error]}
+                        active: {type: boolean}
+                        dismissible: {type: boolean}
+                        starts_at: {type: string, format: date-time, nullable: true}
+                        ends_at: {type: string, format: date-time, nullable: true}
+                        created_at: {type: string, format: date-time}
+
+  /admin/banners:
+    get:
+      tags:
+        - Banners
+      summary: List all banners (admin)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: All banners
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  banners:
+                    type: array
+                    items:
+                      type: object
+    post:
+      tags:
+        - Banners
+      summary: Create a banner (admin)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title: {type: string}
+                body: {type: string}
+                level: {type: string, enum: [info, success, warning, error], default: info}
+                active: {type: boolean, default: true}
+                dismissible: {type: boolean, default: true}
+                starts_at: {type: string, format: date-time}
+                ends_at: {type: string, format: date-time}
+      responses:
+        '201':
+          description: Created banner
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /admin/banners/{id}:
+    patch:
+      tags:
+        - Banners
+      summary: Update a banner (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: {type: string}
+                body: {type: string}
+                level: {type: string, enum: [info, success, warning, error]}
+                active: {type: boolean}
+                dismissible: {type: boolean}
+                starts_at: {type: string, format: date-time}
+                ends_at: {type: string, format: date-time}
+      responses:
+        '200':
+          description: Updated banner
+          content:
+            application/json:
+              schema:
+                type: object
+    delete:
+      tags:
+        - Banners
+      summary: Delete a banner (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        '204':
+          description: Deleted
+
   # Audit Logs
   /audit-logs:
     get:

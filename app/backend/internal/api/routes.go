@@ -336,6 +336,9 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			// Cross-cutting ops view — active/queued/failed work
 			authed.GET("/operations", handleGetOperations)
 
+			// Instance announcements shown to all signed-in users
+			authed.GET("/banners/active", handleListActiveBanners)
+
 			// Outbound webhooks — signed event delivery to user HTTP endpoints
 			authed.GET("/webhooks", handleListOutboundWebhooks)
 			authed.POST("/webhooks", handleCreateOutboundWebhook)
@@ -485,6 +488,12 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 
 			admin.GET("/admin/volumes", handleAdminListVolumes)
 			admin.DELETE("/admin/volumes/:name", handleAdminDeleteVolume)
+
+			// Announcement banners
+			admin.GET("/admin/banners", handleAdminListBanners)
+			admin.POST("/admin/banners", handleAdminCreateBanner)
+			admin.PATCH("/admin/banners/:id", handleAdminUpdateBanner)
+			admin.DELETE("/admin/banners/:id", handleAdminDeleteBanner)
 			admin.GET("/audit-logs", handleGetAuditLogs)
 			admin.GET("/audit-logs/:resource/:id", handleGetResourceAuditLogs)
 

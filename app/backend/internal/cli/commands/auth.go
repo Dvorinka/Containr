@@ -147,5 +147,21 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	if p.IsAdmin {
 		fmt.Println("Role:     platform admin")
 	}
+
+	var bannersResp struct {
+		Banners []struct {
+			Title string `json:"title"`
+			Body  string `json:"body"`
+			Level string `json:"level"`
+		} `json:"banners"`
+	}
+	if err := client.DoJSON("GET", "/banners/active", nil, &bannersResp); err == nil {
+		for _, b := range bannersResp.Banners {
+			fmt.Printf("[%s] %s\n", b.Level, b.Title)
+			if b.Body != "" {
+				fmt.Printf("      %s\n", b.Body)
+			}
+		}
+	}
 	return nil
 }

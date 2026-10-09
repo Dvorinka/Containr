@@ -149,6 +149,12 @@ func init() {
 
 	register(spec{"containr_operations_get", "Cross-cutting operations view: active deployments, deploy queue depth, recent failures, cron runs, backups.", "GET", "/operations", nil, nil, false})
 
+	register(spec{"containr_banners_active", "List active announcement banners shown to users.", "GET", "/banners/active", nil, nil, false})
+	register(spec{"containr_banners_list", "List all announcement banners (admin).", "GET", "/admin/banners", nil, nil, false})
+	register(spec{"containr_banners_create", "Create an announcement banner (admin). Args: title, body, level (info|success|warning|error), active, dismissible, starts_at, ends_at.", "POST", "/admin/banners", nil, []string{"title", "body", "level", "active", "dismissible", "starts_at", "ends_at"}, false})
+	register(spec{"containr_banners_update", "Update an announcement banner (admin). Args: id plus fields to change.", "PATCH", "/admin/banners/{id}", []string{"id"}, []string{"title", "body", "level", "active", "dismissible", "starts_at", "ends_at"}, false})
+	register(spec{"containr_banners_delete", "Delete an announcement banner (admin). Args: id. Requires confirm=true.", "DELETE", "/admin/banners/{id}", []string{"id"}, nil, true})
+
 	// Nodes / agent tokens (admin)
 	register(spec{"containr_nodes_list", "List node agents (admin)", "GET", "/agents", nil, nil, false})
 	register(spec{"containr_nodes_get", "Get a node agent (admin)", "GET", "/agents/{id}", []string{"id"}, nil, false})

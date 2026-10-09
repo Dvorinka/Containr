@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   Clock,
   FolderKanban,
+  Megaphone,
   Pencil,
   ShieldCheck,
   Trash2,
@@ -12,14 +13,19 @@ import {
   XCircle,
 } from 'lucide-react';
 import {
+  createBanner,
+  deleteBanner,
   deleteProject,
   getAdminOverview,
+  listAdminBanners,
   listAdminUsers,
   listProjects,
   setProjectApproval,
   setUserAdmin,
+  updateBanner,
   updateProject,
   type AdminUser,
+  type Banner,
   type ProjectEntity,
 } from '@/lib/api-client';
 import { useAuthSession } from '@/lib/use-auth-session';
@@ -50,15 +56,49 @@ export function AdminPage() {
   const overviewQuery = useQuery({ queryKey: ['admin-overview'], queryFn: getAdminOverview, enabled: !isDemoMode });
   const usersQuery = useQuery({ queryKey: ['admin-users'], queryFn: listAdminUsers, enabled: !isDemoMode });
   const projectsQuery = useQuery({ queryKey: ['admin-projects'], queryFn: () => listProjects({ limit: 100 }), enabled: !isDemoMode });
+  const bannersQuery = useQuery({ queryKey: ['admin-banners'], queryFn: listAdminBanners, enabled: !isDemoMode });
   const [editingProject, setEditingProject] = useState<ProjectEntity | null>(null);
   const [editForm, setEditForm] = useState({ name: '', description: '' });
+  const [bannerForm, setBannerForm] = useState({ title: '', body: '', level: 'info' as Banner['level'] });
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['admin-overview'] });
     queryClient.invalidateQueries({ queryKey: ['admin-users'] });
     queryClient.invalidateQueries({ queryKey: ['admin-projects'] });
+    queryClient.invalidateQueries({ queryKey: ['admin-banners'] });
+    queryClient.invalidateQueries({ queryKey: ['active-banners'] });
     queryClient.invalidateQueries({ queryKey: ['projects'] });
   };
+
+  const bannerCreateMutation = useMutation({
+    mutationFn: () =>
+      createBanner({
+        title: bannerForm.title.trim(),
+        body: bannerForm.body.trim(),
+        level: bannerForm.level,
+      }),
+    onSuccess: () => {
+      showToast('success', 'Banner published');
+      setBannerForm({ title: '', body: '', level: 'info' });
+      invalidate();
+    },
+    onError: (error) => showToast('error', 'Create failed', error instanceof Error ? error.message : undefined),
+  });
+
+  const bannerToggleMutation = useMutation({
+    mutationFn: ({ id, active }: { id: string; active: boolean }) => updateBanner(id, { active }),
+    onSuccess: () => invalidate(),
+    onError: (error) => showToast('error', 'Update failed', error instanceof Error ? error.message : undefined),
+  });
+
+  const bannerDeleteMutation = useMutation({
+    mutationFn: (id: string) => deleteBanner(id),
+    onSuccess: () => {
+      showToast('success', 'Banner deleted');
+      invalidate();
+    },
+    onError: (error) => showToast('error', 'Delete failed', error instanceof Error ? error.message : undefined),
+  });
 
   const approvalMutation = useMutation({
     mutationFn: ({ id, approved }: { id: string; approved: boolean }) => setProjectApproval(id, approved),
@@ -126,6 +166,7 @@ export function AdminPage() {
   const pending = overview?.pending_projects ?? [];
   const users = usersQuery.data ?? [];
   const allProjects = projectsQuery.data ?? [];
+  const banners = bannersQuery.data ?? [];
 
   return (
     <div className="mx-auto max-w-6xl px-5 py-8">
@@ -254,6 +295,85 @@ export function AdminPage() {
           ))}
           {allProjects.length === 0 ? (
             <p className="px-4 py-6 text-center text-[13px] text-[var(--text-tertiary)]">No projects yet.</p>
+          ) : null}
+        </div>
+      </section>
+
+      <section className="mt-8">
+        <div className="mb-3 flex items-center gap-2">
+          <Megaphone size={15} className="text-[var(--accent-primary)]" />
+          <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">Announcements</h2>
+        </div>
+        <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--surface-card)]">
+          <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border-subtle)] px-4 py-3">
+            <input
+              value={bannerForm.title}
+              onChange={(e) => setBannerForm((f) => ({ ...f, title: e.target.value }))}
+              placeholder="Title"
+              className="h-9 min-w-48 flex-1 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 text-sm focus:border-[var(--accent-primary)]"
+            />
+            <input
+              value={bannerForm.body}
+              onChange={(e) => setBannerForm((f) => ({ ...f, body: e.target.value }))}
+              placeholder="Body (optional)"
+              className="h-9 min-w-48 flex-[2] rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 text-sm focus:border-[var(--accent-primary)]"
+            />
+            <select
+              value={bannerForm.level}
+              onChange={(e) => setBannerForm((f) => ({ ...f, level: e.target.value as Banner['level'] }))}
+              className="h-9 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-2 text-sm"
+            >
+              <option value="info">info</option>
+              <option value="success">success</option>
+              <option value="warning">warning</option>
+              <option value="error">error</option>
+            </select>
+            <button
+              type="button"
+              onClick={() => bannerCreateMutation.mutate()}
+              disabled={bannerCreateMutation.isPending || bannerForm.title.trim().length === 0}
+              className="rounded-[var(--radius-md)] bg-[var(--accent-primary)] px-4 py-2 text-[12px] font-semibold text-[var(--accent-on)] disabled:opacity-50"
+            >
+              {bannerCreateMutation.isPending ? 'Publishing…' : 'Publish'}
+            </button>
+          </div>
+          {banners.map((banner) => (
+            <div
+              key={banner.id}
+              className="flex items-center gap-4 border-b border-[var(--border-subtle)] px-4 py-3 last:border-b-0"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[13.5px] font-medium text-[var(--text-primary)]">{banner.title}</p>
+                <p className="truncate text-[11.5px] text-[var(--text-tertiary)]">
+                  {banner.level}
+                  {banner.body ? ` · ${banner.body}` : ''}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => bannerToggleMutation.mutate({ id: banner.id, active: !banner.active })}
+                disabled={bannerToggleMutation.isPending}
+                className="rounded-[var(--radius-md)] border border-[var(--border-default)] px-3 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-50"
+              >
+                {banner.active ? 'Deactivate' : 'Activate'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.confirm(`Delete banner "${banner.title}"?`)) {
+                    bannerDeleteMutation.mutate(banner.id);
+                  }
+                }}
+                disabled={bannerDeleteMutation.isPending}
+                className="inline-flex items-center gap-1 rounded-[var(--radius-md)] border border-[var(--error)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--error)] hover:bg-[var(--error-soft)] disabled:opacity-50"
+                title="Delete banner"
+              >
+                <Trash2 size={12} />
+              </button>
+            </div>
+          ))}
+          {banners.length === 0 ? (
+            <p className="px-4 py-6 text-center text-[13px] text-[var(--text-tertiary)]">No announcements.</p>
           ) : null}
         </div>
       </section>

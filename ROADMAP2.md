@@ -284,8 +284,11 @@ and wired refs, one click or one CLI call.
   CLI + MCP + `/settings/webhooks` page with delivery log + test ping.
 - [ ] **Activity feed** — enrich `audit_logs` with `severity category
   icon label metadata`; per-project timeline + global feed; TTL job.
-- [ ] **Banners** — `banners(title, body, level, scope, active)`; top
-  bar in UI + surfaced to CLI on `auth status`.
+- [x] **Banners** — `banners` table with title/body/level/active/
+  dismissible/schedule window. `GET /banners/active` for signed-in
+  users; admin CRUD at `/admin/banners`. `BannerBar` renders above the
+  header (per-banner dismiss via localStorage); admin console manages
+  them; `containr banners` CLI + `auth status` surfaces active ones.
 - [ ] **White-label** — `app_settings.branding`: product name, logos,
   favicon, accent override, docs/support links. `GET /api/v1/branding`
   public + cached. **Containr/Vertice remains default;** this is for
