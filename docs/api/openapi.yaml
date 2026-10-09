@@ -2156,6 +2156,62 @@ paths:
                     items:
                       type: string
 
+  /templates/import/git:
+    post:
+      tags:
+        - Templates
+      summary: Import a compose file from a git repository
+      description: |
+        Fetches a compose file out of a git repository and runs it through
+        the same conversion as POST /templates/import/compose. `repo`
+        accepts a clone URL, ssh remote, or `owner/repo` shorthand —
+        connected git providers (including GitHub App installs) supply
+        credentials, so private repositories work. `path` defaults to
+        `compose.yaml`, `compose.yml`, `docker-compose.yml`, then
+        `docker-compose.yaml`; `ref` selects a branch or commit SHA.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - repo
+              properties:
+                repo:
+                  type: string
+                  description: Clone URL, ssh remote, or owner/repo shorthand
+                path:
+                  type: string
+                  description: Repo-relative compose file path (searched by convention when empty)
+                ref:
+                  type: string
+                  description: Branch name or 40-char commit SHA
+      responses:
+        '200':
+          description: Converted config
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  config:
+                    $ref: '#/components/schemas/TemplateConfig'
+                  variables:
+                    type: array
+                    items:
+                      type: object
+                  warnings:
+                    type: array
+                    items:
+                      type: string
+        '400':
+          description: Invalid repo reference, compose file missing, or conversion error
+        '502':
+          description: Git fetch failed
+
   /templates/deploy:
     post:
       tags:

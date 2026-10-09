@@ -228,24 +228,31 @@ goroutines; this fixes correctness *and* unlocks the ops surface.
 
 ## 6. Phase E — Templates v2 (absorbs compose-catalog spec + dflow graph templates)
 
-- [ ] **Template = ordered service graph** — `services[]` entries with
+- [x] **Template = ordered service graph** — `services[]` entries with
   `{name, type, source, build, ports, volumes, variables, depends_on}`;
-  deploy order from dependency refs.
-- [ ] **Expressions** — `${{service.KEY}}` (already the runtime ref
-  syntax — reuse), `{{secret(len,"charset")}}`, `{{random:int}}`,
-  `{{VAR:-default}}`; `POST /templates/:id/plan` returns the resolved
-  graph without deploying (agents love this).
-- [ ] **Compose import** — `POST /templates/import/compose` (compose-go
-  parser → graph), `POST /templates/import/github` (compose file from
-  repo path). Implements `docs/superpowers/specs/2026-04-14-*`.
-- [ ] **Graph deploy pipeline** — creates project + services in
-  dependency order, resolves vars, triggers builds; defined
-  partial-failure policy.
+  deploy order from dependency refs. `templategraph.go`,
+  `topoSortServices`.
+- [x] **Expressions** — `{{service.KEY.prop}}` (host/port/user/password/
+  database/url), `{{secret}}`/`{{secret(N)}}`, `{{random:N}}`,
+  `{{VAR:-default}}` (incl. explicitly-empty defaults); `POST
+  /templates/:id/plan` returns the resolved graph without deploying.
+- [x] **Compose import** — `POST /templates/import/compose` (yaml →
+  graph, known DB images become managed databases), `POST
+  /templates/import/git` (compose file fetched from any git repo — clone
+  URL, ssh remote, or owner/repo via connected providers, `ref` selects
+  branch/commit); `templates import-compose|import-git` CLI, MCP tools,
+  paste-or-git toggle in the template UI.
+- [x] **Graph deploy pipeline** — creates services in dependency order,
+  resolves vars/secrets, triggers builds. `deployTemplateGraph`,
+  `POST /templates/deploy` (inline), `POST /projects/:id/import-compose`.
 - [ ] **Visual template builder** — canvas mode: drop git/image/db
   nodes, wire refs, set order, save/publish. Reuses existing canvas
   primitives (dflow's `templates/compose` is exactly this).
-- [ ] **Catalog growth** — convert `templates/*.md` (20 app guides) into
-  real graph templates; screenshots + badges per the old spec.
+- [x] **Catalog growth** — seeded graph stacks for n8n, Gitea,
+  Nextcloud, Vaultwarden, Umami, Immich (Plausible already shipped).
+  `TestSeedTemplatesResolveCleanly` keeps every seed parseable,
+  topo-sortable, and fully resolved. Remaining single-service guides can
+  convert incrementally via the same endpoint.
 
 **Gate**: paste n8n compose → 3-service project with generated secrets
 and wired refs, one click or one CLI call.

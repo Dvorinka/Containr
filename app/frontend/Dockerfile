@@ -1,5 +1,7 @@
 # Build stage
-FROM node:22-alpine AS builder
+ARG NODE_IMAGE=node:22-alpine
+ARG NGINX_IMAGE=nginx:alpine
+FROM ${NODE_IMAGE} AS builder
 
 # Set working directory
 WORKDIR /app
@@ -24,7 +26,7 @@ ENV VITE_AUTH_URL=${VITE_AUTH_URL}
 RUN npm run build
 
 # Production stage
-FROM nginx:alpine
+FROM ${NGINX_IMAGE}
 
 # Copy custom nginx config
 COPY nginx.conf /etc/nginx/nginx.conf

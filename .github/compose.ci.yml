@@ -1,0 +1,18 @@
+# CI-only compose overlay: pull and build through mirror.gcr.io so shared
+# runner egress IPs never touch docker.io (anonymous pulls get 429'd).
+# Production refs in infra/docker-compose.yml stay unchanged.
+services:
+  postgres:
+    image: mirror.gcr.io/library/postgres:15-alpine
+  traefik:
+    image: mirror.gcr.io/library/traefik:v3.2
+  backend:
+    build:
+      args:
+        GO_IMAGE: mirror.gcr.io/library/golang:1.26-alpine
+        NODE_IMAGE: mirror.gcr.io/library/node:22-alpine
+  frontend:
+    build:
+      args:
+        NODE_IMAGE: mirror.gcr.io/library/node:22-alpine
+        NGINX_IMAGE: mirror.gcr.io/library/nginx:alpine

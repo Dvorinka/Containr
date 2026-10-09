@@ -11,6 +11,8 @@ import (
 	"log"
 	"math/big"
 	"net/http"
+	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -22,6 +24,7 @@ import (
 	"containr/internal/deployment"
 	"containr/internal/deployqueue"
 	"containr/internal/secrets"
+	"containr/internal/source"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -227,7 +230,9 @@ func resolveStaticExpr(value string, userVars map[string]string, unresolved *[]s
 		if val, ok := userVars[key]; ok {
 			return val
 		}
-		if sub[2] != "" {
+		// {{VAR:-x}} supplies a default; {{VAR:-}} declares an explicitly
+		// empty one. Both resolve — only a bare {{VAR}} is unresolved.
+		if strings.Contains(m, ":-") {
 			return sub[2]
 		}
 		if unresolved != nil {
@@ -1110,6 +1115,130 @@ func handleImportCompose(c *gin.Context) {
 		"variables": variables,
 		"warnings":  warnings,
 	})
+}
+
+// handleImportGitCompose fetches a compose file out of a git repository and
+// runs it through the same conversion as handleImportCompose. Works with any
+// git remote — connected providers (including GitHub App installs) supply
+// credentials for private repos. Nothing is persisted; the response feeds
+// the template create form or a direct deploy.
+func handleImportGitCompose(c *gin.Context) {
+	userID, ok := requireAuthenticatedUserID(c)
+	if !ok {
+		return
+	}
+	db := c.MustGet("db").(*database.DB)
+
+	var req struct {
+		Repo string `json:"repo" binding:"required"`
+		Path string `json:"path"`
+		Ref  string `json:"ref"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	branch, commit := "", ""
+	if ref := strings.TrimSpace(req.Ref); ref != "" {
+		if isCommitSHA(ref) {
+			commit = ref
+		} else {
+			branch = ref
+		}
+	}
+	spec, err := resolveGitCloneSpec(db, userID, req.Repo, branch, commit, "")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "code": "VALIDATION"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Minute)
+	defer cancel()
+	checkoutRoot := filepath.Join(containrWorkDir, "repos", "import-"+uuid.NewString())
+	defer os.RemoveAll(checkoutRoot)
+	repoDir, err := source.Checkout(ctx, checkoutRoot, spec)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "git fetch failed: " + err.Error(), "code": "GIT_FETCH"})
+		return
+	}
+
+	// Default search order mirrors common compose conventions.
+	candidates := []string{req.Path}
+	if strings.TrimSpace(req.Path) == "" {
+		candidates = []string{"compose.yaml", "compose.yml", "docker-compose.yml", "docker-compose.yaml"}
+	}
+	var raw []byte
+	for _, rel := range candidates {
+		p, rerr := resolveRepoFile(repoDir, rel)
+		if rerr != nil {
+			continue
+		}
+		raw, err = os.ReadFile(p)
+		if err == nil {
+			break
+		}
+	}
+	if raw == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "compose file not found in repository", "code": "NOT_FOUND"})
+		return
+	}
+	if len(raw) > 512*1024 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Compose file exceeds 512 KiB"})
+		return
+	}
+
+	var file composeFileDef
+	if err := yaml.Unmarshal(raw, &file); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid compose YAML: " + err.Error()})
+		return
+	}
+	services, warnings, convErr := composeToSpecs(&file)
+	if convErr != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": convErr.Error()})
+		return
+	}
+	config := TemplateConfig{Version: 2, Services: services}
+	configJSON, _ := json.Marshal(config)
+	c.JSON(http.StatusOK, gin.H{
+		"config":    json.RawMessage(configJSON),
+		"variables": []TemplateVariable{},
+		"warnings":  warnings,
+	})
+}
+
+// resolveRepoFile maps a repo-relative file path onto the checkout and
+// rejects escapes — same containment rule as ResolveBuildPath, for files.
+func resolveRepoFile(checkoutDir, rel string) (string, error) {
+	rel = strings.TrimSpace(rel)
+	if rel == "" || filepath.IsAbs(rel) {
+		return "", fmt.Errorf("invalid repo path %q", rel)
+	}
+	clean := filepath.Clean(rel)
+	if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("path escapes the checkout: %q", rel)
+	}
+	resolved := filepath.Join(checkoutDir, clean)
+	info, err := os.Stat(resolved)
+	if err != nil {
+		return "", fmt.Errorf("path %q not found in checkout", rel)
+	}
+	if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("path %q is not a file", rel)
+	}
+	return resolved, nil
+}
+
+func isCommitSHA(ref string) bool {
+	if len(ref) != 40 {
+		return false
+	}
+	for _, r := range ref {
+		if !('0' <= r && r <= '9') && !('a' <= r && r <= 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 // composeToSpecs converts a parsed compose file into graph service specs.

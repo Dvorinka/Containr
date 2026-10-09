@@ -163,11 +163,13 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Boot stack
+        # .github/compose.ci.yml swaps every docker.io ref for
+        # mirror.gcr.io — anonymous Hub pulls 429 on shared CI IPs.
         run: |
           BETTER_AUTH_SECRET=$(openssl rand -hex 32)
           BETTER_AUTH_INTERNAL_TOKEN=$(openssl rand -hex 32)
           export BETTER_AUTH_SECRET BETTER_AUTH_INTERNAL_TOKEN
-          docker compose -f infra/docker-compose.yml up -d --build postgres dragonfly backend frontend traefik
+          docker compose -f infra/docker-compose.yml -f .github/compose.ci.yml up -d --build postgres dragonfly backend frontend traefik
 
       - name: Wait for backend health
         run: |
@@ -204,7 +206,13 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Docker Buildx
+        # Mirror docker.io through gcr — shared CI IPs hit anonymous
+        # rate limits on base-image metadata resolution otherwise.
         uses: docker/setup-buildx-action@v3
+        with:
+          config-inline: |
+            [registry."docker.io"]
+              mirrors = ["mirror.gcr.io"]
 
       - name: Login to GHCR
         if: github.event_name != 'pull_request'

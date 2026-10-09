@@ -487,6 +487,7 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			authed.POST("/templates/:id/deploy", handleCreateFromTemplate)
 			authed.POST("/templates/:id/plan", handlePlanTemplate)
 			authed.POST("/templates/import/compose", handleImportCompose)
+			authed.POST("/templates/import/git", handleImportGitCompose)
 			authed.POST("/templates/deploy", handleDeployInlineGraph)
 
 			authed.POST("/cron-jobs", handleCreateCronJob)
