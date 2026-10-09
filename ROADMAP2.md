@@ -289,10 +289,12 @@ and wired refs, one click or one CLI call.
   users; admin CRUD at `/admin/banners`. `BannerBar` renders above the
   header (per-banner dismiss via localStorage); admin console manages
   them; `containr banners` CLI + `auth status` surfaces active ones.
-- [ ] **White-label** — `app_settings.branding`: product name, logos,
-  favicon, accent override, docs/support links. `GET /api/v1/branding`
-  public + cached. **Containr/Vertice remains default;** this is for
-  self-hosters who rebrand their instance.
+- [x] **White-label** — `app_settings` `branding.*` keys: product name,
+  logo/favicon URL, accent color, docs/support links. Public
+  `GET /api/v1/branding` (defaults = Containr); admin writes via
+  `PUT /settings`. `useBranding()` applies title/accent/favicon;
+  `BrandWordmark` replaces hardcoded marks; admin Platform section
+  edits all fields. MCP `containr_branding_get` + `settings_update`.
 - [x] **Operations page** — `GET /operations` aggregates active
   deployments, in-memory deploy-queue depth (`Queue.Snapshot()`),
   24h failures, cron runs and backups scoped to the caller's projects.

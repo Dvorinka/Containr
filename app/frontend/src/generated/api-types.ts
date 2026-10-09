@@ -4015,6 +4015,48 @@ export interface paths {
         };
         trace?: never;
     };
+    "/branding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * White-label branding (public)
+         * @description Instance branding payload — product name, logo/favicon URLs,
+         *     accent color, docs/support links. Unauthenticated so the login
+         *     page and shell can brand themselves before a session exists.
+         *     Unset fields return Containr defaults.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Branding configuration */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Branding"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/audit-logs": {
         parameters: {
             query?: never;
@@ -4980,6 +5022,15 @@ export interface paths {
                         signup_enabled?: boolean;
                         /** @description Cloudflare Tunnel token. Empty string clears the stored token and removes the cloudflared container. */
                         cloudflare_tunnel_token?: string;
+                        /** @description White-label fields. Empty string clears a field back to the Containr default. */
+                        branding?: {
+                            product_name?: string;
+                            logo_url?: string;
+                            favicon_url?: string;
+                            accent_color?: string;
+                            docs_url?: string;
+                            support_url?: string;
+                        };
                     };
                 };
             };
@@ -9615,6 +9666,16 @@ export interface components {
                 /** @description cloudflared container state - running/exited/missing, or unavailable when Docker is unreachable */
                 container?: string;
             };
+            branding?: components["schemas"]["Branding"];
+        };
+        /** @description White-label instance branding. Unset fields fall back to Containr defaults. */
+        Branding: {
+            product_name?: string;
+            logo_url?: string;
+            favicon_url?: string;
+            accent_color?: string;
+            docs_url?: string;
+            support_url?: string;
         };
         User: {
             /** @description User ID */
