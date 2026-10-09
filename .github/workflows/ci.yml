@@ -162,14 +162,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Pre-pull images (Docker Hub mirror)
-        # Anonymous Docker Hub pulls rate-limit shared CI IPs; Google's
-        # public mirror serves library/* images without auth. Compose then
-        # reuses the retagged local images. Mirror miss → normal pull path.
+      - name: Use Docker Hub mirror
+        # Anonymous docker.io pulls rate-limit shared CI egress IPs —
+        # service pulls AND BuildKit base-image metadata both hit it.
+        # Routing the daemon through Google's public mirror avoids both.
         run: |
-          for img in postgres:15-alpine traefik:v3.2; do
-            docker pull "mirror.gcr.io/library/$img" && docker tag "mirror.gcr.io/library/$img" "$img" || true
-          done
+          echo '{"registry-mirrors":["https://mirror.gcr.io"]}' | sudo tee /etc/docker/daemon.json
+          sudo systemctl restart docker
+          timeout 60 sh -c 'until docker info >/dev/null 2>&1; do sleep 1; done'
 
       - name: Boot stack
         run: |
