@@ -162,6 +162,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Pre-pull images (Docker Hub mirror)
+        # Anonymous Docker Hub pulls rate-limit shared CI IPs; Google's
+        # public mirror serves library/* images without auth. Compose then
+        # reuses the retagged local images. Mirror miss → normal pull path.
+        run: |
+          for img in postgres:15-alpine traefik:v3.2; do
+            docker pull "mirror.gcr.io/library/$img" && docker tag "mirror.gcr.io/library/$img" "$img" || true
+          done
+
       - name: Boot stack
         run: |
           BETTER_AUTH_SECRET=$(openssl rand -hex 32)
