@@ -1056,6 +1056,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/services/{id}/terminal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Interactive terminal (WebSocket)
+         * @description Upgrades to a WebSocket bridged to a `docker exec` PTY in the service's running container (bash if present, else sh). Cookie/bearer auth as usual. Client→server JSON frames: `{"type":"stdin","data":"..."}`, `{"type":"resize","cols":N,"rows":N}`. Server→client frames: `{"type":"stdout","data":"..."}`, `{"type":"exit","code":N}`, `{"type":"error","message":"..."}`.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Switching protocols — WebSocket session established */
+                101: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Service not found or not visible */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Service has no running container */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Docker unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/internal/wake/{id}": {
         parameters: {
             query?: never;

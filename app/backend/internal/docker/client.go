@@ -516,6 +516,21 @@ func (c *Client) ExecRun(ctx context.Context, containerID string, cmd []string) 
 	return buf.String(), inspect.ExitCode, nil
 }
 
+// ExecAttach attaches to a running exec instance, returning the hijacked
+// bidirectional stream. With Tty enabled the stream carries raw pty data
+// (no stdcopy multiplexing).
+func (c *Client) ExecAttach(ctx context.Context, execID string) (types.HijackedResponse, error) {
+	return c.cli.ContainerExecAttach(ctx, execID, container.ExecAttachOptions{})
+}
+
+// ExecResize resizes the pty of a running exec instance.
+func (c *Client) ExecResize(ctx context.Context, execID string, cols, rows uint) error {
+	return c.cli.ContainerExecResize(ctx, execID, container.ResizeOptions{
+		Height: rows,
+		Width:  cols,
+	})
+}
+
 // GetImageInfo returns information about a Docker image
 func (c *Client) GetImageInfo(ctx context.Context, imageName string) (*ImageInfo, error) {
 	images, err := c.cli.ImageList(ctx, image.ListOptions{})
