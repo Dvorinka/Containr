@@ -1,0 +1,30 @@
+export const colors = {
+  bg: '#0B0F14',
+  surface: '#131A22',
+  surfaceAlt: '#1A232E',
+  border: '#26313D',
+  text: '#E8EEF4',
+  textDim: '#8A97A5',
+  accent: '#4F8FF7',
+  accentDim: '#2A4A7F',
+  ok: '#3FB68B',
+  warn: '#E0A93E',
+  err: '#E05C5C',
+  info: '#4FB7D9',
+};
+
+export const statusColor: Record<string, string> = {
+  running: colors.ok,
+  deployed: colors.ok,
+  success: colors.ok,
+  building: colors.warn,
+  deploying: colors.warn,
+  pending: colors.warn,
+  waking: colors.warn,
+  sleeping: colors.info,
+  stopped: colors.textDim,
+  queued: colors.textDim,
+  failed: colors.err,
+  error: colors.err,
+  cancelled: colors.textDim,
+};
