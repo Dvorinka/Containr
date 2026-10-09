@@ -10878,6 +10878,8 @@ export interface components {
             node_id?: string;
             /** @description Display name of the pinned node agent (read-only) */
             node_name?: string;
+            /** @description Replicas are distributed across every online, schedulable node agent (replica i → agents[i mod n]). Mutually exclusive with an explicit node_id pin. */
+            spread?: boolean;
             /** @description Computed public URL (published port or domain) */
             public_url?: string;
             /**
@@ -10950,6 +10952,8 @@ export interface components {
             static_dir?: string;
             /** @description Node agent id to pin to, 'auto' = least-loaded online agent; omit/empty = local host */
             node_id?: string;
+            /** @description Distribute replicas across every online, schedulable node agent; mutually exclusive with an explicit node_id pin */
+            spread?: boolean;
         };
         UpdateServiceRequest: {
             /** @description Service name */
@@ -11013,6 +11017,8 @@ export interface components {
             sleep_idle_minutes?: number;
             /** @description Node agent id to pin to, 'auto' = least-loaded online agent, 'local' = run on the Containr host (clears the pin) */
             node_id?: string;
+            /** @description Distribute replicas across every online, schedulable node agent; mutually exclusive with an explicit node_id pin — send 'local' first to clear a pin */
+            spread?: boolean;
         };
         ServiceDomain: {
             /** Format: uuid */

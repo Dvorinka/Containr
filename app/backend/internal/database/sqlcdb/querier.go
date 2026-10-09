@@ -94,6 +94,8 @@ type Querier interface {
 	// display, when the caller owns or is a member of it, or when the caller is a
 	// platform admin. Anonymous callers pass user_id = uuid.Nil, is_admin = false.
 	ListProjectsWithStatsByUser(ctx context.Context, arg ListProjectsWithStatsByUserParams) ([]ListProjectsWithStatsByUserRow, error)
+	ListSchedulableAgents(ctx context.Context) ([]ListSchedulableAgentsRow, error)
+	ListServiceContainers(ctx context.Context, serviceID string) ([]ListServiceContainersRow, error)
 	ListServiceTemplatesByCategoryForUser(ctx context.Context, arg ListServiceTemplatesByCategoryForUserParams) ([]ServiceTemplate, error)
 	ListServiceTemplatesForUser(ctx context.Context, ownerID uuid.NullUUID) ([]ServiceTemplate, error)
 	ListUserInvites(ctx context.Context) ([]UserInvite, error)
@@ -102,6 +104,8 @@ type Querier interface {
 	MarkAllNotificationsReadByUser(ctx context.Context, arg MarkAllNotificationsReadByUserParams) error
 	MarkNotificationReadByIDAndUser(ctx context.Context, arg MarkNotificationReadByIDAndUserParams) error
 	MarkUserInviteUsed(ctx context.Context, arg MarkUserInviteUsedParams) error
+	// Resource-aware: lowest memory utilisation first, then cpu, then container
+	// count. Agents without telemetry sort last (NULL → worst score).
 	PickLeastLoadedAgent(ctx context.Context) (string, error)
 	RevokeAgentAuthToken(ctx context.Context, id uuid.UUID) (AgentAuthToken, error)
 	RevokeUserToken(ctx context.Context, arg RevokeUserTokenParams) (int64, error)

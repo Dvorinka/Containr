@@ -48,6 +48,65 @@ func (r *agentNodeRunner) ReconcileOnNode(ctx context.Context, spec deployment.R
 	if !agent.Status.Valid || agent.Status.String != "online" {
 		return nil, fmt.Errorf("node %s is %s — heartbeats resume scheduling when it reconnects", agent.Name, agent.Status.String)
 	}
+	return r.reconcileOnAgents(ctx, spec, func(int) string { return spec.NodeID })
+}
+
+// ReconcileSpread distributes replicas deterministically across online,
+// schedulable agents: replica i lands on agents[i % len(agents)], agents
+// sorted by id. Replicas wrap when they outnumber nodes. The local host is
+// not a spread target — pin "local" or leave unset for local execution.
+func (r *agentNodeRunner) ReconcileSpread(ctx context.Context, spec deployment.RuntimeSpec) (*deployment.RuntimeState, error) {
+	agents, err := r.q.ListSchedulableAgents(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list schedulable nodes: %w", err)
+	}
+	if len(agents) == 0 {
+		return nil, fmt.Errorf("no online schedulable nodes — connect an agent or unset spread")
+	}
+	return r.reconcileOnAgents(ctx, spec, func(i int) string {
+		return agents[i%len(agents)].ID
+	})
+}
+
+// RemoteRuntimeState reads the service's remote replicas from inventory.
+// Rows only carry the last dispatched state — the agent doesn't stream
+// container events — so "running" means "last create succeeded".
+func (r *agentNodeRunner) RemoteRuntimeState(ctx context.Context, serviceID string) (*deployment.RuntimeState, error) {
+	rows, err := r.q.ListServiceContainers(ctx, serviceID)
+	if err != nil {
+		return nil, err
+	}
+	state := &deployment.RuntimeState{Status: "stopped"}
+	running := 0
+	for _, row := range rows {
+		var status struct {
+			State string `json:"state"`
+		}
+		unmarshalRaw(row.Status, &status)
+		if status.State == "" || status.State == "removed" {
+			continue
+		}
+		replica := -1
+		if idx, err := strconv.Atoi(strings.TrimPrefix(row.Name, fmt.Sprintf("containr-%s-", serviceID))); err == nil {
+			replica = idx
+		}
+		state.Containers = append(state.Containers, deployment.RuntimeContainer{
+			ID: row.ID, Name: row.Name, State: status.State, Replica: replica,
+		})
+		if status.State == "running" {
+			running++
+		}
+	}
+	if running > 0 {
+		state.Status = "running"
+	}
+	return state, nil
+}
+
+// reconcileOnAgents creates the service's replicas on the agents chosen by
+// targetFor and retires stale replicas on any agent — including leftovers
+// from a previous pin or a different spread assignment.
+func (r *agentNodeRunner) reconcileOnAgents(ctx context.Context, spec deployment.RuntimeSpec, targetFor func(replica int) string) (*deployment.RuntimeState, error) {
 	if len(spec.Domains) > 0 || spec.Domain != "" {
 		return nil, fmt.Errorf("domains are routed by the local Traefik — remove the service's domains or run it on the local node")
 	}
@@ -57,81 +116,33 @@ func (r *agentNodeRunner) ReconcileOnNode(ctx context.Context, spec deployment.R
 		replicas = 1
 	}
 
-	// Retire replicas above the desired count using inventory rows.
 	prefix := fmt.Sprintf("containr-%s-", spec.ServiceID)
-	existing, _ := r.q.ListContainersForAgent(ctx, spec.NodeID)
+	existing, _ := r.q.ListServiceContainers(ctx, spec.ServiceID)
 	for _, row := range existing {
-		if row.ServiceID != spec.ServiceID || !strings.HasPrefix(row.Name, prefix) {
+		if !strings.HasPrefix(row.Name, prefix) {
 			continue
 		}
 		replica, err := strconv.Atoi(strings.TrimPrefix(row.Name, prefix))
-		if err == nil && replica >= replicas {
-			if cmdErr := r.enqueueAndWait(ctx, spec.NodeID, "", "remove_container",
-				map[string]interface{}{"container_name": row.Name}); cmdErr != nil {
-				return nil, fmt.Errorf("remove stale replica %s: %w", row.Name, cmdErr)
-			}
-			_ = r.q.UpdateContainerStatus(ctx, sqlcdb.UpdateContainerStatusParams{
-				ID:     row.ID,
-				Status: rawJSON(map[string]interface{}{"state": "removed"}),
-			})
+		keep := err == nil && replica < replicas && row.NodeAgentID == targetFor(replica)
+		if keep {
+			continue
 		}
+		if cmdErr := r.enqueueAndWait(ctx, row.NodeAgentID, "", "remove_container",
+			map[string]interface{}{"container_name": row.Name}); cmdErr != nil {
+			return nil, fmt.Errorf("remove stale replica %s on node %s: %w", row.Name, row.NodeAgentID, cmdErr)
+		}
+		_ = r.q.UpdateContainerStatus(ctx, sqlcdb.UpdateContainerStatusParams{
+			ID:     row.ID,
+			Status: rawJSON(map[string]interface{}{"state": "removed"}),
+		})
 	}
 
 	state := &deployment.RuntimeState{Desired: replicas, Status: "running"}
 	for i := 0; i < replicas; i++ {
+		agentID := targetFor(i)
 		name := remoteContainerName(spec.ServiceID, i)
-		containerID := remoteContainerID(spec.NodeID, spec.ServiceID, i)
-
-		ports := []interface{}{}
-		if spec.Port > 0 {
-			hostPort := spec.PublishedPort // 0 → ephemeral on the node
-			if i > 0 {
-				hostPort = 0 // only replica 0 claims the preferred host port
-			}
-			ports = append(ports, map[string]interface{}{
-				"published":      true,
-				"host_port":      hostPort,
-				"container_port": spec.Port,
-				"protocol":       "tcp",
-			})
-		}
-		volumes := make([]interface{}, 0, len(spec.Volumes))
-		for _, v := range spec.Volumes {
-			volumes = append(volumes, map[string]interface{}{
-				"source": v.Source, "target": v.Destination, "read_only": v.ReadOnly,
-			})
-		}
-		env := map[string]interface{}{}
-		for k, v := range spec.Env {
-			env[k] = v
-		}
-		restart := spec.RestartPolicy
-		if restart == "" {
-			restart = "unless-stopped"
-		}
-		cmd := make([]interface{}, 0, len(spec.Command))
-		for _, arg := range spec.Command {
-			cmd = append(cmd, arg)
-		}
-		container := map[string]interface{}{
-			"name":           name,
-			"image":          spec.Image,
-			"command":        cmd,
-			"environment":    env,
-			"registry":       r.pullCredentials(spec.ProjectID, spec.Image),
-			"ports":          ports,
-			"volumes":        volumes,
-			"restart_policy": restart,
-			"memory":         spec.MemoryBytes,
-			"cpus":           float64(spec.NanoCPUs) / 1e9,
-			"labels": map[string]interface{}{
-				"containr.managed": "true",
-				"containr.project": spec.ProjectID,
-				"containr.service": spec.ServiceID,
-				"containr.replica": fmt.Sprint(i),
-				"containr.node":    spec.NodeID,
-			},
-		}
+		containerID := remoteContainerID(agentID, spec.ServiceID, i)
+		container, env, ports, volumes, restart := r.replicaPayload(spec, agentID, i, name)
 
 		_ = r.q.UpsertServiceContainer(ctx, sqlcdb.UpsertServiceContainerParams{
 			ID:            containerID,
@@ -139,7 +150,7 @@ func (r *agentNodeRunner) ReconcileOnNode(ctx context.Context, spec deployment.R
 			Image:         spec.Image,
 			ProjectID:     spec.ProjectID,
 			ServiceID:     spec.ServiceID,
-			NodeAgentID:   spec.NodeID,
+			NodeAgentID:   agentID,
 			Status:        rawJSON(map[string]interface{}{"state": "created", "health": "none"}),
 			Resources:     rawJSON(map[string]interface{}{"memory": spec.MemoryBytes, "cpus": float64(spec.NanoCPUs) / 1e9}),
 			Ports:         rawJSON(ports),
@@ -150,9 +161,9 @@ func (r *agentNodeRunner) ReconcileOnNode(ctx context.Context, spec deployment.R
 			HealthCheck:   rawJSON(map[string]interface{}{"path": spec.HealthPath}),
 		})
 
-		if err := r.enqueueAndWait(ctx, spec.NodeID, containerID, "create_container",
+		if err := r.enqueueAndWait(ctx, agentID, containerID, "create_container",
 			map[string]interface{}{"container": container}); err != nil {
-			return nil, fmt.Errorf("replica %d on %s: %w", i, agent.Name, err)
+			return nil, fmt.Errorf("replica %d on node %s: %w", i, agentID, err)
 		}
 		_ = r.q.UpdateContainerStatus(ctx, sqlcdb.UpdateContainerStatusParams{
 			ID:     containerID,
@@ -163,6 +174,60 @@ func (r *agentNodeRunner) ReconcileOnNode(ctx context.Context, spec deployment.R
 		})
 	}
 	return state, nil
+}
+
+// replicaPayload builds the agent create_container payload for one replica.
+func (r *agentNodeRunner) replicaPayload(spec deployment.RuntimeSpec, agentID string, i int, name string) (map[string]interface{}, map[string]interface{}, []interface{}, []interface{}, string) {
+	ports := []interface{}{}
+	if spec.Port > 0 {
+		hostPort := spec.PublishedPort // 0 → ephemeral on the node
+		if i > 0 {
+			hostPort = 0 // only replica 0 claims the preferred host port
+		}
+		ports = append(ports, map[string]interface{}{
+			"published":      true,
+			"host_port":      hostPort,
+			"container_port": spec.Port,
+			"protocol":       "tcp",
+		})
+	}
+	volumes := make([]interface{}, 0, len(spec.Volumes))
+	for _, v := range spec.Volumes {
+		volumes = append(volumes, map[string]interface{}{
+			"source": v.Source, "target": v.Destination, "read_only": v.ReadOnly,
+		})
+	}
+	env := map[string]interface{}{}
+	for k, v := range spec.Env {
+		env[k] = v
+	}
+	restart := spec.RestartPolicy
+	if restart == "" {
+		restart = "unless-stopped"
+	}
+	cmd := make([]interface{}, 0, len(spec.Command))
+	for _, arg := range spec.Command {
+		cmd = append(cmd, arg)
+	}
+	return map[string]interface{}{
+		"name":           name,
+		"image":          spec.Image,
+		"command":        cmd,
+		"environment":    env,
+		"registry":       r.pullCredentials(spec.ProjectID, spec.Image),
+		"ports":          ports,
+		"volumes":        volumes,
+		"restart_policy": restart,
+		"memory":         spec.MemoryBytes,
+		"cpus":           float64(spec.NanoCPUs) / 1e9,
+		"labels": map[string]interface{}{
+			"containr.managed": "true",
+			"containr.project": spec.ProjectID,
+			"containr.service": spec.ServiceID,
+			"containr.replica": fmt.Sprint(i),
+			"containr.node":    agentID,
+		},
+	}, env, ports, volumes, restart
 }
 
 // pullCredentials resolves the project owner's registry auth for the image

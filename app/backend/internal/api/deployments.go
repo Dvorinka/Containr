@@ -425,9 +425,10 @@ func runDeploymentAndSyncWithImage(
 	// on the local host, so remote placement only works for registry-pulled
 	// images — git-sourced and rollback deploys fail fast with that message.
 	nodeID := serviceNodeID(db, service.ID)
-	if nodeID != "" && (service.GitRepo != "" || imageOverride != "") {
+	spread := serviceSpread(db, service.ID)
+	if (nodeID != "" || spread) && (service.GitRepo != "" || imageOverride != "") {
 		failedAt := time.Now()
-		msg := "service is pinned to a remote node but remote nodes only run registry-pulled images (git builds and rollbacks stay local — build-on-node is not yet supported)"
+		msg := "service uses remote node placement but remote nodes only run registry-pulled images (git builds and rollbacks stay local — build-on-node is not yet supported)"
 		_, _ = db.Exec(
 			`UPDATE deployments SET status = 'failed', error = $1, completed_at = $2, updated_at = $2 WHERE id = $3`,
 			msg, failedAt, dbDeployment.ID,
@@ -462,6 +463,7 @@ func runDeploymentAndSyncWithImage(
 			MaintenanceURL: maintURL,
 			BasicAuthUsers: basicAuthUsers,
 			NodeID:         nodeID,
+			Spread:         spread,
 		},
 		Trigger: deployment.TriggerConfig{
 			Type:      req.Trigger,

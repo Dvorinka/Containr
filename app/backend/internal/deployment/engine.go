@@ -17,11 +17,17 @@ type NodeRunner interface {
 	// ReconcileOnNode brings the node's containers in line with the spec and
 	// returns the resulting runtime state.
 	ReconcileOnNode(ctx context.Context, spec RuntimeSpec) (*RuntimeState, error)
+	// ReconcileSpread distributes the service's replicas across every online,
+	// schedulable agent — replica i lands on agents[i % len].
+	ReconcileSpread(ctx context.Context, spec RuntimeSpec) (*RuntimeState, error)
 	// ControlService fans a lifecycle action ("start"|"stop"|"restart"|"remove")
 	// out to every replica of the service on the agent.
 	ControlService(ctx context.Context, serviceID, agentID, action string) error
 	// RemoveService tears down every replica of the service on the agent.
 	RemoveService(ctx context.Context, serviceID, agentID string) error
+	// RemoteRuntimeState reads the service's remote replicas from inventory
+	// across all agents. nil/empty means nothing runs remotely.
+	RemoteRuntimeState(ctx context.Context, serviceID string) (*RuntimeState, error)
 }
 
 type DeploymentEngine struct {
@@ -85,6 +91,9 @@ type ServiceConfig struct {
 	// host. Remote placement requires a registry-pullable image — builds stay
 	// on the local host (build-on-node is not yet supported).
 	NodeID string `json:"node_id,omitempty"`
+	// Spread distributes replicas across every online, schedulable agent.
+	// Same registry-image constraint as NodeID.
+	Spread bool `json:"spread,omitempty"`
 }
 
 type PortMapping struct {
@@ -376,6 +385,7 @@ func (de *DeploymentEngine) deployService(ctx context.Context, deployment *Deplo
 		MaintenanceURL: cfg.MaintenanceURL,
 		BasicAuthUsers: cfg.BasicAuthUsers,
 		NodeID:         cfg.NodeID,
+		Spread:         cfg.Spread,
 	}
 	for _, pm := range cfg.PortMappings {
 		if spec.Port == 0 {

@@ -691,6 +691,80 @@ func (q *Queries) ListPendingCommands(ctx context.Context, nodeAgentID string) (
 	return items, nil
 }
 
+const listSchedulableAgents = `-- name: ListSchedulableAgents :many
+SELECT id, name FROM node_agents
+WHERE status = 'online' AND schedulable
+ORDER BY id
+`
+
+type ListSchedulableAgentsRow struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+func (q *Queries) ListSchedulableAgents(ctx context.Context) ([]ListSchedulableAgentsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listSchedulableAgents)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSchedulableAgentsRow{}
+	for rows.Next() {
+		var i ListSchedulableAgentsRow
+		if err := rows.Scan(&i.ID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listServiceContainers = `-- name: ListServiceContainers :many
+SELECT id, name, node_agent_id, status FROM container_instances
+WHERE service_id = $1
+`
+
+type ListServiceContainersRow struct {
+	ID          string                `json:"id"`
+	Name        string                `json:"name"`
+	NodeAgentID string                `json:"node_agent_id"`
+	Status      pqtype.NullRawMessage `json:"status"`
+}
+
+func (q *Queries) ListServiceContainers(ctx context.Context, serviceID string) ([]ListServiceContainersRow, error) {
+	rows, err := q.db.QueryContext(ctx, listServiceContainers, serviceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListServiceContainersRow{}
+	for rows.Next() {
+		var i ListServiceContainersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.NodeAgentID,
+			&i.Status,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const pickLeastLoadedAgent = `-- name: PickLeastLoadedAgent :one
 SELECT a.id FROM node_agents a
 LEFT JOIN LATERAL (
@@ -699,10 +773,20 @@ LEFT JOIN LATERAL (
     ORDER BY h.timestamp DESC LIMIT 1
 ) h ON true
 WHERE a.status = 'online' AND a.schedulable
-ORDER BY COALESCE(h.container_count, 0) ASC, a.created_at ASC
+ORDER BY
+    COALESCE(
+        (a.resources->'memory'->>'used')::double precision
+        / NULLIF((a.resources->'memory'->>'total')::double precision, 0),
+        1.0
+    ) ASC,
+    COALESCE((a.resources->'cpu'->>'usage')::double precision, 100.0) ASC,
+    COALESCE(h.container_count, 0) ASC,
+    a.created_at ASC
 LIMIT 1
 `
 
+// Resource-aware: lowest memory utilisation first, then cpu, then container
+// count. Agents without telemetry sort last (NULL → worst score).
 func (q *Queries) PickLeastLoadedAgent(ctx context.Context) (string, error) {
 	row := q.db.QueryRowContext(ctx, pickLeastLoadedAgent)
 	var id string

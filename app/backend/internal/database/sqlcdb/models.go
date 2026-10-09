@@ -276,6 +276,7 @@ type Service struct {
 	StaticBuildCmd  string          `json:"static_build_cmd"`
 	StaticDir       string          `json:"static_dir"`
 	NodeID          sql.NullString  `json:"node_id"`
+	Spread          bool            `json:"spread"`
 }
 
 type ServiceDomain struct {

@@ -86,6 +86,7 @@ export type ServiceEntity = {
   sleepIdleMinutes?: number;
   nodeId?: string;
   nodeName?: string;
+  spread?: boolean;
   publicUrl?: string;
 };
 
@@ -696,6 +697,7 @@ function normalizeService(service: RawService): ServiceEntity | null {
     sleepIdleMinutes: service.sleep_idle_minutes,
     nodeId: service.node_id,
     nodeName: service.node_name,
+    spread: service.spread,
     publicUrl: service.public_url,
   };
 }

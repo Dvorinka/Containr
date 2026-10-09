@@ -289,11 +289,18 @@ and wired refs, one click or one CLI call.
   (drain evicts remote containers via the agent queue + unpins services
   so they redeploy locally), `nodes cordon|uncordon|drain` CLI +
   MCP (drain confirm-gated) + node-detail page controls; `auto` and
-  explicit pins skip cordoned nodes. Remote nodes run registry-pulled
+  explicit pins skip cordoned nodes. Spread placement shipped:
+  `services.spread` distributes replicas deterministically across every
+  online schedulable agent (replica i → agents[i mod n]), mutually
+  exclusive with a pin; `auto` is now resource-aware — least memory
+  utilisation, then cpu, then container count, with uninstrumented
+  agents sorting last. Lifecycle and `GET /runtime` are
+  inventory-driven, so remote replicas show up and tear down wherever
+  they run. Remote nodes run registry-pulled
   images only — git builds, Traefik domains, and remote sleep are
-  documented ceilings. Remaining: `scheduling_rules` spread/affinity
+  documented ceilings. Remaining: `scheduling_rules` affinity
   policies, deployment status reported back from agent
-  results, per-node resource-aware `auto` (currently count-based).
+  results, spread weighting by real capacity.
 - [🟡] **Build-on-node** — private registry pulls shipped: the dispatch
   payload carries the project owner's `registries` credentials for the
   image host; the agent `docker login`s for the pull and logs out after,
