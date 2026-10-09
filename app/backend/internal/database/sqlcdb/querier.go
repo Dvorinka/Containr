@@ -98,6 +98,8 @@ type Querier interface {
 	ListSchedulableAgents(ctx context.Context) ([]ListSchedulableAgentsRow, error)
 	// Only agents carrying every required placement tag (jsonb array containment).
 	ListSchedulableAgentsMatching(ctx context.Context, dollar_1 json.RawMessage) ([]ListSchedulableAgentsMatchingRow, error)
+	// Distinct agents holding inventory rows for a service.
+	ListServiceAgents(ctx context.Context, serviceID string) ([]string, error)
 	ListServiceContainers(ctx context.Context, serviceID string) ([]ListServiceContainersRow, error)
 	ListServiceTemplatesByCategoryForUser(ctx context.Context, arg ListServiceTemplatesByCategoryForUserParams) ([]ServiceTemplate, error)
 	ListServiceTemplatesForUser(ctx context.Context, ownerID uuid.NullUUID) ([]ServiceTemplate, error)
@@ -134,6 +136,13 @@ type Querier interface {
 	UpdateAgentHeartbeat(ctx context.Context, arg UpdateAgentHeartbeatParams) error
 	UpdateBackupTargetByIDAndUser(ctx context.Context, arg UpdateBackupTargetByIDAndUserParams) error
 	UpdateBanner(ctx context.Context, arg UpdateBannerParams) (Banner, error)
+	// Agent reports the real host bindings after create — persist them with
+	// the status flip so ingress can route to the assigned port.
+	UpdateContainerPorts(ctx context.Context, arg UpdateContainerPortsParams) error
+	// Agent heartbeat reports real docker state + net counters; reconcile
+	// inventory for rows this node owns. Tombstones win — never resurrect a
+	// removed replica. $4 is the cumulative rx+tx byte counter.
+	UpdateContainerStateByName(ctx context.Context, arg UpdateContainerStateByNameParams) error
 	UpdateContainerStatus(ctx context.Context, arg UpdateContainerStatusParams) error
 	UpdateDatabaseServiceNameAndPlanByIDAndUser(ctx context.Context, arg UpdateDatabaseServiceNameAndPlanByIDAndUserParams) error
 	UpdateDatabaseServiceNameByIDAndUser(ctx context.Context, arg UpdateDatabaseServiceNameByIDAndUserParams) error

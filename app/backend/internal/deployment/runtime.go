@@ -182,6 +182,12 @@ func (de *DeploymentEngine) ReconcileService(ctx context.Context, spec RuntimeSp
 		}
 		return de.nodeRunner.ReconcileAuto(ctx, spec)
 	}
+	// Local placement: retire any remote leftovers from a previous pin,
+	// spread, or tag affinity before reconciling local replicas.
+	if de.nodeRunner != nil {
+		_ = de.nodeRunner.RetireService(ctx, spec.ServiceID)
+	}
+
 	if spec.Replicas < 1 {
 		spec.Replicas = 1
 	}

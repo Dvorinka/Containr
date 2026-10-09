@@ -296,9 +296,22 @@ and wired refs, one click or one CLI call.
   utilisation, then cpu, then container count, with uninstrumented
   agents sorting last. Lifecycle and `GET /runtime` are
   inventory-driven, so remote replicas show up and tear down wherever
-  they run. Remote nodes run registry-pulled
-  images only — git builds, Traefik domains, and remote sleep are
-  documented ceilings. Tag affinity shipped: `node_agents.tags`
+  they run. Remote ingress shipped: the agent reports assigned host
+  ports in the `create_container` result, the backend renders a
+  Traefik file-provider config per remote service into
+  `TRAEFIK_DYNAMIC_DIR` (shared volume, `watch=true`) pointing the
+  loadbalancer at each replica's mesh IP + published port; route files
+  are rewritten on every remote reconcile and removed on teardown or
+  local placement. Agents report managed-container states at every
+  heartbeat — exits, OOMs, and crash loops land in inventory between
+  reconciles (tombstones never resurrect). Remote sleep/wake shipped:
+  heartbeats carry per-container net counters, idle remote services
+  lose replicas via agent remove + tombstones, and the route file
+  repoints at `/internal/wake-page/:id` on the backend — first hit
+  retriggers the wake reconcile, which recreates replicas and restores
+  real upstreams. Remote nodes run
+  registry-pulled images only — git builds are the remaining
+  documented ceiling. Tag affinity shipped: `node_agents.tags`
   (operator-set via `PUT /agents/:id` / `nodes update --tags`) +
   `services.placement_tags` — `auto` and `spread` only consider
   online schedulable agents carrying every required tag, tags are
@@ -307,9 +320,8 @@ and wired refs, one click or one CLI call.
   and local + tags are rejected, empty array clears. Surfaces:
   `--placement-tags` on services create/update, `--tags` on
   `nodes update`, MCP args, OpenAPI, node-detail tag editor +
-  service-detail placement-tags input. Remaining: deployment
-  status reported back from agent results, spread weighting by
-  real capacity.
+  service-detail placement-tags input. Remaining: build-on-node,
+  remote sleep/wake, spread weighting by real capacity.
 - [x] **Agent self-upgrade** — `POST /agents/:id/upgrade` enqueues a
   `self_upgrade` command carrying platform + sha256 + server version;
   the agent downloads its replacement from `GET /agents/download/

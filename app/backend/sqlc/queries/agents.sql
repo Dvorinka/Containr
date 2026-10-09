@@ -110,6 +110,12 @@ RETURNING *;
 UPDATE container_instances SET status = $2, updated_at = NOW()
 WHERE id = $1;
 
+-- name: UpdateContainerPorts :exec
+-- Agent reports the real host bindings after create — persist them with
+-- the status flip so ingress can route to the assigned port.
+UPDATE container_instances SET status = $2, ports = $3, updated_at = NOW()
+WHERE id = $1;
+
 -- name: GetLastAgentCommandByType :one
 SELECT * FROM agent_commands
 WHERE node_agent_id = $1 AND type = $2
@@ -174,7 +180,7 @@ LIMIT 1;
 UPDATE node_agents SET tags = $2::jsonb, updated_at = NOW() WHERE id = $1;
 
 -- name: ListServiceContainers :many
-SELECT id, name, node_agent_id, status FROM container_instances
+SELECT id, name, node_agent_id, status, ports, resources FROM container_instances
 WHERE service_id = $1;
 
 -- name: SetAgentSchedulable :exec
@@ -196,6 +202,21 @@ ON CONFLICT (id) DO UPDATE SET
 
 -- name: DeleteServiceContainersOnAgent :exec
 DELETE FROM container_instances WHERE node_agent_id = $1 AND service_id = $2;
+
+-- name: UpdateContainerStateByName :exec
+-- Agent heartbeat reports real docker state + net counters; reconcile
+-- inventory for rows this node owns. Tombstones win — never resurrect a
+-- removed replica. $4 is the cumulative rx+tx byte counter.
+UPDATE container_instances SET
+    status = jsonb_set(status, '{state}', $3::jsonb),
+    resources = jsonb_set(COALESCE(resources, '{}'::jsonb), '{net_bytes}', $4::jsonb),
+    updated_at = NOW()
+WHERE name = $1 AND node_agent_id = $2
+  AND status->>'state' IS DISTINCT FROM 'removed';
+
+-- name: ListServiceAgents :many
+-- Distinct agents holding inventory rows for a service.
+SELECT DISTINCT node_agent_id FROM container_instances WHERE service_id = $1;
 
 -- name: ScrubCommandPayload :exec
 UPDATE agent_commands SET payload = $2, updated_at = NOW() WHERE id = $1;

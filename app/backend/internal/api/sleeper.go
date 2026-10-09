@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"containr/internal/database"
+	"containr/internal/database/sqlcdb"
 	"containr/internal/deployment"
 	"containr/internal/docker"
 
@@ -100,7 +101,20 @@ func sweepSleeping(ctx context.Context, db *database.DB, dc *docker.Client, engi
 	}
 	rows.Close()
 
+	q := sqlcdb.New(db.DB)
 	for _, svc := range candidates {
+		// Remote replicas live in inventory, not the local docker host —
+		// idleness comes from heartbeat-reported net counters instead.
+		if remote := remoteLiveContainers(ctx, q, svc.ID.String()); len(remote) > 0 {
+			var total uint64
+			for _, row := range remote {
+				total += rowNetBytes(row)
+			}
+			if markIdle(svc.ID, total, time.Duration(svc.IdleMinutes)*time.Minute) {
+				putToSleepRemote(ctx, db, q, svc, apiPort)
+			}
+			continue
+		}
 		containers, err := engine.ListServiceContainers(ctx, svc.ID.String())
 		if err != nil || len(containers) == 0 {
 			continue
@@ -122,6 +136,65 @@ func sweepSleeping(ctx context.Context, db *database.DB, dc *docker.Client, engi
 		if markIdle(svc.ID, total, time.Duration(svc.IdleMinutes)*time.Minute) {
 			putToSleep(ctx, db, dc, engine, svc, apiPort)
 		}
+	}
+}
+
+// remoteLiveContainers returns inventory rows whose replicas are alive on
+// node agents — the signal that idleness must be measured remotely.
+func remoteLiveContainers(ctx context.Context, q *sqlcdb.Queries, serviceID string) []sqlcdb.ListServiceContainersRow {
+	rows, err := q.ListServiceContainers(ctx, serviceID)
+	if err != nil {
+		return nil
+	}
+	live := rows[:0]
+	for _, row := range rows {
+		var st struct {
+			State string `json:"state"`
+		}
+		if err := json.Unmarshal(row.Status.RawMessage, &st); err == nil &&
+			st.State != "" && st.State != "removed" && st.State != "sleeping" {
+			live = append(live, row)
+		}
+	}
+	return live
+}
+
+// rowNetBytes reads the cumulative rx+tx the agent reported at its last
+// heartbeat — 0 for rows written before the counter existed.
+func rowNetBytes(row sqlcdb.ListServiceContainersRow) uint64 {
+	var res struct {
+		NetBytes uint64 `json:"net_bytes"`
+	}
+	_ = json.Unmarshal(row.Resources.RawMessage, &res)
+	return res.NetBytes
+}
+
+// putToSleepRemote removes the service's remote replicas via their agents,
+// marks the service sleeping, and repoints the domain route at the wake
+// endpoint so inbound traffic brings it back.
+func putToSleepRemote(ctx context.Context, db *database.DB, q *sqlcdb.Queries, svc sleepCandidate, apiPort int) {
+	runner := newAgentNodeRunner(db)
+	for _, agentID := range remoteAgentsForService(ctx, db, svc.ID) {
+		if err := runner.ControlService(ctx, svc.ID.String(), agentID, "remove"); err != nil {
+			log.Printf("sleep: remote remove on %s failed: %v", agentID, err)
+			continue
+		}
+		_ = q.DeleteServiceContainersOnAgent(ctx, sqlcdb.DeleteServiceContainersOnAgentParams{
+			NodeAgentID: agentID,
+			ServiceID:   svc.ID.String(),
+		})
+	}
+	tracker.mu.Lock()
+	delete(tracker.activity, svc.ID)
+	tracker.mu.Unlock()
+	_, _ = db.Exec(`UPDATE services SET status = 'sleeping', updated_at = $1 WHERE id = $2`, time.Now(), svc.ID)
+	log.Printf("sleep: %s (%s) remote replicas removed after idle timeout", svc.Name, svc.ID)
+
+	var domain string
+	_ = db.QueryRow(`SELECT COALESCE(domain,'') FROM services WHERE id = $1`, svc.ID).Scan(&domain)
+	domains := serviceDomainNames(db, svc.ID, domain)
+	if len(domains) > 0 {
+		writeWakeIngress(svc.ID.String(), domains, apiPort)
 	}
 }
 
@@ -346,18 +419,40 @@ func pruneWakeContainers(ctx context.Context, db *database.DB, dc *docker.Client
 // idempotent and non-destructive, so no token is required; the endpoint
 // never mutates configuration.
 func handleServiceWake(c *gin.Context) {
+	code, body := triggerServiceWake(c)
+	if code != 0 {
+		c.JSON(code, body)
+	}
+}
+
+// handleServiceWakePage is the remote ingress wake target — Traefik routes
+// a sleeping remote service's domain here via the file provider. Every hit
+// (re)triggers the wake reconcile and returns a reloading page.
+func handleServiceWakePage(c *gin.Context) {
+	triggerServiceWake(c)
+	c.Header("Content-Type", "text/html; charset=utf-8")
+	c.String(http.StatusOK, wakePageHTML)
+}
+
+const wakePageHTML = `<!doctype html><html><head><meta http-equiv="refresh" content="4"><title>Waking up</title>` +
+	`<style>body{font-family:system-ui,sans-serif;background:#0b0d12;color:#dde2ea;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}` +
+	`.card{text-align:center;max-width:34rem;padding:2rem}h1{font-size:1.25rem;font-weight:600}p{color:#98a2b3}</style></head>` +
+	`<body><div class="card"><h1>Service is waking up</h1><p>This Containr service was sleeping and is resuming now. The page reloads automatically.</p></div></body></html>`
+
+// triggerServiceWake loads the service and reconciles it back to running
+// in the background. Returns (0, nil) when a response was already written
+// by an embedded handler path, else the JSON status to send.
+func triggerServiceWake(c *gin.Context) (int, gin.H) {
 	dbVal, _ := c.Get("db")
 	db := dbVal.(*database.DB)
 	engineVal, _ := c.Get("deployment_engine")
 	engine, _ := engineVal.(*deployment.DeploymentEngine)
 	if engine == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "deployment engine unavailable"})
-		return
+		return http.StatusServiceUnavailable, gin.H{"error": "deployment engine unavailable"}
 	}
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid service id"})
-		return
+		return http.StatusBadRequest, gin.H{"error": "invalid service id"}
 	}
 	var service Service
 	err = db.QueryRow(
@@ -385,12 +480,10 @@ func handleServiceWake(c *gin.Context) {
 		&service.CreatedAt, &service.UpdatedAt,
 	)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "service not found"})
-		return
+		return http.StatusNotFound, gin.H{"error": "service not found"}
 	}
 	if service.Status == "running" || service.Status == "deployed" {
-		c.JSON(http.StatusOK, gin.H{"status": service.Status})
-		return
+		return http.StatusOK, gin.H{"status": service.Status}
 	}
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
@@ -411,7 +504,7 @@ func handleServiceWake(c *gin.Context) {
 		}
 		_, _ = db.Exec(`UPDATE services SET status = $1, updated_at = $2 WHERE id = $3`, status, time.Now(), service.ID)
 	}()
-	c.JSON(http.StatusAccepted, gin.H{"status": "waking"})
+	return http.StatusAccepted, gin.H{"status": "waking"}
 }
 
 // handleServiceSleep puts a service to sleep immediately (owner+ only).
@@ -438,7 +531,12 @@ func handleServiceSleep(c *gin.Context) {
 		Name:      service.Name,
 		Status:    service.Status,
 	}
-	go putToSleep(context.Background(), db, dc, engine, svc, apiPortFromContext(c))
+	q := sqlcdb.New(db.DB)
+	if len(remoteLiveContainers(c.Request.Context(), q, service.ID.String())) > 0 {
+		go putToSleepRemote(context.Background(), db, q, svc, apiPortFromContext(c))
+	} else {
+		go putToSleep(context.Background(), db, dc, engine, svc, apiPortFromContext(c))
+	}
 	c.JSON(http.StatusAccepted, gin.H{"status": "sleeping"})
 }
 

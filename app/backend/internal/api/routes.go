@@ -285,6 +285,7 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			// Wake callback for sleep-mode placeholders. Unauthenticated but
 			// non-destructive: it only reconciles the service back to running.
 			public.Any("/internal/wake/:id", handleServiceWake)
+			public.Any("/internal/wake-page/:id", handleServiceWakePage)
 		}
 
 		// Read routes — public browsing. OptionalAuth resolves a session when

@@ -765,8 +765,36 @@ func (q *Queries) ListSchedulableAgentsMatching(ctx context.Context, dollar_1 js
 	return items, nil
 }
 
+const listServiceAgents = `-- name: ListServiceAgents :many
+SELECT DISTINCT node_agent_id FROM container_instances WHERE service_id = $1
+`
+
+// Distinct agents holding inventory rows for a service.
+func (q *Queries) ListServiceAgents(ctx context.Context, serviceID string) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listServiceAgents, serviceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var node_agent_id string
+		if err := rows.Scan(&node_agent_id); err != nil {
+			return nil, err
+		}
+		items = append(items, node_agent_id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listServiceContainers = `-- name: ListServiceContainers :many
-SELECT id, name, node_agent_id, status FROM container_instances
+SELECT id, name, node_agent_id, status, ports, resources FROM container_instances
 WHERE service_id = $1
 `
 
@@ -775,6 +803,8 @@ type ListServiceContainersRow struct {
 	Name        string                `json:"name"`
 	NodeAgentID string                `json:"node_agent_id"`
 	Status      pqtype.NullRawMessage `json:"status"`
+	Ports       pqtype.NullRawMessage `json:"ports"`
+	Resources   pqtype.NullRawMessage `json:"resources"`
 }
 
 func (q *Queries) ListServiceContainers(ctx context.Context, serviceID string) ([]ListServiceContainersRow, error) {
@@ -791,6 +821,8 @@ func (q *Queries) ListServiceContainers(ctx context.Context, serviceID string) (
 			&i.Name,
 			&i.NodeAgentID,
 			&i.Status,
+			&i.Ports,
+			&i.Resources,
 		); err != nil {
 			return nil, err
 		}
@@ -1001,6 +1033,53 @@ func (q *Queries) UpdateAgentHeartbeat(ctx context.Context, arg UpdateAgentHeart
 		arg.Status,
 		arg.Resources,
 		arg.LastHeartbeat,
+	)
+	return err
+}
+
+const updateContainerPorts = `-- name: UpdateContainerPorts :exec
+UPDATE container_instances SET status = $2, ports = $3, updated_at = NOW()
+WHERE id = $1
+`
+
+type UpdateContainerPortsParams struct {
+	ID     string                `json:"id"`
+	Status pqtype.NullRawMessage `json:"status"`
+	Ports  pqtype.NullRawMessage `json:"ports"`
+}
+
+// Agent reports the real host bindings after create — persist them with
+// the status flip so ingress can route to the assigned port.
+func (q *Queries) UpdateContainerPorts(ctx context.Context, arg UpdateContainerPortsParams) error {
+	_, err := q.db.ExecContext(ctx, updateContainerPorts, arg.ID, arg.Status, arg.Ports)
+	return err
+}
+
+const updateContainerStateByName = `-- name: UpdateContainerStateByName :exec
+UPDATE container_instances SET
+    status = jsonb_set(status, '{state}', $3::jsonb),
+    resources = jsonb_set(COALESCE(resources, '{}'::jsonb), '{net_bytes}', $4::jsonb),
+    updated_at = NOW()
+WHERE name = $1 AND node_agent_id = $2
+  AND status->>'state' IS DISTINCT FROM 'removed'
+`
+
+type UpdateContainerStateByNameParams struct {
+	Name        string          `json:"name"`
+	NodeAgentID string          `json:"node_agent_id"`
+	Column3     json.RawMessage `json:"column_3"`
+	Column4     json.RawMessage `json:"column_4"`
+}
+
+// Agent heartbeat reports real docker state + net counters; reconcile
+// inventory for rows this node owns. Tombstones win — never resurrect a
+// removed replica. $4 is the cumulative rx+tx byte counter.
+func (q *Queries) UpdateContainerStateByName(ctx context.Context, arg UpdateContainerStateByNameParams) error {
+	_, err := q.db.ExecContext(ctx, updateContainerStateByName,
+		arg.Name,
+		arg.NodeAgentID,
+		arg.Column3,
+		arg.Column4,
 	)
 	return err
 }

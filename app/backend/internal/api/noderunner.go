@@ -19,8 +19,8 @@ import (
 
 // agentNodeRunner implements deployment.NodeRunner by dispatching container
 // lifecycle commands to a node agent's command queue and waiting for the
-// reported result. Remote nodes have no Traefik — domains stay local-only
-// until per-node ingress lands.
+// reported result. Domains route through the file provider —
+// syncRemoteIngress renders per-service configs from live inventory.
 type agentNodeRunner struct {
 	q  *sqlcdb.Queries
 	db *database.DB
@@ -131,10 +131,6 @@ func (r *agentNodeRunner) RemoteRuntimeState(ctx context.Context, serviceID stri
 // targetFor and retires stale replicas on any agent — including leftovers
 // from a previous pin or a different spread assignment.
 func (r *agentNodeRunner) reconcileOnAgents(ctx context.Context, spec deployment.RuntimeSpec, targetFor func(replica int) string) (*deployment.RuntimeState, error) {
-	if len(spec.Domains) > 0 || spec.Domain != "" {
-		return nil, fmt.Errorf("domains are routed by the local Traefik — remove the service's domains or run it on the local node")
-	}
-
 	replicas := spec.Replicas
 	if replicas < 1 {
 		replicas = 1
@@ -151,7 +147,7 @@ func (r *agentNodeRunner) reconcileOnAgents(ctx context.Context, spec deployment
 		if keep {
 			continue
 		}
-		if cmdErr := r.enqueueAndWait(ctx, row.NodeAgentID, "", "remove_container",
+		if _, cmdErr := r.enqueueAndWait(ctx, row.NodeAgentID, "", "remove_container",
 			map[string]interface{}{"container_name": row.Name}); cmdErr != nil {
 			return nil, fmt.Errorf("remove stale replica %s on node %s: %w", row.Name, row.NodeAgentID, cmdErr)
 		}
@@ -185,18 +181,41 @@ func (r *agentNodeRunner) reconcileOnAgents(ctx context.Context, spec deployment
 			HealthCheck:   rawJSON(map[string]interface{}{"path": spec.HealthPath}),
 		})
 
-		if err := r.enqueueAndWait(ctx, agentID, containerID, "create_container",
-			map[string]interface{}{"container": container}); err != nil {
+		result, err := r.enqueueAndWait(ctx, agentID, containerID, "create_container",
+			map[string]interface{}{"container": container})
+		if err != nil {
 			return nil, fmt.Errorf("replica %d on node %s: %w", i, agentID, err)
 		}
-		_ = r.q.UpdateContainerStatus(ctx, sqlcdb.UpdateContainerStatusParams{
-			ID:     containerID,
-			Status: rawJSON(map[string]interface{}{"state": "running", "health": "none"}),
-		})
+		if assigned := reportedHostPorts(result); len(assigned) > 0 {
+			for _, p := range ports {
+				pm, ok := p.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				cport := jsonInt(pm["container_port"])
+				proto, _ := pm["protocol"].(string)
+				if hp, ok := assigned[fmt.Sprintf("%d/%s", cport, proto)]; ok {
+					if n, err := strconv.Atoi(hp); err == nil {
+						pm["host_port"] = n
+					}
+				}
+			}
+			_ = r.q.UpdateContainerPorts(ctx, sqlcdb.UpdateContainerPortsParams{
+				ID:     containerID,
+				Status: rawJSON(map[string]interface{}{"state": "running", "health": "none"}),
+				Ports:  rawJSON(ports),
+			})
+		} else {
+			_ = r.q.UpdateContainerStatus(ctx, sqlcdb.UpdateContainerStatusParams{
+				ID:     containerID,
+				Status: rawJSON(map[string]interface{}{"state": "running", "health": "none"}),
+			})
+		}
 		state.Containers = append(state.Containers, deployment.RuntimeContainer{
 			ID: containerID, Name: name, State: "running", Replica: i,
 		})
 	}
+	syncRemoteIngress(ctx, r.db, spec)
 	return state, nil
 }
 
@@ -296,7 +315,17 @@ func (r *agentNodeRunner) ControlService(ctx context.Context, serviceID, agentID
 		if row.ServiceID != serviceID {
 			continue
 		}
-		if err := r.enqueueAndWait(ctx, agentID, row.ID, cmdType,
+		// Tombstoned replicas are already gone remotely — skip the dispatch
+		// or a fresh docker rm on a missing name reports a false failure.
+		if action == "remove" {
+			var st struct {
+				State string `json:"state"`
+			}
+			if err := json.Unmarshal(row.Status.RawMessage, &st); err == nil && st.State == "removed" {
+				continue
+			}
+		}
+		if _, err := r.enqueueAndWait(ctx, agentID, row.ID, cmdType,
 			map[string]interface{}{"container_name": row.Name}); err != nil {
 			return fmt.Errorf("%s %s on node: %w", action, row.Name, err)
 		}
@@ -314,16 +343,38 @@ func (r *agentNodeRunner) RemoveService(ctx context.Context, serviceID, agentID 
 	if err := r.ControlService(ctx, serviceID, agentID, "remove"); err != nil {
 		return err
 	}
-	return r.q.DeleteServiceContainersOnAgent(ctx, sqlcdb.DeleteServiceContainersOnAgentParams{
+	if err := r.q.DeleteServiceContainersOnAgent(ctx, sqlcdb.DeleteServiceContainersOnAgentParams{
 		NodeAgentID: agentID,
 		ServiceID:   serviceID,
-	})
+	}); err != nil {
+		return err
+	}
+	removeServiceIngress(serviceID)
+	return nil
+}
+
+// RetireService removes the service's remote replicas wherever they run —
+// called when the service converges to local placement so a cleared pin or
+// removed tag requirement doesn't leave containers behind.
+func (r *agentNodeRunner) RetireService(ctx context.Context, serviceID string) error {
+	agentIDs, err := r.q.ListServiceAgents(ctx, serviceID)
+	if err != nil {
+		return err
+	}
+	for _, agentID := range agentIDs {
+		if err := r.RemoveService(ctx, serviceID, agentID); err != nil {
+			return fmt.Errorf("retire on node %s: %w", agentID, err)
+		}
+	}
+	removeServiceIngress(serviceID)
+	return nil
 }
 
 // enqueueAndWait pushes a command to the agent's queue and polls for the
-// reported result. Agents poll on their own interval (≥5s), so this blocks —
-// it runs inside the deploy queue worker, never on a request path.
-func (r *agentNodeRunner) enqueueAndWait(ctx context.Context, agentID, containerID, cmdType string, payload map[string]interface{}) error {
+// reported result, returning the agent's result string on success. Agents
+// poll on their own interval (≥5s), so this blocks — it runs inside the
+// deploy queue worker, never on a request path.
+func (r *agentNodeRunner) enqueueAndWait(ctx context.Context, agentID, containerID, cmdType string, payload map[string]interface{}) (string, error) {
 	var cid sql.NullString
 	if containerID != "" {
 		cid = sql.NullString{String: containerID, Valid: true}
@@ -336,7 +387,7 @@ func (r *agentNodeRunner) enqueueAndWait(ctx context.Context, agentID, container
 		Payload:     rawJSON(payload),
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	deadline := time.Now().Add(8 * time.Minute) // image pulls on a cold node
@@ -348,20 +399,20 @@ func (r *agentNodeRunner) enqueueAndWait(ctx context.Context, agentID, container
 		if err == nil {
 			switch row.Status.String {
 			case "completed":
-				return nil
+				return row.Result.String, nil
 			case "failed":
 				if row.Error.Valid && row.Error.String != "" {
-					return fmt.Errorf("agent: %s", row.Error.String)
+					return "", fmt.Errorf("agent: %s", row.Error.String)
 				}
-				return fmt.Errorf("agent reported failure")
+				return "", fmt.Errorf("agent reported failure")
 			}
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("command %s timed out waiting for the agent", cmdType)
+			return "", fmt.Errorf("command %s timed out waiting for the agent", cmdType)
 		}
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return "", ctx.Err()
 		case <-time.After(2 * time.Second):
 		}
 	}

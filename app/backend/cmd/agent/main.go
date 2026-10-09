@@ -204,8 +204,90 @@ func sendHeartbeat(ctx context.Context, client *http.Client, cfg agentConfig, ag
 		"system_load":     readSystemLoad(),
 		"uptime":          readSystemUptime(),
 		"version":         firstEnv("CONTAINR_AGENT_VERSION", version),
+		"containers":      managedContainerStates(),
 	}
 	return postJSON(ctx, client, cfg, "/api/agents/heartbeat", payload, nil)
+}
+
+// managedContainerStates lists every containr-managed container's docker
+// state plus cumulative network counters — state keeps runtime honest,
+// net bytes let the sleeper detect idle remote services.
+func managedContainerStates() []map[string]interface{} {
+	out, err := runDocker("ps", "-a",
+		"--filter", "label=containr.managed=true",
+		"--format", "{{.Names}}\t{{.State}}")
+	if err != nil {
+		return nil
+	}
+	netIO := containerNetIO()
+	var states []map[string]interface{}
+	for _, line := range strings.Split(out, "\n") {
+		parts := strings.SplitN(line, "\t", 2)
+		if len(parts) != 2 || parts[0] == "" {
+			continue
+		}
+		entry := map[string]interface{}{"name": parts[0], "state": parts[1]}
+		if io, ok := netIO[parts[0]]; ok {
+			entry["rx_bytes"], entry["tx_bytes"] = io[0], io[1]
+		}
+		states = append(states, entry)
+	}
+	return states
+}
+
+// containerNetIO snapshots cumulative rx/tx per running container. Stats
+// only covers running containers — stopped replicas report state without
+// counters, which is all the sleeper needs.
+func containerNetIO() map[string][2]int64 {
+	out, err := runDocker("stats", "--no-stream",
+		"--format", "{{.Name}}\t{{.NetIO}}")
+	if err != nil {
+		return nil
+	}
+	result := map[string][2]int64{}
+	for _, line := range strings.Split(out, "\n") {
+		parts := strings.SplitN(line, "\t", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		io := strings.Split(parts[1], "/")
+		if len(io) != 2 {
+			continue
+		}
+		result[parts[0]] = [2]int64{parseHumanBytes(io[0]), parseHumanBytes(io[1])}
+	}
+	return result
+}
+
+// parseHumanBytes converts docker's human units ("1.2kB", "3.4MB") to bytes.
+func parseHumanBytes(s string) int64 {
+	s = strings.TrimSpace(s)
+	var num float64
+	var unit string
+	if _, err := fmt.Sscanf(s, "%f%s", &num, &unit); err != nil {
+		return 0
+	}
+	switch strings.ToUpper(unit) {
+	case "B":
+		return int64(num)
+	case "KB":
+		return int64(num * 1e3)
+	case "MB":
+		return int64(num * 1e6)
+	case "GB":
+		return int64(num * 1e9)
+	case "TB":
+		return int64(num * 1e12)
+	case "KIB":
+		return int64(num * 1024)
+	case "MIB":
+		return int64(num * 1024 * 1024)
+	case "GIB":
+		return int64(num * 1024 * 1024 * 1024)
+	case "TIB":
+		return int64(num * 1024 * 1024 * 1024 * 1024)
+	}
+	return int64(num)
 }
 
 func processCommands(ctx context.Context, client *http.Client, cfg agentConfig, agentID string) error {
@@ -272,7 +354,12 @@ func executeCommand(item command) (string, error) {
 	case "restart_container":
 		return runDocker("restart", commandTarget(item.Payload))
 	case "remove_container":
-		return runDocker("rm", "-f", commandTarget(item.Payload))
+		out, err := runDocker("rm", "-f", commandTarget(item.Payload))
+		// A missing container is the desired end state — report success.
+		if err != nil && strings.Contains(out, "No such container") {
+			return out, nil
+		}
+		return out, err
 	case "prune":
 		return dockerPrune(item.Payload)
 	case "system_df":
@@ -460,7 +547,25 @@ func createContainer(payload map[string]interface{}) (string, error) {
 		logs, _ := runDocker("logs", "--tail", "5", name)
 		return "", fmt.Errorf("container %s is %q after start: %s", name, state, logs)
 	}
-	return name, nil
+	// Report the real host port bindings — ephemeral publishes pick a port
+	// the server can't guess, and remote ingress needs the actual mapping.
+	hostPorts := map[string]string{}
+	portsJSON, _ := runDocker("inspect", "-f", "{{json .NetworkSettings.Ports}}", name)
+	var bindings map[string][]struct {
+		HostIP   string `json:"HostIp"`
+		HostPort string `json:"HostPort"`
+	}
+	if json.Unmarshal([]byte(portsJSON), &bindings) == nil {
+		for cport, addrs := range bindings {
+			for _, a := range addrs {
+				if a.HostPort != "" && a.HostPort != "0" {
+					hostPorts[cport] = a.HostPort
+				}
+			}
+		}
+	}
+	out, _ := json.Marshal(map[string]interface{}{"name": name, "host_ports": hostPorts})
+	return string(out), nil
 }
 
 // registryHostOf mirrors the server's registryHost: first path segment with

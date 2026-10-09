@@ -32,6 +32,9 @@ type NodeRunner interface {
 	// RemoteRuntimeState reads the service's remote replicas from inventory
 	// across all agents. nil/empty means nothing runs remotely.
 	RemoteRuntimeState(ctx context.Context, serviceID string) (*RuntimeState, error)
+	// RetireService removes every remote replica of the service across all
+	// agents — used when a service returns to local placement.
+	RetireService(ctx context.Context, serviceID string) error
 }
 
 type DeploymentEngine struct {
