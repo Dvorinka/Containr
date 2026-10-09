@@ -1972,6 +1972,55 @@ export async function deleteBanner(id: string): Promise<void> {
   await requestJson(`/admin/banners/${id}`, { method: 'DELETE' });
 }
 
+export type Invite = {
+  id: string;
+  email?: string;
+  expires_at: string;
+  used_at?: string;
+  created_at?: string;
+};
+
+export type InviteState = {
+  valid: boolean;
+  used: boolean;
+  expired: boolean;
+  email?: string | null;
+  expires_at: string;
+};
+
+export async function getInvite(token: string): Promise<InviteState> {
+  return requestJson<InviteState>(`/auth/invites/${token}`);
+}
+
+export async function acceptInvite(input: {
+  token: string;
+  name: string;
+  email: string;
+  password: string;
+}): Promise<void> {
+  await requestJson('/auth/accept-invite', { method: 'POST', body: JSON.stringify(input) });
+}
+
+export async function listInvites(): Promise<Invite[]> {
+  const payload = await requestJson<{ invites?: Invite[] }>('/admin/invites');
+  return payload.invites ?? [];
+}
+
+export async function createInvite(input: { email?: string; expiresInHours?: number }): Promise<{
+  invite: Invite;
+  token: string;
+  url: string;
+}> {
+  const body: Record<string, unknown> = {};
+  if (input.email) body.email = input.email;
+  if (input.expiresInHours) body.expires_in_hours = input.expiresInHours;
+  return requestJson('/admin/invites', { method: 'POST', body: JSON.stringify(body) });
+}
+
+export async function revokeInvite(id: string): Promise<void> {
+  await requestJson(`/admin/invites/${id}`, { method: 'DELETE' });
+}
+
 export function serviceStatusClass(status: ServiceStatus): string {
   switch (status) {
     case 'running':

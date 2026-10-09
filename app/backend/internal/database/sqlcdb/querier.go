@@ -31,6 +31,7 @@ type Querier interface {
 	CreateOutboundWebhook(ctx context.Context, arg CreateOutboundWebhookParams) error
 	CreateProject(ctx context.Context, arg CreateProjectParams) (Project, error)
 	CreateServiceFromTemplate(ctx context.Context, arg CreateServiceFromTemplateParams) error
+	CreateUserInvite(ctx context.Context, arg CreateUserInviteParams) (UserInvite, error)
 	CreateUserTemplate(ctx context.Context, arg CreateUserTemplateParams) error
 	CreateUserToken(ctx context.Context, arg CreateUserTokenParams) (UserToken, error)
 	CreateWebhookDelivery(ctx context.Context, arg CreateWebhookDeliveryParams) error
@@ -42,6 +43,7 @@ type Querier interface {
 	DeleteDatabaseServiceByIDAndUser(ctx context.Context, arg DeleteDatabaseServiceByIDAndUserParams) error
 	DeleteOutboundWebhookByIDAndUser(ctx context.Context, arg DeleteOutboundWebhookByIDAndUserParams) error
 	DeleteProjectByID(ctx context.Context, projectID uuid.UUID) (int64, error)
+	DeleteUserInvite(ctx context.Context, id uuid.UUID) error
 	DeleteUserTemplate(ctx context.Context, arg DeleteUserTemplateParams) (int64, error)
 	GetActiveAgentAuthTokenByHash(ctx context.Context, tokenHash string) (AgentAuthToken, error)
 	GetAgent(ctx context.Context, id string) (NodeAgent, error)
@@ -63,6 +65,7 @@ type Querier interface {
 	GetProjectOwnerID(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	GetProjectRoleForUser(ctx context.Context, arg GetProjectRoleForUserParams) (string, error)
 	GetServiceTemplateByID(ctx context.Context, id string) (ServiceTemplate, error)
+	GetUserInviteByTokenHash(ctx context.Context, tokenHash string) (UserInvite, error)
 	GetUserTokenByHash(ctx context.Context, tokenHash string) (UserToken, error)
 	InsertAgentHeartbeat(ctx context.Context, arg InsertAgentHeartbeatParams) error
 	InsertProjectEnvironment(ctx context.Context, arg InsertProjectEnvironmentParams) error
@@ -90,10 +93,12 @@ type Querier interface {
 	ListProjectsWithStatsByUser(ctx context.Context, arg ListProjectsWithStatsByUserParams) ([]ListProjectsWithStatsByUserRow, error)
 	ListServiceTemplatesByCategoryForUser(ctx context.Context, arg ListServiceTemplatesByCategoryForUserParams) ([]ServiceTemplate, error)
 	ListServiceTemplatesForUser(ctx context.Context, ownerID uuid.NullUUID) ([]ServiceTemplate, error)
+	ListUserInvites(ctx context.Context) ([]UserInvite, error)
 	ListUserTokens(ctx context.Context, userID uuid.UUID) ([]UserToken, error)
 	ListWebhookDeliveriesByWebhook(ctx context.Context, webhookID uuid.UUID) ([]WebhookDelivery, error)
 	MarkAllNotificationsReadByUser(ctx context.Context, arg MarkAllNotificationsReadByUserParams) error
 	MarkNotificationReadByIDAndUser(ctx context.Context, arg MarkNotificationReadByIDAndUserParams) error
+	MarkUserInviteUsed(ctx context.Context, arg MarkUserInviteUsedParams) error
 	RevokeAgentAuthToken(ctx context.Context, id uuid.UUID) (AgentAuthToken, error)
 	RevokeUserToken(ctx context.Context, arg RevokeUserTokenParams) (int64, error)
 	SetDatabaseBackupRemoteKeyByID(ctx context.Context, arg SetDatabaseBackupRemoteKeyByIDParams) error

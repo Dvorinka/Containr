@@ -11,6 +11,7 @@ import {
   signUpWithEmail,
   startGitHubSignIn,
 } from '@/lib/auth-client';
+import { acceptInvite, getInvite } from '@/lib/api-client';
 import { useAuthSession } from '@/lib/use-auth-session';
 
 function sanitizeRedirect(raw: string | null): string {
@@ -252,6 +253,139 @@ export function SignInPage() {
         <div className="mt-5 flex items-center justify-between text-xs text-[var(--text-secondary)]">
           <span>Need access?</span>
           <span>Ask platform owner to create account.</span>
+        </div>
+      </AuthCard>
+    </AuthLayout>
+  );
+}
+
+export function AcceptInvitePage() {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
+  const token = searchParams.get('token') ?? '';
+
+  const sessionQuery = useAuthSession();
+  const inviteQuery = useQuery({
+    queryKey: ['invite', token],
+    queryFn: () => getInvite(token),
+    enabled: token.length > 0,
+    retry: false,
+  });
+
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  if (sessionQuery.data) {
+    return <Navigate to="/projects" replace />;
+  }
+
+  const boundEmail = inviteQuery.data?.email ?? undefined;
+  const effectiveEmail = boundEmail ?? email;
+  const inviteValid = inviteQuery.data?.valid === true;
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setError(null);
+    setIsSubmitting(true);
+    try {
+      await acceptInvite({ token, name: name.trim(), email: effectiveEmail.trim(), password });
+      // Establish the cookie session — the accept endpoint creates the
+      // account, sign-in creates the browser session.
+      await signInWithEmail(effectiveEmail.trim(), password);
+      await queryClient.invalidateQueries({ queryKey: ['auth-session'] });
+      navigate('/projects', { replace: true });
+    } catch (exception) {
+      setError(exception instanceof Error ? exception.message : 'Failed to accept invite');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  if (!token) {
+    return (
+      <AuthLayout>
+        <AuthCard title="Invalid invite" subtitle="This link is missing its invite token.">
+          <AuthErrorNotice message="Ask your administrator for a fresh invite link." />
+        </AuthCard>
+      </AuthLayout>
+    );
+  }
+
+  return (
+    <AuthLayout>
+      <AuthCard
+        title="Join the team"
+        subtitle={boundEmail ? `Invited as ${boundEmail}` : 'You have been invited — create your account.'}
+      >
+        {error ? <AuthErrorNotice message={error} /> : null}
+        {inviteQuery.isLoading ? <AuthInfoNotice message="Validating invite…" /> : null}
+        {inviteQuery.isError ? <AuthErrorNotice message="This invite link is not valid." /> : null}
+        {inviteQuery.data && !inviteValid ? (
+          <AuthErrorNotice message={inviteQuery.data.used ? 'This invite was already used.' : 'This invite has expired.'} />
+        ) : null}
+
+        {inviteValid ? (
+          <form className="space-y-3" onSubmit={submit}>
+            <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
+              Name
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                className="mt-2 w-full rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 py-2.5 text-sm text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--accent-primary)]"
+                placeholder="Your name"
+              />
+            </label>
+
+            <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
+              Email
+              <input
+                type="email"
+                value={boundEmail ?? email}
+                onChange={(e) => setEmail(e.target.value)}
+                disabled={Boolean(boundEmail)}
+                required
+                className="mt-2 w-full rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 py-2.5 text-sm text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--accent-primary)] disabled:opacity-60"
+                placeholder="you@example.com"
+              />
+            </label>
+
+            <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
+              Password
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="new-password"
+                minLength={8}
+                required
+                className="mt-2 w-full rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 py-2.5 text-sm text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--accent-primary)]"
+                placeholder="At least 8 characters"
+              />
+            </label>
+
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="mt-1 inline-flex h-10 w-full items-center justify-center gap-2 rounded-[var(--radius-md)] text-sm font-semibold text-[var(--accent-on)] shadow-lg transition-all disabled:cursor-not-allowed disabled:opacity-60"
+              style={{ background: 'var(--accent-primary)' }}
+            >
+              {isSubmitting ? <Loader2 size={15} className="animate-spin" /> : <User2 size={15} />}
+              Accept invite
+            </button>
+          </form>
+        ) : null}
+
+        <div className="mt-5 flex items-center justify-between text-xs text-[var(--text-secondary)]">
+          <span>Already have an account?</span>
+          <Link to="/auth/sign-in" className="inline-flex items-center gap-1 text-[var(--accent-primary)] hover:underline">
+            Sign in <ArrowRight size={12} />
+          </Link>
         </div>
       </AuthCard>
     </AuthLayout>

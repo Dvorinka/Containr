@@ -260,6 +260,11 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			public.GET("/maintenance", handleMaintenancePage)
 			public.GET("/branding", handleGetBranding)
 
+			// Invite accept flow — validates the link, then registers
+			// even while public signup is closed.
+			public.GET("/auth/invites/:token", handleGetInvite)
+			public.POST("/auth/accept-invite", handleAcceptInvite)
+
 			// Wake callback for sleep-mode placeholders. Unauthenticated but
 			// non-destructive: it only reconciles the service back to running.
 			public.Any("/internal/wake/:id", handleServiceWake)
@@ -495,6 +500,11 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			admin.POST("/admin/banners", handleAdminCreateBanner)
 			admin.PATCH("/admin/banners/:id", handleAdminUpdateBanner)
 			admin.DELETE("/admin/banners/:id", handleAdminDeleteBanner)
+
+			// Team invites — single-use registration links
+			admin.GET("/admin/invites", handleAdminListInvites)
+			admin.POST("/admin/invites", handleAdminCreateInvite)
+			admin.DELETE("/admin/invites/:id", handleAdminDeleteInvite)
 			admin.GET("/audit-logs", handleGetAuditLogs)
 			admin.GET("/audit-logs/:resource/:id", handleGetResourceAuditLogs)
 

@@ -158,6 +158,10 @@ func init() {
 	register(spec{"containr_branding_get", "Get instance white-label branding (product name, logo, accent, links).", "GET", "/branding", nil, nil, false})
 	register(spec{"containr_settings_update", "Update platform settings (admin). Args: signup_enabled (bool), cloudflare_tunnel_token (string, empty clears), branding (object: product_name, logo_url, favicon_url, accent_color, docs_url, support_url — empty string resets a field).", "PUT", "/settings", nil, []string{"signup_enabled", "cloudflare_tunnel_token", "branding"}, false})
 
+	register(spec{"containr_invites_list", "List team invite links (admin).", "GET", "/admin/invites", nil, nil, false})
+	register(spec{"containr_invites_create", "Create a team invite link (admin). Args: email (optional bind), expires_in_hours (default 168). Returns the one-time token + accept URL.", "POST", "/admin/invites", nil, []string{"email", "expires_in_hours"}, false})
+	register(spec{"containr_invites_revoke", "Revoke a team invite (admin). Args: id. Requires confirm=true.", "DELETE", "/admin/invites/{id}", []string{"id"}, nil, true})
+
 	// Nodes / agent tokens (admin)
 	register(spec{"containr_nodes_list", "List node agents (admin)", "GET", "/agents", nil, nil, false})
 	register(spec{"containr_nodes_get", "Get a node agent (admin)", "GET", "/agents/{id}", []string{"id"}, nil, false})
