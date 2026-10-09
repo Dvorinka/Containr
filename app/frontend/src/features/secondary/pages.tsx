@@ -613,7 +613,7 @@ export function UsagePage() {
                       agents.slice(0, 5).map((agent) => (
                         <div key={agent.id} className="flex items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-4 py-3 last:border-b-0">
                           <div className="min-w-0">
-                            <p className="truncate text-sm font-medium text-[var(--text-primary)]">{agent.name}</p>
+                            <Link to={`/nodes/${agent.id}`} className="truncate text-sm font-medium text-[var(--text-primary)] hover:text-[var(--accent-primary)]">{agent.name}</Link>
                             <p className="truncate text-xs text-[var(--text-tertiary)]">{agent.hostname} · {agent.ipAddress}:{agent.port}</p>
                           </div>
                           <div className="flex items-center gap-3">
