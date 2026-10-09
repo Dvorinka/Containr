@@ -3866,6 +3866,111 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Activity feed
+         * @description Enriched audit events (severity, category, label) scoped to the caller's visible projects; admins see everything.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    severity?: "info" | "success" | "warning" | "error";
+                    category?: string;
+                    resource?: string;
+                    project_id?: string;
+                    since?: string;
+                    page?: number;
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Feed entries */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            activity?: components["schemas"]["AuditLog"][];
+                            page?: number;
+                            limit?: number;
+                            has_more?: boolean;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Per-project activity timeline
+         * @description Audit events correlated to this project's services, deployments, databases and the project record itself.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    page?: number;
+                    limit?: number;
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Feed entries */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            activity?: components["schemas"]["AuditLog"][];
+                        };
+                    };
+                };
+                /** @description Project not found or not visible */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/banners/active": {
         parameters: {
             query?: never;
@@ -10954,6 +11059,15 @@ export interface components {
             ip_address?: string;
             /** @description Source user agent */
             user_agent?: string;
+            /**
+             * @description Event severity for feed display
+             * @enum {string}
+             */
+            severity?: "info" | "success" | "warning" | "error";
+            /** @description Coarse category (service, deployment, project, user, security, system, …) */
+            category?: string;
+            /** @description Human-readable event label */
+            label?: string;
             /**
              * Format: date-time
              * @description Timestamp when the audit log entry was created

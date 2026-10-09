@@ -106,6 +106,9 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 	// Sleep sweeper — scales idle services to zero and prunes wake containers.
 	StartSleepSweeper(context.Background(), db, dockerClient, deploymentEngine, cfg.Port)
 
+	// Audit retention — prunes rows past AUDIT_RETENTION_DAYS (default 90).
+	StartAuditRetention(context.Background(), db)
+
 	// Initialize database handler
 	databaseHandler := NewDatabaseHandler(db.DB, dockerClient)
 
@@ -345,6 +348,8 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 
 			// Cross-cutting ops view — active/queued/failed work
 			authed.GET("/operations", handleGetOperations)
+			authed.GET("/activity", handleGetActivity)
+			authed.GET("/projects/:id/activity", handleGetProjectActivity)
 
 			// Instance announcements shown to all signed-in users
 			authed.GET("/banners/active", handleListActiveBanners)

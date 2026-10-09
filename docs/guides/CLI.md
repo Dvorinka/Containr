@@ -84,6 +84,8 @@ webhooks list|create|update|delete|deliveries|test
                                deliveries are HMAC-signed (X-Containr-Signature)
 operations                       live ops view: active deploys, queue depth,
                                24h failures, cron runs, backups
+activity                         enriched activity feed; --severity/--category/
+                               --resource/--project/--limit filters
 banners list|create|update|delete  announcement banners (admin);
                                active banners print on `auth status`
 invites list|create|revoke       team invite links (admin); create

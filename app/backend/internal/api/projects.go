@@ -153,6 +153,7 @@ func handleCreateProject(c *gin.Context) {
 		return
 	}
 
+	LogAuditWithRequest(c, "project", projectRow.ID.String(), "project.create", map[string]interface{}{"name": req.Name})
 	c.JSON(http.StatusCreated, mapSQLCProject(projectRow))
 }
 
@@ -340,6 +341,7 @@ func handleDeleteProject(c *gin.Context) {
 		return
 	}
 
+	LogAuditWithRequest(c, "project", projectID.String(), "project.delete", nil)
 	c.JSON(http.StatusOK, gin.H{"message": "Project deleted successfully"})
 }
 

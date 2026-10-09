@@ -11,6 +11,7 @@ import { TemplatesPage } from '@/features/templates/pages/TemplatesPage';
 import { AuditLogsPage } from '@/features/audit/pages/AuditLogsPage';
 import { WebhooksPage } from '@/features/webhooks/pages/WebhooksPage';
 import { OperationsPage } from '@/features/operations/pages/OperationsPage';
+import { ActivityPage } from '@/features/activity/pages/ActivityPage';
 import { AdminPage } from '@/features/admin/pages/AdminPage';
 import { LandingPage } from '@/features/landing/LandingPage';
 import { useBranding } from '@/lib/use-branding';
@@ -148,6 +149,7 @@ export default function App() {
           <Route path="/databases" element={<DatabasesPage />} />
           <Route path="/ha" element={<HighAvailabilityPage />} />
           <Route path="/operations" element={<OperationsPage />} />
+          <Route path="/activity" element={<ActivityPage />} />
           <Route path="/security" element={<SecurityPage />} />
           <Route path="/usage" element={<UsagePage />} />
           <Route path="/docs" element={<DocsPage />} />

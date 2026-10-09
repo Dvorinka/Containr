@@ -23,7 +23,65 @@ type AuditLog struct {
 	Details    string    `json:"details" db:"details"`
 	IPAddress  string    `json:"ip_address" db:"ip_address"`
 	UserAgent  string    `json:"user_agent" db:"user_agent"`
+	Severity   string    `json:"severity" db:"severity"`
+	Category   string    `json:"category" db:"category"`
+	Label      string    `json:"label" db:"label"`
 	CreatedAt  time.Time `json:"created_at" db:"created_at"`
+}
+
+// auditVerbs maps action verbs to past-tense words for feed labels.
+var auditVerbs = map[string]string{
+	"create": "created", "delete": "deleted", "update": "updated",
+	"deploy": "deployed", "clone": "cloned", "move": "moved",
+	"backup": "backed up", "restore": "restored", "revoke": "revoked",
+	"impersonate": "impersonated", "provision": "provisioned",
+	"accept": "accepted", "login": "logged in", "scale": "scaled",
+	"sleep": "put to sleep", "wake": "woke", "approve": "approved",
+	"set_admin": "admin flag changed", "provisioned": "provisioned",
+}
+
+// classifyAuditEvent derives severity/category/label for the activity feed.
+// Actions may already carry the resource prefix ("service.clone") — it is
+// stripped before matching.
+func classifyAuditEvent(resource, action string) (severity, category, label string) {
+	verb := action
+	if idx := strings.LastIndex(verb, "."); idx >= 0 {
+		verb = verb[idx+1:]
+	}
+
+	category = resource
+	switch resource {
+	case "user_invite", "invite", "github_app", "banner", "settings":
+		category = "system"
+	case "user_token", "agent_token", "registry_credential":
+		category = "security"
+	}
+
+	severity = "info"
+	switch {
+	case strings.Contains(verb, "fail"), strings.Contains(verb, "error"), strings.Contains(verb, "denied"):
+		severity = "error"
+	case strings.Contains(verb, "delete"), strings.Contains(verb, "revoke"),
+		strings.Contains(verb, "remove"), strings.Contains(verb, "disable"),
+		strings.Contains(verb, "impersonate"):
+		severity = "warning"
+	case strings.Contains(verb, "create"), strings.Contains(verb, "success"),
+		strings.Contains(verb, "complete"), strings.Contains(verb, "accept"),
+		strings.Contains(verb, "provision"), strings.Contains(verb, "clone"),
+		strings.Contains(verb, "deploy"), strings.Contains(verb, "approve"):
+		severity = "success"
+	}
+
+	past := verb
+	if v, ok := auditVerbs[verb]; ok {
+		past = v
+	}
+	resName := strings.ReplaceAll(resource, "_", " ")
+	if resName != "" {
+		resName = strings.ToUpper(resName[:1]) + resName[1:]
+	}
+	label = resName + " " + past
+	return severity, category, label
 }
 
 type AuditLogDetail struct {
@@ -42,12 +100,13 @@ func LogAudit(userID, resource, resourceID, action string, details map[string]in
 	detailsJSON, _ := json.Marshal(details)
 	resourceUUID := parseUUIDOrNil(resourceID)
 	userUUID := parseUUIDOrNil(userID)
+	severity, category, label := classifyAuditEvent(resource, action)
 
 	auditID := uuid.New().String()
 	_, err := db.Exec(
-		`INSERT INTO audit_logs (id, user_id, resource, resource_id, action, details, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		auditID, userUUID, resource, resourceUUID, action, string(detailsJSON), time.Now().UTC(),
+		`INSERT INTO audit_logs (id, user_id, resource, resource_id, action, details, severity, category, label, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		auditID, userUUID, resource, resourceUUID, action, string(detailsJSON), severity, category, label, time.Now().UTC(),
 	)
 
 	if err != nil {
@@ -59,6 +118,9 @@ func LogAudit(userID, resource, resourceID, action string, details map[string]in
 func LogAuditWithRequest(c *gin.Context, resource, resourceID, action string, details map[string]interface{}) {
 	userID, _ := c.Get("user_id")
 
+	if details == nil {
+		details = map[string]interface{}{}
+	}
 	details["ip_address"] = c.ClientIP()
 	details["user_agent"] = c.GetHeader("User-Agent")
 
@@ -71,12 +133,13 @@ func LogAuditWithRequest(c *gin.Context, resource, resourceID, action string, de
 	}
 	userUUID := parseUUIDOrNil(userIDStr)
 	resourceUUID := parseUUIDOrNil(resourceID)
+	severity, category, label := classifyAuditEvent(resource, action)
 
 	auditID := uuid.New().String()
 	_, err := db.Exec(
-		`INSERT INTO audit_logs (id, user_id, resource, resource_id, action, details, ip_address, user_agent, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9)`,
-		auditID, userUUID, resource, resourceUUID, action, string(detailsJSON), c.ClientIP(), c.GetHeader("User-Agent"), time.Now().UTC(),
+		`INSERT INTO audit_logs (id, user_id, resource, resource_id, action, details, ip_address, user_agent, severity, category, label, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12)`,
+		auditID, userUUID, resource, resourceUUID, action, string(detailsJSON), c.ClientIP(), c.GetHeader("User-Agent"), severity, category, label, time.Now().UTC(),
 	)
 
 	if err != nil {
@@ -155,6 +218,9 @@ func handleGetAuditLogs(c *gin.Context) {
 		COALESCE(a.details::text, '{}'),
 		COALESCE(a.ip_address::text, ''),
 		COALESCE(a.user_agent, ''),
+		COALESCE(a.severity, 'info'),
+		COALESCE(a.category, ''),
+		COALESCE(a.label, ''),
 		a.created_at
 		FROM audit_logs a
 		LEFT JOIN users u ON u.id = a.user_id
@@ -173,7 +239,7 @@ func handleGetAuditLogs(c *gin.Context) {
 	var logs []AuditLog
 	for rows.Next() {
 		var log AuditLog
-		err := rows.Scan(&log.ID, &log.UserID, &log.UserEmail, &log.Resource, &log.ResourceID, &log.Action, &log.Details, &log.IPAddress, &log.UserAgent, &log.CreatedAt)
+		err := rows.Scan(&log.ID, &log.UserID, &log.UserEmail, &log.Resource, &log.ResourceID, &log.Action, &log.Details, &log.IPAddress, &log.UserAgent, &log.Severity, &log.Category, &log.Label, &log.CreatedAt)
 		if err != nil {
 			continue
 		}

@@ -1928,6 +1928,44 @@ export async function getOperations(): Promise<OperationsView> {
   return requestJson<OperationsView>('/operations');
 }
 
+export type ActivityEntry = {
+  id: string;
+  user_email: string;
+  resource: string;
+  resource_id: string;
+  action: string;
+  details?: string;
+  severity: 'info' | 'success' | 'warning' | 'error';
+  category: string;
+  label: string;
+  created_at: string;
+};
+
+export type ActivityPage = {
+  activity: ActivityEntry[];
+  page?: number;
+  has_more?: boolean;
+};
+
+export async function listActivity(filters: {
+  severity?: string; category?: string; resource?: string;
+  project_id?: string; page?: number; limit?: number;
+} = {}): Promise<ActivityPage> {
+  const params = new URLSearchParams();
+  if (filters.severity) params.set('severity', filters.severity);
+  if (filters.category) params.set('category', filters.category);
+  if (filters.resource) params.set('resource', filters.resource);
+  if (filters.project_id) params.set('project_id', filters.project_id);
+  if (filters.page) params.set('page', String(filters.page));
+  if (filters.limit) params.set('limit', String(filters.limit));
+  const q = params.toString();
+  return requestJson<ActivityPage>(`/activity${q ? `?${q}` : ''}`);
+}
+
+export async function listProjectActivity(projectId: string, page = 1): Promise<ActivityPage> {
+  return requestJson<ActivityPage>(`/projects/${projectId}/activity?page=${page}&limit=50`);
+}
+
 export type Banner = {
   id: string;
   title: string;

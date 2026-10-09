@@ -89,7 +89,7 @@ Legend: ✅ done · 🟡 partial/different · ❌ missing · ➖ not applicable 
 | Outbound webhooks (collection events, HMAC, custom headers) | ✅ `outbound_webhooks` + `webhook_deliveries`, HMAC `X-Containr-Signature`, wildcard events, 3-retry, UI page | — |
 | Banners (global + per-tenant, dismissible) | ❌ | `banners` table + top bar |
 | White-label (logo/favicon/title/OG/theme colors) | ❌ | `app_settings.branding` — **Containr remains the default brand** |
-| Activity feed (icon/severity/category/metadata, 90-day TTL job) | 🟡 `audit_logs` coarser | Enrich + project feed UI |
+| Activity feed (icon/severity/category/metadata, 90-day TTL job) | ✅ `/activity` + project view | — |
 | Admin metrics dashboard (users/servers/queued/failed counts) | 🟡 `/admin` exists | Extend |
 | **Impersonate user** | ❌ | Admin support tool |
 | In-app docs (content-collections markdown) | ✅ `/docs` | — |
@@ -282,8 +282,14 @@ and wired refs, one click or one CLI call.
   headers, enabled)` + `webhook_deliveries` log; HMAC
   `X-Containr-Signature`; wildcard events on every audited action;
   CLI + MCP + `/settings/webhooks` page with delivery log + test ping.
-- [ ] **Activity feed** — enrich `audit_logs` with `severity category
-  icon label metadata`; per-project timeline + global feed; TTL job.
+- [x] **Activity feed** — `audit_logs` enriched with `severity`
+  (`info|success|warning|error`), `category`, human `label`; derived at
+  write time, classified on read for legacy rows, boot-time backfill.
+  `GET /activity` (global, visibility-scoped, filters + `since`) and
+  `GET /projects/:id/activity` (owner/member/approved/admin). Frontend:
+  `/activity` page with severity chips + project workspace `Activity`
+  view. `containr activity` + `containr_activity_list`/`containr_project_activity`
+  MCP tools. Retention worker prunes > `AUDIT_RETENTION_DAYS` (default 90).
 - [x] **Banners** — `banners` table with title/body/level/active/
   dismissible/schedule window. `GET /banners/active` for signed-in
   users; admin CRUD at `/admin/banners`. `BannerBar` renders above the
