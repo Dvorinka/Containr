@@ -26,6 +26,7 @@ import {
   ComponentShowcase,
   GitHubAppCallbackPage,
 } from '@/features/secondary/pages';
+import { NodeDetailPage } from '@/features/nodes/NodeDetailPage';
 import { AcceptInvitePage, SignInPage, SignUpPage } from '@/features/auth/pages';
 import { useAuthSession } from '@/lib/use-auth-session';
 import { useDemoMode } from '@/lib/demo-mode';
@@ -168,6 +169,7 @@ export default function App() {
           {/* Platform owner only */}
           <Route element={<AdminRequired />}>
             <Route path="/admin" element={<AdminPage />} />
+            <Route path="/nodes/:id" element={<NodeDetailPage />} />
           </Route>
 
           <Route path="*" element={<NotFoundPage />} />

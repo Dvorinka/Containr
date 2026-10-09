@@ -192,7 +192,8 @@ CREATE TABLE node_agents (
     last_heartbeat TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    metadata JSONB
+    metadata JSONB,
+    auto_prune BOOLEAN NOT NULL DEFAULT false
 );
 
 CREATE TABLE container_instances (

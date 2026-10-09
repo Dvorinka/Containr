@@ -58,6 +58,7 @@ type Querier interface {
 	GetDatabaseServiceByID(ctx context.Context, id string) (DatabaseService, error)
 	GetDatabaseServiceByIDAndUser(ctx context.Context, arg GetDatabaseServiceByIDAndUserParams) (DatabaseService, error)
 	GetDatabaseServiceOwnerID(ctx context.Context, id string) (string, error)
+	GetLastAgentCommandByType(ctx context.Context, arg GetLastAgentCommandByTypeParams) (AgentCommand, error)
 	GetOutboundWebhookByID(ctx context.Context, id uuid.UUID) (OutboundWebhook, error)
 	GetOutboundWebhookByIDAndUser(ctx context.Context, arg GetOutboundWebhookByIDAndUserParams) (OutboundWebhook, error)
 	GetProjectByIDForUser(ctx context.Context, arg GetProjectByIDForUserParams) (Project, error)

@@ -5291,6 +5291,93 @@ paths:
               schema:
                 $ref: '#/components/schemas/MessageResponse'
 
+  /api/agents/install.sh:
+    servers:
+      - url: http://localhost:8080
+    get:
+      tags:
+        - Agents
+      summary: Agent install script
+      description: Public bootstrap script — `curl | bash -s -- --url <api> --token <enroll-token>`.
+      security: []
+      responses:
+        '200':
+          description: Bourne shell installer
+          content:
+            text/x-sh:
+              schema:
+                type: string
+
+  /api/agents/download/{platform}:
+    servers:
+      - url: http://localhost:8080
+    get:
+      tags:
+        - Agents
+      summary: Download a bundled agent binary
+      description: "platform: linux-amd64 | linux-arm64. Bundled in release images; 404 when absent (install script falls back to GH releases)."
+      security: []
+      parameters:
+        - name: platform
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [linux-amd64, linux-arm64]
+      responses:
+        '200':
+          description: Agent binary
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: No bundled binary for platform
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /agents/{id}/prune:
+    post:
+      tags:
+        - Agents
+      summary: Enqueue a bounded docker prune on a node
+      description: Queues a `prune` command — `docker system prune -af`, volumes excluded unless requested.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AgentIdParam'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                until:
+                  type: string
+                  description: Only prune objects older than this duration (e.g. "168h").
+                volumes:
+                  type: boolean
+                  description: Also prune volumes — destructive, off by default.
+      responses:
+        '202':
+          description: Prune command queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  command:
+                    $ref: '#/components/schemas/AgentCommand'
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /agents/{id}/metrics:
     get:
       tags:
@@ -8807,6 +8894,9 @@ components:
         metadata:
           type: object
           additionalProperties: true
+        auto_prune:
+          type: boolean
+          description: Enqueue a bounded docker prune on this node once per day.
         last_heartbeat:
           type: string
           format: date-time
@@ -9040,6 +9130,11 @@ components:
         auth_token:
           type: string
           description: May also be sent via the X-Agent-Token header
+        mesh:
+          type: object
+          additionalProperties:
+            type: string
+          description: Overlay-network interface IPs (tailscale/netbird/zerotier/wireguard). Stored under agent metadata.mesh; authoritative — send an empty object when no mesh interfaces exist.
 
     AgentHeartbeat:
       type: object

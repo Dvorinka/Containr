@@ -252,18 +252,31 @@ and wired refs, one click or one CLI call.
 
 ## 7. Phase F — Nodes & infrastructure
 
-- [ ] **SSH bootstrap install** — `containr nodes add --ssh user@host` +
-  UI flow: one SSH session runs agent install (binary + systemd +
-  enroll token), SSH closed forever. dflow onboarding UX, agent-model
-  security.
-- [ ] **Mesh awareness** — agent detects + reports tailscale0/netbird0/
-  zt0 IPs at register; backend stores + displays. Optional
-  `TAILSCALE_AUTH_KEY` enroll-at-provision later.
-- [ ] **Node detail page** — placed services, telemetry history, agent
-  version + self-upgrade, **drain/cordon**, remove.
-- [ ] **Node housekeeping** — agent `prune` command (docker system
-  prune, bounded) + optional schedule (`setServerAutoCleanup` analog —
-  disk pressure is the #1 small-VPS killer).
+- [x] **SSH bootstrap install** — `containr nodes add <user@host>` mints an
+  enroll token, SSHes once (agent/key/default keys), runs
+  `GET /api/agents/install.sh | bash` remotely, closes the session.
+  `--print` emits the one-liner for manual runs; the Usage page shows the
+  same command. Agent binaries ship in the image under `/agents` and are
+  served at `/api/agents/download/{linux-amd64,linux-arm64}` (install
+  script falls back to GH releases). `cli/commands/nodes_add.go`,
+  `api/assets/install-agent.sh`, `agents.go:ServeInstallScript`/`ServeAgentBinary`.
+- [x] **Mesh awareness** — agent reports tailscale/netbird/wireguard/
+  zerotier interface IPs at register (`mesh` field, authoritative on
+  re-register), stored in `node_agents.metadata.mesh`, shown on the node
+  detail page. `TAILSCALE_AUTH_KEY` enroll-at-provision still open.
+- [x] **Node detail page** — `/nodes/:id` (admin): heartbeat telemetry
+  (cpu/mem sparklines over 1h/24h/7d via `GET /agents/:id/metrics`),
+  containers, command history, rename, auto-prune toggle, prune-now,
+  remove. Drain/cordon and self-upgrade deferred — they need
+  `services.node_id` routing which lands with multi-node scheduling.
+- [x] **Node housekeeping** — agent `prune` + `system_df` commands
+  (`docker system prune -af`, volumes excluded unless requested, optional
+  `--until`). `node_agents.auto_prune` + the health sweep enqueue a prune
+  at most once per 24h per node. Surfaces: `POST /agents/:id/prune`,
+  `nodes update --auto-prune` / `nodes prune [--volumes --until]` /
+  `nodes commands`, MCP `containr_nodes_update|prune|commands`
+  (confirm-gated), Usage-page per-node Prune button + auto toggle.
+  `cmd/agent/main.go`, `notification_producers.go:scheduleAutoPrune`.
 - [ ] **Multi-node scheduling** — wire `scheduling_rules` (table exists):
   pin/spread/affinity, prefer-lowest-usage; deploy engine routes to
   `services.node_id` via agent commands (agent already runs containers).

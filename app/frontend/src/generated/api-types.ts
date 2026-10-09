@@ -8363,6 +8363,157 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/agents/install.sh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Agent install script
+         * @description Public bootstrap script — `curl | bash -s -- --url <api> --token <enroll-token>`.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Bourne shell installer */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/x-sh": string;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agents/download/{platform}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download a bundled agent binary
+         * @description platform: linux-amd64 | linux-arm64. Bundled in release images; 404 when absent (install script falls back to GH releases).
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    platform: "linux-amd64" | "linux-arm64";
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Agent binary */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/octet-stream": string;
+                    };
+                };
+                /** @description No bundled binary for platform */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/{id}/prune": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enqueue a bounded docker prune on a node
+         * @description Queues a `prune` command — `docker system prune -af`, volumes excluded unless requested.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Node agent ID */
+                    id: components["parameters"]["AgentIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        /** @description Only prune objects older than this duration (e.g. "168h"). */
+                        until?: string;
+                        /** @description Also prune volumes — destructive, off by default. */
+                        volumes?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Prune command queued */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            command?: components["schemas"]["AgentCommand"];
+                        };
+                    };
+                };
+                /** @description Agent not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/agents/{id}/metrics": {
         parameters: {
             query?: never;
@@ -11749,6 +11900,8 @@ export interface components {
             metadata?: {
                 [key: string]: unknown;
             };
+            /** @description Enqueue a bounded docker prune on this node once per day. */
+            auto_prune?: boolean;
             /** Format: date-time */
             last_heartbeat?: string;
             /** Format: date-time */
@@ -11873,6 +12026,10 @@ export interface components {
             capabilities: components["schemas"]["AgentCapabilities"];
             /** @description May also be sent via the X-Agent-Token header */
             auth_token?: string;
+            /** @description Overlay-network interface IPs (tailscale/netbird/zerotier/wireguard). Stored under agent metadata.mesh; authoritative — send an empty object when no mesh interfaces exist. */
+            mesh?: {
+                [key: string]: string;
+            };
         };
         AgentHeartbeat: {
             agent_id?: string;
