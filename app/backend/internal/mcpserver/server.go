@@ -87,6 +87,8 @@ func init() {
 	// Variables
 	register(spec{"containr_variables_list", "List service environment variables (secrets masked)", "GET", "/services/{id}/variables", []string{"id"}, nil, false})
 	register(spec{"containr_variables_set", "Replace all variables on a service. Args: id, variables = [{key, value, is_secret}], redeploy (queue a redeploy to apply). Fetch the current list first and merge — the server replaces wholesale.", "PUT", "/services/{id}/variables", []string{"id"}, []string{"variables", "redeploy"}, false})
+	register(spec{"containr_shared_variables_list", "List project-level shared variables, referenced from service env as ${{shared.KEY}} (secrets masked). Args: id (project).", "GET", "/projects/{id}/variables", []string{"id"}, nil, false})
+	register(spec{"containr_shared_variables_set", "Replace all shared project variables. Args: id (project), variables = [{key, value, is_secret}]. Services reference them as ${{shared.KEY}} — resolved at deploy/refresh, not live-updated.", "PUT", "/projects/{id}/variables", []string{"id"}, []string{"variables"}, false})
 
 	// Deployments
 	register(spec{"containr_deploy", "Trigger a deployment for a service. Args: id (service), commit_hash, branch, no_cache.", "POST", "/services/{id}/deployments", []string{"id"}, []string{"commit_hash", "branch", "trigger", "no_cache"}, false})

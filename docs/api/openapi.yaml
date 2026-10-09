@@ -3016,6 +3016,78 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /projects/{id}/variables:
+    get:
+      tags:
+        - Projects
+      summary: List shared project variables
+      description: Project-level variables shared across services. Services reference them as `${{shared.KEY}}` in environment values — resolved at deploy/reconcile, not live-updated. Secret values are masked.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Variables retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  variables:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ServiceVariable'
+        '404':
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      tags:
+        - Projects
+      summary: Replace shared project variables
+      description: Replace the full shared-variable set for a project. Fetch the current list first and merge — the server replaces wholesale. Masked secret placeholders (`********`) keep the stored value.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateVariablesRequest'
+      responses:
+        '200':
+          description: Variables updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  variables:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ServiceVariable'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   # Git integration
   /git/github-app/install-url:
     get:

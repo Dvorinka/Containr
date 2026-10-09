@@ -356,6 +356,10 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			authed.GET("/services/:id/variables", handleGetVariables)
 			authed.PUT("/services/:id/variables", handleUpdateVariables)
 
+			// Project-level shared variables — ${{shared.KEY}} refs.
+			authed.GET("/projects/:id/variables", handleGetProjectVariables)
+			authed.PUT("/projects/:id/variables", handleUpdateProjectVariables)
+
 			// Runtime logs — container stdout routinely echoes secrets,
 			// so these stay behind authentication like build logs.
 			authed.GET("/services/:id/logs", handleGetLogs)
