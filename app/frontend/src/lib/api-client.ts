@@ -1708,6 +1708,13 @@ export async function getDatabase(id: string): Promise<DatabaseEntity> {
   return requestJson<DatabaseEntity>(`/databases/${encodeURIComponent(id)}`);
 }
 
+export async function updateDatabase(id: string, input: components['schemas']['UpdateDatabaseRequest']): Promise<void> {
+  await requestJson(`/databases/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
+}
+
 export async function databaseAction(id: string, action: 'start' | 'stop' | 'restart'): Promise<void> {
   await requestJson(`/databases/${encodeURIComponent(id)}/action`, {
     method: 'POST',

@@ -48,7 +48,9 @@ logs <service-id> [--follow]     runtime logs (SSE follow)
 exec <service-id> -- <cmd>       one-off container command
 variables list|set|unset         env vars (secrets masked; --redeploy applies them)
 variables shared list|set|unset  project shared vars — referenced as ${{shared.KEY}}
-databases list|get|create|delete|action|backup|restore|download-backup
+databases list|get|create|update|delete|action|backup|restore|download-backup
+                               create --public exposes the port on all interfaces;
+                               update <id> --public/--public=false toggles it (container recreates, data persists)
 databases register <name>      register an external database (--type --host --port --database --username --password --ssl; probed before storing)
 databases test-connection      probe a connection — by id, or ad-hoc flags
 cron list|get|create|delete|trigger|executions

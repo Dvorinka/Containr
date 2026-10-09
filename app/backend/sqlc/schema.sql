@@ -146,6 +146,7 @@ CREATE TABLE database_services (
     external_username VARCHAR(255),
     external_password TEXT NOT NULL DEFAULT '',
     external_ssl BOOLEAN NOT NULL DEFAULT false,
+    public_port BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

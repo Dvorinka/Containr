@@ -100,7 +100,8 @@ func init() {
 	// Databases
 	register(spec{"containr_databases_list", "List managed databases", "GET", "/databases", nil, nil, false})
 	register(spec{"containr_databases_get", "Get a database (connection URL included)", "GET", "/databases/{id}", []string{"id"}, nil, false})
-	register(spec{"containr_databases_create", "Provision a managed database. Args: name, type (postgres|mysql|mariadb|mongodb|redis|dragonfly|clickhouse).", "POST", "/databases", nil, nil, false})
+	register(spec{"containr_databases_create", "Provision a managed database. Args: name, type (postgres|mysql|mariadb|mongodb|redis|dragonfly|clickhouse), public_port (bind on all interfaces, default localhost-only).", "POST", "/databases", nil, nil, false})
+	register(spec{"containr_databases_update", "Update a database. Args: id, name, backup_schedule (empty clears), public_port — toggling recreates the container so the new bind scope applies.", "PUT", "/databases/{id}", []string{"id"}, nil, false})
 	register(spec{"containr_databases_register_external", "Register a database hosted elsewhere — probed first, password stored encrypted. Args: name (required), type (required), host (required), port, database, username, password, ssl.", "POST", "/databases/register-external", nil, []string{"name", "type", "host"}, false})
 	register(spec{"containr_databases_test_connection", "Probe a DB connection ad-hoc. Args: type, host (required), port, database, username, password, ssl.", "POST", "/databases/test-connection", nil, []string{"type", "host"}, false})
 	register(spec{"containr_databases_test_connection_by_id", "Re-probe a registered external database with its stored credentials. Args: id.", "POST", "/databases/{id}/test-connection", []string{"id"}, nil, false})

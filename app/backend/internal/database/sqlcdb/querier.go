@@ -77,6 +77,7 @@ type Querier interface {
 	SetDatabaseBackupScheduleByIDAndUser(ctx context.Context, arg SetDatabaseBackupScheduleByIDAndUserParams) error
 	SetDatabaseBackupStatusByID(ctx context.Context, arg SetDatabaseBackupStatusByIDParams) error
 	SetDatabaseNextBackupAt(ctx context.Context, arg SetDatabaseNextBackupAtParams) error
+	SetDatabaseServicePublicPortByIDAndUser(ctx context.Context, arg SetDatabaseServicePublicPortByIDAndUserParams) error
 	SetDatabaseServiceStatusAndConnectionByID(ctx context.Context, arg SetDatabaseServiceStatusAndConnectionByIDParams) error
 	SetDatabaseServiceStatusByID(ctx context.Context, arg SetDatabaseServiceStatusByIDParams) error
 	SetDatabaseServiceStatusByIDAndUser(ctx context.Context, arg SetDatabaseServiceStatusByIDAndUserParams) error

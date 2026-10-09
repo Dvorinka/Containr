@@ -52,7 +52,8 @@ type DatabaseService struct {
 	Region         string               `json:"region" db:"region"`
 	BackupSchedule string               `json:"backup_schedule,omitempty"`
 	NextBackupAt   *time.Time           `json:"next_backup_at,omitempty"`
-	Provider       string               `json:"provider"`           // managed | external
+	Provider       string               `json:"provider"` // managed | external
+	PublicPort     bool                 `json:"public_port" db:"public_port"`
 	External       *DatabaseExternalRef `json:"external,omitempty"` // connection target for external DBs
 	CreatedAt      time.Time            `json:"created_at" db:"created_at"`
 	UpdatedAt      time.Time            `json:"updated_at" db:"updated_at"`
@@ -117,10 +118,11 @@ type DatabaseSettings struct {
 
 // DatabaseCreateRequest represents a request to create a new database
 type DatabaseCreateRequest struct {
-	Name   string `json:"name" binding:"required"`
-	Type   string `json:"type" binding:"required"`
-	Plan   string `json:"plan" binding:"required,oneof=hobby starter standard business"`
-	Region string `json:"region" binding:"required"`
+	Name       string `json:"name" binding:"required"`
+	Type       string `json:"type" binding:"required"`
+	Plan       string `json:"plan" binding:"required,oneof=hobby starter standard business"`
+	Region     string `json:"region" binding:"required"`
+	PublicPort bool   `json:"public_port"`
 }
 
 // DatabaseUpdateRequest represents a request to update a database
@@ -128,6 +130,7 @@ type DatabaseUpdateRequest struct {
 	Name           string  `json:"name,omitempty"`
 	Plan           string  `json:"plan,omitempty"`
 	BackupSchedule *string `json:"backup_schedule,omitempty"`
+	PublicPort     *bool   `json:"public_port,omitempty"`
 }
 
 // DatabaseActionRequest represents a request to perform database actions
@@ -291,10 +294,11 @@ func (h *DatabaseHandler) CreateDatabase(c *gin.Context) {
 	}
 
 	databaseID, dbName, dbType, err := h.createManagedDatabase(c.Request.Context(), userID, managedDatabaseCreateRequest{
-		Name:   req.Name,
-		Type:   req.Type,
-		Plan:   req.Plan,
-		Region: req.Region,
+		Name:       req.Name,
+		Type:       req.Type,
+		Plan:       req.Plan,
+		Region:     req.Region,
+		PublicPort: req.PublicPort,
 	})
 	if err != nil {
 		switch {
@@ -322,6 +326,7 @@ type managedDatabaseCreateRequest struct {
 	Type             string
 	Plan             string
 	Region           string
+	PublicPort       bool
 	RuntimeVariables map[string]string
 }
 
@@ -365,16 +370,17 @@ func (h *DatabaseHandler) createManagedDatabase(ctx context.Context, userID stri
 	version := h.getDefaultVersion(dbType)
 
 	err = h.queries.CreateDatabaseService(ctx, sqlcdb.CreateDatabaseServiceParams{
-		ID:        databaseID,
-		UserID:    userID,
-		Name:      name,
-		Type:      dbType,
-		Status:    "building",
-		Version:   version,
-		Plan:      plan,
-		Region:    region,
-		CreatedAt: sql.NullTime{Time: now, Valid: true},
-		UpdatedAt: sql.NullTime{Time: now, Valid: true},
+		ID:         databaseID,
+		UserID:     userID,
+		Name:       name,
+		Type:       dbType,
+		Status:     "building",
+		Version:    version,
+		Plan:       plan,
+		Region:     region,
+		PublicPort: req.PublicPort,
+		CreatedAt:  sql.NullTime{Time: now, Valid: true},
+		UpdatedAt:  sql.NullTime{Time: now, Valid: true},
 	})
 	if err != nil {
 		return "", "", "", fmt.Errorf("failed to create database service: %w", err)
@@ -411,9 +417,38 @@ func (h *DatabaseHandler) UpdateDatabase(c *gin.Context) {
 	req.Name = strings.TrimSpace(req.Name)
 	req.Plan = strings.TrimSpace(req.Plan)
 
-	if req.Name == "" && req.Plan == "" && req.BackupSchedule == nil {
+	if req.Name == "" && req.Plan == "" && req.BackupSchedule == nil && req.PublicPort == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "No fields to update"})
 		return
+	}
+
+	if req.PublicPort != nil {
+		row, err := h.queries.GetDatabaseServiceByIDAndUser(c.Request.Context(), sqlcdb.GetDatabaseServiceByIDAndUserParams{
+			ID:     databaseID,
+			UserID: userID,
+		})
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Database not found", "code": "NOT_FOUND"})
+			return
+		}
+		if row.Provider == "external" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "public_port applies to managed databases — external databases are already reachable", "code": "VALIDATION"})
+			return
+		}
+		if err := h.queries.SetDatabaseServicePublicPortByIDAndUser(c.Request.Context(), sqlcdb.SetDatabaseServicePublicPortByIDAndUserParams{
+			PublicPort: *req.PublicPort,
+			UpdatedAt:  sql.NullTime{Time: time.Now(), Valid: true},
+			ID:         databaseID,
+			UserID:     userID,
+		}); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update public port"})
+			return
+		}
+		// Port bindings are baked into the container — recreate it so the
+		// new bind scope takes effect. The data volume survives.
+		if *req.PublicPort != row.PublicPort {
+			go h.reprovisionManagedDatabase(databaseID, row.Name, row.Type)
+		}
 	}
 
 	if req.BackupSchedule != nil {
@@ -1108,6 +1143,7 @@ func mapDatabaseServiceRow(row sqlcdb.DatabaseService) DatabaseService {
 		BackupSchedule: databaseNullString(row.BackupSchedule),
 		NextBackupAt:   databaseNullTimePtr(row.NextBackupAt),
 		Provider:       row.Provider,
+		PublicPort:     row.PublicPort,
 		ConnectionURL:  databaseNullString(row.ConnectionUrl),
 		CreatedAt:      databaseNullTime(row.CreatedAt),
 		UpdatedAt:      databaseNullTime(row.UpdatedAt),
@@ -1288,6 +1324,17 @@ func (h *DatabaseHandler) provisionDatabase(databaseID, databaseName, dbType str
 	h.provisionDatabaseWithVariables(databaseID, databaseName, dbType, nil)
 }
 
+// reprovisionManagedDatabase recreates a managed container so changed
+// runtime settings (public_port) take effect. The data volume persists.
+func (h *DatabaseHandler) reprovisionManagedDatabase(databaseID, databaseName, dbType string) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	if h.dockerClient != nil {
+		_ = h.dockerClient.RemoveContainer(ctx, managedDatabaseContainerName(databaseID), true)
+	}
+	h.provisionDatabase(databaseID, databaseName, dbType)
+}
+
 func (h *DatabaseHandler) provisionDatabaseWithVariables(databaseID, databaseName, dbType string, runtimeVariables map[string]string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
@@ -1344,8 +1391,12 @@ func (h *DatabaseHandler) provisionDatabaseRuntime(ctx context.Context, database
 		}
 	}
 
+	hostIP := "127.0.0.1"
+	if row, err := h.queries.GetDatabaseServiceByID(ctx, databaseID); err == nil && row.PublicPort {
+		hostIP = "0.0.0.0"
+	}
 	portBindings := nat.PortMap{
-		plan.Port: []nat.PortBinding{{HostIP: "127.0.0.1", HostPort: ""}},
+		plan.Port: []nat.PortBinding{{HostIP: hostIP, HostPort: ""}},
 	}
 
 	exposedPorts := nat.PortSet{plan.Port: struct{}{}}

@@ -35,8 +35,13 @@ FROM database_services
 WHERE user_id = sqlc.arg(user_id) AND LOWER(name) = LOWER(sqlc.arg(name));
 
 -- name: CreateDatabaseService :exec
-INSERT INTO database_services (id, user_id, name, type, status, version, plan, region, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);
+INSERT INTO database_services (id, user_id, name, type, status, version, plan, region, public_port, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);
+
+-- name: SetDatabaseServicePublicPortByIDAndUser :exec
+UPDATE database_services
+SET public_port = $1, updated_at = $2
+WHERE id = $3 AND user_id = $4;
 
 -- name: UpdateDatabaseServiceNameAndPlanByIDAndUser :exec
 UPDATE database_services
