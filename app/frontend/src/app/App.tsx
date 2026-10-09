@@ -9,6 +9,7 @@ import { ServiceMetricsDashboard } from '@/features/service/pages/ServiceMetrics
 import { BuildsPage } from '@/features/builds/pages/BuildsPage';
 import { TemplatesPage } from '@/features/templates/pages/TemplatesPage';
 import { AuditLogsPage } from '@/features/audit/pages/AuditLogsPage';
+import { WebhooksPage } from '@/features/webhooks/pages/WebhooksPage';
 import { AdminPage } from '@/features/admin/pages/AdminPage';
 import { LandingPage } from '@/features/landing/LandingPage';
 import {
@@ -151,6 +152,7 @@ export default function App() {
             <Route path="/people" element={<PeoplePage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/settings/audit-logs" element={<AuditLogsPage />} />
+            <Route path="/settings/webhooks" element={<WebhooksPage />} />
             <Route path="/showcase" element={<ComponentShowcase />} />
           </Route>
 

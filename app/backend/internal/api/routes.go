@@ -23,6 +23,11 @@ import (
 )
 
 func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg *config.Config) {
+	// Audit + outbound webhook delivery need a package-level handle for
+	// call sites that don't carry a gin context.
+	SetAuditDB(db)
+	StartWebhookDispatcher()
+
 	// Expose Better Auth through backend so frontend can use a single backend origin.
 	setupAuthProxyRoutes(router, cfg, db)
 
@@ -327,6 +332,14 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 
 			// WebSocket endpoint
 			authed.GET("/ws", handleWebSocket)
+
+			// Outbound webhooks — signed event delivery to user HTTP endpoints
+			authed.GET("/webhooks", handleListOutboundWebhooks)
+			authed.POST("/webhooks", handleCreateOutboundWebhook)
+			authed.PATCH("/webhooks/:id", handleUpdateOutboundWebhook)
+			authed.DELETE("/webhooks/:id", handleDeleteOutboundWebhook)
+			authed.GET("/webhooks/:id/deliveries", handleListOutboundWebhookDeliveries)
+			authed.POST("/webhooks/:id/test", handleTestOutboundWebhook)
 
 			// Owned-resource mutations — handlers scope to the caller and
 			// admit admins. New projects land unapproved until an admin

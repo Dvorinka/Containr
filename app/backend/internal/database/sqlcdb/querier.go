@@ -27,15 +27,18 @@ type Querier interface {
 	CreateDatabaseService(ctx context.Context, arg CreateDatabaseServiceParams) error
 	CreateExternalDatabaseService(ctx context.Context, arg CreateExternalDatabaseServiceParams) error
 	CreateNotification(ctx context.Context, arg CreateNotificationParams) error
+	CreateOutboundWebhook(ctx context.Context, arg CreateOutboundWebhookParams) error
 	CreateProject(ctx context.Context, arg CreateProjectParams) (Project, error)
 	CreateServiceFromTemplate(ctx context.Context, arg CreateServiceFromTemplateParams) error
 	CreateUserTemplate(ctx context.Context, arg CreateUserTemplateParams) error
 	CreateUserToken(ctx context.Context, arg CreateUserTokenParams) (UserToken, error)
+	CreateWebhookDelivery(ctx context.Context, arg CreateWebhookDeliveryParams) error
 	DatabaseServiceExistsByIDAndUser(ctx context.Context, arg DatabaseServiceExistsByIDAndUserParams) (bool, error)
 	DeleteAgent(ctx context.Context, id string) error
 	DeleteBackupTargetByIDAndUser(ctx context.Context, arg DeleteBackupTargetByIDAndUserParams) error
 	DeleteDatabaseServiceByID(ctx context.Context, id string) error
 	DeleteDatabaseServiceByIDAndUser(ctx context.Context, arg DeleteDatabaseServiceByIDAndUserParams) error
+	DeleteOutboundWebhookByIDAndUser(ctx context.Context, arg DeleteOutboundWebhookByIDAndUserParams) error
 	DeleteProjectByID(ctx context.Context, projectID uuid.UUID) (int64, error)
 	DeleteUserTemplate(ctx context.Context, arg DeleteUserTemplateParams) (int64, error)
 	GetActiveAgentAuthTokenByHash(ctx context.Context, tokenHash string) (AgentAuthToken, error)
@@ -50,6 +53,8 @@ type Querier interface {
 	GetDatabaseServiceByID(ctx context.Context, id string) (DatabaseService, error)
 	GetDatabaseServiceByIDAndUser(ctx context.Context, arg GetDatabaseServiceByIDAndUserParams) (DatabaseService, error)
 	GetDatabaseServiceOwnerID(ctx context.Context, id string) (string, error)
+	GetOutboundWebhookByID(ctx context.Context, id uuid.UUID) (OutboundWebhook, error)
+	GetOutboundWebhookByIDAndUser(ctx context.Context, arg GetOutboundWebhookByIDAndUserParams) (OutboundWebhook, error)
 	GetProjectByIDForUser(ctx context.Context, arg GetProjectByIDForUserParams) (Project, error)
 	GetProjectOwnerByID(ctx context.Context, projectID uuid.UUID) (uuid.UUID, error)
 	GetProjectOwnerID(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
@@ -69,7 +74,9 @@ type Querier interface {
 	ListDatabaseServicesByProject(ctx context.Context, projectID uuid.NullUUID) ([]DatabaseService, error)
 	ListDatabaseServicesByUser(ctx context.Context, userID string) ([]DatabaseService, error)
 	ListDueDatabaseBackups(ctx context.Context) ([]ListDueDatabaseBackupsRow, error)
+	ListEnabledOutboundWebhooks(ctx context.Context) ([]OutboundWebhook, error)
 	ListNotificationsByUser(ctx context.Context, arg ListNotificationsByUserParams) ([]Notification, error)
+	ListOutboundWebhooksByUser(ctx context.Context, userID uuid.UUID) ([]OutboundWebhook, error)
 	ListPendingCommands(ctx context.Context, nodeAgentID string) ([]AgentCommand, error)
 	ListPendingProjects(ctx context.Context) ([]Project, error)
 	// Visibility model: a project is readable when it is approved for public
@@ -79,6 +86,7 @@ type Querier interface {
 	ListServiceTemplatesByCategoryForUser(ctx context.Context, arg ListServiceTemplatesByCategoryForUserParams) ([]ServiceTemplate, error)
 	ListServiceTemplatesForUser(ctx context.Context, ownerID uuid.NullUUID) ([]ServiceTemplate, error)
 	ListUserTokens(ctx context.Context, userID uuid.UUID) ([]UserToken, error)
+	ListWebhookDeliveriesByWebhook(ctx context.Context, webhookID uuid.UUID) ([]WebhookDelivery, error)
 	MarkAllNotificationsReadByUser(ctx context.Context, arg MarkAllNotificationsReadByUserParams) error
 	MarkNotificationReadByIDAndUser(ctx context.Context, arg MarkNotificationReadByIDAndUserParams) error
 	RevokeAgentAuthToken(ctx context.Context, id uuid.UUID) (AgentAuthToken, error)
@@ -102,8 +110,10 @@ type Querier interface {
 	UpdateDatabaseServiceNameAndPlanByIDAndUser(ctx context.Context, arg UpdateDatabaseServiceNameAndPlanByIDAndUserParams) error
 	UpdateDatabaseServiceNameByIDAndUser(ctx context.Context, arg UpdateDatabaseServiceNameByIDAndUserParams) error
 	UpdateDatabaseServicePlanByIDAndUser(ctx context.Context, arg UpdateDatabaseServicePlanByIDAndUserParams) error
+	UpdateOutboundWebhook(ctx context.Context, arg UpdateOutboundWebhookParams) error
 	UpdateProjectByID(ctx context.Context, arg UpdateProjectByIDParams) (int64, error)
 	UpdateUserTemplate(ctx context.Context, arg UpdateUserTemplateParams) (int64, error)
+	UpdateWebhookDeliveryResult(ctx context.Context, arg UpdateWebhookDeliveryResultParams) error
 	UpsertEnvironmentVariable(ctx context.Context, arg UpsertEnvironmentVariableParams) error
 	UpsertServiceTemplate(ctx context.Context, arg UpsertServiceTemplateParams) error
 }

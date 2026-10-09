@@ -78,6 +78,10 @@ security scan|vulnerabilities|metrics
 gateway services|keys|analytics  (admin)
 admin overview|users|settings|audit-logs
 notifications list|read
+webhooks list|create|update|delete|deliveries|test
+                               outbound signed webhooks — create <name> <url>
+                               --event 'service.*' (repeatable, '*' = all);
+                               deliveries are HMAC-signed (X-Containr-Signature)
 up                               deploy the current directory
 ```
 

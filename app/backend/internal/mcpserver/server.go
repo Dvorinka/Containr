@@ -140,6 +140,13 @@ func init() {
 	register(spec{"containr_notifications_list", "List notifications", "GET", "/notifications", nil, nil, false})
 	register(spec{"containr_notifications_read", "Mark a notification read, or all notifications with id=all", "POST", "/notifications/{id}/read", []string{"id"}, nil, false})
 
+	register(spec{"containr_webhooks_list", "List outbound webhooks", "GET", "/webhooks", nil, nil, false})
+	register(spec{"containr_webhooks_create", "Create an outbound webhook. Args: name, url, events (list, e.g. [\"service.*\",\"*\"]), secret (auto-generated if omitted), headers, enabled.", "POST", "/webhooks", nil, []string{"name", "url", "events", "secret", "headers", "enabled"}, false})
+	register(spec{"containr_webhooks_update", "Update an outbound webhook. Args: id, plus name/url/secret/events/headers/enabled to change.", "PATCH", "/webhooks/{id}", []string{"id"}, []string{"name", "url", "secret", "events", "headers", "enabled"}, false})
+	register(spec{"containr_webhooks_delete", "Delete an outbound webhook. Args: id. Requires confirm=true.", "DELETE", "/webhooks/{id}", []string{"id"}, nil, true})
+	register(spec{"containr_webhooks_deliveries", "List recent delivery attempts for a webhook. Args: id.", "GET", "/webhooks/{id}/deliveries", []string{"id"}, nil, false})
+	register(spec{"containr_webhooks_test", "Queue a test ping delivery for a webhook. Args: id.", "POST", "/webhooks/{id}/test", []string{"id"}, nil, false})
+
 	// Nodes / agent tokens (admin)
 	register(spec{"containr_nodes_list", "List node agents (admin)", "GET", "/agents", nil, nil, false})
 	register(spec{"containr_nodes_get", "Get a node agent (admin)", "GET", "/agents/{id}", []string{"id"}, nil, false})
