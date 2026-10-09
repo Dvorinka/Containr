@@ -2,8 +2,10 @@ import { useDeferredValue, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { listAuditLogs } from '@/lib/api-client';
 import { useDemoMode } from '@/lib/demo-mode';
+import { type FilterConfig } from '@/lib/dynamic-filter';
+import { useDynamicFilter } from '@/lib/use-dynamic-filter';
 import { formatDate, formatRelative } from '@/lib/time';
-import { DemoRestricted } from '@/shared/components';
+import { DemoRestricted, FilterBar } from '@/shared/components';
 import { ScrollText, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 
 const PAGE_SIZE = 50;
@@ -15,20 +17,34 @@ const rangeOptions = [
   { value: '30d', label: 'Last 30 days', ms: 30 * 24 * 60 * 60 * 1000 },
 ] as const;
 
-const inputClass =
-  'h-9 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all';
+// Server-backed filters — the engine runs over empty data; values map to
+// API params. URL state makes filtered views shareable.
+const AUDIT_SCHEMA: FilterConfig<unknown>[] = [
+  { key: 'resource', label: 'Resource', type: 'search' },
+  { key: 'action', label: 'Action', type: 'search' },
+  { key: 'actor', label: 'Actor', type: 'search' },
+  {
+    key: 'range', label: 'Time', type: 'select',
+    options: rangeOptions.filter((o) => o.value !== '').map((o) => ({ value: o.value, label: o.label })),
+  },
+];
 
 export function AuditLogsPage() {
   const isDemoMode = useDemoMode();
-  const [resource, setResource] = useState('');
-  const [action, setAction] = useState('');
-  const [actor, setActor] = useState('');
-  const [range, setRange] = useState('');
+  const filter = useDynamicFilter<unknown>({ data: [], schema: AUDIT_SCHEMA });
   const [page, setPage] = useState(1);
+  // Back to page 1 whenever the filter set changes.
+  const filtersJson = JSON.stringify(filter.filters);
+  const [prevFiltersJson, setPrevFiltersJson] = useState(filtersJson);
+  if (prevFiltersJson !== filtersJson) {
+    setPrevFiltersJson(filtersJson);
+    setPage(1);
+  }
 
-  const deferredResource = useDeferredValue(resource);
-  const deferredAction = useDeferredValue(action);
-  const deferredActor = useDeferredValue(actor);
+  const deferredResource = useDeferredValue(String(filter.filters.resource ?? ''));
+  const deferredAction = useDeferredValue(String(filter.filters.action ?? ''));
+  const deferredActor = useDeferredValue(String(filter.filters.actor ?? ''));
+  const range = filter.filters.range === 'all' ? '' : String(filter.filters.range ?? '');
 
   const filters = {
     resource: deferredResource.trim() || undefined,
@@ -54,15 +70,7 @@ export function AuditLogsPage() {
 
   const logs = logsQuery.data ?? [];
   const hasNext = logs.length === PAGE_SIZE;
-  const hasFilters = Boolean(resource || action || actor || range);
-
-  const resetFilters = () => {
-    setResource('');
-    setAction('');
-    setActor('');
-    setRange('');
-    setPage(1);
-  };
+  const hasFilters = filter.activeCount > 0;
 
   return (
     <div className="min-h-screen">
@@ -79,63 +87,7 @@ export function AuditLogsPage() {
 
       <div className="w-full px-8 py-6">
         <section className="panel p-6">
-          <div className="flex flex-wrap items-end gap-3 mb-5">
-            <div>
-              <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)] mb-1.5">
-                Resource
-              </label>
-              <input
-                value={resource}
-                onChange={(e) => { setResource(e.target.value); setPage(1); }}
-                placeholder="service, project…"
-                className={`${inputClass} w-44`}
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)] mb-1.5">
-                Action
-              </label>
-              <input
-                value={action}
-                onChange={(e) => { setAction(e.target.value); setPage(1); }}
-                placeholder="create, deploy…"
-                className={`${inputClass} w-44`}
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)] mb-1.5">
-                Actor
-              </label>
-              <input
-                value={actor}
-                onChange={(e) => { setActor(e.target.value); setPage(1); }}
-                placeholder="user email"
-                className={`${inputClass} w-52`}
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)] mb-1.5">
-                Time
-              </label>
-              <select
-                value={range}
-                onChange={(e) => { setRange(e.target.value); setPage(1); }}
-                className={`${inputClass} w-40`}
-              >
-                {rangeOptions.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-            </div>
-            {hasFilters && (
-              <button
-                onClick={resetFilters}
-                className="h-9 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-secondary)] hover:border-[var(--border-default)] transition-colors"
-              >
-                Clear
-              </button>
-            )}
-          </div>
+          <FilterBar {...filter} />
 
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

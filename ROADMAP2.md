@@ -91,10 +91,10 @@ Legend: ✅ done · 🟡 partial/different · ❌ missing · ➖ not applicable 
 | White-label (logo/favicon/title/OG/theme colors) | ❌ | `app_settings.branding` — **Containr remains the default brand** |
 | Activity feed (icon/severity/category/metadata, 90-day TTL job) | ✅ `/activity` + project view | — |
 | Admin metrics dashboard (users/servers/queued/failed counts) | 🟡 `/admin` exists | Extend |
-| **Impersonate user** | ❌ | Admin support tool |
+| **Impersonate user** | ✅ admin token + `impersonated_by` claim (browser swap pending) | Done (CLI/API/MCP) |
 | In-app docs (content-collections markdown) | ✅ `/docs` | — |
-| Dynamic client-side filter framework (535-line `filter.utils`) | 🟡 audit page filters only | Reuse pattern for tables |
-| Ops "bubble" (queue monitor, terminal, sync) | ❌ | Operations page |
+| Dynamic client-side filter framework (535-line `filter.utils`) | ✅ `dynamic-filter.ts` + URL state; audit/builds/activity | Done |
+| Ops "bubble" (queue monitor, terminal, sync) | ✅ `/operations` + interactive terminal | Done |
 
 #### Agent surface
 | dflow capability | Containr status | Action |
@@ -103,8 +103,8 @@ Legend: ✅ done · 🟡 partial/different · ❌ missing · ➖ not applicable 
 | CLI | ❌ | none in dflow — **Containr CLI is a genuine leap past it** |
 | MCP | ❌ | none — same leap |
 | Railway migrator script | ❌ | `containr migrate railway` |
-| GitHub App **manifest flow** (instance self-provisions the App) | 🟡 env-configured App | `POST /git/github-app/manifest` flow |
-| fork-sync webhook deploy trigger | ❌ | ~20 lines on receiver |
+| GitHub App **manifest flow** (instance self-provisions the App) | ✅ manifest + convert + App webhook | Done |
+| fork-sync webhook deploy trigger | ✅ sync/repository_dispatch/workflow_run | Done |
 | Azure DevOps provider | ❌ | Optional (dflow does token-clone only) |
 
 ---
@@ -339,9 +339,14 @@ and wired refs, one click or one CLI call.
   Also fixed a latent bug where the webhook's deployment insert omitted
   the NOT NULL `version` column — push-triggered deploys silently
   failed for every service.
-- [ ] **Dynamic filter framework** — port dflow's `filter.utils`
-  pattern (typed filter configs → URL state → client filtering) for
-  audit logs, deployments, notifications tables.
+- [x] **Dynamic filter framework** — ported dflow's `filter.utils`
+  pattern as `lib/dynamic-filter.ts` + `use-dynamic-filter.ts`
+  (`FilterConfig` schema → `FilterEngine` → `FilterBar`; state lives in
+  `?f.<key>` search params so filtered views are shareable links).
+  `useFilterState` exposes URL state pre-fetch for server-backed
+  filters. Applied: audit logs (server-backed), builds (server + client
+  date-range), activity (severity server + client category/search).
+  Notifications table has no list surface yet — apply when one lands.
 - [ ] **Notification producers round-out** — backups, agent offline,
   upgrade available, security findings.
 - [x] **Sleep-on-idle / wake-on-traffic** (serverless-lite) —
