@@ -308,6 +308,7 @@ and wired refs, one click or one CLI call.
   audit logs, deployments, notifications tables.
 - [ ] **Notification producers round-out** — backups, agent offline,
   upgrade available, security findings.
+<<<<<<< HEAD
 - [ ] **Sleep-on-idle / wake-on-traffic** (serverless-lite) —
   `services.sleep_after_idle` (duration, empty=off). Reaper loop stops
   containers past idle threshold (last-seen from Traefik access logs or
@@ -328,6 +329,34 @@ and wired refs, one click or one CLI call.
   frontend build, sqlc-diff check), path-filtered jobs for speed,
   and a release pipeline: merge to main → tag → GoReleaser binaries
   (CLI + MCP) → GHCR images (api, web, agent) → GitHub Release notes.
+=======
+- [x] **Sleep-on-idle / wake-on-traffic** (serverless-lite) —
+  `services.sleep_enabled` + `sleep_idle_minutes` (PR #29). Sweeper
+  polls container NetworkIO deltas; idle past threshold → workload
+  removed, status `sleeping`. Wake-on-traffic via per-service
+  placeholder container on the edge network carrying the same Traefik
+  host rule at higher priority — serves a waking page, calls
+  `/internal/wake/:id`, exits; Traefik falls back once the app is up.
+  Verified `running → sleeping → waking → running` end to end.
+- [x] **Env doctor** — `GET /services/:id/env-check` surfaces
+  unresolved `${{…}}` refs, empty values, and unreadable
+  (rotated-key) secrets; template `plan` endpoint reports missing
+  required vars before deploy (PR #30). Frontend Variables section
+  shows the banner.
+- [x] **Shared project variables** — `project_variables` table,
+  `GET/PUT /projects/:id/variables`, `${{shared.KEY}}` refs resolved
+  at deploy/reconcile, secrets `enc:v1:` at rest and masked (PR #32).
+- [x] **One-click install** — `install.sh` (curl|sh): detects docker,
+  writes compose + .env with generated secrets incl. `SECRETS_KEY`,
+  pulls images, runs migrations, prints admin URL. GHCR images mean
+  installs never build from source.
+- [x] **CI/CD v2** — required checks (Go test/vet, frontend
+  lint/build/test, compose boot smoke), `dorny/paths-filter` gate so
+  docs-only PRs skip heavyweight jobs, and release on main/tag:
+  conventional-commit version bump → tag → GHCR images (backend,
+  frontend) → cross-platform CLI + MCP binaries → SHA-256 checksums
+  → GitHub Release → Trivy scans (PR #33).
+>>>>>>> origin/main
 - [ ] **Custom roles/RBAC** — defer until demanded; PAT scopes designed
   forward-compatible now.
 
@@ -347,6 +376,7 @@ and wired refs, one click or one CLI call.
 
 ## 9b. Phase I — Companion surfaces
 
+<<<<<<< HEAD
 - [ ] **Phone app** — fully-featured companion, not a read-only viewer.
   The target: a user on the go can see a problem, understand it, and
   fix it without a laptop. PAT + profile auth (multi-instance like the
@@ -366,6 +396,23 @@ and wired refs, one click or one CLI call.
   - **Stack** — React Native (Expo) thin client over the agent-shaped
     API; dark UI mirroring the web design system; deploy status as the
     first-class view. Ships with `app/` workspace in this repo.
+=======
+- [x] **Phone app (v1)** — `app/mobile`, Expo/React Native thin client
+  over the agent-shaped API; dark UI mirroring the design system. PAT
+  auth against any instance URL, stored in platform secure storage.
+  - **Dashboard** — service status counts (running/sleeping/failed/
+    stopped), per-project service health dots, recent deployments feed.
+  - **Operate** — start/stop/restart/redeploy, sleep/wake, rollback to
+    a prior deployment, database start/stop/restart/backup-now.
+  - **Observe** — polling log tail (300 lines, 5s refresh), per-service
+    deployment history, env-doctor issues surfaced on the service view.
+  - [ ] **env var edit + apply-redeploy, domain management, replica
+    scaling, cron execution history** — next iteration.
+  - [ ] **Push notifications** — zero-infra path = self-hosted
+    ntfy/Gotify relay (no Firebase dependency), FCM/APNs optional.
+  - [ ] **Offline resilience** — cached last-known state + unreachable
+    banner.
+>>>>>>> origin/main
 - [ ] **Status/offline resilience** — app + CLI degrade gracefully when
   the instance is unreachable (cached last-known state, clear banner).
 
