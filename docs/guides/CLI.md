@@ -75,6 +75,7 @@ nodes list|get|delete|tokens     node agents + onboarding tokens (admin)
 nodes add <user@host>            SSH bootstrap — one session installs the agent, then never needed again (--print for manual runs)
 nodes update|prune|commands      rename/auto-prune, bounded docker prune, command history
 migrate railway                  pull a Railway project (services, vars, domains) via GraphQL and recreate it — --dry-run prints the plan
+migrate dflow                    import a dflow project (services, vars, volumes, domains) via its Payload REST API — needs --url + --api-key, --dry-run prints the plan
 scaling status|policies|services|scale
 ha status|alerts|health|policies|enable|disable|failover
 security scan|vulnerabilities|metrics
