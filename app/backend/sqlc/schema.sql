@@ -148,6 +148,7 @@ CREATE TABLE database_services (
     external_ssl BOOLEAN NOT NULL DEFAULT false,
     public_port BOOLEAN NOT NULL DEFAULT false,
     backup_target_id VARCHAR(255),
+    project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

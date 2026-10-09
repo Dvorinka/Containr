@@ -3190,6 +3190,90 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{id}/import-compose": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Deploy a docker-compose file into a project
+         * @description Parses a docker-compose YAML document and deploys it directly into
+         *     the project — no template row. Well-known database images
+         *     (postgres, mysql, redis, mongo, mariadb, clickhouse, dragonfly)
+         *     become managed databases attached to the project network under
+         *     their service name as DNS alias; other services are created and
+         *     deployed in dependency order. Returns the created resources plus
+         *     any import warnings (unsupported keys, missing values).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description Full docker-compose YAML document (max 512 KiB) */
+                        compose_yaml: string;
+                        variables?: {
+                            [key: string]: string;
+                        };
+                        plan?: string;
+                        region?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Stack deployed */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            resource?: string;
+                            created?: Record<string, never>[];
+                            warnings?: string[];
+                        };
+                    };
+                };
+                /** @description Invalid compose YAML or unresolved references */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Access denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Project not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/agent-tokens": {
         parameters: {
             query?: never;

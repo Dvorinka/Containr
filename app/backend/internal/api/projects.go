@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -295,6 +296,28 @@ func handleDeleteProject(c *gin.Context) {
 	if ownerID != userID && !contextIsAdmin(c) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Only project owners can delete projects"})
 		return
+	}
+
+	// Managed databases provisioned into this project (graph templates,
+	// compose imports) carry project_id and must be torn down first — their
+	// containers are not labelled containr.project and hold references to the
+	// project network.
+	if dbHandlerValue, exists := c.Get("database_handler"); exists && dbHandlerValue != nil {
+		if dbHandler, ok := dbHandlerValue.(*DatabaseHandler); ok {
+			ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+			projectDBs, listErr := dbHandler.queries.ListDatabaseServicesByProject(ctx, uuid.NullUUID{UUID: projectID, Valid: true})
+			if listErr == nil {
+				for _, projectDB := range projectDBs {
+					if projectDB.Provider != "external" {
+						if err := dbHandler.deleteManagedDatabaseRuntime(projectDB.ID); err != nil {
+							log.Printf("delete project %s: database %s runtime removal failed: %v", projectID, projectDB.ID, err)
+						}
+					}
+					_ = dbHandler.queries.DeleteDatabaseServiceByID(ctx, projectDB.ID)
+				}
+			}
+			cancel()
+		}
 	}
 
 	// Remove live containers and the project network before dropping rows.

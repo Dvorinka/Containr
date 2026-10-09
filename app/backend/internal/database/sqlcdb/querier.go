@@ -34,6 +34,7 @@ type Querier interface {
 	DatabaseServiceExistsByIDAndUser(ctx context.Context, arg DatabaseServiceExistsByIDAndUserParams) (bool, error)
 	DeleteAgent(ctx context.Context, id string) error
 	DeleteBackupTargetByIDAndUser(ctx context.Context, arg DeleteBackupTargetByIDAndUserParams) error
+	DeleteDatabaseServiceByID(ctx context.Context, id string) error
 	DeleteDatabaseServiceByIDAndUser(ctx context.Context, arg DeleteDatabaseServiceByIDAndUserParams) error
 	DeleteProjectByID(ctx context.Context, projectID uuid.UUID) (int64, error)
 	DeleteUserTemplate(ctx context.Context, arg DeleteUserTemplateParams) (int64, error)
@@ -65,6 +66,7 @@ type Querier interface {
 	ListCommandsForAgent(ctx context.Context, nodeAgentID string) ([]AgentCommand, error)
 	ListContainersForAgent(ctx context.Context, nodeAgentID string) ([]ContainerInstance, error)
 	ListDatabaseBackupsByDatabaseAndUser(ctx context.Context, arg ListDatabaseBackupsByDatabaseAndUserParams) ([]DatabaseBackup, error)
+	ListDatabaseServicesByProject(ctx context.Context, projectID uuid.NullUUID) ([]DatabaseService, error)
 	ListDatabaseServicesByUser(ctx context.Context, userID string) ([]DatabaseService, error)
 	ListDueDatabaseBackups(ctx context.Context) ([]ListDueDatabaseBackupsRow, error)
 	ListNotificationsByUser(ctx context.Context, arg ListNotificationsByUserParams) ([]Notification, error)

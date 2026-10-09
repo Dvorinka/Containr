@@ -35,8 +35,18 @@ FROM database_services
 WHERE user_id = sqlc.arg(user_id) AND LOWER(name) = LOWER(sqlc.arg(name));
 
 -- name: CreateDatabaseService :exec
-INSERT INTO database_services (id, user_id, name, type, status, version, plan, region, public_port, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);
+INSERT INTO database_services (id, user_id, name, type, status, version, plan, region, public_port, project_id, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);
+
+-- name: ListDatabaseServicesByProject :many
+SELECT database_services.*
+FROM database_services
+WHERE project_id = $1
+ORDER BY created_at DESC;
+
+-- name: DeleteDatabaseServiceByID :exec
+DELETE FROM database_services
+WHERE id = $1;
 
 -- name: SetDatabaseServicePublicPortByIDAndUser :exec
 UPDATE database_services

@@ -8,6 +8,8 @@ package sqlcdb
 import (
 	"context"
 	"database/sql"
+
+	"github.com/google/uuid"
 )
 
 const countDatabaseServicesByUserAndName = `-- name: CountDatabaseServicesByUserAndName :one
@@ -55,22 +57,23 @@ func (q *Queries) CreateDatabaseBackup(ctx context.Context, arg CreateDatabaseBa
 }
 
 const createDatabaseService = `-- name: CreateDatabaseService :exec
-INSERT INTO database_services (id, user_id, name, type, status, version, plan, region, public_port, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+INSERT INTO database_services (id, user_id, name, type, status, version, plan, region, public_port, project_id, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 `
 
 type CreateDatabaseServiceParams struct {
-	ID         string       `json:"id"`
-	UserID     string       `json:"user_id"`
-	Name       string       `json:"name"`
-	Type       string       `json:"type"`
-	Status     string       `json:"status"`
-	Version    string       `json:"version"`
-	Plan       string       `json:"plan"`
-	Region     string       `json:"region"`
-	PublicPort bool         `json:"public_port"`
-	CreatedAt  sql.NullTime `json:"created_at"`
-	UpdatedAt  sql.NullTime `json:"updated_at"`
+	ID         string        `json:"id"`
+	UserID     string        `json:"user_id"`
+	Name       string        `json:"name"`
+	Type       string        `json:"type"`
+	Status     string        `json:"status"`
+	Version    string        `json:"version"`
+	Plan       string        `json:"plan"`
+	Region     string        `json:"region"`
+	PublicPort bool          `json:"public_port"`
+	ProjectID  uuid.NullUUID `json:"project_id"`
+	CreatedAt  sql.NullTime  `json:"created_at"`
+	UpdatedAt  sql.NullTime  `json:"updated_at"`
 }
 
 func (q *Queries) CreateDatabaseService(ctx context.Context, arg CreateDatabaseServiceParams) error {
@@ -84,6 +87,7 @@ func (q *Queries) CreateDatabaseService(ctx context.Context, arg CreateDatabaseS
 		arg.Plan,
 		arg.Region,
 		arg.PublicPort,
+		arg.ProjectID,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
@@ -154,6 +158,16 @@ func (q *Queries) DatabaseServiceExistsByIDAndUser(ctx context.Context, arg Data
 	return exists, err
 }
 
+const deleteDatabaseServiceByID = `-- name: DeleteDatabaseServiceByID :exec
+DELETE FROM database_services
+WHERE id = $1
+`
+
+func (q *Queries) DeleteDatabaseServiceByID(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, deleteDatabaseServiceByID, id)
+	return err
+}
+
 const deleteDatabaseServiceByIDAndUser = `-- name: DeleteDatabaseServiceByIDAndUser :exec
 DELETE FROM database_services
 WHERE id = $1 AND user_id = $2
@@ -199,7 +213,7 @@ func (q *Queries) GetDatabaseBackupByIDAndDatabaseAndUser(ctx context.Context, a
 }
 
 const getDatabaseServiceByID = `-- name: GetDatabaseServiceByID :one
-SELECT database_services.id, database_services.user_id, database_services.name, database_services.type, database_services.status, database_services.version, database_services.plan, database_services.region, database_services.connection_url, database_services.backup_schedule, database_services.next_backup_at, database_services.provider, database_services.external_host, database_services.external_port, database_services.external_name, database_services.external_username, database_services.external_password, database_services.external_ssl, database_services.public_port, database_services.backup_target_id, database_services.created_at, database_services.updated_at
+SELECT database_services.id, database_services.user_id, database_services.name, database_services.type, database_services.status, database_services.version, database_services.plan, database_services.region, database_services.connection_url, database_services.backup_schedule, database_services.next_backup_at, database_services.provider, database_services.external_host, database_services.external_port, database_services.external_name, database_services.external_username, database_services.external_password, database_services.external_ssl, database_services.public_port, database_services.backup_target_id, database_services.project_id, database_services.created_at, database_services.updated_at
 FROM database_services
 WHERE id = $1
 `
@@ -228,6 +242,7 @@ func (q *Queries) GetDatabaseServiceByID(ctx context.Context, id string) (Databa
 		&i.ExternalSsl,
 		&i.PublicPort,
 		&i.BackupTargetID,
+		&i.ProjectID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -235,7 +250,7 @@ func (q *Queries) GetDatabaseServiceByID(ctx context.Context, id string) (Databa
 }
 
 const getDatabaseServiceByIDAndUser = `-- name: GetDatabaseServiceByIDAndUser :one
-SELECT database_services.id, database_services.user_id, database_services.name, database_services.type, database_services.status, database_services.version, database_services.plan, database_services.region, database_services.connection_url, database_services.backup_schedule, database_services.next_backup_at, database_services.provider, database_services.external_host, database_services.external_port, database_services.external_name, database_services.external_username, database_services.external_password, database_services.external_ssl, database_services.public_port, database_services.backup_target_id, database_services.created_at, database_services.updated_at
+SELECT database_services.id, database_services.user_id, database_services.name, database_services.type, database_services.status, database_services.version, database_services.plan, database_services.region, database_services.connection_url, database_services.backup_schedule, database_services.next_backup_at, database_services.provider, database_services.external_host, database_services.external_port, database_services.external_name, database_services.external_username, database_services.external_password, database_services.external_ssl, database_services.public_port, database_services.backup_target_id, database_services.project_id, database_services.created_at, database_services.updated_at
 FROM database_services
 WHERE id = $1 AND user_id = $2
 `
@@ -269,6 +284,7 @@ func (q *Queries) GetDatabaseServiceByIDAndUser(ctx context.Context, arg GetData
 		&i.ExternalSsl,
 		&i.PublicPort,
 		&i.BackupTargetID,
+		&i.ProjectID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -289,7 +305,7 @@ func (q *Queries) GetDatabaseServiceOwnerID(ctx context.Context, id string) (str
 }
 
 const listAllDatabaseServices = `-- name: ListAllDatabaseServices :many
-SELECT database_services.id, database_services.user_id, database_services.name, database_services.type, database_services.status, database_services.version, database_services.plan, database_services.region, database_services.connection_url, database_services.backup_schedule, database_services.next_backup_at, database_services.provider, database_services.external_host, database_services.external_port, database_services.external_name, database_services.external_username, database_services.external_password, database_services.external_ssl, database_services.public_port, database_services.backup_target_id, database_services.created_at, database_services.updated_at
+SELECT database_services.id, database_services.user_id, database_services.name, database_services.type, database_services.status, database_services.version, database_services.plan, database_services.region, database_services.connection_url, database_services.backup_schedule, database_services.next_backup_at, database_services.provider, database_services.external_host, database_services.external_port, database_services.external_name, database_services.external_username, database_services.external_password, database_services.external_ssl, database_services.public_port, database_services.backup_target_id, database_services.project_id, database_services.created_at, database_services.updated_at
 FROM database_services
 ORDER BY created_at DESC
 `
@@ -324,6 +340,7 @@ func (q *Queries) ListAllDatabaseServices(ctx context.Context) ([]DatabaseServic
 			&i.ExternalSsl,
 			&i.PublicPort,
 			&i.BackupTargetID,
+			&i.ProjectID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -387,8 +404,62 @@ func (q *Queries) ListDatabaseBackupsByDatabaseAndUser(ctx context.Context, arg 
 	return items, nil
 }
 
+const listDatabaseServicesByProject = `-- name: ListDatabaseServicesByProject :many
+SELECT database_services.id, database_services.user_id, database_services.name, database_services.type, database_services.status, database_services.version, database_services.plan, database_services.region, database_services.connection_url, database_services.backup_schedule, database_services.next_backup_at, database_services.provider, database_services.external_host, database_services.external_port, database_services.external_name, database_services.external_username, database_services.external_password, database_services.external_ssl, database_services.public_port, database_services.backup_target_id, database_services.project_id, database_services.created_at, database_services.updated_at
+FROM database_services
+WHERE project_id = $1
+ORDER BY created_at DESC
+`
+
+func (q *Queries) ListDatabaseServicesByProject(ctx context.Context, projectID uuid.NullUUID) ([]DatabaseService, error) {
+	rows, err := q.db.QueryContext(ctx, listDatabaseServicesByProject, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DatabaseService{}
+	for rows.Next() {
+		var i DatabaseService
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Name,
+			&i.Type,
+			&i.Status,
+			&i.Version,
+			&i.Plan,
+			&i.Region,
+			&i.ConnectionUrl,
+			&i.BackupSchedule,
+			&i.NextBackupAt,
+			&i.Provider,
+			&i.ExternalHost,
+			&i.ExternalPort,
+			&i.ExternalName,
+			&i.ExternalUsername,
+			&i.ExternalPassword,
+			&i.ExternalSsl,
+			&i.PublicPort,
+			&i.BackupTargetID,
+			&i.ProjectID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listDatabaseServicesByUser = `-- name: ListDatabaseServicesByUser :many
-SELECT database_services.id, database_services.user_id, database_services.name, database_services.type, database_services.status, database_services.version, database_services.plan, database_services.region, database_services.connection_url, database_services.backup_schedule, database_services.next_backup_at, database_services.provider, database_services.external_host, database_services.external_port, database_services.external_name, database_services.external_username, database_services.external_password, database_services.external_ssl, database_services.public_port, database_services.backup_target_id, database_services.created_at, database_services.updated_at
+SELECT database_services.id, database_services.user_id, database_services.name, database_services.type, database_services.status, database_services.version, database_services.plan, database_services.region, database_services.connection_url, database_services.backup_schedule, database_services.next_backup_at, database_services.provider, database_services.external_host, database_services.external_port, database_services.external_name, database_services.external_username, database_services.external_password, database_services.external_ssl, database_services.public_port, database_services.backup_target_id, database_services.project_id, database_services.created_at, database_services.updated_at
 FROM database_services
 WHERE user_id = $1
 ORDER BY created_at DESC
@@ -424,6 +495,7 @@ func (q *Queries) ListDatabaseServicesByUser(ctx context.Context, userID string)
 			&i.ExternalSsl,
 			&i.PublicPort,
 			&i.BackupTargetID,
+			&i.ProjectID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {

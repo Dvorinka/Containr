@@ -12,6 +12,7 @@ import (
 	"math/big"
 	"net/http"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -948,6 +949,88 @@ func handleDeployInlineGraph(c *gin.Context) {
 	})
 }
 
+// handleImportProjectCompose deploys a docker-compose file straight into a
+// project — parse → graph specs → deployTemplateGraph, no template row.
+func handleImportProjectCompose(c *gin.Context) {
+	userID, ok := requireAuthenticatedUserID(c)
+	if !ok {
+		return
+	}
+	db := c.MustGet("db").(*database.DB)
+	ctx := c.Request.Context()
+
+	projectID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid project ID"})
+		return
+	}
+	queries := sqlcdb.New(db.DB)
+	ownerID, err := queries.GetProjectOwnerID(ctx, projectID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch project"})
+		return
+	}
+	if ownerID.String() != userID && !contextIsAdmin(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+		return
+	}
+
+	var req struct {
+		ComposeYAML string            `json:"compose_yaml" binding:"required"`
+		Variables   map[string]string `json:"variables"`
+		Plan        string            `json:"plan"`
+		Region      string            `json:"region"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if len(req.ComposeYAML) > 512*1024 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Compose file exceeds 512 KiB"})
+		return
+	}
+
+	var file composeFileDef
+	if err := yaml.Unmarshal([]byte(req.ComposeYAML), &file); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid compose YAML: " + err.Error()})
+		return
+	}
+	specs, warnings, convErr := composeToSpecs(&file)
+	if convErr != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": convErr.Error()})
+		return
+	}
+
+	var engine *deployment.DeploymentEngine
+	if v, exists := c.Get("deployment_engine"); exists && v != nil {
+		engine, _ = v.(*deployment.DeploymentEngine)
+	}
+	var dbHandler *DatabaseHandler
+	if v, exists := c.Get("database_handler"); exists {
+		dbHandler, _ = v.(*DatabaseHandler)
+	}
+
+	created, fail := deployTemplateGraph(c, db, engine, dbHandler, projectID, userID,
+		specs, nil, req.Variables, req.Plan, req.Region, "compose-import")
+	if fail != nil {
+		status := http.StatusBadRequest
+		if (*fail)["code"] == "CONFLICT" {
+			status = http.StatusConflict
+		}
+		c.JSON(status, *fail)
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{
+		"resource": "stack",
+		"created":  created,
+		"warnings": warnings,
+	})
+}
+
 func dedupStrings(in []string) []string {
 	seen := map[string]bool{}
 	out := make([]string, 0, len(in))
@@ -1012,26 +1095,38 @@ func handleImportCompose(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid compose YAML: " + err.Error()})
 		return
 	}
-	if len(file.Services) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Compose file defines no services"})
+	services, warnings, convErr := composeToSpecs(&file)
+	if convErr != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": convErr.Error()})
 		return
 	}
-
-	warnings := []string{}
-	services := make([]TemplateServiceSpec, 0, len(file.Services))
 	variables := []TemplateVariable{}
 
-	// Compose service names become keys; declaration order follows YAML
-	// document order — yaml.v3 maps lose order, so sort keys for stability.
+	config := TemplateConfig{Version: 2, Services: services}
+	configJSON, _ := json.Marshal(config)
+
+	c.JSON(http.StatusOK, gin.H{
+		"config":    json.RawMessage(configJSON),
+		"variables": variables,
+		"warnings":  warnings,
+	})
+}
+
+// composeToSpecs converts a parsed compose file into graph service specs.
+// Compose service names become keys; declaration order follows YAML document
+// order — yaml.v3 maps lose order, so sort keys for stability.
+func composeToSpecs(file *composeFileDef) ([]TemplateServiceSpec, []string, error) {
+	if len(file.Services) == 0 {
+		return nil, nil, fmt.Errorf("compose file defines no services")
+	}
+	warnings := []string{}
+	services := make([]TemplateServiceSpec, 0, len(file.Services))
+
 	names := make([]string, 0, len(file.Services))
 	for name := range file.Services {
 		names = append(names, name)
 	}
-	for i := 1; i < len(names); i++ {
-		for j := i; j > 0 && names[j] < names[j-1]; j-- {
-			names[j], names[j-1] = names[j-1], names[j]
-		}
-	}
+	sort.Strings(names)
 
 	for _, name := range names {
 		svc := file.Services[name]
@@ -1062,17 +1157,15 @@ func handleImportCompose(c *gin.Context) {
 		if engineHint != "" && svc.Build == nil {
 			spec.Type = "database"
 			spec.Runtime = engineHint
-			spec.Environment = composeEnvironment(svc.Environment, warnings, key)
+			spec.Environment = composeEnvironment(svc.Environment, &warnings, key)
 		} else {
 			spec.Type = "web"
 			spec.Runtime = imageName
-			spec.Environment = composeEnvironment(svc.Environment, warnings, key)
+			spec.Environment = composeEnvironment(svc.Environment, &warnings, key)
 			spec.Port = composeFirstPort(svc.Ports)
 			spec.StartCommand = composeCommand(svc.Command)
-			if svc.Build != nil {
-				if imageName == "" {
-					warnings = append(warnings, fmt.Sprintf("%s: build contexts are not supported — publish an image or link a git repo", key))
-				}
+			if svc.Build != nil && imageName == "" {
+				warnings = append(warnings, fmt.Sprintf("%s: build contexts are not supported — publish an image or link a git repo", key))
 			}
 			if spec.Runtime == "" {
 				warnings = append(warnings, fmt.Sprintf("%s: no image defined — set a runtime before deploying", key))
@@ -1089,28 +1182,19 @@ func handleImportCompose(c *gin.Context) {
 	}
 
 	if len(services) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Compose file produced no importable services"})
-		return
+		return nil, warnings, fmt.Errorf("compose file produced no importable services")
 	}
-
-	config := TemplateConfig{Version: 2, Services: services}
-	configJSON, _ := json.Marshal(config)
-
-	c.JSON(http.StatusOK, gin.H{
-		"config":    json.RawMessage(configJSON),
-		"variables": variables,
-		"warnings":  warnings,
-	})
+	return services, warnings, nil
 }
 
-func composeEnvironment(env interface{}, warnings []string, svcKey string) map[string]string {
+func composeEnvironment(env interface{}, warnings *[]string, svcKey string) map[string]string {
 	out := map[string]string{}
 	switch e := env.(type) {
 	case map[string]interface{}:
 		for k, v := range e {
 			if v == nil {
 				// `KEY:` in a list/map forwards the host value — flag it.
-				warnings = append(warnings, fmt.Sprintf("%s: env %s has no value — set it at deploy", svcKey, k))
+				*warnings = append(*warnings, fmt.Sprintf("%s: env %s has no value — set it at deploy", svcKey, k))
 				continue
 			}
 			out[k] = fmt.Sprintf("%v", v)
@@ -1124,7 +1208,7 @@ func composeEnvironment(env interface{}, warnings []string, svcKey string) map[s
 			if idx := strings.Index(s, "="); idx > 0 {
 				out[s[:idx]] = s[idx+1:]
 			} else {
-				warnings = append(warnings, fmt.Sprintf("%s: env %s has no value — set it at deploy", svcKey, s))
+				*warnings = append(*warnings, fmt.Sprintf("%s: env %s has no value — set it at deploy", svcKey, s))
 			}
 		}
 	}
