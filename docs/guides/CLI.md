@@ -152,6 +152,15 @@ containr services update <id> --replicas 4 --spread    # replica i → node[i % 
 containr services update <id> --spread=false           # back to single placement
 ```
 
+Constrain `auto`/`spread` placement to nodes carrying operator tags —
+`nodes update` labels a node, `--placement-tags` requires every listed tag
+(mutually exclusive with a pin; an empty value clears the requirement):
+
+```bash
+containr nodes update <id> --tags gpu,eu-west
+containr services update <id> --placement-tags gpu     # only gpu nodes are eligible
+```
+
 Remote nodes run registry-pulled images only — git builds, domains
 (Traefik lives on the host), and sleep detection stay local. Start,
 stop, restart, redeploy, and delete all fan out to the pinned node's

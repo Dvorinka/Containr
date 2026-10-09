@@ -5107,6 +5107,9 @@ paths:
                           type: string
                         status:
                           type: string
+                        tags:
+                          type: array
+                          items: { type: string }
 
   /agents:
     get:
@@ -5157,7 +5160,7 @@ paths:
       tags:
         - Agents
       summary: Update node agent
-      description: Partial update — accepts any subset of agent fields (name, status, labels, etc.).
+      description: Partial update — accepts any subset of agent fields (name, status, auto_prune, tags). `tags` sets the node's placement labels; services with placement_tags only schedule onto agents carrying every required tag.
       security:
         - bearerAuth: []
       parameters:
@@ -7017,6 +7020,10 @@ components:
         spread:
           type: boolean
           description: Replicas are distributed across every online, schedulable node agent (replica i → agents[i mod n]). Mutually exclusive with an explicit node_id pin.
+        placement_tags:
+          type: array
+          items: { type: string }
+          description: Node tags required for remote placement — auto/spread only consider agents carrying every tag; re-resolved each reconcile. Mutually exclusive with an explicit node_id pin (read-only on responses when a pin is set).
         public_url:
           type: string
           description: Computed public URL (published port or domain)
@@ -7114,6 +7121,10 @@ components:
         spread:
           type: boolean
           description: Distribute replicas across every online, schedulable node agent; mutually exclusive with an explicit node_id pin
+        placement_tags:
+          type: array
+          items: { type: string }
+          description: Restrict remote placement to agents carrying every listed tag; mutually exclusive with an explicit pin or 'local'
 
     UpdateServiceRequest:
       type: object
@@ -7206,6 +7217,10 @@ components:
         spread:
           type: boolean
           description: Distribute replicas across every online, schedulable node agent; mutually exclusive with an explicit node_id pin — send 'local' first to clear a pin
+        placement_tags:
+          type: array
+          items: { type: string }
+          description: Restrict remote placement to agents carrying every listed tag; [] clears. Mutually exclusive with a pin or 'local' — clear the pin first
 
     ServiceDomain:
       type: object
@@ -9091,6 +9106,10 @@ components:
           description: >-
             False on a cordoned/drained node — `auto` placement skips it and
             new explicit pins are rejected.
+        tags:
+          type: array
+          items: { type: string }
+          description: Operator-set placement labels; services with placement_tags require all of them on the target node.
         last_heartbeat:
           type: string
           format: date-time

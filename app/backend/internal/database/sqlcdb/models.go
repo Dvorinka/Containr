@@ -177,6 +177,7 @@ type NodeAgent struct {
 	Metadata      pqtype.NullRawMessage `json:"metadata"`
 	AutoPrune     bool                  `json:"auto_prune"`
 	Schedulable   bool                  `json:"schedulable"`
+	Tags          json.RawMessage       `json:"tags"`
 }
 
 type Notification struct {
@@ -277,6 +278,7 @@ type Service struct {
 	StaticDir       string          `json:"static_dir"`
 	NodeID          sql.NullString  `json:"node_id"`
 	Spread          bool            `json:"spread"`
+	PlacementTags   json.RawMessage `json:"placement_tags"`
 }
 
 type ServiceDomain struct {

@@ -47,6 +47,7 @@ export function NodeDetailPage() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmVolumes, setConfirmVolumes] = useState(false);
   const [confirmDrain, setConfirmDrain] = useState(false);
+  const [tagDraft, setTagDraft] = useState<string | null>(null);
 
   const agentQuery = useQuery({
     queryKey: ['node-agent', id],
@@ -79,8 +80,8 @@ export function NodeDetailPage() {
     queryClient.invalidateQueries({ queryKey: ['usage-agents'] });
   };
   const updateMutation = useMutation({
-    mutationFn: (body: { name?: string; auto_prune?: boolean }) => updateAgent(id, body),
-    onSuccess: () => { setRename(null); invalidate(); },
+    mutationFn: (body: { name?: string; auto_prune?: boolean; tags?: string[] }) => updateAgent(id, body),
+    onSuccess: () => { setRename(null); setTagDraft(null); invalidate(); },
   });
   const pruneMutation = useMutation({
     mutationFn: (volumes: boolean) => pruneAgent(id, { volumes }),
@@ -177,6 +178,46 @@ export function NodeDetailPage() {
                   mesh: {meshAddresses(agent).map(([iface, ip]) => `${iface}=${ip}`).join(' · ')}
                 </p>
               )}
+              <p className="v-mono mt-1 text-[11px] text-[var(--text-tertiary)] flex items-center gap-1.5 flex-wrap">
+                tags:
+                {tagDraft === null ? (
+                  <>
+                    {agent.tags.length > 0
+                      ? agent.tags.map((t) => (
+                          <span key={t} className="px-1.5 py-0.5 rounded border border-[var(--border-subtle)] text-[var(--text-secondary)]">{t}</span>
+                        ))
+                      : <span className="text-[var(--text-muted)]">none</span>}
+                    {isAdmin && (
+                      <button
+                        onClick={() => setTagDraft(agent.tags.join(', '))}
+                        className="text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                        title="Edit placement tags — services can require them via placement_tags"
+                      >
+                        <Pencil size={11} />
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <input
+                      value={tagDraft}
+                      onChange={(e) => setTagDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') updateMutation.mutate({ tags: tagDraft.split(',').map((t) => t.trim()).filter(Boolean) });
+                        if (e.key === 'Escape') setTagDraft(null);
+                      }}
+                      autoFocus
+                      placeholder="eu-west, gpu"
+                      className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-tertiary)] px-2 py-0.5 text-[11px] text-[var(--text-primary)] w-52"
+                    />
+                    <button
+                      onClick={() => updateMutation.mutate({ tags: tagDraft.split(',').map((t) => t.trim()).filter(Boolean) })}
+                      className="text-[var(--accent-primary)] hover:underline"
+                    >save</button>
+                    <button onClick={() => setTagDraft(null)} className="text-[var(--text-muted)] hover:underline">cancel</button>
+                  </>
+                )}
+              </p>
             </div>
             <div className="flex items-center gap-3">
               <span className={`v-mono text-[11px] px-2 py-1 rounded-md border ${online

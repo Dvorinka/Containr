@@ -87,6 +87,7 @@ export type ServiceEntity = {
   nodeId?: string;
   nodeName?: string;
   spread?: boolean;
+  placementTags?: string[];
   publicUrl?: string;
 };
 
@@ -94,6 +95,7 @@ export type NodeOption = {
   id: string;
   name: string;
   status: string;
+  tags?: string[];
 };
 
 export async function listNodeOptions(): Promise<NodeOption[]> {
@@ -358,6 +360,7 @@ export type NodeAgentEntity = {
   resources: NodeResources;
   autoPrune: boolean;
   schedulable: boolean;
+  tags: string[];
   metadata: Record<string, unknown>;
   lastHeartbeat?: string;
   createdAt?: string;
@@ -698,6 +701,7 @@ function normalizeService(service: RawService): ServiceEntity | null {
     nodeId: service.node_id,
     nodeName: service.node_name,
     spread: service.spread,
+    placementTags: service.placement_tags,
     publicUrl: service.public_url,
   };
 }
@@ -1100,6 +1104,7 @@ function normalizeAgent(agent: RawNodeAgent): NodeAgentEntity | null {
     lastHeartbeat: agent.last_heartbeat,
     autoPrune: agent.auto_prune ?? false,
     schedulable: agent.schedulable ?? true,
+    tags: Array.isArray(agent.tags) ? agent.tags : [],
     metadata: (agent.metadata ?? {}) as Record<string, unknown>,
     createdAt: agent.created_at,
     updatedAt: agent.updated_at,
@@ -1139,7 +1144,7 @@ export async function listAgents(): Promise<NodeAgentEntity[]> {
   return normalizeAgentArray(payload.agents);
 }
 
-export async function updateAgent(id: string, body: { name?: string; auto_prune?: boolean }): Promise<NodeAgentEntity | null> {
+export async function updateAgent(id: string, body: { name?: string; auto_prune?: boolean; tags?: string[] }): Promise<NodeAgentEntity | null> {
   const payload = await requestJson<{ agent?: RawNodeAgent }>(`/agents/${id}`, {
     method: 'PUT',
     body: JSON.stringify(body),

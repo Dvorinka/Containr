@@ -68,7 +68,8 @@ CREATE TABLE services (
     static_build_cmd VARCHAR(255) NOT NULL DEFAULT '',
     static_dir VARCHAR(255) NOT NULL DEFAULT '',
     node_id VARCHAR(255),
-    spread BOOLEAN NOT NULL DEFAULT false
+    spread BOOLEAN NOT NULL DEFAULT false,
+    placement_tags JSONB NOT NULL DEFAULT '[]'
 );
 
 CREATE TABLE registries (
@@ -196,7 +197,8 @@ CREATE TABLE node_agents (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     metadata JSONB,
     auto_prune BOOLEAN NOT NULL DEFAULT false,
-    schedulable BOOLEAN NOT NULL DEFAULT true
+    schedulable BOOLEAN NOT NULL DEFAULT true,
+    tags JSONB NOT NULL DEFAULT '[]'
 );
 
 CREATE TABLE container_instances (

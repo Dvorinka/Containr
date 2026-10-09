@@ -2452,6 +2452,30 @@ export function ServiceDetailPage() {
                     <span className="text-[var(--text-tertiary)]">running on {service.nodeName}</span>
                   )}
                 </div>
+                {!service.nodeId && (
+                  <div className="mt-3 flex items-center gap-2 text-xs">
+                    <label className="text-[var(--text-tertiary)]" htmlFor="placement-tags">
+                      required node tags
+                    </label>
+                    <input
+                      id="placement-tags"
+                      type="text"
+                      placeholder="e.g. eu-west, gpu — empty = any node"
+                      defaultValue={(service.placementTags ?? []).join(', ')}
+                      disabled={updateServiceMutation.isPending}
+                      title="Remote placement only targets nodes carrying every tag. Re-resolved each reconcile — the service follows the tag, not a stored node."
+                      onBlur={(e) => {
+                        const next = e.target.value.split(',').map((t) => t.trim()).filter(Boolean);
+                        const prev = service.placementTags ?? [];
+                        if (next.join('|') !== prev.join('|')) {
+                          updateServiceMutation.mutate({ placement_tags: next });
+                        }
+                      }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                      className="px-2 py-1.5 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)] w-72"
+                    />
+                  </div>
+                )}
                 {updateServiceMutation.isError && (
                   <p className="mt-2 text-xs text-[var(--error)]">{(updateServiceMutation.error as Error).message}</p>
                 )}

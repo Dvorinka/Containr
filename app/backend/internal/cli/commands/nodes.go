@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -83,7 +84,7 @@ var nodesDeleteCmd = &cobra.Command{
 
 var nodesUpdateCmd = &cobra.Command{
 	Use:   "update <id>",
-	Short: "Update a node agent (--name, --auto-prune)",
+	Short: "Update a node agent (--name, --auto-prune, --tags)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		c, err := client()
@@ -97,8 +98,18 @@ var nodesUpdateCmd = &cobra.Command{
 		if cmd.Flags().Changed("auto-prune") {
 			body["auto_prune"], _ = cmd.Flags().GetBool("auto-prune")
 		}
+		if cmd.Flags().Changed("tags") {
+			raw, _ := cmd.Flags().GetString("tags")
+			tags := []string{}
+			for _, t := range strings.Split(raw, ",") {
+				if t = strings.TrimSpace(t); t != "" {
+					tags = append(tags, t)
+				}
+			}
+			body["tags"] = tags
+		}
 		if len(body) == 0 {
-			return &APIError{Message: "nothing to update — pass --name or --auto-prune", ExitCode: ExitError}
+			return &APIError{Message: "nothing to update — pass --name, --auto-prune or --tags", ExitCode: ExitError}
 		}
 		data, err := c.Do("PUT", "/agents/"+args[0], body)
 		if err != nil {
@@ -292,6 +303,7 @@ var nodeTokensRevokeCmd = &cobra.Command{
 func init() {
 	nodesUpdateCmd.Flags().String("name", "", "node display name")
 	nodesUpdateCmd.Flags().Bool("auto-prune", false, "enqueue a daily bounded docker prune")
+	nodesUpdateCmd.Flags().String("tags", "", "comma-separated placement tags (services with placement_tags only schedule onto matching nodes)")
 	nodesPruneCmd.Flags().String("until", "", "only prune objects older than this duration (e.g. 168h)")
 	nodesPruneCmd.Flags().Bool("volumes", false, "also prune volumes (destructive — asks twice)")
 	nodeTokensCmd.AddCommand(nodeTokensIssueCmd, nodeTokensListCmd, nodeTokensRevokeCmd)

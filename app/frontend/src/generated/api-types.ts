@@ -8008,6 +8008,7 @@ export interface paths {
                                 id?: string;
                                 name?: string;
                                 status?: string;
+                                tags?: string[];
                             }[];
                         };
                     };
@@ -8104,7 +8105,7 @@ export interface paths {
         };
         /**
          * Update node agent
-         * @description Partial update — accepts any subset of agent fields (name, status, labels, etc.).
+         * @description Partial update — accepts any subset of agent fields (name, status, auto_prune, tags). `tags` sets the node's placement labels; services with placement_tags only schedule onto agents carrying every required tag.
          */
         put: {
             parameters: {
@@ -10944,6 +10945,8 @@ export interface components {
             node_name?: string;
             /** @description Replicas are distributed across every online, schedulable node agent (replica i → agents[i mod n]). Mutually exclusive with an explicit node_id pin. */
             spread?: boolean;
+            /** @description Node tags required for remote placement — auto/spread only consider agents carrying every tag; re-resolved each reconcile. Mutually exclusive with an explicit node_id pin (read-only on responses when a pin is set). */
+            placement_tags?: string[];
             /** @description Computed public URL (published port or domain) */
             public_url?: string;
             /**
@@ -11018,6 +11021,8 @@ export interface components {
             node_id?: string;
             /** @description Distribute replicas across every online, schedulable node agent; mutually exclusive with an explicit node_id pin */
             spread?: boolean;
+            /** @description Restrict remote placement to agents carrying every listed tag; mutually exclusive with an explicit pin or 'local' */
+            placement_tags?: string[];
         };
         UpdateServiceRequest: {
             /** @description Service name */
@@ -11083,6 +11088,8 @@ export interface components {
             node_id?: string;
             /** @description Distribute replicas across every online, schedulable node agent; mutually exclusive with an explicit node_id pin — send 'local' first to clear a pin */
             spread?: boolean;
+            /** @description Restrict remote placement to agents carrying every listed tag; [] clears. Mutually exclusive with a pin or 'local' — clear the pin first */
+            placement_tags?: string[];
         };
         ServiceDomain: {
             /** Format: uuid */
@@ -12202,6 +12209,8 @@ export interface components {
             auto_prune?: boolean;
             /** @description False on a cordoned/drained node — `auto` placement skips it and new explicit pins are rejected. */
             schedulable?: boolean;
+            /** @description Operator-set placement labels; services with placement_tags require all of them on the target node. */
+            tags?: string[];
             /** Format: date-time */
             last_heartbeat?: string;
             /** Format: date-time */

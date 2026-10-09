@@ -141,6 +141,38 @@ SELECT id, name FROM node_agents
 WHERE status = 'online' AND schedulable
 ORDER BY id;
 
+-- name: ListSchedulableAgentsMatching :many
+-- Only agents carrying every required placement tag (jsonb array containment).
+SELECT id, name FROM node_agents
+WHERE status = 'online' AND schedulable
+  AND tags @> $1::jsonb
+ORDER BY id;
+
+-- name: PickLeastLoadedAgentMatching :one
+-- Same resource-aware ordering as PickLeastLoadedAgent, restricted to agents
+-- carrying every required placement tag.
+SELECT a.id FROM node_agents a
+LEFT JOIN LATERAL (
+    SELECT h.container_count FROM agent_heartbeats h
+    WHERE h.node_agent_id = a.id
+    ORDER BY h.timestamp DESC LIMIT 1
+) h ON true
+WHERE a.status = 'online' AND a.schedulable
+  AND a.tags @> $1::jsonb
+ORDER BY
+    COALESCE(
+        (a.resources->'memory'->>'used')::double precision
+        / NULLIF((a.resources->'memory'->>'total')::double precision, 0),
+        1.0
+    ) ASC,
+    COALESCE((a.resources->'cpu'->>'usage')::double precision, 100.0) ASC,
+    COALESCE(h.container_count, 0) ASC,
+    a.created_at ASC
+LIMIT 1;
+
+-- name: SetAgentTags :exec
+UPDATE node_agents SET tags = $2::jsonb, updated_at = NOW() WHERE id = $1;
+
 -- name: ListServiceContainers :many
 SELECT id, name, node_agent_id, status FROM container_instances
 WHERE service_id = $1;
