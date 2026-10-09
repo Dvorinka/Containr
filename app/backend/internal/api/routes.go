@@ -269,6 +269,12 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 	// endpoint, verified against the provisioned webhook secret.
 	router.POST("/api/git/github-app/webhook", handleGitHubAppWebhook)
 
+	// Public API gateway data plane. Lives outside /api/v1 so each service's
+	// route_prefix (/g/<slug>) maps cleanly; auth is the caller's api_key,
+	// not a session.
+	router.Any("/g/:slug", handleGatewayProxy)
+	router.Any("/g/:slug/*path", handleGatewayProxy)
+
 	v1 := router.Group("/api/v1")
 	{
 		// Public routes (no authentication required)

@@ -517,8 +517,9 @@ and wired refs, one click or one CLI call.
 
 ## 10. Carried-over debt (ROADMAP.md items still open)
 
-- [ ] **Gateway traffic path** — mount `/g/:slug/*` → key → rate-limit →
-  `gateway/proxy.go` → metrics. Management API exists; proxy unwired.
+- [x] **Gateway traffic path** — `/g/:slug/*` mounted → api_key auth →
+  rpm + monthly quota → `gateway/proxy.go` → usage_counters /
+  metrics_timeseries / incident_events.
 - [ ] **Preview environments runtime** — real build+deploy+subdomain+TTL
   (bookkeeping only now). Pairs with clone + multi-domain.
 - [ ] **Environments** — env switcher, per-env vars/domains, promote.
