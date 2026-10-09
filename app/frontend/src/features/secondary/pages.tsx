@@ -11,6 +11,8 @@ import {
   getCurrentUserProfile,
   listAuditLogs,
   listAgents,
+  pruneAgent,
+  updateAgent,
   listBuilds,
   listGitProviders,
   listProjects,
@@ -293,6 +295,14 @@ export function UsagePage() {
     mutationFn: (id: string) => revokeAgentToken(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['agent-tokens'] }),
   });
+  const pruneMutation = useMutation({
+    mutationFn: (id: string) => pruneAgent(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['usage-agents'] }),
+  });
+  const autoPruneMutation = useMutation({
+    mutationFn: ({ id, on }: { id: string; on: boolean }) => updateAgent(id, { auto_prune: on }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['usage-agents'] }),
+  });
 
   const builds = useMemo(
     () => (isDemoMode ? demoBuilds : buildsQuery.data?.builds ?? []),
@@ -377,9 +387,9 @@ export function UsagePage() {
   const totalAgentMemory = agents.reduce((sum, agent) => sum + agent.resources.memory.total, 0);
   const availableAgentMemory = agents.reduce((sum, agent) => sum + agent.resources.memory.available, 0);
   const agentEndpoint = getAgentPublicBaseUrl();
-  const connectCommand = `CONTAINR_API_URL=${getApiBaseUrl().replace(/\/api\/v1$/, '')} \\
-CONTAINR_AGENT_AUTH_TOKEN=${issuedToken?.token ?? '<token>'} \\
-containr-agent`;
+  const apiBase = getApiBaseUrl().replace(/\/api\/v1$/, '');
+  const installCommand = `curl -fsSL ${apiBase}/api/agents/install.sh | bash -s -- --url ${apiBase} --token ${issuedToken?.token ?? '<token>'}`;
+  const sshCommand = `containr nodes add --ssh <user@host>${issuedToken?.token ? '' : '  # run on a host with the CLI'}`;
 
   let buildActivityBody = 'Track deployment frequency and failed rollouts over time.';
   let runtimeBody = 'Build duration telemetry will appear after completed builds are available.';
@@ -606,9 +616,32 @@ containr-agent`;
                             <p className="truncate text-sm font-medium text-[var(--text-primary)]">{agent.name}</p>
                             <p className="truncate text-xs text-[var(--text-tertiary)]">{agent.hostname} · {agent.ipAddress}:{agent.port}</p>
                           </div>
-                          <div className="text-right">
-                            <p className="text-xs font-semibold text-[var(--text-primary)]">{agent.status}</p>
-                            <p className="text-xs text-[var(--text-tertiary)]">{formatBytes(agent.resources.memory.available)} free</p>
+                          <div className="flex items-center gap-3">
+                            {isAdmin && (
+                              <>
+                                <button
+                                  onClick={() => pruneMutation.mutate(agent.id)}
+                                  disabled={pruneMutation.isPending}
+                                  title="Enqueue a bounded docker prune on this node"
+                                  className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:underline disabled:opacity-50"
+                                >
+                                  Prune
+                                </button>
+                                <label className="flex items-center gap-1.5 text-xs text-[var(--text-tertiary)] cursor-pointer" title="Daily automatic docker prune">
+                                  <input
+                                    type="checkbox"
+                                    checked={agent.autoPrune}
+                                    onChange={(e) => autoPruneMutation.mutate({ id: agent.id, on: e.target.checked })}
+                                    className="accent-[var(--accent-primary)]"
+                                  />
+                                  auto
+                                </label>
+                              </>
+                            )}
+                            <div className="text-right">
+                              <p className="text-xs font-semibold text-[var(--text-primary)]">{agent.status}</p>
+                              <p className="text-xs text-[var(--text-tertiary)]">{formatBytes(agent.resources.memory.available)} free</p>
+                            </div>
                           </div>
                         </div>
                       ))
@@ -666,7 +699,8 @@ containr-agent`;
                     </p>
                   )}
 
-                  <pre className="mono text-xs text-[var(--text-secondary)] whitespace-pre-wrap">{connectCommand}</pre>
+                  <pre className="mono text-xs text-[var(--text-secondary)] whitespace-pre-wrap">{installCommand}</pre>
+                  <pre className="mono text-xs text-[var(--text-secondary)] whitespace-pre-wrap mt-2">{sshCommand}</pre>
                   <div className="mt-4 space-y-2 text-xs text-[var(--text-tertiary)]">
                     <p>Agent endpoint: <span className="mono text-[var(--text-primary)]">{agentEndpoint}</span></p>
                     <p>Use an issued token above, or set <span className="mono text-[var(--text-primary)]">CONTAINR_AGENT_AUTH_TOKENS</span> on the backend.</p>

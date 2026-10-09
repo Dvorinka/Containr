@@ -81,6 +81,76 @@ var nodesDeleteCmd = &cobra.Command{
 	},
 }
 
+var nodesUpdateCmd = &cobra.Command{
+	Use:   "update <id>",
+	Short: "Update a node agent (--name, --auto-prune)",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := client()
+		if err != nil {
+			return err
+		}
+		body := map[string]interface{}{}
+		if cmd.Flags().Changed("name") {
+			body["name"], _ = cmd.Flags().GetString("name")
+		}
+		if cmd.Flags().Changed("auto-prune") {
+			body["auto_prune"], _ = cmd.Flags().GetBool("auto-prune")
+		}
+		if len(body) == 0 {
+			return &APIError{Message: "nothing to update — pass --name or --auto-prune", ExitCode: ExitError}
+		}
+		data, err := c.Do("PUT", "/agents/"+args[0], body)
+		if err != nil {
+			return err
+		}
+		PrintRaw(data)
+		return nil
+	},
+}
+
+var nodesPruneCmd = &cobra.Command{
+	Use:   "prune <id>",
+	Short: "Enqueue a bounded docker system prune on a node",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := client()
+		if err != nil {
+			return err
+		}
+		volumes, _ := cmd.Flags().GetBool("volumes")
+		if volumes && !Confirm("Prune INCLUDING volumes? This can delete database data.") {
+			return &APIError{Message: "aborted (pass --yes to skip confirmation)", ExitCode: ExitError}
+		}
+		until, _ := cmd.Flags().GetString("until")
+		data, err := c.Do("POST", "/agents/"+args[0]+"/prune",
+			map[string]interface{}{"until": until, "volumes": volumes})
+		if err != nil {
+			return err
+		}
+		PrintRaw(data)
+		return nil
+	},
+}
+
+var nodesCommandsCmd = &cobra.Command{
+	Use:   "commands <id>",
+	Short: "List recent commands sent to a node agent",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := client()
+		if err != nil {
+			return err
+		}
+		data, err := c.Do("GET", "/agents/"+args[0]+"/commands", nil)
+		if err != nil {
+			return err
+		}
+		PrintRaw(data)
+		return nil
+	},
+}
+
 // Agent tokens (cagt_) onboard new nodes.
 var nodeTokensCmd = &cobra.Command{
 	Use:   "tokens",
@@ -145,6 +215,10 @@ var nodeTokensRevokeCmd = &cobra.Command{
 }
 
 func init() {
+	nodesUpdateCmd.Flags().String("name", "", "node display name")
+	nodesUpdateCmd.Flags().Bool("auto-prune", false, "enqueue a daily bounded docker prune")
+	nodesPruneCmd.Flags().String("until", "", "only prune objects older than this duration (e.g. 168h)")
+	nodesPruneCmd.Flags().Bool("volumes", false, "also prune volumes (destructive — asks twice)")
 	nodeTokensCmd.AddCommand(nodeTokensIssueCmd, nodeTokensListCmd, nodeTokensRevokeCmd)
-	NodesCmd.AddCommand(nodesListCmd, nodesGetCmd, nodesDeleteCmd, nodeTokensCmd)
+	NodesCmd.AddCommand(nodesListCmd, nodesGetCmd, nodesUpdateCmd, nodesPruneCmd, nodesCommandsCmd, nodesDeleteCmd, nodeTokensCmd)
 }

@@ -28,6 +28,7 @@ UPDATE node_agents SET
     resources = $9,
     last_heartbeat = $10,
     metadata = $11,
+    auto_prune = $12,
     updated_at = NOW()
 WHERE id = $1
 RETURNING *;
@@ -107,3 +108,8 @@ RETURNING *;
 -- name: UpdateContainerStatus :exec
 UPDATE container_instances SET status = $2, updated_at = NOW()
 WHERE id = $1;
+
+-- name: GetLastAgentCommandByType :one
+SELECT * FROM agent_commands
+WHERE node_agent_id = $1 AND type = $2
+ORDER BY created_at DESC LIMIT 1;

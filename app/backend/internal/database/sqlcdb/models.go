@@ -175,6 +175,7 @@ type NodeAgent struct {
 	CreatedAt     sql.NullTime          `json:"created_at"`
 	UpdatedAt     sql.NullTime          `json:"updated_at"`
 	Metadata      pqtype.NullRawMessage `json:"metadata"`
+	AutoPrune     bool                  `json:"auto_prune"`
 }
 
 type Notification struct {

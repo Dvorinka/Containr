@@ -246,9 +246,27 @@ func executeCommand(item command) (string, error) {
 		return runDocker("restart", commandTarget(item.Payload))
 	case "remove_container":
 		return runDocker("rm", "-f", commandTarget(item.Payload))
+	case "prune":
+		return dockerPrune(item.Payload)
+	case "system_df":
+		return runDocker("system", "df", "--format", "json")
 	default:
 		return "", fmt.Errorf("unsupported command type %q", item.Type)
 	}
+}
+
+// dockerPrune runs a bounded docker system prune. Volumes are excluded
+// unless the payload explicitly opts in — a stray volume prune destroys
+// database data.
+func dockerPrune(payload map[string]interface{}) (string, error) {
+	args := []string{"system", "prune", "-af"}
+	if boolValue(payload["volumes"]) {
+		args = append(args, "--volumes")
+	}
+	if until := stringValue(payload["until"]); until != "" {
+		args = append(args, "--filter", fmt.Sprintf("until=%s", until))
+	}
+	return runDocker(args...)
 }
 
 func createContainer(payload map[string]interface{}) (string, error) {

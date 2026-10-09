@@ -173,6 +173,9 @@ func init() {
 	register(spec{"containr_nodes_get", "Get a node agent (admin)", "GET", "/agents/{id}", []string{"id"}, nil, false})
 	register(spec{"containr_agent_tokens_issue", "Issue an agent onboarding token (admin). Args: label.", "POST", "/agent-tokens", nil, []string{"label"}, false})
 	register(spec{"containr_agent_tokens_list", "List agent onboarding tokens (admin)", "GET", "/agent-tokens", nil, nil, false})
+	register(spec{"containr_nodes_update", "Update a node agent (admin). Args: id; optional auto_prune, name.", "PUT", "/agents/{id}", []string{"id"}, []string{"auto_prune", "name"}, false})
+	register(spec{"containr_nodes_prune", "Enqueue a bounded docker system prune on a node (admin). Args: id; optional until (e.g. 168h), volumes (danger, off by default).", "POST", "/agents/{id}/prune", []string{"id"}, []string{"until", "volumes"}, true})
+	register(spec{"containr_nodes_commands", "List recent commands sent to a node agent (admin). Args: id.", "GET", "/agents/{id}/commands", []string{"id"}, nil, false})
 
 	// Scaling / HA / security
 	register(spec{"containr_scaling_status", "Autoscaler status", "GET", "/scaling/status", nil, nil, false})

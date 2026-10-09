@@ -341,6 +341,7 @@ export type NodeAgentEntity = {
   version: string;
   capabilities: AgentCapabilities;
   resources: NodeResources;
+  autoPrune: boolean;
   lastHeartbeat?: string;
   createdAt?: string;
   updatedAt?: string;
@@ -1076,6 +1077,7 @@ function normalizeAgent(agent: RawNodeAgent): NodeAgentEntity | null {
       },
     },
     lastHeartbeat: agent.last_heartbeat,
+    autoPrune: agent.auto_prune ?? false,
     createdAt: agent.created_at,
     updatedAt: agent.updated_at,
   };
@@ -1112,6 +1114,21 @@ export async function getHostMonitoring(): Promise<HostMonitoring> {
 export async function listAgents(): Promise<NodeAgentEntity[]> {
   const payload = await requestJson<{ agents?: RawNodeAgent[] }>(`/agents`);
   return normalizeAgentArray(payload.agents);
+}
+
+export async function updateAgent(id: string, body: { name?: string; auto_prune?: boolean }): Promise<NodeAgentEntity | null> {
+  const payload = await requestJson<{ agent?: RawNodeAgent }>(`/agents/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  });
+  return payload.agent ? normalizeAgent(payload.agent) : null;
+}
+
+export async function pruneAgent(id: string, body?: { until?: string; volumes?: boolean }): Promise<void> {
+  await requestJson(`/agents/${id}/prune`, {
+    method: 'POST',
+    body: JSON.stringify(body ?? {}),
+  });
 }
 
 export type AgentAuthToken = components['schemas']['AgentAuthToken'];
