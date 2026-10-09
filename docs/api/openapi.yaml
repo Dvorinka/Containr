@@ -9564,6 +9564,10 @@ components:
         service_id:
           type: string
           format: uuid
+        preview_service_id:
+          type: string
+          format: uuid
+          description: The cloned service the preview actually deploys; its live status drives the preview status.
         branch_name:
           type: string
         pr_number:

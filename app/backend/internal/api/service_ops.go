@@ -67,22 +67,45 @@ func handleCloneService(c *gin.Context) {
 	if req.Environment != "" {
 		environment = req.Environment
 	}
-	if environment == "" {
-		environment = "production"
-	}
-	environmentID, err := getProjectEnvironmentID(db.(*database.DB), targetProjectID, environment)
+
+	newID, err := cloneServiceRow(db.(*database.DB), source.ID, targetProjectID, name, environment)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to resolve target environment"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to clone service"})
 		return
 	}
 
-	maintenance, basicAuth := serviceAccess(db.(*database.DB), source.ID)
+	LogAuditWithRequest(c, "service", source.ID.String(), "service.clone", map[string]interface{}{"cloned_to": newID.String(), "name": name})
+	c.JSON(http.StatusCreated, gin.H{"service_id": newID, "name": name, "message": "Service cloned"})
+}
+
+// cloneServiceRow copies a service's full configuration — source, build
+// settings, volumes, access gates, domains, and variables — under a new id
+// in the target project. The clone starts stopped. An empty environment
+// inherits the source's. Used by the clone endpoint and preview
+// environments, which additionally override git_branch and domains.
+func cloneServiceRow(db *database.DB, sourceID uuid.UUID, targetProjectID uuid.UUID, name, environment string) (uuid.UUID, error) {
+	var sourceEnv string
+	if err := db.QueryRow(`SELECT COALESCE(environment, '') FROM services WHERE id = $1`, sourceID).Scan(&sourceEnv); err != nil {
+		return uuid.Nil, err
+	}
+	if environment == "" {
+		environment = sourceEnv
+	}
+	if environment == "" {
+		environment = "production"
+	}
+	environmentID, err := getProjectEnvironmentID(db, targetProjectID, environment)
+	if err != nil {
+		return uuid.Nil, err
+	}
+
+	maintenance, basicAuth := serviceAccess(db, sourceID)
 	newID := uuid.New()
 	now := time.Now()
 	// string() so pq sends text — []byte would go as bytea and fail ::jsonb.
-	volumesJSON := string(loadServiceVolumesJSON(db.(*database.DB), source.ID))
+	volumesJSON := string(loadServiceVolumesJSON(db, sourceID))
 
-	_, err = db.(*database.DB).Exec(
+	_, err = db.Exec(
 		`INSERT INTO services
 			(id, project_id, name, environment_id, service_type, source_type, source_url, image_name,
 				 build_command, start_command, type, status, image, command, environment,
@@ -98,35 +121,30 @@ func handleCloneService(c *gin.Context) {
 				 $9, $9
 			FROM services WHERE id = $10`,
 		newID, targetProjectID, name, environmentID, environment, volumesJSON,
-		maintenance, basicAuth, now, source.ID,
+		maintenance, basicAuth, now, sourceID,
 	)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to clone service"})
-		return
+		return uuid.Nil, err
 	}
 
-	if _, err := db.(*database.DB).Exec(
+	if _, err := db.Exec(
 		`INSERT INTO service_domains (service_id, domain, is_default, cert_type)
 		 SELECT $1, domain, is_default, cert_type FROM service_domains WHERE service_id = $2`,
-		newID, source.ID,
+		newID, sourceID,
 	); err != nil {
-		_, _ = db.(*database.DB).Exec(`DELETE FROM services WHERE id = $1`, newID)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to clone service domains"})
-		return
+		_, _ = db.Exec(`DELETE FROM services WHERE id = $1`, newID)
+		return uuid.Nil, err
 	}
 	// Variable values are copied as stored — ciphertext stays ciphertext.
-	if _, err := db.(*database.DB).Exec(
+	if _, err := db.Exec(
 		`INSERT INTO environment_variables (id, service_id, key, value, is_secret)
 		 SELECT gen_random_uuid(), $1, key, value, is_secret FROM environment_variables WHERE service_id = $2`,
-		newID, source.ID,
+		newID, sourceID,
 	); err != nil {
-		_, _ = db.(*database.DB).Exec(`DELETE FROM services WHERE id = $1`, newID)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to clone service variables"})
-		return
+		_, _ = db.Exec(`DELETE FROM services WHERE id = $1`, newID)
+		return uuid.Nil, err
 	}
-
-	LogAuditWithRequest(c, "service", source.ID.String(), "service.clone", map[string]interface{}{"cloned_to": newID.String(), "name": name})
-	c.JSON(http.StatusCreated, gin.H{"service_id": newID, "name": name, "message": "Service cloned"})
+	return newID, nil
 }
 
 type MoveServiceRequest struct {
