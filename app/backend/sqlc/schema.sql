@@ -199,7 +199,8 @@ CREATE TABLE node_agents (
     metadata JSONB,
     auto_prune BOOLEAN NOT NULL DEFAULT false,
     schedulable BOOLEAN NOT NULL DEFAULT true,
-    tags JSONB NOT NULL DEFAULT '[]'
+    tags JSONB NOT NULL DEFAULT '[]',
+    default_domain VARCHAR(255) NOT NULL DEFAULT ''
 );
 
 CREATE TABLE container_instances (

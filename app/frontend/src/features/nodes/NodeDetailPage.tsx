@@ -48,6 +48,7 @@ export function NodeDetailPage() {
   const [confirmVolumes, setConfirmVolumes] = useState(false);
   const [confirmDrain, setConfirmDrain] = useState(false);
   const [tagDraft, setTagDraft] = useState<string | null>(null);
+  const [domainDraft, setDomainDraft] = useState<string | null>(null);
 
   const agentQuery = useQuery({
     queryKey: ['node-agent', id],
@@ -80,8 +81,8 @@ export function NodeDetailPage() {
     queryClient.invalidateQueries({ queryKey: ['usage-agents'] });
   };
   const updateMutation = useMutation({
-    mutationFn: (body: { name?: string; auto_prune?: boolean; tags?: string[] }) => updateAgent(id, body),
-    onSuccess: () => { setRename(null); setTagDraft(null); invalidate(); },
+    mutationFn: (body: { name?: string; auto_prune?: boolean; tags?: string[]; default_domain?: string }) => updateAgent(id, body),
+    onSuccess: () => { setRename(null); setTagDraft(null); setDomainDraft(null); invalidate(); },
   });
   const pruneMutation = useMutation({
     mutationFn: (volumes: boolean) => pruneAgent(id, { volumes }),
@@ -215,6 +216,44 @@ export function NodeDetailPage() {
                       className="text-[var(--accent-primary)] hover:underline"
                     >save</button>
                     <button onClick={() => setTagDraft(null)} className="text-[var(--text-muted)] hover:underline">cancel</button>
+                  </>
+                )}
+              </p>
+              <p className="v-mono mt-1 text-[11px] text-[var(--text-tertiary)] flex items-center gap-1.5 flex-wrap">
+                domain:
+                {domainDraft === null ? (
+                  <>
+                    <span className={agent.defaultDomain ? 'text-[var(--text-secondary)]' : 'text-[var(--text-muted)]'}>
+                      {agent.defaultDomain || 'none'}
+                    </span>
+                    {isAdmin && (
+                      <button
+                        onClick={() => setDomainDraft(agent.defaultDomain || '')}
+                        className="text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                        title="Node base domain — domainless services placed here get <name>.<domain> hostnames"
+                      >
+                        <Pencil size={11} />
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <input
+                      value={domainDraft}
+                      onChange={(e) => setDomainDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') updateMutation.mutate({ default_domain: domainDraft.trim().toLowerCase() });
+                        if (e.key === 'Escape') setDomainDraft(null);
+                      }}
+                      autoFocus
+                      placeholder="apps.node1.example.com — empty clears"
+                      className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-tertiary)] px-2 py-0.5 text-[11px] text-[var(--text-primary)] w-64"
+                    />
+                    <button
+                      onClick={() => updateMutation.mutate({ default_domain: domainDraft.trim().toLowerCase() })}
+                      className="text-[var(--accent-primary)] hover:underline"
+                    >save</button>
+                    <button onClick={() => setDomainDraft(null)} className="text-[var(--text-muted)] hover:underline">cancel</button>
                   </>
                 )}
               </p>

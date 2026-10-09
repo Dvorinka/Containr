@@ -659,6 +659,8 @@ func liveServiceStatus(c *gin.Context, db *database.DB, service *Service) {
 	persistPublishedPort(db, service.ID, state.Ports)
 	if service.Domain != "" {
 		service.PublicURL = "https://" + service.Domain
+	} else if auto := serviceAutoDomains(db, service.ID); len(auto) > 0 {
+		service.PublicURL = "https://" + auto[0]
 	} else if len(state.URLs) > 0 {
 		service.PublicURL = rewriteLoopbackURL(state.URLs[0], requestHostname(c))
 	}

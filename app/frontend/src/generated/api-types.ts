@@ -8179,7 +8179,7 @@ export interface paths {
         };
         /**
          * Update node agent
-         * @description Partial update — accepts any subset of agent fields (name, status, auto_prune, tags). `tags` sets the node's placement labels; services with placement_tags only schedule onto agents carrying every required tag.
+         * @description Partial update — accepts any subset of agent fields (name, status, auto_prune, tags, default_domain). `tags` sets the node's placement labels; services with placement_tags only schedule onto agents carrying every required tag. `default_domain` gives the node a base domain — domainless services placed there get `<name>.<default_domain>` auto-hostnames; empty string clears it.
          */
         put: {
             parameters: {
@@ -12297,6 +12297,8 @@ export interface components {
             schedulable?: boolean;
             /** @description Operator-set placement labels; services with placement_tags require all of them on the target node. */
             tags?: string[];
+            /** @description Node base domain — services placed on this node (pin or spread) with no explicit service_domains get `<name>.<default_domain>` hostnames automatically. Wildcard DNS for `*.<default_domain>` must resolve to the Containr edge. */
+            default_domain?: string;
             /** Format: date-time */
             last_heartbeat?: string;
             /** Format: date-time */

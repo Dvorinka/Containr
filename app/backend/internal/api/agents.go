@@ -30,21 +30,24 @@ import (
 
 // NodeAgent represents a container orchestration agent
 type NodeAgent struct {
-	ID            string                 `json:"id"`
-	Name          string                 `json:"name"`
-	Hostname      string                 `json:"hostname"`
-	IPAddress     string                 `json:"ip_address"`
-	Port          int                    `json:"port"`
-	Status        string                 `json:"status"`
-	Version       string                 `json:"version"`
-	Capabilities  AgentCapabilities      `json:"capabilities"`
-	Resources     NodeResources          `json:"resources"`
-	LastHeartbeat time.Time              `json:"last_heartbeat"`
-	AutoPrune     bool                   `json:"auto_prune"`
-	Schedulable   bool                   `json:"schedulable"`
+	ID            string            `json:"id"`
+	Name          string            `json:"name"`
+	Hostname      string            `json:"hostname"`
+	IPAddress     string            `json:"ip_address"`
+	Port          int               `json:"port"`
+	Status        string            `json:"status"`
+	Version       string            `json:"version"`
+	Capabilities  AgentCapabilities `json:"capabilities"`
+	Resources     NodeResources     `json:"resources"`
+	LastHeartbeat time.Time         `json:"last_heartbeat"`
+	AutoPrune     bool              `json:"auto_prune"`
+	Schedulable   bool              `json:"schedulable"`
 	// Tags are operator-set placement labels; services with placement_tags
 	// only schedule onto agents carrying every required tag.
-	Tags          []string               `json:"tags"`
+	Tags []string `json:"tags"`
+	// DefaultDomain is this node's base domain — services placed here with
+	// no explicit domains get <name>.<default_domain> automatically.
+	DefaultDomain string                 `json:"default_domain"`
 	CreatedAt     time.Time              `json:"created_at"`
 	UpdatedAt     time.Time              `json:"updated_at"`
 	Metadata      map[string]interface{} `json:"metadata"`
@@ -272,17 +275,18 @@ func (h *NodeAgentHandler) ListNodeOptions(c *gin.Context) {
 
 func agentFromRow(row sqlcdb.NodeAgent) NodeAgent {
 	agent := NodeAgent{
-		ID:          row.ID,
-		Name:        row.Name,
-		Hostname:    row.Hostname,
-		IPAddress:   row.IpAddress,
-		Port:        int(row.Port),
-		Status:      row.Status.String,
-		Version:     row.Version.String,
-		AutoPrune:   row.AutoPrune,
-		Schedulable: row.Schedulable,
-		Tags:        []string{},
-		Metadata:    map[string]interface{}{},
+		ID:            row.ID,
+		Name:          row.Name,
+		Hostname:      row.Hostname,
+		IPAddress:     row.IpAddress,
+		Port:          int(row.Port),
+		Status:        row.Status.String,
+		Version:       row.Version.String,
+		AutoPrune:     row.AutoPrune,
+		Schedulable:   row.Schedulable,
+		Tags:          []string{},
+		DefaultDomain: row.DefaultDomain,
+		Metadata:      map[string]interface{}{},
 	}
 	if row.LastHeartbeat.Valid {
 		agent.LastHeartbeat = row.LastHeartbeat.Time
@@ -572,6 +576,18 @@ func (h *NodeAgentHandler) UpdateAgent(c *gin.Context) {
 	// Tags persist through their own column write — UpdateAgent keeps the
 	// register-path signature untouched.
 	resp := agentFromRow(updated)
+	if raw, ok := updates["default_domain"]; ok {
+		domain := strings.ToLower(strings.TrimSpace(fmt.Sprintf("%v", raw)))
+		if domain != "" && !validHostname(domain) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "default_domain must be a valid hostname", "code": "VALIDATION"})
+			return
+		}
+		if err := h.q.SetAgentDefaultDomain(ctx, sqlcdb.SetAgentDefaultDomainParams{ID: id, DefaultDomain: domain}); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update default domain"})
+			return
+		}
+		resp.DefaultDomain = domain
+	}
 	if raw, ok := updates["tags"]; ok {
 		var tags []string
 		if b, mErr := json.Marshal(raw); mErr == nil {

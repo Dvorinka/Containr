@@ -84,7 +84,7 @@ var nodesDeleteCmd = &cobra.Command{
 
 var nodesUpdateCmd = &cobra.Command{
 	Use:   "update <id>",
-	Short: "Update a node agent (--name, --auto-prune, --tags)",
+	Short: "Update a node agent (--name, --auto-prune, --tags, --domain)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		c, err := client()
@@ -108,8 +108,11 @@ var nodesUpdateCmd = &cobra.Command{
 			}
 			body["tags"] = tags
 		}
+		if cmd.Flags().Changed("domain") {
+			body["default_domain"], _ = cmd.Flags().GetString("domain")
+		}
 		if len(body) == 0 {
-			return &APIError{Message: "nothing to update — pass --name, --auto-prune or --tags", ExitCode: ExitError}
+			return &APIError{Message: "nothing to update — pass --name, --auto-prune, --tags or --domain", ExitCode: ExitError}
 		}
 		data, err := c.Do("PUT", "/agents/"+args[0], body)
 		if err != nil {
@@ -304,6 +307,7 @@ func init() {
 	nodesUpdateCmd.Flags().String("name", "", "node display name")
 	nodesUpdateCmd.Flags().Bool("auto-prune", false, "enqueue a daily bounded docker prune")
 	nodesUpdateCmd.Flags().String("tags", "", "comma-separated placement tags (services with placement_tags only schedule onto matching nodes)")
+	nodesUpdateCmd.Flags().String("domain", "", "base domain for this node — domainless services placed here get <name>.<domain> automatically (empty clears)")
 	nodesPruneCmd.Flags().String("until", "", "only prune objects older than this duration (e.g. 168h)")
 	nodesPruneCmd.Flags().Bool("volumes", false, "also prune volumes (destructive — asks twice)")
 	nodeTokensCmd.AddCommand(nodeTokensIssueCmd, nodeTokensListCmd, nodeTokensRevokeCmd)

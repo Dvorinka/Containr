@@ -95,6 +95,9 @@ type Querier interface {
 	// display, when the caller owns or is a member of it, or when the caller is a
 	// platform admin. Anonymous callers pass user_id = uuid.Nil, is_admin = false.
 	ListProjectsWithStatsByUser(ctx context.Context, arg ListProjectsWithStatsByUserParams) ([]ListProjectsWithStatsByUserRow, error)
+	// Base domains of every online, schedulable agent carrying the required
+	// placement tags — auto-domain candidates for spread services.
+	ListSchedulableAgentDomains(ctx context.Context, dollar_1 json.RawMessage) ([]string, error)
 	ListSchedulableAgents(ctx context.Context) ([]ListSchedulableAgentsRow, error)
 	// Only agents carrying every required placement tag (jsonb array containment).
 	ListSchedulableAgentsMatching(ctx context.Context, dollar_1 json.RawMessage) ([]ListSchedulableAgentsMatchingRow, error)
@@ -118,6 +121,7 @@ type Querier interface {
 	RevokeAgentAuthToken(ctx context.Context, id uuid.UUID) (AgentAuthToken, error)
 	RevokeUserToken(ctx context.Context, arg RevokeUserTokenParams) (int64, error)
 	ScrubCommandPayload(ctx context.Context, arg ScrubCommandPayloadParams) error
+	SetAgentDefaultDomain(ctx context.Context, arg SetAgentDefaultDomainParams) error
 	SetAgentSchedulable(ctx context.Context, arg SetAgentSchedulableParams) error
 	SetAgentTags(ctx context.Context, arg SetAgentTagsParams) error
 	SetDatabaseBackupRemoteKeyByID(ctx context.Context, arg SetDatabaseBackupRemoteKeyByIDParams) error

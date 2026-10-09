@@ -226,7 +226,11 @@ goroutines; this fixes correctness *and* unlocks the ops surface.
   {target_node_id}`: dump → stream transfer → provision → restore →
   re-point bound services. Deferred until Phase F lands real second
   nodes — nothing to migrate between today.
-- [ ] **Backup import** — upload archive → new restore point (pairs with
+- [x] **Backup import** — `POST /databases/:id/backups/import` accepts a
+  `.tar.gz` (multipart `file` or raw body, 2 GiB cap, gzip-magic
+  validated), stores it in the backups volume via a holder container,
+  registers a completed restore point, and ships offsite when a backup
+  target is configured. `api/backuptargets.go`. (pairs with
   migrators).
 
 ## 6. Phase E — Templates v2 (absorbs compose-catalog spec + dflow graph templates)
@@ -354,8 +358,12 @@ and wired refs, one click or one CLI call.
 - [ ] **IaC provisioning (ROADMAP §2.2, unchanged)** — Terraform/
   OpenTofu, `infra_connections`, Proxmox + AWS modules, + Hetzner module
   (dflow's second provider), cloud-init → auto-enroll.
-- [ ] **Global/wildcard domain per node** (`nodes.default_domain`) —
-  auto-domains for services on that node.
+- [x] **Global/wildcard domain per node** (`node_agents.default_domain`) —
+  `PUT /agents/:id {default_domain}`; domainless services placed on the
+  node get `<name>.<default_domain>` (pinned → node's base; spread →
+  union of eligible nodes). `serviceDomainNames` resolves them so
+  routing, wake placeholders, and `public_url` all pick them up.
+  CLI `nodes update --domain`, MCP arg, node-detail editor.
 
 ## 8. Phase G — Platform polish
 
