@@ -75,6 +75,11 @@ import {
   type CreateDatabaseInput,
   type DatabaseEntity,
   type FailoverPolicy,
+  listNotificationChannels,
+  createNotificationChannel,
+  deleteNotificationChannel,
+  testNotificationChannel,
+  type NotificationChannel,
 } from '@/lib/api-client';
 import {
   demoBuilds,
@@ -139,6 +144,8 @@ import {
   Cloud,
   ExternalLink,
   Upload,
+  Bell,
+  Send,
 } from 'lucide-react';
 
 function SecondaryPageHeader({ title, description }: { title: string; description: string }) {
@@ -1908,6 +1915,151 @@ function BackupTargetsSection() {
   );
 }
 
+function NotificationChannelsSection() {
+  const queryClient = useQueryClient();
+  const channelsQuery = useQuery({
+    queryKey: ['notification-channels'],
+    queryFn: listNotificationChannels,
+  });
+  const [kind, setKind] = useState<'ntfy' | 'gotify'>('ntfy');
+  const [endpoint, setEndpoint] = useState('');
+  const [token, setToken] = useState('');
+  const [testResult, setTestResult] = useState<Record<string, 'ok' | string>>({});
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['notification-channels'] });
+  const createMutation = useMutation({
+    mutationFn: () =>
+      createNotificationChannel({
+        kind,
+        endpoint: endpoint.trim(),
+        token: token.trim() || undefined,
+      }),
+    onSuccess: () => {
+      setEndpoint('');
+      setToken('');
+      invalidate();
+    },
+  });
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteNotificationChannel(id),
+    onSuccess: invalidate,
+  });
+  const testMutation = useMutation({
+    mutationFn: (id: string) => testNotificationChannel(id),
+    onSuccess: (_d, id) => setTestResult((prev) => ({ ...prev, [id]: 'ok' })),
+    onError: (err, id) =>
+      setTestResult((prev) => ({
+        ...prev,
+        [id]: err instanceof Error ? err.message : 'delivery failed',
+      })),
+  });
+
+  const channels = channelsQuery.data ?? [];
+
+  return (
+    <section className="panel p-6">
+      <div className="flex items-center gap-3 mb-4">
+        <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
+          <Bell size={18} className="text-[var(--accent-primary)]" />
+        </div>
+        <div>
+          <h2 className="text-lg font-semibold text-[var(--text-primary)]">Push notifications</h2>
+          <p className="text-xs text-[var(--text-tertiary)]">Relay notifications to a self-hosted ntfy or Gotify server</p>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <div className="flex flex-wrap gap-2">
+          <select
+            value={kind}
+            onChange={(e) => setKind(e.target.value as 'ntfy' | 'gotify')}
+            className="h-9 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 text-sm text-[var(--text-primary)] focus:border-[var(--accent-primary)] transition-all"
+          >
+            <option value="ntfy">ntfy</option>
+            <option value="gotify">Gotify</option>
+          </select>
+          <input
+            value={endpoint}
+            onChange={(e) => setEndpoint(e.target.value)}
+            placeholder={kind === 'ntfy' ? 'https://ntfy.example.com/my-alerts' : 'https://gotify.example.com'}
+            className="h-9 flex-1 min-w-[220px] rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] transition-all"
+          />
+          <input
+            type="password"
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            placeholder={kind === 'ntfy' ? 'Access token (optional)' : 'App token'}
+            className="h-9 w-48 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] transition-all"
+          />
+          <button
+            onClick={() => createMutation.mutate()}
+            disabled={createMutation.isPending || !endpoint.trim()}
+            className="h-9 px-4 rounded-[var(--radius-md)] text-sm font-medium text-[var(--accent-on)] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            style={{ background: 'var(--accent-primary)' }}
+          >
+            {createMutation.isPending ? 'Adding…' : 'Add channel'}
+          </button>
+        </div>
+
+        {createMutation.isError ? (
+          <p className="text-xs text-[var(--error)]">
+            {createMutation.error instanceof Error ? createMutation.error.message : 'Failed to add channel'}
+          </p>
+        ) : null}
+
+        {channelsQuery.isLoading ? (
+          <div className="py-4 text-center">
+            <Loader2 size={16} className="animate-spin mx-auto text-[var(--text-tertiary)]" />
+          </div>
+        ) : channels.length === 0 ? (
+          <p className="text-xs text-[var(--text-tertiary)]">
+            No push channels. Notifications stay in-app until you add one.
+          </p>
+        ) : (
+          <div className="space-y-1.5 border-t border-[var(--border-subtle)] pt-3">
+            {channels.map((ch: NotificationChannel) => (
+              <div key={ch.id} className="flex items-center justify-between gap-2 text-xs">
+                <div className="min-w-0">
+                  <span className="rounded px-1.5 py-0.5 bg-[var(--surface-muted)] text-[var(--text-secondary)] uppercase">
+                    {ch.kind}
+                  </span>
+                  <span className="ml-2 mono text-[var(--text-primary)] break-all">{ch.endpoint}</span>
+                  {testResult[ch.id] === 'ok' ? (
+                    <span className="ml-2 text-[var(--success)]">delivered</span>
+                  ) : testResult[ch.id] ? (
+                    <span className="ml-2 text-[var(--error)]">{testResult[ch.id]}</span>
+                  ) : null}
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  <button
+                    onClick={() => testMutation.mutate(ch.id)}
+                    disabled={testMutation.isPending}
+                    className="flex items-center gap-1 text-[var(--text-secondary)] hover:text-[var(--accent-primary)] disabled:opacity-50"
+                  >
+                    <Send size={12} />
+                    Test
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (window.confirm(`Remove ${ch.kind} channel ${ch.endpoint}?`)) {
+                        deleteMutation.mutate(ch.id);
+                      }
+                    }}
+                    disabled={deleteMutation.isPending}
+                    className="text-[var(--error)] hover:underline disabled:opacity-50"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 export function SettingsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -2081,6 +2233,7 @@ export function SettingsPage() {
 
           {/* Personal Access Tokens */}
           <UserTokensSection isAdmin={profileQuery.data?.isAdmin ?? false} />
+          <NotificationChannelsSection />
           <RegistriesSection />
           <BackupTargetsSection />
 

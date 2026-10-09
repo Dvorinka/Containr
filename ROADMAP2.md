@@ -508,8 +508,10 @@ and wired refs, one click or one CLI call.
   - [x] **env var edit + domain management + replica scaling** (PR #61 —
     mobile v1.5: variables editor, domains screen, scale + sleep
     settings, notifications tab). **cron execution history** still open.
-  - [ ] **Push notifications** — zero-infra path = self-hosted
-    ntfy/Gotify relay (no Firebase dependency), FCM/APNs optional.
+  - [x] **Push notifications** — per-user `notification_channels`
+    (ntfy + Gotify): every `insertUserNotification` fans out best-effort
+    to enabled channels; CRUD + live test-ping via web settings, CLI
+    `notifications channels`, and MCP. FCM/APNs remain optional.
   - [ ] **Offline resilience** — cached last-known state + unreachable
     banner.
 - [ ] **Status/offline resilience** — app + CLI degrade gracefully when

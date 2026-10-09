@@ -41,6 +41,7 @@ func insertUserNotification(db *database.DB, userID, kind, title, body, resource
 		ResourceID:   sql.NullString{String: resourceID, Valid: resourceID != ""},
 		CreatedAt:    sql.NullTime{Time: time.Now(), Valid: true},
 	})
+	go fanoutUserPush(db, userID, kind, title, body)
 }
 
 func mapNotification(row sqlcdb.Notification) NotificationItem {

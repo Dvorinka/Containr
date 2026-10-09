@@ -364,6 +364,10 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			authed.GET("/notifications", handleListNotifications)
 			authed.POST("/notifications/:id/read", handleMarkNotificationRead)
 			authed.POST("/notifications/read-all", handleMarkAllNotificationsRead)
+			authed.GET("/notifications/channels", handleListNotificationChannels)
+			authed.POST("/notifications/channels", handleCreateNotificationChannel)
+			authed.POST("/notifications/channels/:id/test", handleTestNotificationChannel)
+			authed.DELETE("/notifications/channels/:id", handleDeleteNotificationChannel)
 
 			// WebSocket endpoint
 			authed.GET("/ws", handleWebSocket)

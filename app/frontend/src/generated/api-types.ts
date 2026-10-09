@@ -3698,6 +3698,167 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/notifications/channels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List push notification channels (ntfy/Gotify) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Channel list */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            channels?: components["schemas"]["NotificationChannel"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Add a push notification channel
+         * @description ntfy endpoint should include the topic (e.g. https://ntfy.example.com/my-alerts); Gotify endpoint is the server base URL with the app token in `token`.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        kind: "ntfy" | "gotify";
+                        /** Format: uri */
+                        endpoint: string;
+                        /** @description ntfy access token (Bearer) or Gotify app token */
+                        token?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Channel created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            channel?: components["schemas"]["NotificationChannel"];
+                        };
+                    };
+                };
+                400: components["schemas"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/channels/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a push notification channel */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Deleted */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MessageResponse"];
+                    };
+                };
+                404: components["schemas"]["Error"];
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/channels/{id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send a test notification through a push channel */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Test delivered */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MessageResponse"];
+                    };
+                };
+                /** @description Push delivery failed */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/webhooks": {
         parameters: {
             query?: never;
@@ -11823,6 +11984,17 @@ export interface components {
         NotificationListResponse: {
             notifications?: components["schemas"]["Notification"][];
             unread?: number;
+        };
+        NotificationChannel: {
+            /** Format: uuid */
+            id?: string;
+            /** @enum {string} */
+            kind?: "ntfy" | "gotify";
+            /** Format: uri */
+            endpoint?: string;
+            enabled?: boolean;
+            /** Format: date-time */
+            created_at?: string;
         };
         OutboundWebhook: {
             /** Format: uuid */

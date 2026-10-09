@@ -17,3 +17,23 @@ UPDATE notifications SET read_at = $3 WHERE id = $1 AND user_id = $2 AND read_at
 
 -- name: MarkAllNotificationsReadByUser :exec
 UPDATE notifications SET read_at = $2 WHERE user_id = $1 AND read_at IS NULL;
+
+-- name: ListNotificationChannelsByUser :many
+SELECT id, user_id, kind, endpoint, token, enabled, created_at, updated_at
+FROM notification_channels
+WHERE user_id = $1 AND enabled
+ORDER BY created_at;
+
+-- name: ListAllNotificationChannelsByUser :many
+SELECT id, user_id, kind, endpoint, token, enabled, created_at, updated_at
+FROM notification_channels
+WHERE user_id = $1
+ORDER BY created_at;
+
+-- name: InsertNotificationChannel :one
+INSERT INTO notification_channels (user_id, kind, endpoint, token)
+VALUES ($1, $2, $3, $4)
+RETURNING id, user_id, kind, endpoint, token, enabled, created_at, updated_at;
+
+-- name: DeleteNotificationChannel :execrows
+DELETE FROM notification_channels WHERE id = $1 AND user_id = $2;

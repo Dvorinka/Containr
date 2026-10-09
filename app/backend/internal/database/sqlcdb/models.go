@@ -193,6 +193,17 @@ type Notification struct {
 	CreatedAt    sql.NullTime   `json:"created_at"`
 }
 
+type NotificationChannel struct {
+	ID        uuid.UUID      `json:"id"`
+	UserID    uuid.UUID      `json:"user_id"`
+	Kind      string         `json:"kind"`
+	Endpoint  string         `json:"endpoint"`
+	Token     sql.NullString `json:"token"`
+	Enabled   bool           `json:"enabled"`
+	CreatedAt sql.NullTime   `json:"created_at"`
+	UpdatedAt sql.NullTime   `json:"updated_at"`
+}
+
 type OutboundWebhook struct {
 	ID        uuid.UUID             `json:"id"`
 	UserID    uuid.UUID             `json:"user_id"`
