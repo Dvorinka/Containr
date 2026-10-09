@@ -720,6 +720,35 @@ paths:
                     items:
                       type: string
 
+  /services/{id}/terminal:
+    get:
+      tags:
+        - Services
+      summary: Interactive terminal (WebSocket)
+      description: >-
+        Upgrades to a WebSocket bridged to a `docker exec` PTY in the
+        service's running container (bash if present, else sh).
+        Cookie/bearer auth as usual.
+        Client→server JSON frames: `{"type":"stdin","data":"..."}`,
+        `{"type":"resize","cols":N,"rows":N}`.
+        Server→client frames: `{"type":"stdout","data":"..."}`,
+        `{"type":"exit","code":N}`, `{"type":"error","message":"..."}`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '101':
+          description: Switching protocols — WebSocket session established
+        '404':
+          description: Service not found or not visible
+        '409':
+          description: Service has no running container
+        '503':
+          description: Docker unavailable
+
   /internal/wake/{id}:
     get:
       tags:

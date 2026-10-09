@@ -307,9 +307,12 @@ and wired refs, one click or one CLI call.
   UI at `/operations` (Operate nav) with live refetch; `containr
   operations` CLI + `containr_operations_get` MCP. Remaining: agent
   commands once node fleet lands; flush/stuck-job tools.
-- [ ] **Interactive terminal** — upgrade exec to WS PTY (`xterm.js`);
-  `nodes/:id/terminal` via agent (dflow's wetty without the extra
-  container).
+- [x] **Interactive terminal** — `GET /services/:id/terminal` upgrades
+  to a WebSocket bridged to a `docker exec` PTY (bash→sh fallback,
+  `TERM=xterm-256color`, resize frames). xterm.js Console section on the
+  service page; `containr shell <id>` bridges a local TTY; distroless
+  images get a clean "no shell" error. Remaining: `nodes/:id/terminal`
+  via agent.
 - [x] **Team invites** — `POST /admin/invites` returns a one-time
   link (sha256-hashed token at rest, optional email binding, TTL);
   public `GET /auth/invites/:token` validates and

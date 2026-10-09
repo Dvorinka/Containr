@@ -388,6 +388,9 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			authed.POST("/deployments/:id/rollback", handleRollbackDeployment)
 			authed.POST("/deployments/:id/cancel", handleCancelDeployment)
 
+			// Interactive terminal — WebSocket → docker exec pty.
+			authed.GET("/services/:id/terminal", handleServiceTerminal)
+
 			// Environment variables — secrets, owner/admin only.
 			authed.GET("/services/:id/variables", handleGetVariables)
 			authed.PUT("/services/:id/variables", handleUpdateVariables)

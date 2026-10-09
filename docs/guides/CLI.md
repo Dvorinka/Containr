@@ -86,6 +86,8 @@ operations                       live ops view: active deploys, queue depth,
                                24h failures, cron runs, backups
 activity                         enriched activity feed; --severity/--category/
                                --resource/--project/--limit filters
+shell <service-id>               interactive PTY shell inside the service
+                               container (bash→sh fallback; resizes follow)
 banners list|create|update|delete  announcement banners (admin);
                                active banners print on `auth status`
 invites list|create|revoke       team invite links (admin); create
