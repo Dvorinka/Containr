@@ -47,6 +47,7 @@ deployments list|get|logs|rollback|cancel
 logs <service-id> [--follow]     runtime logs (SSE follow)
 exec <service-id> -- <cmd>       one-off container command
 variables list|set|unset         env vars (secrets masked; --redeploy applies them)
+variables shared list|set|unset  project shared vars — referenced as ${{shared.KEY}}
 databases list|get|create|update|delete|action|backup|restore|download-backup
                                create --public exposes the port on all interfaces;
                                update <id> --public/--public=false toggles it (container recreates, data persists)

@@ -1255,8 +1255,9 @@ export function ServiceDetailPage() {
                   <h2 className="text-lg font-semibold text-[var(--text-primary)]">Environment Variables</h2>
                   <p className="text-sm text-[var(--text-secondary)]">
                     Runtime values injected at deploy. Reference another service's variable with{' '}
-                    <code className="mono text-[var(--accent-primary)]">{'${{service.KEY}}'}</code> — e.g.{' '}
-                    <code className="mono text-[var(--accent-primary)]">{'${{postgres.POSTGRES_PASSWORD}}'}</code>
+                    <code className="mono text-[var(--accent-primary)]">{'${{service.KEY}}'}</code> or a project
+                    shared variable with{' '}
+                    <code className="mono text-[var(--accent-primary)]">{'${{shared.KEY}}'}</code>
                   </p>
                 </div>
               </div>
