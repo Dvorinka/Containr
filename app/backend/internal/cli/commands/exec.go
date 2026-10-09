@@ -4,9 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"os/signal"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -44,20 +42,13 @@ var ShellCmd = &cobra.Command{
 			if err == nil {
 				defer term.Restore(fd, oldState)
 			}
-			if w, h, err := term.GetSize(fd); err == nil {
-				_ = conn.WriteJSON(map[string]interface{}{"type": "resize", "cols": w, "rows": h})
-			}
-			// Forward SIGWINCH resizes.
-			sigCh := make(chan os.Signal, 1)
-			signal.Notify(sigCh, syscall.SIGWINCH)
-			defer signal.Stop(sigCh)
-			go func() {
-				for range sigCh {
-					if w, h, err := term.GetSize(fd); err == nil {
-						_ = conn.WriteJSON(map[string]interface{}{"type": "resize", "cols": w, "rows": h})
-					}
+			sendSize := func() {
+				if w, h, err := term.GetSize(fd); err == nil {
+					_ = conn.WriteJSON(map[string]interface{}{"type": "resize", "cols": w, "rows": h})
 				}
-			}()
+			}
+			sendSize()
+			defer watchResize(sendSize)()
 		}
 
 		done := make(chan struct{})
