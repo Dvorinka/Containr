@@ -88,6 +88,9 @@ banners list|create|update|delete  announcement banners (admin);
                                active banners print on `auth status`
 invites list|create|revoke       team invite links (admin); create
                                prints the one-time acceptance URL
+admin impersonate <id>           mint a 15-min token acting as a user
+admin github-app status|manifest|convert
+                               self-provision the instance GitHub App
 up                               deploy the current directory
 ```
 

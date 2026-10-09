@@ -161,6 +161,10 @@ func init() {
 	register(spec{"containr_invites_list", "List team invite links (admin).", "GET", "/admin/invites", nil, nil, false})
 	register(spec{"containr_invites_create", "Create a team invite link (admin). Args: email (optional bind), expires_in_hours (default 168). Returns the one-time token + accept URL.", "POST", "/admin/invites", nil, []string{"email", "expires_in_hours"}, false})
 	register(spec{"containr_invites_revoke", "Revoke a team invite (admin). Args: id. Requires confirm=true.", "DELETE", "/admin/invites/{id}", []string{"id"}, nil, true})
+	register(spec{"containr_admin_impersonate", "Mint a 15-minute bearer token acting as a user (admin, audit-logged). Args: id (user id).", "POST", "/admin/users/{id}/impersonate", []string{"id"}, nil, false})
+	register(spec{"containr_github_app_status", "Show GitHub App provisioning status (admin).", "GET", "/admin/git/github-app", nil, nil, false})
+	register(spec{"containr_github_app_manifest", "Build a GitHub App manifest for self-provisioning (admin). Args: base_url (required, https public URL), name (optional), organization (optional).", "POST", "/admin/git/github-app/manifest", nil, []string{"base_url", "name", "organization"}, false})
+	register(spec{"containr_github_app_convert", "Exchange the GitHub manifest callback code for app credentials (admin). Args: code.", "POST", "/admin/git/github-app/convert", nil, []string{"code"}, false})
 
 	// Nodes / agent tokens (admin)
 	register(spec{"containr_nodes_list", "List node agents (admin)", "GET", "/agents", nil, nil, false})

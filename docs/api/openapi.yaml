@@ -1791,6 +1791,45 @@ paths:
                   message:
                     type: string
 
+  /admin/users/{id}/impersonate:
+    post:
+      tags:
+        - Admin
+      summary: Impersonate a user
+      description: >-
+        Mint a 15-minute bearer token acting as the target user. Admin-only;
+        admin accounts cannot be impersonated and every mint is audit-logged.
+        The token carries an `impersonated_by` claim.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Impersonation token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  expires_at:
+                    type: string
+                    format: date-time
+                  user:
+                    type: object
+                    properties:
+                      id: {type: string}
+                      email: {type: string}
+                      name: {type: string}
+        '403':
+          description: Target is an admin account
+
   /admin/projects/{id}:
     patch:
       tags:
@@ -3730,6 +3769,93 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /admin/git/github-app:
+    get:
+      tags:
+        - Admin
+      summary: GitHub App provisioning status
+      description: Shows whether the instance GitHub App is configured, and whether credentials come from app_settings or environment variables.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Provisioning status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  configured: {type: boolean}
+                  source: {type: string, enum: [settings, env, none]}
+                  app_id: {type: string}
+                  slug: {type: string}
+                  name: {type: string}
+
+  /admin/git/github-app/manifest:
+    post:
+      tags:
+        - Admin
+      summary: Build GitHub App manifest
+      description: >-
+        Returns a GitHub App manifest for self-provisioning. The client POSTs
+        `manifest` verbatim as a form field to `url`; GitHub then redirects to
+        the instance's /git/github-app/callback with a code.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [base_url]
+              properties:
+                base_url: {type: string, description: Public https base URL of this instance}
+                name: {type: string}
+                organization: {type: string, description: Create the app under this GitHub organization}
+      responses:
+        '200':
+          description: Manifest + submission URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url: {type: string}
+                  manifest: {type: string, description: JSON string — POST as form field `manifest`}
+                  state: {type: string}
+
+  /admin/git/github-app/convert:
+    post:
+      tags:
+        - Admin
+      summary: Exchange manifest callback code
+      description: Exchanges the `code` from the manifest redirect for the app credentials and stores them in app_settings (overriding env vars).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: {type: string}
+      responses:
+        '200':
+          description: App provisioned
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  app_id: {type: integer}
+                  slug: {type: string}
+                  name: {type: string}
+        '502':
+          description: GitHub conversion failed
+
   /git/providers/{providerId}:
     delete:
       tags:
@@ -5324,6 +5450,45 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+
+  /api/git/github-app/webhook:
+    servers:
+      - url: http://localhost:8080
+    post:
+      tags:
+        - Git
+      summary: GitHub App webhook receiver
+      description: >-
+        Single app-level webhook all installed repositories deliver to
+        (configured via the manifest's hook_attributes). Verified with
+        X-Hub-Signature-256 against the provisioned webhook secret. Push
+        events enqueue deployments for services tracking the repo+branch.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '202':
+          description: Event accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  received:
+                    type: boolean
+                  branch:
+                    type: string
+                  deployments:
+                    type: integer
+                  ignored:
+                    type: string
+        '401':
+          description: Invalid signature
+        '503':
+          description: GitHub App webhook secret not configured
 
   /api/agents/{id}/commands/{commandId}/result:
     servers:

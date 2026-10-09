@@ -133,7 +133,9 @@ func handleGetGitProviders(c *gin.Context) {
 }
 
 func handleGetGitHubAppInstallURL(c *gin.Context) {
-	slug := strings.TrimSpace(os.Getenv("GITHUB_APP_SLUG"))
+	db, _ := c.Get("db")
+	d, _ := db.(*database.DB)
+	slug := strings.TrimSpace(settingValue(d, settingGitHubAppSlug, "GITHUB_APP_SLUG", ""))
 	if slug == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "GITHUB_APP_SLUG is not configured"})
 		return
@@ -1073,8 +1075,8 @@ func fetchBitbucketRepositories(providerAPIURL, accessToken string) ([]remoteGit
 }
 
 func getGitHubAppInstallationToken(baseURL string, installationID int64) (string, error) {
-	appID := strings.TrimSpace(os.Getenv("GITHUB_APP_ID"))
-	privateKeyPEM := strings.TrimSpace(os.Getenv("GITHUB_APP_PRIVATE_KEY"))
+	appID := platformSetting(settingGitHubAppID, "GITHUB_APP_ID")
+	privateKeyPEM := platformSetting(settingGitHubAppPrivateKey, "GITHUB_APP_PRIVATE_KEY")
 	if appID == "" || privateKeyPEM == "" {
 		return "", fmt.Errorf("GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY must be configured")
 	}

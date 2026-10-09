@@ -44,6 +44,9 @@ import {
   listServiceVariables,
   updateServiceVariables,
   getGitHubAppInstallUrl,
+  getGitHubAppStatus,
+  createGitHubAppManifest,
+  convertGitHubAppCode,
   connectGitHubApp,
   updateCurrentUserProfile,
   getPlatformSettings,
@@ -950,6 +953,35 @@ function GitProvidersSection() {
     }
   };
 
+  // Admins can self-provision the instance's GitHub App via the manifest
+  // flow when GITHUB_APP_* env vars were never configured.
+  const profileQuery = useQuery({ queryKey: ['user-profile'], queryFn: getCurrentUserProfile, retry: false });
+  const isAdmin = Boolean(profileQuery.data?.isAdmin);
+  const ghAppQuery = useQuery({
+    queryKey: ['github-app-status'],
+    queryFn: getGitHubAppStatus,
+    enabled: isAdmin,
+    retry: false,
+  });
+  const provisionMutation = useMutation({
+    mutationFn: async () => {
+      const { url, manifest } = await createGitHubAppManifest({ base_url: window.location.origin });
+      // GitHub requires a form POST carrying the manifest JSON.
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = url;
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'manifest';
+      input.value = manifest;
+      form.appendChild(input);
+      document.body.appendChild(form);
+      form.submit();
+    },
+  });
+  const ghAppStatus = ghAppQuery.data;
+  const showProvision = isAdmin && ghAppStatus && !ghAppStatus.configured;
+
   const [form, setForm] = useState({
     name: 'github' as (typeof gitProviderTypes)[number]['value'],
     displayName: '',
@@ -996,13 +1028,25 @@ function GitProvidersSection() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => void installApp()}
-            className="flex items-center gap-2 h-9 px-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-sm font-medium text-[var(--text-secondary)] hover:border-[var(--border-default)] transition-colors"
-          >
-            <GitBranch size={14} />
-            Install GitHub App
-          </button>
+          {showProvision ? (
+            <button
+              onClick={() => provisionMutation.mutate()}
+              disabled={provisionMutation.isPending}
+              className="flex items-center gap-2 h-9 px-4 rounded-[var(--radius-md)] text-[var(--accent-on)] text-sm font-medium shadow-lg transition-all disabled:opacity-50"
+              style={{ background: 'var(--accent-primary)' }}
+            >
+              <GitBranch size={14} />
+              {provisionMutation.isPending ? 'Opening GitHub…' : 'Set up GitHub App'}
+            </button>
+          ) : (
+            <button
+              onClick={() => void installApp()}
+              className="flex items-center gap-2 h-9 px-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-sm font-medium text-[var(--text-secondary)] hover:border-[var(--border-default)] transition-colors"
+            >
+              <GitBranch size={14} />
+              Install GitHub App
+            </button>
+          )}
           <button
             onClick={() => setFormOpen((open) => !open)}
             className="flex items-center gap-2 h-9 px-4 rounded-[var(--radius-md)] text-[var(--accent-on)] text-sm font-medium shadow-lg transition-all"
@@ -1017,6 +1061,11 @@ function GitProvidersSection() {
       {installUrlError && (
         <div className="mb-4 px-4 py-3 rounded-[var(--radius-md)] bg-[var(--error-soft)] text-sm text-[var(--error)]">
           {installUrlError}
+        </div>
+      )}
+      {provisionMutation.isError && (
+        <div className="mb-4 px-4 py-3 rounded-[var(--radius-md)] bg-[var(--error-soft)] text-sm text-[var(--error)]">
+          {provisionMutation.error instanceof Error ? provisionMutation.error.message : 'Failed to start GitHub App setup'}
         </div>
       )}
       {connectAppMutation.isPending && (
@@ -1148,6 +1197,66 @@ function GitProvidersSection() {
         </div>
       )}
     </section>
+  );
+}
+
+// GitHub redirects here after the admin completes the manifest form —
+// /git/github-app/callback?code=…&state=…
+export function GitHubAppCallbackPage() {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const code = searchParams.get('code');
+
+  const convertMutation = useMutation({
+    mutationFn: (appCode: string) => convertGitHubAppCode(appCode),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['github-app-status'] });
+      navigate('/settings', { replace: true });
+    },
+  });
+  const firedRef = useRef(false);
+  useEffect(() => {
+    if (code && !firedRef.current) {
+      firedRef.current = true;
+      convertMutation.mutate(code);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fire once per code
+  }, [code]);
+
+  return (
+    <div className="mx-auto max-w-md px-5 py-16 text-center">
+      {!code ? (
+        <>
+          <AlertCircle size={28} className="mx-auto text-[var(--error)]" />
+          <h1 className="mt-4 text-lg font-semibold text-[var(--text-primary)]">Missing code</h1>
+          <p className="mt-2 text-sm text-[var(--text-tertiary)]">
+            GitHub did not return an app code. Start the setup again from Git providers.
+          </p>
+        </>
+      ) : convertMutation.isError ? (
+        <>
+          <AlertCircle size={28} className="mx-auto text-[var(--error)]" />
+          <h1 className="mt-4 text-lg font-semibold text-[var(--text-primary)]">Setup failed</h1>
+          <p className="mt-2 text-sm text-[var(--text-tertiary)]">
+            {convertMutation.error instanceof Error ? convertMutation.error.message : 'Could not provision the GitHub App'}
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate('/settings', { replace: true })}
+            className="mt-6 rounded-[var(--radius-md)] bg-[var(--accent-primary)] px-4 py-2 text-sm font-semibold text-[var(--accent-on)]"
+          >
+            Back to settings
+          </button>
+        </>
+      ) : (
+        <>
+          <Loader2 size={28} className="mx-auto animate-spin text-[var(--accent-primary)]" />
+          <h1 className="mt-4 text-lg font-semibold text-[var(--text-primary)]">Setting up GitHub App</h1>
+          <p className="mt-2 text-sm text-[var(--text-tertiary)]">Exchanging the app credentials…</p>
+        </>
+      )}
+    </div>
   );
 }
 

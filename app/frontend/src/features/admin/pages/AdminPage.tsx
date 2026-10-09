@@ -20,6 +20,8 @@ import {
   deleteBanner,
   deleteProject,
   getAdminOverview,
+  impersonateUser,
+  type ImpersonationResult,
   listAdminBanners,
   listAdminUsers,
   listInvites,
@@ -77,6 +79,7 @@ export function AdminPage() {
   const [bannerForm, setBannerForm] = useState({ title: '', body: '', level: 'info' as Banner['level'] });
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [impersonation, setImpersonation] = useState<ImpersonationResult | null>(null);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['admin-overview'] });
@@ -105,6 +108,12 @@ export function AdminPage() {
       invalidate();
     },
     onError: (error) => showToast('error', 'Revoke failed', error instanceof Error ? error.message : undefined),
+  });
+
+  const impersonateMutation = useMutation({
+    mutationFn: (id: string) => impersonateUser(id),
+    onSuccess: (result) => setImpersonation(result),
+    onError: (error) => showToast('error', 'Impersonation failed', error instanceof Error ? error.message : undefined),
   });
 
   const bannerCreateMutation = useMutation({
@@ -520,6 +529,7 @@ export function AdminPage() {
               isSelf={user.id === myId}
               pending={adminMutation.isPending}
               onToggle={(isAdmin) => adminMutation.mutate({ id: user.id, isAdmin })}
+              onImpersonate={user.is_admin || user.id === myId ? undefined : () => impersonateMutation.mutate(user.id)}
             />
           ))}
           {users.length === 0 ? (
@@ -527,6 +537,52 @@ export function AdminPage() {
           ) : null}
         </div>
       </section>
+
+      {impersonation ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--bg-base)] shadow-2xl">
+            <div className="border-b border-[var(--border-subtle)] px-5 py-4">
+              <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">
+                Impersonating {impersonation.user.email}
+              </h2>
+              <p className="text-xs text-[var(--text-tertiary)]">
+                Token valid until {new Date(impersonation.expires_at).toLocaleString()} — audit-logged.
+              </p>
+            </div>
+            <div className="space-y-3 px-5 py-4">
+              <div className="flex items-center gap-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 py-2.5">
+                <code className="min-w-0 flex-1 truncate text-[12px] text-[var(--text-primary)]">
+                  {impersonation.token}
+                </code>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard?.writeText(impersonation.token);
+                    showToast('success', 'Token copied');
+                  }}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-[var(--radius-md)] border border-[var(--border-default)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                >
+                  <Copy size={11} /> Copy
+                </button>
+              </div>
+              <p className="text-[12px] leading-relaxed text-[var(--text-tertiary)]">
+                Use it as a bearer token — e.g. <code className="text-[var(--text-secondary)]">CONTAINR_TOKEN=&lt;token&gt;
+                containr &lt;command&gt;</code> or <code className="text-[var(--text-secondary)]">Authorization: Bearer
+                &lt;token&gt;</code>. Requests run with that user's permissions for 15 minutes.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-[var(--border-subtle)] px-5 py-3.5">
+              <button
+                type="button"
+                onClick={() => setImpersonation(null)}
+                className="rounded-[var(--radius-md)] bg-[var(--accent-primary)] px-4 py-2 text-xs font-semibold text-[var(--accent-on)]"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {editingProject ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
@@ -583,11 +639,13 @@ function UserRow({
   isSelf,
   pending,
   onToggle,
+  onImpersonate,
 }: {
   user: AdminUser;
   isSelf: boolean;
   pending: boolean;
   onToggle: (isAdmin: boolean) => void;
+  onImpersonate?: () => void;
 }) {
   return (
     <div className="flex items-center gap-4 border-b border-[var(--border-subtle)] px-4 py-3 last:border-b-0">
@@ -605,6 +663,15 @@ function UserRow({
         <span className="inline-flex items-center gap-1 rounded-full bg-[var(--accent-primary-soft)] px-2.5 py-0.5 text-[10.5px] font-semibold text-[var(--accent-primary)]">
           <ShieldCheck size={11} /> admin
         </span>
+      ) : null}
+      {onImpersonate ? (
+        <button
+          type="button"
+          onClick={onImpersonate}
+          className="rounded-[var(--radius-md)] border border-[var(--border-default)] px-3 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+        >
+          Impersonate
+        </button>
       ) : null}
       <button
         type="button"

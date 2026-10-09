@@ -2258,6 +2258,36 @@ export async function getGitHubAppInstallUrl(): Promise<string> {
   return payload.install_url;
 }
 
+export type GitHubAppStatus = {
+  configured: boolean;
+  source: 'env' | 'settings' | 'none';
+  app_id?: string;
+  slug?: string;
+  name?: string;
+};
+
+export async function getGitHubAppStatus(): Promise<GitHubAppStatus> {
+  return requestJson<GitHubAppStatus>('/admin/git/github-app');
+}
+
+export async function createGitHubAppManifest(input: {
+  base_url: string;
+  name?: string;
+  organization?: string;
+}): Promise<{ url: string; manifest: string; state: string }> {
+  return requestJson('/admin/git/github-app/manifest', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function convertGitHubAppCode(code: string): Promise<{ app_id: number; slug: string; name: string }> {
+  return requestJson('/admin/git/github-app/convert', {
+    method: 'POST',
+    body: JSON.stringify({ code }),
+  });
+}
+
 export async function connectGitHubApp(installationId: number, displayName?: string): Promise<GitProviderEntity> {
   const payload = await requestJson<{ provider?: GitProviderEntity }>('/git/github-app/connect', {
     method: 'POST',
@@ -2620,6 +2650,18 @@ export async function getAdminOverview(): Promise<AdminOverview> {
 export async function listAdminUsers(): Promise<AdminUser[]> {
   const payload = await requestJson<{ users?: AdminUser[] }>('/admin/users');
   return payload.users ?? [];
+}
+
+export type ImpersonationResult = {
+  token: string;
+  expires_at: string;
+  user: { id: string; email: string; name: string };
+};
+
+export async function impersonateUser(userId: string): Promise<ImpersonationResult> {
+  return requestJson<ImpersonationResult>(`/admin/users/${encodeURIComponent(userId)}/impersonate`, {
+    method: 'POST',
+  });
 }
 
 export async function setUserAdmin(userId: string, isAdmin: boolean): Promise<void> {

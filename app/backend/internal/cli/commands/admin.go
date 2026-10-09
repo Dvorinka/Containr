@@ -56,6 +56,84 @@ var adminUsersCmd = &cobra.Command{
 	},
 }
 
+var adminImpersonateCmd = &cobra.Command{
+	Use:   "impersonate <user-id>",
+	Short: "Mint a 15-minute token acting as a user (audit-logged)",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := client()
+		if err != nil {
+			return err
+		}
+		data, err := c.Do("POST", "/admin/users/"+args[0]+"/impersonate", map[string]interface{}{})
+		if err != nil {
+			return err
+		}
+		PrintRaw(data)
+		fmt.Fprintln(cmd.ErrOrStderr(), "\nUse it with: CONTAINR_TOKEN=<token> containr <command>")
+		return nil
+	},
+}
+
+var adminGitHubAppCmd = &cobra.Command{
+	Use:   "github-app",
+	Short: "GitHub App self-provisioning",
+}
+
+var adminGitHubAppStatusCmd = &cobra.Command{
+	Use:   "status",
+	Short: "Show GitHub App provisioning status",
+	RunE:  simpleGet("/admin/git/github-app"),
+}
+
+var adminGitHubAppManifestCmd = &cobra.Command{
+	Use:   "manifest",
+	Short: "Build the manifest to create the instance GitHub App",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := client()
+		if err != nil {
+			return err
+		}
+		req := map[string]interface{}{"base_url": ghAppBaseURL}
+		if ghAppOrg != "" {
+			req["organization"] = ghAppOrg
+		}
+		if ghAppName != "" {
+			req["name"] = ghAppName
+		}
+		data, err := c.Do("POST", "/admin/git/github-app/manifest", req)
+		if err != nil {
+			return err
+		}
+		PrintRaw(data)
+		return nil
+	},
+}
+
+var adminGitHubAppConvertCmd = &cobra.Command{
+	Use:   "convert <code>",
+	Short: "Exchange the manifest callback code for app credentials",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := client()
+		if err != nil {
+			return err
+		}
+		data, err := c.Do("POST", "/admin/git/github-app/convert", map[string]interface{}{"code": args[0]})
+		if err != nil {
+			return err
+		}
+		PrintRaw(data)
+		return nil
+	},
+}
+
+var (
+	ghAppBaseURL string
+	ghAppOrg     string
+	ghAppName    string
+)
+
 var adminSettingsCmd = &cobra.Command{
 	Use:   "settings",
 	Short: "Show platform settings",
@@ -353,7 +431,13 @@ func init() {
 	securityScanCmd.Flags().String("type", "configuration", "dependency|configuration|comprehensive")
 	securityScanCmd.Flags().String("service", "", "limit scan to one service")
 
-	AdminCmd.AddCommand(adminOverviewCmd, adminUsersCmd, adminSettingsCmd, adminAuditCmd)
+	adminGitHubAppManifestCmd.Flags().StringVar(&ghAppBaseURL, "base-url", "", "public base URL of this instance (required)")
+	adminGitHubAppManifestCmd.Flags().StringVar(&ghAppOrg, "org", "", "create the app under this organization")
+	adminGitHubAppManifestCmd.Flags().StringVar(&ghAppName, "name", "", "app name (defaults to product name + date)")
+	adminGitHubAppManifestCmd.MarkFlagRequired("base-url")
+
+	adminGitHubAppCmd.AddCommand(adminGitHubAppStatusCmd, adminGitHubAppManifestCmd, adminGitHubAppConvertCmd)
+	AdminCmd.AddCommand(adminOverviewCmd, adminUsersCmd, adminSettingsCmd, adminAuditCmd, adminImpersonateCmd, adminGitHubAppCmd)
 	GatewayCmd.AddCommand(gatewayServicesCmd, gatewayKeysCmd, gatewayAnalyticsCmd)
 	HACmd.AddCommand(haStatusCmd, haAlertsCmd, haHealthCmd, haPoliciesCmd, haEnableCmd, haDisableCmd, haFailoverCmd)
 	ScalingCmd.AddCommand(scalingStatusCmd, scalingPoliciesCmd, scalingServicesCmd, scalingScaleCmd)
