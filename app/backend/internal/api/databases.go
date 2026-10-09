@@ -2,6 +2,7 @@ package api
 
 import (
 	"archive/tar"
+	"containr/internal/database"
 	"containr/internal/database/sqlcdb"
 	"containr/internal/deployment"
 	"containr/internal/docker"
@@ -1868,14 +1869,22 @@ func (h *DatabaseHandler) createBackupProcess(databaseID, backupID, backupPath s
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
 
+	notify := func(title, body string) {
+		if row, err := h.queries.GetDatabaseServiceByID(context.Background(), databaseID); err == nil && row.UserID != "" {
+			insertUserNotification(&database.DB{DB: h.db}, row.UserID, "backup", title, body, "database", databaseID)
+		}
+	}
+
 	if h.dockerClient == nil {
 		_ = h.setDatabaseBackupStatus(backupID, "failed", "0 B", false)
+		notify("Database backup failed", "Backup could not start: docker unavailable.")
 		return
 	}
 
 	sizeLabel, err := h.snapshotDatabaseVolume(ctx, databaseID, backupPath)
 	if err != nil {
 		_ = h.setDatabaseBackupStatus(backupID, "failed", "0 B", false)
+		notify("Database backup failed", fmt.Sprintf("Snapshot failed: %v", err))
 		return
 	}
 	if dbRow, err := h.queries.GetDatabaseServiceByID(ctx, databaseID); err == nil {
@@ -1886,6 +1895,7 @@ func (h *DatabaseHandler) createBackupProcess(databaseID, backupID, backupPath s
 		}
 	}
 	_ = h.setDatabaseBackupStatus(backupID, "completed", sizeLabel, true)
+	notify("Database backup completed", fmt.Sprintf("Backup archived (%s).", sizeLabel))
 }
 
 func (h *DatabaseHandler) restoreBackupProcess(databaseID, backupID string, backupPath string) {

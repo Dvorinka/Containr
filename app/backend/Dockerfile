@@ -9,7 +9,9 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main cmd/server/main.go
+ARG VERSION=dev
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo \
+    -ldflags "-X containr/internal/api.Version=${VERSION}" -o main cmd/server/main.go
 
 # Build embedded Better Auth runtime dependencies
 FROM node:22-alpine AS auth-builder

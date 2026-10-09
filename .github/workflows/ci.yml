@@ -248,6 +248,10 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta-backend.outputs.tags }}
           labels: ${{ steps.meta-backend.outputs.labels }}
+          # Stamp the release tag into the binary so the in-app upgrade
+          # check knows what it's running ("dev" disables it).
+          build-args: |
+            VERSION=${{ github.ref_type == 'tag' && github.ref_name || 'dev' }}
           cache-from: type=gha,scope=backend
           cache-to: type=gha,mode=max,scope=backend
 
