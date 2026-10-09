@@ -3757,6 +3757,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Cross-cutting operations view
+         * @description Single snapshot of platform work scoped to the caller's projects
+         *     (admins see all): active deployments, in-memory deploy-queue
+         *     depth per service, deployments that failed in the last 24h,
+         *     cron executions and database backups from the last 24h.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Operations snapshot */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            active_deployments?: Record<string, never>[];
+                            deploy_queue?: {
+                                service_id?: string;
+                                running?: boolean;
+                                queued?: number;
+                            }[];
+                            recent_failures?: Record<string, never>[];
+                            cron_runs?: Record<string, never>[];
+                            backups?: Record<string, never>[];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/audit-logs": {
         parameters: {
             query?: never;

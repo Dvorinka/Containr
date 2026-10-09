@@ -147,6 +147,8 @@ func init() {
 	register(spec{"containr_webhooks_deliveries", "List recent delivery attempts for a webhook. Args: id.", "GET", "/webhooks/{id}/deliveries", []string{"id"}, nil, false})
 	register(spec{"containr_webhooks_test", "Queue a test ping delivery for a webhook. Args: id.", "POST", "/webhooks/{id}/test", []string{"id"}, nil, false})
 
+	register(spec{"containr_operations_get", "Cross-cutting operations view: active deployments, deploy queue depth, recent failures, cron runs, backups.", "GET", "/operations", nil, nil, false})
+
 	// Nodes / agent tokens (admin)
 	register(spec{"containr_nodes_list", "List node agents (admin)", "GET", "/agents", nil, nil, false})
 	register(spec{"containr_nodes_get", "Get a node agent (admin)", "GET", "/agents/{id}", []string{"id"}, nil, false})

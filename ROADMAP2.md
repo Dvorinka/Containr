@@ -290,9 +290,12 @@ and wired refs, one click or one CLI call.
   favicon, accent override, docs/support links. `GET /api/v1/branding`
   public + cached. **Containr/Vertice remains default;** this is for
   self-hosters who rebrand their instance.
-- [ ] **Operations page** — unified view of running/queued/failed jobs
-  (deploys, builds, backups, cron, scans, agent commands) — dflow's
-  bubble panel as a real page; flush/stuck-job tools once queue exists.
+- [x] **Operations page** — `GET /operations` aggregates active
+  deployments, in-memory deploy-queue depth (`Queue.Snapshot()`),
+  24h failures, cron runs and backups scoped to the caller's projects.
+  UI at `/operations` (Operate nav) with live refetch; `containr
+  operations` CLI + `containr_operations_get` MCP. Remaining: agent
+  commands once node fleet lands; flush/stuck-job tools.
 - [ ] **Interactive terminal** — upgrade exec to WS PTY (`xterm.js`);
   `nodes/:id/terminal` via agent (dflow's wetty without the extra
   container).

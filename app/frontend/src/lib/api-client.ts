@@ -1827,6 +1827,45 @@ export async function testWebhook(id: string): Promise<void> {
   await requestJson(`/webhooks/${id}/test`, { method: 'POST', body: JSON.stringify({}) });
 }
 
+export type OperationsView = {
+  active_deployments: Array<{
+    id: string;
+    service_id: string;
+    service_name: string;
+    project_name: string;
+    status: string;
+    image: string;
+    error?: string | null;
+    started_at?: string | null;
+    completed_at?: string | null;
+    created_at: string;
+  }>;
+  deploy_queue: Array<{ service_id: string; running: boolean; queued: number }>;
+  recent_failures: OperationsView['active_deployments'];
+  cron_runs: Array<{
+    id: string;
+    job_name: string;
+    schedule: string;
+    status: string;
+    started_at: string;
+    finished_at?: string | null;
+    error?: string | null;
+  }>;
+  backups: Array<{
+    id: string;
+    database_id: string;
+    database_name: string;
+    status: string;
+    size: string;
+    created_at: string;
+    completed_at?: string | null;
+  }>;
+};
+
+export async function getOperations(): Promise<OperationsView> {
+  return requestJson<OperationsView>('/operations');
+}
+
 export function serviceStatusClass(status: ServiceStatus): string {
   switch (status) {
     case 'running':

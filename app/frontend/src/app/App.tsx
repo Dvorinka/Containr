@@ -10,6 +10,7 @@ import { BuildsPage } from '@/features/builds/pages/BuildsPage';
 import { TemplatesPage } from '@/features/templates/pages/TemplatesPage';
 import { AuditLogsPage } from '@/features/audit/pages/AuditLogsPage';
 import { WebhooksPage } from '@/features/webhooks/pages/WebhooksPage';
+import { OperationsPage } from '@/features/operations/pages/OperationsPage';
 import { AdminPage } from '@/features/admin/pages/AdminPage';
 import { LandingPage } from '@/features/landing/LandingPage';
 import {
@@ -142,6 +143,7 @@ export default function App() {
           <Route path="/templates" element={<TemplatesPage />} />
           <Route path="/databases" element={<DatabasesPage />} />
           <Route path="/ha" element={<HighAvailabilityPage />} />
+          <Route path="/operations" element={<OperationsPage />} />
           <Route path="/security" element={<SecurityPage />} />
           <Route path="/usage" element={<UsagePage />} />
           <Route path="/docs" element={<DocsPage />} />

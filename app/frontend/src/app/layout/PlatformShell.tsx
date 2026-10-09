@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import {
+  Activity,
   Bell,
   BookOpen,
   ChartBar,
@@ -57,6 +58,7 @@ const navSections: NavSection[] = [
   {
     title: 'Operate',
     items: [
+      { label: 'Operations', href: '/operations', icon: Activity, hint: 'Live jobs & failures' },
       { label: 'Databases', href: '/databases', icon: Database, hint: 'Managed data services' },
       { label: 'High Availability', href: '/ha', icon: ShieldCheck, hint: 'Failover & health' },
       { label: 'Security', href: '/security', icon: Shield, hint: 'Scans & compliance' },
