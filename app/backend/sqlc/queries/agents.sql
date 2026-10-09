@@ -145,3 +145,6 @@ ON CONFLICT (id) DO UPDATE SET
 
 -- name: DeleteServiceContainersOnAgent :exec
 DELETE FROM container_instances WHERE node_agent_id = $1 AND service_id = $2;
+
+-- name: ScrubCommandPayload :exec
+UPDATE agent_commands SET payload = $2, updated_at = NOW() WHERE id = $1;

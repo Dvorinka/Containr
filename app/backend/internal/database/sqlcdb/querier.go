@@ -105,6 +105,7 @@ type Querier interface {
 	PickLeastLoadedAgent(ctx context.Context) (string, error)
 	RevokeAgentAuthToken(ctx context.Context, id uuid.UUID) (AgentAuthToken, error)
 	RevokeUserToken(ctx context.Context, arg RevokeUserTokenParams) (int64, error)
+	ScrubCommandPayload(ctx context.Context, arg ScrubCommandPayloadParams) error
 	SetAgentSchedulable(ctx context.Context, arg SetAgentSchedulableParams) error
 	SetDatabaseBackupRemoteKeyByID(ctx context.Context, arg SetDatabaseBackupRemoteKeyByIDParams) error
 	SetDatabaseBackupScheduleByIDAndUser(ctx context.Context, arg SetDatabaseBackupScheduleByIDAndUserParams) error

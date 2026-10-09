@@ -283,6 +283,20 @@ func createContainer(payload map[string]interface{}) (string, error) {
 		return "", errors.New("container name and image are required")
 	}
 
+	// Private registry: log in for the pull, then log back out so the
+	// credential doesn't linger in the node's docker config.
+	if reg, ok := container["registry"].(map[string]interface{}); ok {
+		if user := stringValue(reg["username"]); user != "" {
+			server := firstString(stringValue(reg["server"]), registryHostOf(image))
+			login := exec.Command("docker", "login", server, "-u", user, "--password-stdin")
+			login.Stdin = strings.NewReader(stringValue(reg["password"]))
+			if out, err := login.CombinedOutput(); err != nil {
+				return "", fmt.Errorf("registry login %s: %s", server, strings.TrimSpace(string(out)))
+			}
+			defer func() { _, _ = runDocker("logout", server) }()
+		}
+	}
+
 	// Redeploys reuse the deterministic name — clear the stale container
 	// first so `run` never fails on a name conflict.
 	_, _ = runDocker("rm", "-f", name)
@@ -349,7 +363,28 @@ func createContainer(payload map[string]interface{}) (string, error) {
 			args = append(args, stringValue(arg))
 		}
 	}
-	return runDocker(args...)
+	if _, err := runDocker(args...); err != nil {
+		return "", err
+	}
+	// docker run -d returns before the entrypoint fails — a crash-looping
+	// service would be reported healthy. Give it a moment, then verify.
+	time.Sleep(1500 * time.Millisecond)
+	state, _ := runDocker("inspect", "-f", "{{.State.Status}}", name)
+	if state != "running" {
+		logs, _ := runDocker("logs", "--tail", "5", name)
+		return "", fmt.Errorf("container %s is %q after start: %s", name, state, logs)
+	}
+	return name, nil
+}
+
+// registryHostOf mirrors the server's registryHost: first path segment with
+// a "." or ":" is a registry host; bare names mean Docker Hub.
+func registryHostOf(imageRef string) string {
+	parts := strings.Split(imageRef, "/")
+	if len(parts) > 1 && (strings.Contains(parts[0], ".") || strings.Contains(parts[0], ":")) {
+		return parts[0]
+	}
+	return "docker.io"
 }
 
 func commandTarget(payload map[string]interface{}) string {

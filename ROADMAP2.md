@@ -294,9 +294,14 @@ and wired refs, one click or one CLI call.
   documented ceilings. Remaining: `scheduling_rules` spread/affinity
   policies, deployment status reported back from agent
   results, per-node resource-aware `auto` (currently count-based).
-- [ ] **Build-on-node** — agents currently `docker run` prebuilt images
-  only; extend agent to pull registry images (build stays central) —
-  private registry creds flow through Phase C.
+- [🟡] **Build-on-node** — private registry pulls shipped: the dispatch
+  payload carries the project owner's `registries` credentials for the
+  image host; the agent `docker login`s for the pull and logs out after,
+  and command payloads are scrubbed of passwords on completion. Agent
+  also verifies the container is still running ~1.5s after `run` so
+  crash-loops fail the deploy instead of reporting healthy. Remaining:
+  real builds on the node (source checkout + build daemon) — pulls
+  already work.
 - [ ] **IaC provisioning (ROADMAP §2.2, unchanged)** — Terraform/
   OpenTofu, `infra_connections`, Proxmox + AWS modules, + Hetzner module
   (dflow's second provider), cloud-init → auto-enroll.

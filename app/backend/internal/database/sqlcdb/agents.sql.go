@@ -710,6 +710,20 @@ func (q *Queries) PickLeastLoadedAgent(ctx context.Context) (string, error) {
 	return id, err
 }
 
+const scrubCommandPayload = `-- name: ScrubCommandPayload :exec
+UPDATE agent_commands SET payload = $2, updated_at = NOW() WHERE id = $1
+`
+
+type ScrubCommandPayloadParams struct {
+	ID      string                `json:"id"`
+	Payload pqtype.NullRawMessage `json:"payload"`
+}
+
+func (q *Queries) ScrubCommandPayload(ctx context.Context, arg ScrubCommandPayloadParams) error {
+	_, err := q.db.ExecContext(ctx, scrubCommandPayload, arg.ID, arg.Payload)
+	return err
+}
+
 const setAgentSchedulable = `-- name: SetAgentSchedulable :exec
 UPDATE node_agents SET schedulable = $2, updated_at = NOW() WHERE id = $1
 `

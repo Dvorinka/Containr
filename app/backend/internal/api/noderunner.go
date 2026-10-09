@@ -21,11 +21,12 @@ import (
 // reported result. Remote nodes have no Traefik — domains stay local-only
 // until per-node ingress lands.
 type agentNodeRunner struct {
-	q *sqlcdb.Queries
+	q  *sqlcdb.Queries
+	db *database.DB
 }
 
 func newAgentNodeRunner(db *database.DB) *agentNodeRunner {
-	return &agentNodeRunner{q: sqlcdb.New(db.DB)}
+	return &agentNodeRunner{q: sqlcdb.New(db.DB), db: db}
 }
 
 // remoteContainerID is deterministic per (agent, service, replica) so redeploys
@@ -117,6 +118,7 @@ func (r *agentNodeRunner) ReconcileOnNode(ctx context.Context, spec deployment.R
 			"image":          spec.Image,
 			"command":        cmd,
 			"environment":    env,
+			"registry":       r.pullCredentials(spec.ProjectID, spec.Image),
 			"ports":          ports,
 			"volumes":        volumes,
 			"restart_policy": restart,
@@ -161,6 +163,26 @@ func (r *agentNodeRunner) ReconcileOnNode(ctx context.Context, spec deployment.R
 		})
 	}
 	return state, nil
+}
+
+// pullCredentials resolves the project owner's registry auth for the image
+// host so private images pull on remote nodes. Empty map → anonymous pull.
+func (r *agentNodeRunner) pullCredentials(projectID, imageRef string) map[string]interface{} {
+	var ownerID string
+	if err := r.db.QueryRow(
+		`SELECT owner_id FROM projects WHERE id = $1`, projectID,
+	).Scan(&ownerID); err != nil {
+		return map[string]interface{}{}
+	}
+	auth := registryAuthFor(r.db, ownerID, imageRef)
+	if auth.Username == "" {
+		return map[string]interface{}{}
+	}
+	return map[string]interface{}{
+		"server":   auth.ServerAddress,
+		"username": auth.Username,
+		"password": auth.Password,
+	}
 }
 
 // ControlService fans a lifecycle action out to every replica row the

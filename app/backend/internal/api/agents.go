@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"math"
 	"net/http"
 	"os"
@@ -699,7 +700,38 @@ func (h *NodeAgentHandler) CompleteCommand(c *gin.Context) {
 		h.updateContainerStatusAfterCommand(ctx, out)
 	}
 
+	// Command payloads can carry registry credentials — scrub them once the
+	// command is settled so secrets don't linger in the queue rows.
+	scrubCommandSecrets(ctx, h.q, commandID, command.Payload)
+
 	c.JSON(http.StatusOK, gin.H{"command": out})
+}
+
+// scrubCommandSecrets rewrites a completed command's payload with any
+// registry password blanked. Best-effort — a failed scrub leaves the row.
+func scrubCommandSecrets(ctx context.Context, q *sqlcdb.Queries, commandID string, payload pqtype.NullRawMessage) {
+	if !payload.Valid || len(payload.RawMessage) == 0 {
+		return
+	}
+	var doc map[string]interface{}
+	if err := json.Unmarshal(payload.RawMessage, &doc); err != nil {
+		return
+	}
+	container, ok := doc["container"].(map[string]interface{})
+	if !ok {
+		return
+	}
+	reg, ok := container["registry"].(map[string]interface{})
+	if !ok || reg["password"] == nil {
+		return
+	}
+	reg["password"] = "***"
+	if err := q.ScrubCommandPayload(ctx, sqlcdb.ScrubCommandPayloadParams{
+		ID:      commandID,
+		Payload: rawJSON(doc),
+	}); err != nil {
+		log.Printf("agents: scrub command %s payload: %v", commandID, err)
+	}
 }
 
 func (h *NodeAgentHandler) updateContainerStatusAfterCommand(ctx context.Context, command AgentCommand) {
