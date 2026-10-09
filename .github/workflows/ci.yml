@@ -162,21 +162,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Use Docker Hub mirror
-        # Anonymous docker.io pulls rate-limit shared CI egress IPs —
-        # service pulls AND BuildKit base-image metadata both hit it.
-        # Routing the daemon through Google's public mirror avoids both.
-        run: |
-          echo '{"registry-mirrors":["https://mirror.gcr.io"]}' | sudo tee /etc/docker/daemon.json
-          sudo systemctl restart docker
-          timeout 60 sh -c 'until docker info >/dev/null 2>&1; do sleep 1; done'
-
       - name: Boot stack
+        # .github/compose.ci.yml swaps every docker.io ref for
+        # mirror.gcr.io — anonymous Hub pulls 429 on shared CI IPs.
         run: |
           BETTER_AUTH_SECRET=$(openssl rand -hex 32)
           BETTER_AUTH_INTERNAL_TOKEN=$(openssl rand -hex 32)
           export BETTER_AUTH_SECRET BETTER_AUTH_INTERNAL_TOKEN
-          docker compose -f infra/docker-compose.yml up -d --build postgres dragonfly backend frontend traefik
+          docker compose -f infra/docker-compose.yml -f .github/compose.ci.yml up -d --build postgres dragonfly backend frontend traefik
 
       - name: Wait for backend health
         run: |

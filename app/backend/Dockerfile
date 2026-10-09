@@ -1,5 +1,7 @@
 # Build Go API binary
-FROM golang:1.26-alpine AS go-builder
+ARG GO_IMAGE=golang:1.26-alpine
+ARG NODE_IMAGE=node:22-alpine
+FROM ${GO_IMAGE} AS go-builder
 
 RUN apk add --no-cache git ca-certificates tzdata
 
@@ -18,7 +20,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=${V
     CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "-X main.version=${VERSION}" -o /agents/containr-agent-linux-arm64 ./cmd/agent
 
 # Build embedded Better Auth runtime dependencies
-FROM node:22-alpine AS auth-builder
+FROM ${NODE_IMAGE} AS auth-builder
 
 WORKDIR /auth
 
@@ -28,7 +30,7 @@ RUN npm ci --omit=dev
 COPY auth/src ./src
 
 # Final runtime image (Go API + Better Auth sidecar in one container)
-FROM node:22-alpine
+FROM ${NODE_IMAGE}
 
 RUN apk --no-cache add ca-certificates tzdata wget git
 
