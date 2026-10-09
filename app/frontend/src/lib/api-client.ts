@@ -342,6 +342,7 @@ export type NodeAgentEntity = {
   capabilities: AgentCapabilities;
   resources: NodeResources;
   autoPrune: boolean;
+  metadata: Record<string, unknown>;
   lastHeartbeat?: string;
   createdAt?: string;
   updatedAt?: string;
@@ -1078,6 +1079,7 @@ function normalizeAgent(agent: RawNodeAgent): NodeAgentEntity | null {
     },
     lastHeartbeat: agent.last_heartbeat,
     autoPrune: agent.auto_prune ?? false,
+    metadata: (agent.metadata ?? {}) as Record<string, unknown>,
     createdAt: agent.created_at,
     updatedAt: agent.updated_at,
   };

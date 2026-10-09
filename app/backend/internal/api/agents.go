@@ -331,6 +331,7 @@ func (h *NodeAgentHandler) RegisterAgent(c *gin.Context) {
 		Port         int               `json:"port" binding:"required"`
 		Capabilities AgentCapabilities `json:"capabilities" binding:"required"`
 		AuthToken    string            `json:"auth_token"`
+		Mesh         map[string]string `json:"mesh"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -345,12 +346,28 @@ func (h *NodeAgentHandler) RegisterAgent(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
+	metadata := map[string]interface{}{}
+	// req.Mesh is authoritative when present (newer agents always send it,
+	// possibly empty); nil means an older agent — keep any stored value.
+	if req.Mesh != nil {
+		metadata["mesh"] = req.Mesh
+	}
 
 	// Re-registering an existing host updates it in place.
 	if existing, err := h.q.GetAgentByHostAndIP(ctx, sqlcdb.GetAgentByHostAndIPParams{
 		Hostname:  req.Hostname,
 		IpAddress: req.IPAddress,
 	}); err == nil {
+		if existing.Metadata.Valid && len(existing.Metadata.RawMessage) > 0 {
+			var prev map[string]interface{}
+			if err := json.Unmarshal(existing.Metadata.RawMessage, &prev); err == nil {
+				for k, v := range prev {
+					if _, ok := metadata[k]; !ok {
+						metadata[k] = v
+					}
+				}
+			}
+		}
 		updated, err := h.q.UpdateAgent(ctx, sqlcdb.UpdateAgentParams{
 			ID:            existing.ID,
 			Name:          req.Name,
@@ -362,7 +379,7 @@ func (h *NodeAgentHandler) RegisterAgent(c *gin.Context) {
 			Capabilities:  rawJSON(req.Capabilities),
 			Resources:     existing.Resources,
 			LastHeartbeat: sql.NullTime{Time: time.Now(), Valid: true},
-			Metadata:      existing.Metadata,
+			Metadata:      rawJSON(metadata),
 		})
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update agent"})
@@ -412,7 +429,7 @@ func (h *NodeAgentHandler) RegisterAgent(c *gin.Context) {
 		Capabilities:  rawJSON(req.Capabilities),
 		Resources:     rawJSON(resources),
 		LastHeartbeat: sql.NullTime{Time: time.Now(), Valid: true},
-		Metadata:      rawJSON(map[string]interface{}{}),
+		Metadata:      rawJSON(metadata),
 	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create agent"})

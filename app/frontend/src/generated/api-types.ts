@@ -12026,6 +12026,10 @@ export interface components {
             capabilities: components["schemas"]["AgentCapabilities"];
             /** @description May also be sent via the X-Agent-Token header */
             auth_token?: string;
+            /** @description Overlay-network interface IPs (tailscale/netbird/zerotier/wireguard). Stored under agent metadata.mesh; authoritative — send an empty object when no mesh interfaces exist. */
+            mesh?: {
+                [key: string]: string;
+            };
         };
         AgentHeartbeat: {
             agent_id?: string;

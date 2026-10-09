@@ -156,6 +156,11 @@ export function NodeDetailPage() {
                 {agent.version ? ` · v${agent.version}` : ''}
                 {agent.lastHeartbeat ? ` · heartbeat ${formatRelative(agent.lastHeartbeat)}` : ''}
               </p>
+              {meshAddresses(agent).length > 0 && (
+                <p className="v-mono mt-1 text-[11px] text-[var(--text-tertiary)]">
+                  mesh: {meshAddresses(agent).map(([iface, ip]) => `${iface}=${ip}`).join(' · ')}
+                </p>
+              )}
             </div>
             <div className="flex items-center gap-3">
               <span className={`v-mono text-[11px] px-2 py-1 rounded-md border ${online
@@ -310,6 +315,13 @@ export function NodeDetailPage() {
       )}
     </div>
   );
+}
+
+function meshAddresses(agent: { metadata: Record<string, unknown> }): [string, string][] {
+  const mesh = agent.metadata?.mesh;
+  if (!mesh || typeof mesh !== 'object' || Array.isArray(mesh)) return [];
+  return Object.entries(mesh as Record<string, unknown>)
+    .filter((entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1] !== '');
 }
 
 function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {

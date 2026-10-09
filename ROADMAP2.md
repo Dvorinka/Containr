@@ -260,9 +260,10 @@ and wired refs, one click or one CLI call.
   served at `/api/agents/download/{linux-amd64,linux-arm64}` (install
   script falls back to GH releases). `cli/commands/nodes_add.go`,
   `api/assets/install-agent.sh`, `agents.go:ServeInstallScript`/`ServeAgentBinary`.
-- [ ] **Mesh awareness** — agent detects + reports tailscale0/netbird0/
-  zt0 IPs at register; backend stores + displays. Optional
-  `TAILSCALE_AUTH_KEY` enroll-at-provision later.
+- [x] **Mesh awareness** — agent reports tailscale/netbird/wireguard/
+  zerotier interface IPs at register (`mesh` field, authoritative on
+  re-register), stored in `node_agents.metadata.mesh`, shown on the node
+  detail page. `TAILSCALE_AUTH_KEY` enroll-at-provision still open.
 - [x] **Node detail page** — `/nodes/:id` (admin): heartbeat telemetry
   (cpu/mem sparklines over 1h/24h/7d via `GET /agents/:id/metrics`),
   containers, command history, rename, auto-prune toggle, prune-now,

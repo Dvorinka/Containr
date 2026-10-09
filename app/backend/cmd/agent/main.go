@@ -167,6 +167,8 @@ func register(ctx context.Context, client *http.Client, cfg agentConfig) (string
 		"ip_address":   cfg.IP,
 		"port":         cfg.Port,
 		"capabilities": detectCapabilities(),
+		// Always send mesh so a removed interface clears stored state.
+		"mesh": detectMeshInterfaces(),
 	}
 	var response registerResponse
 	if err := postJSON(ctx, client, cfg, "/api/agents/register", payload, &response); err != nil {
@@ -370,6 +372,42 @@ func detectCapabilities() capabilities {
 		NetworkPlugins:         []string{"bridge"},
 		Features:               []string{"host-metrics", "heartbeats", "command-poll", "docker-lifecycle"},
 	}
+}
+
+// detectMeshInterfaces reports overlay-network interface IPs (tailscale,
+// netbird, zerotier, wireguard) so the backend can display reachable
+// mesh addresses alongside the primary IP.
+func detectMeshInterfaces() map[string]string {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil
+	}
+	mesh := map[string]string{}
+	for _, iface := range ifaces {
+		name := strings.ToLower(iface.Name)
+		isMesh := strings.HasPrefix(name, "tailscale") || strings.HasPrefix(name, "ts.") ||
+			strings.HasPrefix(name, "netbird") || strings.HasPrefix(name, "wt") ||
+			strings.HasPrefix(name, "zt") || strings.HasPrefix(name, "wg")
+		if !isMesh || iface.Flags&net.FlagUp == 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			ip, _, err := net.ParseCIDR(addr.String())
+			if err != nil || ip.IsLoopback() {
+				continue
+			}
+			if v4 := ip.To4(); v4 != nil {
+				mesh[iface.Name] = v4.String()
+			} else if _, exists := mesh[iface.Name]; !exists {
+				mesh[iface.Name] = ip.String()
+			}
+		}
+	}
+	return mesh
 }
 
 func collectResources(ip string) nodeResources {
