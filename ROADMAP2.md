@@ -380,9 +380,11 @@ and wired refs, one click or one CLI call.
 
 ## 9. Phase H — Migration & ecosystem
 
-- [ ] **Railway migrator** — `containr migrate railway --token --project
-  --dry-run`: Railway GraphQL → services/vars/domains → recreate via
-  PAT. Landing-page pitch: "off Railway in one command."
+- [x] **Railway migrator** — `containr migrate railway --token --project
+  --environment --into --dry-run`: Railway GraphQL (backboard) →
+  services (git-repo/image + command + replicas), variables, custom +
+  service domains → recreates via the Containr API. Project tokens and
+  account tokens both supported. `cli/commands/migrate.go`.
 - [ ] **dflow importer** — `containr migrate dflow` via Payload REST
   export or Mongo dump: servers→nodes, projects, services(+vars/
   domains/volumes), databases, templates. Onboards dflow refugees.

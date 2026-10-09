@@ -72,6 +72,7 @@ import compose <project-id> <compose.yml|->
                                attached under their service name; --var K=V overrides
                                template variables
 nodes list|get|delete|tokens     node agents + onboarding tokens (admin)
+migrate railway                  pull a Railway project (services, vars, domains) via GraphQL and recreate it — --dry-run prints the plan
 scaling status|policies|services|scale
 ha status|alerts|health|policies|enable|disable|failover
 security scan|vulnerabilities|metrics
