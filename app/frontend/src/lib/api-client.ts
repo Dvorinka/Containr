@@ -181,6 +181,7 @@ export type TemplateEntity = {
   isOfficial: boolean;
   ownerId: string | null;
   isPublic: boolean;
+  source?: string;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -751,6 +752,7 @@ function normalizeTemplate(template: RawServiceTemplate): TemplateEntity | null 
     isOfficial: Boolean(template.is_official),
     ownerId: template.owner_id ?? null,
     isPublic: Boolean(template.is_public),
+    source: template.source,
     createdAt: template.created_at,
     updatedAt: template.updated_at,
   };

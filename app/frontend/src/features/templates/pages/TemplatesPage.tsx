@@ -644,6 +644,11 @@ export function TemplatesPage() {
                                   Public
                                 </span>
                               ) : null}
+                              {template.source === 'registry' ? (
+                                <span className="px-1.5 py-0.5 rounded bg-[var(--accent-primary-soft)] text-[var(--accent-primary)] text-[10px] font-semibold">
+                                  Registry
+                                </span>
+                              ) : null}
                             </div>
                             <div className="flex items-center gap-2 mt-1">
                               <span 

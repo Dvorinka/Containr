@@ -11094,6 +11094,8 @@ export interface components {
             owner_id?: string | null;
             /** @description Whether a user-created template is published to the public catalog */
             is_public?: boolean;
+            /** @description Catalog origin: absent for local/official templates; "registry" for entries merged from CONTAINR_TEMPLATE_REGISTRY_URL. Deploying a registry template materializes a local copy first. */
+            source?: string;
             /**
              * Format: date-time
              * @description Creation timestamp
