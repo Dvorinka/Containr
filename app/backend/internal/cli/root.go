@@ -94,6 +94,7 @@ func init() {
 	rootCmd.AddCommand(commands.BannersCmd)
 	rootCmd.AddCommand(commands.InvitesCmd)
 	rootCmd.AddCommand(commands.UpCmd)
+	rootCmd.AddCommand(commands.MigrateCmd)
 }
 
 func initConfig() {
