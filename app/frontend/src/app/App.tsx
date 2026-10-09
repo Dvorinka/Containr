@@ -23,6 +23,7 @@ import {
   HighAvailabilityPage,
   SecurityPage,
   ComponentShowcase,
+  GitHubAppCallbackPage,
 } from '@/features/secondary/pages';
 import { AcceptInvitePage, SignInPage, SignUpPage } from '@/features/auth/pages';
 import { useAuthSession } from '@/lib/use-auth-session';
@@ -156,6 +157,7 @@ export default function App() {
             <Route path="/builds" element={<BuildsPage />} />
             <Route path="/people" element={<PeoplePage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/git/github-app/callback" element={<GitHubAppCallbackPage />} />
             <Route path="/settings/audit-logs" element={<AuditLogsPage />} />
             <Route path="/settings/webhooks" element={<WebhooksPage />} />
             <Route path="/showcase" element={<ComponentShowcase />} />

@@ -5718,6 +5718,162 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/git/github-app": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * GitHub App provisioning status
+         * @description Shows whether the instance GitHub App is configured, and whether credentials come from app_settings or environment variables.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Provisioning status */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            configured?: boolean;
+                            /** @enum {string} */
+                            source?: "settings" | "env" | "none";
+                            app_id?: string;
+                            slug?: string;
+                            name?: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/git/github-app/manifest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Build GitHub App manifest
+         * @description Returns a GitHub App manifest for self-provisioning. The client POSTs `manifest` verbatim as a form field to `url`; GitHub then redirects to the instance's /git/github-app/callback with a code.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description Public https base URL of this instance */
+                        base_url: string;
+                        name?: string;
+                        /** @description Create the app under this GitHub organization */
+                        organization?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Manifest + submission URL */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            url?: string;
+                            /** @description JSON string — POST as form field `manifest` */
+                            manifest?: string;
+                            state?: string;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/git/github-app/convert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Exchange manifest callback code
+         * @description Exchanges the `code` from the manifest redirect for the app credentials and stores them in app_settings (overriding env vars).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        code: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description App provisioned */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            app_id?: number;
+                            slug?: string;
+                            name?: string;
+                        };
+                    };
+                };
+                /** @description GitHub conversion failed */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/git/providers/{providerId}": {
         parameters: {
             query?: never;
@@ -8434,6 +8590,68 @@ export interface paths {
                     content: {
                         "application/json": components["schemas"]["Error"];
                     };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/git/github-app/webhook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * GitHub App webhook receiver
+         * @description Single app-level webhook all installed repositories deliver to (configured via the manifest's hook_attributes). Verified with X-Hub-Signature-256 against the provisioned webhook secret. Push events enqueue deployments for services tracking the repo+branch.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            responses: {
+                /** @description Event accepted */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            received?: boolean;
+                            branch?: string;
+                            deployments?: number;
+                            ignored?: string;
+                        };
+                    };
+                };
+                /** @description Invalid signature */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description GitHub App webhook secret not configured */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
                 };
             };
         };

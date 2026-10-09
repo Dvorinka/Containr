@@ -315,9 +315,14 @@ and wired refs, one click or one CLI call.
   audit-logged; admin accounts are not impersonatable. CLI
   `admin impersonate`, MCP tool, admin UI token modal. Remaining:
   in-browser session swap needs a session bridge.
-- [ ] **GitHub App manifest flow** — `POST /git/github-app/manifest`
-  returns manifest + redirect; instance self-provisions its App
-  (dflow pattern — removes the env-setup barrier).
+- [x] **GitHub App manifest flow** — `POST /admin/git/github-app/manifest`
+  returns manifest + submission URL; the callback page exchanges
+  `code` via `POST /admin/git/github-app/convert` and credentials
+  persist in `app_settings` (overriding `GITHUB_APP_*` env). New
+  public `POST /api/git/github-app/webhook` receives App-level push
+  events (HMAC-verified) and enqueues matching services. Settings→env
+  fallback wired into install-URL + installation-token paths.
+  `containr admin github-app` CLI + MCP + OpenAPI.
 - [ ] **fork-sync trigger** — accept repo-sync events on webhook
   receiver.
 - [ ] **Dynamic filter framework** — port dflow's `filter.utils`

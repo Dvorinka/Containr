@@ -113,6 +113,26 @@ func handleGitWebhookPush(c *gin.Context) {
 		return
 	}
 
+	engineValue, _ := c.Get("deployment_engine")
+	engine, _ := engineValue.(*deployment.DeploymentEngine)
+
+	enqueued, err := dispatchPushToServices(c, db, engine, cloneURL, fullName, branch, commit, repoUserID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to match services"})
+		return
+	}
+
+	c.JSON(http.StatusAccepted, gin.H{
+		"received":    true,
+		"branch":      branch,
+		"deployments": enqueued,
+	})
+}
+
+// dispatchPushToServices enqueues a deployment for every service tracking
+// the pushed repo+branch. Shared by the per-repo webhook receiver and the
+// GitHub App webhook endpoint.
+func dispatchPushToServices(c *gin.Context, db *database.DB, engine *deployment.DeploymentEngine, cloneURL, fullName, branch, commit, repoUserID string) (int, error) {
 	rows, err := db.Query(`
 		SELECT s.id, s.project_id, s.name, s.type, s.status, s.image, s.command,
 		       s.environment, s.git_repo, s.git_branch, s.build_path, s.cpu, s.memory,
@@ -121,8 +141,7 @@ func handleGitWebhookPush(c *gin.Context) {
 		WHERE s.git_branch = $1 AND (s.git_repo = $2 OR s.git_repo = $3)`,
 		branch, cloneURL, fullName)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to match services"})
-		return
+		return 0, err
 	}
 	defer rows.Close()
 
@@ -134,14 +153,10 @@ func handleGitWebhookPush(c *gin.Context) {
 			&s.Environment, &s.GitRepo, &s.GitBranch, &s.BuildPath, &s.CPU, &s.Memory,
 			&s.CreatedAt, &s.UpdatedAt,
 		); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to scan service"})
-			return
+			return 0, err
 		}
 		services = append(services, s)
 	}
-
-	engineValue, _ := c.Get("deployment_engine")
-	engine, _ := engineValue.(*deployment.DeploymentEngine)
 
 	enqueued := 0
 	for _, service := range services {
@@ -199,12 +214,7 @@ func handleGitWebhookPush(c *gin.Context) {
 		}
 		enqueued++
 	}
-
-	c.JSON(http.StatusAccepted, gin.H{
-		"received":    true,
-		"branch":      branch,
-		"deployments": enqueued,
-	})
+	return enqueued, nil
 }
 
 // verifyGitWebhookSignature checks the push signature per provider:

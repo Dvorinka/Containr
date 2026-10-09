@@ -249,6 +249,10 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 	// replaces session auth. Providers POST to /api/git/webhooks/:id.
 	router.POST("/api/git/webhooks/:id", handleGitWebhookPush)
 
+	// GitHub App-level webhook: installed repos deliver to this single
+	// endpoint, verified against the provisioned webhook secret.
+	router.POST("/api/git/github-app/webhook", handleGitHubAppWebhook)
+
 	v1 := router.Group("/api/v1")
 	{
 		// Public routes (no authentication required)
@@ -501,6 +505,11 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			admin.POST("/admin/banners", handleAdminCreateBanner)
 			admin.PATCH("/admin/banners/:id", handleAdminUpdateBanner)
 			admin.DELETE("/admin/banners/:id", handleAdminDeleteBanner)
+
+			// GitHub App self-provisioning (manifest flow)
+			admin.GET("/admin/git/github-app", handleAdminGetGitHubApp)
+			admin.POST("/admin/git/github-app/manifest", handleAdminGitHubAppManifest)
+			admin.POST("/admin/git/github-app/convert", handleAdminGitHubAppConvert)
 
 			// Team invites — single-use registration links
 			admin.GET("/admin/invites", handleAdminListInvites)
