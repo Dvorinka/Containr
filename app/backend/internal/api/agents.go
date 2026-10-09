@@ -205,8 +205,10 @@ type AgentHeartbeat struct {
 }
 
 type AgentContainerState struct {
-	Name  string `json:"name"`
-	State string `json:"state"`
+	Name    string `json:"name"`
+	State   string `json:"state"`
+	RxBytes int64  `json:"rx_bytes,omitempty"`
+	TxBytes int64  `json:"tx_bytes,omitempty"`
 }
 
 type SystemLoad struct {
@@ -681,10 +683,12 @@ func (h *NodeAgentHandler) SendHeartbeat(c *gin.Context) {
 			continue
 		}
 		stateJSON, _ := json.Marshal(rc.State)
+		bytesJSON, _ := json.Marshal(rc.RxBytes + rc.TxBytes)
 		_ = h.q.UpdateContainerStateByName(ctx, sqlcdb.UpdateContainerStateByNameParams{
 			Name:        rc.Name,
 			NodeAgentID: heartbeat.NodeAgentID,
 			Column3:     stateJSON,
+			Column4:     bytesJSON,
 		})
 	}
 

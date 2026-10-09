@@ -794,7 +794,7 @@ func (q *Queries) ListServiceAgents(ctx context.Context, serviceID string) ([]st
 }
 
 const listServiceContainers = `-- name: ListServiceContainers :many
-SELECT id, name, node_agent_id, status, ports FROM container_instances
+SELECT id, name, node_agent_id, status, ports, resources FROM container_instances
 WHERE service_id = $1
 `
 
@@ -804,6 +804,7 @@ type ListServiceContainersRow struct {
 	NodeAgentID string                `json:"node_agent_id"`
 	Status      pqtype.NullRawMessage `json:"status"`
 	Ports       pqtype.NullRawMessage `json:"ports"`
+	Resources   pqtype.NullRawMessage `json:"resources"`
 }
 
 func (q *Queries) ListServiceContainers(ctx context.Context, serviceID string) ([]ListServiceContainersRow, error) {
@@ -821,6 +822,7 @@ func (q *Queries) ListServiceContainers(ctx context.Context, serviceID string) (
 			&i.NodeAgentID,
 			&i.Status,
 			&i.Ports,
+			&i.Resources,
 		); err != nil {
 			return nil, err
 		}
@@ -1056,6 +1058,7 @@ func (q *Queries) UpdateContainerPorts(ctx context.Context, arg UpdateContainerP
 const updateContainerStateByName = `-- name: UpdateContainerStateByName :exec
 UPDATE container_instances SET
     status = jsonb_set(status, '{state}', $3::jsonb),
+    resources = jsonb_set(COALESCE(resources, '{}'::jsonb), '{net_bytes}', $4::jsonb),
     updated_at = NOW()
 WHERE name = $1 AND node_agent_id = $2
   AND status->>'state' IS DISTINCT FROM 'removed'
@@ -1065,12 +1068,19 @@ type UpdateContainerStateByNameParams struct {
 	Name        string          `json:"name"`
 	NodeAgentID string          `json:"node_agent_id"`
 	Column3     json.RawMessage `json:"column_3"`
+	Column4     json.RawMessage `json:"column_4"`
 }
 
-// Agent heartbeat reports real docker state; reconcile inventory for rows
-// this node owns. Tombstones win — never resurrect a removed replica.
+// Agent heartbeat reports real docker state + net counters; reconcile
+// inventory for rows this node owns. Tombstones win — never resurrect a
+// removed replica. $4 is the cumulative rx+tx byte counter.
 func (q *Queries) UpdateContainerStateByName(ctx context.Context, arg UpdateContainerStateByNameParams) error {
-	_, err := q.db.ExecContext(ctx, updateContainerStateByName, arg.Name, arg.NodeAgentID, arg.Column3)
+	_, err := q.db.ExecContext(ctx, updateContainerStateByName,
+		arg.Name,
+		arg.NodeAgentID,
+		arg.Column3,
+		arg.Column4,
+	)
 	return err
 }
 

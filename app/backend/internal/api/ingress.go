@@ -169,3 +169,44 @@ func removeServiceIngress(serviceID string) {
 	}
 	_ = os.Remove(ingressFile(serviceID))
 }
+
+// wakeUpstreamURL is where a sleeping remote service's route points —
+// the backend's wake-page endpoint. Defaults to the compose service name;
+// TRAEFIK_BACKEND_URL overrides for custom layouts.
+func wakeUpstreamURL(apiPort int) string {
+	if v := strings.TrimSpace(os.Getenv("TRAEFIK_BACKEND_URL")); v != "" {
+		return strings.TrimRight(v, "/")
+	}
+	return fmt.Sprintf("http://containr-backend:%d", apiPort)
+}
+
+// writeWakeIngress routes the service's domains at the wake-page endpoint —
+// first hit triggers the wake reconcile and serves a reloading page.
+func writeWakeIngress(serviceID string, domains []string, apiPort int) {
+	if ingressDir() == "" {
+		return
+	}
+	sort.Strings(domains)
+	router := "svc-" + serviceID[:8] + "-wake"
+	rules := make([]string, 0, len(domains))
+	for _, d := range domains {
+		rules = append(rules, "Host(`"+d+"`)")
+	}
+	var b strings.Builder
+	mw := router + "-rw"
+	b.WriteString("http:\n  routers:\n    " + router + ":\n")
+	b.WriteString("      rule: \"" + strings.Join(rules, " || ") + "\"\n")
+	b.WriteString("      entrypoints: [web]\n")
+	b.WriteString("      service: " + router + "\n")
+	b.WriteString("      priority: 100\n")
+	b.WriteString("      middlewares: [" + mw + "]\n")
+	b.WriteString("  middlewares:\n    " + mw + ":\n")
+	b.WriteString("      replacePath:\n        path: \"/api/v1/internal/wake-page/" + serviceID + "\"\n")
+	b.WriteString("  services:\n    " + router + ":\n      loadBalancer:\n        servers:\n")
+	b.WriteString("          - url: \"" + wakeUpstreamURL(apiPort) + "\"\n")
+	tmp := ingressFile(serviceID) + ".tmp"
+	if err := os.WriteFile(tmp, []byte(b.String()), 0o644); err != nil {
+		return
+	}
+	_ = os.Rename(tmp, ingressFile(serviceID))
+}

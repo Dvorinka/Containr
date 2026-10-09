@@ -103,6 +103,7 @@ services:
       - CONTAINR_AGENT_AUTH_TOKEN=${CONTAINR_AGENT_AUTH_TOKEN:-}
       - CONTAINR_AGENT_AUTH_TOKENS=${CONTAINR_AGENT_AUTH_TOKENS:-}
       - TRAEFIK_DYNAMIC_DIR=/traefik-dynamic
+      - TRAEFIK_BACKEND_URL=http://containr-backend:8080
       - COOKIE_SECURE=${COOKIE_SECURE:-true}
       - TRUSTED_PROXY_CIDR=${TRUSTED_PROXY_CIDR:-172.20.0.0/16}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost,http://localhost:3000}

@@ -304,9 +304,14 @@ and wired refs, one click or one CLI call.
   are rewritten on every remote reconcile and removed on teardown or
   local placement. Agents report managed-container states at every
   heartbeat — exits, OOMs, and crash loops land in inventory between
-  reconciles (tombstones never resurrect). Remote nodes run
-  registry-pulled images only — git builds and remote sleep are
-  documented ceilings. Tag affinity shipped: `node_agents.tags`
+  reconciles (tombstones never resurrect). Remote sleep/wake shipped:
+  heartbeats carry per-container net counters, idle remote services
+  lose replicas via agent remove + tombstones, and the route file
+  repoints at `/internal/wake-page/:id` on the backend — first hit
+  retriggers the wake reconcile, which recreates replicas and restores
+  real upstreams. Remote nodes run
+  registry-pulled images only — git builds are the remaining
+  documented ceiling. Tag affinity shipped: `node_agents.tags`
   (operator-set via `PUT /agents/:id` / `nodes update --tags`) +
   `services.placement_tags` — `auto` and `spread` only consider
   online schedulable agents carrying every required tag, tags are

@@ -210,23 +210,84 @@ func sendHeartbeat(ctx context.Context, client *http.Client, cfg agentConfig, ag
 }
 
 // managedContainerStates lists every containr-managed container's docker
-// state so the server can reflect exits and crash loops between reconciles.
-// One docker call per heartbeat; nil on error (states simply go stale).
-func managedContainerStates() []map[string]string {
+// state plus cumulative network counters — state keeps runtime honest,
+// net bytes let the sleeper detect idle remote services.
+func managedContainerStates() []map[string]interface{} {
 	out, err := runDocker("ps", "-a",
 		"--filter", "label=containr.managed=true",
 		"--format", "{{.Names}}\t{{.State}}")
 	if err != nil {
 		return nil
 	}
-	var states []map[string]string
+	netIO := containerNetIO()
+	var states []map[string]interface{}
 	for _, line := range strings.Split(out, "\n") {
 		parts := strings.SplitN(line, "\t", 2)
-		if len(parts) == 2 && parts[0] != "" {
-			states = append(states, map[string]string{"name": parts[0], "state": parts[1]})
+		if len(parts) != 2 || parts[0] == "" {
+			continue
 		}
+		entry := map[string]interface{}{"name": parts[0], "state": parts[1]}
+		if io, ok := netIO[parts[0]]; ok {
+			entry["rx_bytes"], entry["tx_bytes"] = io[0], io[1]
+		}
+		states = append(states, entry)
 	}
 	return states
+}
+
+// containerNetIO snapshots cumulative rx/tx per running container. Stats
+// only covers running containers — stopped replicas report state without
+// counters, which is all the sleeper needs.
+func containerNetIO() map[string][2]int64 {
+	out, err := runDocker("stats", "--no-stream",
+		"--format", "{{.Name}}\t{{.NetIO}}")
+	if err != nil {
+		return nil
+	}
+	result := map[string][2]int64{}
+	for _, line := range strings.Split(out, "\n") {
+		parts := strings.SplitN(line, "\t", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		io := strings.Split(parts[1], "/")
+		if len(io) != 2 {
+			continue
+		}
+		result[parts[0]] = [2]int64{parseHumanBytes(io[0]), parseHumanBytes(io[1])}
+	}
+	return result
+}
+
+// parseHumanBytes converts docker's human units ("1.2kB", "3.4MB") to bytes.
+func parseHumanBytes(s string) int64 {
+	s = strings.TrimSpace(s)
+	var num float64
+	var unit string
+	if _, err := fmt.Sscanf(s, "%f%s", &num, &unit); err != nil {
+		return 0
+	}
+	switch strings.ToUpper(unit) {
+	case "B":
+		return int64(num)
+	case "KB":
+		return int64(num * 1e3)
+	case "MB":
+		return int64(num * 1e6)
+	case "GB":
+		return int64(num * 1e9)
+	case "TB":
+		return int64(num * 1e12)
+	case "KIB":
+		return int64(num * 1024)
+	case "MIB":
+		return int64(num * 1024 * 1024)
+	case "GIB":
+		return int64(num * 1024 * 1024 * 1024)
+	case "TIB":
+		return int64(num * 1024 * 1024 * 1024 * 1024)
+	}
+	return int64(num)
 }
 
 func processCommands(ctx context.Context, client *http.Client, cfg agentConfig, agentID string) error {

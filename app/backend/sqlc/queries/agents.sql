@@ -180,7 +180,7 @@ LIMIT 1;
 UPDATE node_agents SET tags = $2::jsonb, updated_at = NOW() WHERE id = $1;
 
 -- name: ListServiceContainers :many
-SELECT id, name, node_agent_id, status, ports FROM container_instances
+SELECT id, name, node_agent_id, status, ports, resources FROM container_instances
 WHERE service_id = $1;
 
 -- name: SetAgentSchedulable :exec
@@ -204,10 +204,12 @@ ON CONFLICT (id) DO UPDATE SET
 DELETE FROM container_instances WHERE node_agent_id = $1 AND service_id = $2;
 
 -- name: UpdateContainerStateByName :exec
--- Agent heartbeat reports real docker state; reconcile inventory for rows
--- this node owns. Tombstones win — never resurrect a removed replica.
+-- Agent heartbeat reports real docker state + net counters; reconcile
+-- inventory for rows this node owns. Tombstones win — never resurrect a
+-- removed replica. $4 is the cumulative rx+tx byte counter.
 UPDATE container_instances SET
     status = jsonb_set(status, '{state}', $3::jsonb),
+    resources = jsonb_set(COALESCE(resources, '{}'::jsonb), '{net_bytes}', $4::jsonb),
     updated_at = NOW()
 WHERE name = $1 AND node_agent_id = $2
   AND status->>'state' IS DISTINCT FROM 'removed';
