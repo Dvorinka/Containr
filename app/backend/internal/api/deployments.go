@@ -456,16 +456,21 @@ func runDeploymentAndSyncWithImage(
 		},
 	}
 
-	if imageOverride != "" {
-		deployReq.BuildConfig = &deployment.BuildConfig{
-			BuildType:     "prebuilt",
-			PrebuiltImage: imageOverride,
+	if imageOverride != "" || service.GitRepo == "" {
+		// Prebuilt image deploy (rollback, redeploy, or image-sourced
+		// service): resolve private-registry credentials by image host.
+		image := imageOverride
+		if image == "" {
+			image = service.Image
 		}
-	} else if service.GitRepo == "" {
-		// Image-sourced service: pull the image instead of building.
+		var ownerID string
+		_ = db.QueryRow(`SELECT owner_id FROM projects WHERE id = $1`, service.ProjectID).Scan(&ownerID)
+		auth := registryAuthFor(db, ownerID, image)
 		deployReq.BuildConfig = &deployment.BuildConfig{
 			BuildType:     "prebuilt",
-			PrebuiltImage: service.Image,
+			PrebuiltImage: image,
+			PullUsername:  auth.Username,
+			PullPassword:  auth.Password,
 		}
 	} else {
 		// "auto" leaves BuildType empty so the manager detects it; the static

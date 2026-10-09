@@ -38,7 +38,9 @@ auth login|logout|status         token auth and profiles
 tokens list|create|revoke        personal access tokens
 projects list|get|create|delete
 services list|get|create|update|delete|start|stop|restart|redeploy
+services clone|move              duplicate config or re-parent a service
 services domains list|add|remove|default|check   multi-domain + DNS preflight
+registries list|add|update|remove  private-image pull credentials
 volumes list|delete              docker volume inventory + cleanup (admin)
 deploy <service-id>              trigger a deployment (--no-cache, --commit-hash, --branch)
 deployments list|get|logs|rollback|cancel
@@ -143,6 +145,30 @@ string clears. `app_settings.default_cpu`/`default_memory` change the
 instance-level defaults used at service creation;
 `app_settings.capacity_policy=block` fails deployments whose requested
 memory exceeds node capacity (default `warn` logs only).
+
+## Clone, move, registries
+
+`services clone` duplicates config, volumes, domains, access gates,
+builder settings, and variables — ciphertext secret values are copied
+verbatim (no decrypt/re-encrypt). The clone starts stopped:
+
+```bash
+containr services clone <id> --name staging-api --project <other-project-id> --environment preview
+containr services move <id> <project-id>    # name conflicts → 409
+```
+
+Note: cloned domains are verbatim copies — the same hostname attached to
+two services makes Traefik routing ambiguous. Re-domain or undeploy one.
+
+`registries` stores private-image pull credentials, owner-scoped and
+encrypted at rest. Matched by image host on every image-sourced deploy:
+
+```bash
+containr registries add ghcr ghcr.io --username <user> --password <pat>
+containr registries add hub docker.io --username <user> --password <pw>   # Docker Hub
+containr registries update <id> --username <new-user>   # empty --password keeps stored
+containr registries remove <id>
+```
 
 ## MCP server
 

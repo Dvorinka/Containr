@@ -43,6 +43,9 @@ import {
   removeServiceDomain,
   setDefaultServiceDomain,
   checkServiceDomains,
+  cloneService,
+  moveService,
+  listProjects,
 } from '@/lib/api-client';
 import { getDemoProjectById, getDemoServiceById, getDemoCronJobsByService } from '@/lib/demo-data';
 import { useDemoMode } from '@/lib/demo-mode';
@@ -411,6 +414,36 @@ export function ServiceDetailPage() {
       navigate(isDemoMode ? `/projects/${projectId}?demo=1` : `/projects/${projectId}`);
     },
   });
+
+  const projectsQuery = useQuery({
+    queryKey: ['projects'],
+    queryFn: () => listProjects({ limit: 100 }),
+    enabled: !isDemoMode && activeSection === 'settings',
+  });
+
+  const cloneMutation = useMutation({
+    mutationFn: (input: { name?: string; project_id?: string }) => cloneService(serviceId, input),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['project-services'] });
+      const targetProject = lifecycleForm?.cloneProject || projectId;
+      navigate(`/projects/${targetProject}/services/${data.service_id}`);
+    },
+  });
+
+  const moveMutation = useMutation({
+    mutationFn: (targetProjectId: string) => moveService(serviceId, targetProjectId),
+    onSuccess: (_data, targetProjectId) => {
+      queryClient.invalidateQueries({ queryKey: ['project-services'] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      navigate(`/projects/${targetProjectId}/services/${serviceId}`);
+    },
+  });
+
+  const [lifecycleForm, setLifecycleForm] = useState<{
+    cloneName: string;
+    cloneProject: string;
+    moveTarget: string;
+  } | null>(null);
 
   const invalidateService = () => {
     queryClient.invalidateQueries({ queryKey: ['service', serviceId] });
@@ -2631,6 +2664,135 @@ export function ServiceDetailPage() {
                     </tbody>
                   </table>
                 </div>
+              </div>
+            )}
+
+            {!isDemoMode && signedIn && (
+              <div className="mt-6 pt-6 border-t border-[var(--border-subtle)]">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-medium text-[var(--text-primary)]">Lifecycle</h3>
+                  {lifecycleForm === null && (
+                    <button
+                      type="button"
+                      onClick={() => setLifecycleForm({ cloneName: `${service.name}-copy`, cloneProject: '', moveTarget: '' })}
+                      className="px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium hover:border-[var(--border-default)] transition-colors"
+                    >
+                      Manage
+                    </button>
+                  )}
+                </div>
+
+                {lifecycleForm === null ? (
+                  <p className="text-xs text-[var(--text-tertiary)]">
+                    Duplicate this service into the same or another project, move it between projects, or delete it.
+                  </p>
+                ) : (
+                  <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] p-4 space-y-4">
+                    <div>
+                      <label className="block text-xs text-[var(--text-tertiary)] mb-1">Clone</label>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          value={lifecycleForm.cloneName}
+                          onChange={(e) => setLifecycleForm({ ...lifecycleForm, cloneName: e.target.value })}
+                          placeholder={`${service.name}-copy`}
+                          className="w-52 px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm mono text-[var(--text-primary)]"
+                        />
+                        <select
+                          value={lifecycleForm.cloneProject}
+                          onChange={(e) => setLifecycleForm({ ...lifecycleForm, cloneProject: e.target.value })}
+                          className="px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)]"
+                        >
+                          <option value="">same project</option>
+                          {(projectsQuery.data ?? [])
+                            .filter((p) => p.id !== projectId)
+                            .map((p) => (
+                              <option key={p.id} value={p.id}>{p.name}</option>
+                            ))}
+                        </select>
+                        <button
+                          type="button"
+                          disabled={cloneMutation.isPending}
+                          onClick={() =>
+                            cloneMutation.mutate({
+                              name: lifecycleForm.cloneName.trim() || undefined,
+                              project_id: lifecycleForm.cloneProject || undefined,
+                            })
+                          }
+                          className="px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-on)] text-sm font-medium disabled:opacity-50"
+                        >
+                          {cloneMutation.isPending ? 'Cloning…' : 'Clone'}
+                        </button>
+                      </div>
+                      <p className="mt-1 text-[10px] text-[var(--text-tertiary)]">
+                        Copies config, volumes, domains, and variables. The clone starts stopped.
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs text-[var(--text-tertiary)] mb-1">Move to project</label>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <select
+                          value={lifecycleForm.moveTarget}
+                          onChange={(e) => setLifecycleForm({ ...lifecycleForm, moveTarget: e.target.value })}
+                          className="px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)]"
+                        >
+                          <option value="">choose a project…</option>
+                          {(projectsQuery.data ?? [])
+                            .filter((p) => p.id !== projectId)
+                            .map((p) => (
+                              <option key={p.id} value={p.id}>{p.name}</option>
+                            ))}
+                        </select>
+                        <button
+                          type="button"
+                          disabled={moveMutation.isPending || !lifecycleForm.moveTarget}
+                          onClick={() => {
+                            if (window.confirm(`Move ${service.name} to another project?`)) {
+                              moveMutation.mutate(lifecycleForm.moveTarget);
+                            }
+                          }}
+                          className="px-4 py-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-sm font-medium hover:border-[var(--border-default)] disabled:opacity-50 transition-colors"
+                        >
+                          {moveMutation.isPending ? 'Moving…' : 'Move'}
+                        </button>
+                      </div>
+                      <p className="mt-1 text-[10px] text-[var(--text-tertiary)]">
+                        Variables, domains, and volumes move with the service. Running containers keep running.
+                      </p>
+                    </div>
+
+                    <div className="pt-3 border-t border-[var(--border-subtle)]">
+                      <label className="block text-xs text-[var(--error)] mb-1">Delete service</label>
+                      <button
+                        type="button"
+                        disabled={deleteServiceMutation.isPending}
+                        onClick={() => {
+                          if (window.confirm(`Delete ${service.name}? This removes its containers and cannot be undone.`)) {
+                            deleteServiceMutation.mutate();
+                          }
+                        }}
+                        className="px-4 py-2 rounded-[var(--radius-md)] border border-[var(--error-soft)] text-[var(--error)] text-sm font-medium hover:bg-[var(--error-soft)] disabled:opacity-50 transition-colors"
+                      >
+                        {deleteServiceMutation.isPending ? 'Deleting…' : 'Delete'}
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setLifecycleForm(null)}
+                        className="px-4 py-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)]"
+                      >
+                        Close
+                      </button>
+                      {(cloneMutation.isError || moveMutation.isError) && (
+                        <p className="text-xs text-[var(--error)]">
+                          {((cloneMutation.error ?? moveMutation.error) as Error)?.message}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

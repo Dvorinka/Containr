@@ -971,6 +971,276 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/services/{id}/clone": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Clone service
+         * @description Duplicates config, volumes, domains, access gates, builder settings, and variables into the same or another project. Containers are not cloned — the copy starts stopped.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        /** @description Name for the clone (default "<name>-copy") */
+                        name?: string;
+                        /**
+                         * Format: uuid
+                         * @description Target project (default same project; caller must own it)
+                         */
+                        project_id?: string;
+                        /** @enum {string} */
+                        environment?: "production" | "preview" | "development";
+                    };
+                };
+            };
+            responses: {
+                /** @description Clone created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: uuid */
+                            service_id?: string;
+                            name?: string;
+                            message?: string;
+                        };
+                    };
+                };
+                /** @description Name already exists in target project */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/services/{id}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move service
+         * @description Re-parents the service to another project the caller owns. Variables, domains, and volumes follow the service; running containers keep running and join the new project's network on next deploy.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        project_id: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Service moved */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Name conflict in target project */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/registries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List registry credentials
+         * @description Private-image pull credentials for the caller. Passwords are never returned — `has_password` signals presence.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Registry list */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            registries?: components["schemas"]["Registry"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Add registry credential
+         * @description Credentials are matched by image host (e.g. ghcr.io, registry.example.com, docker.io for Docker Hub) on prebuilt-image deploys. Password stored encrypted at rest.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["RegistryRequest"];
+                };
+            };
+            responses: {
+                /** @description Registry created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description A registry for this host already exists */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/registries/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update registry credential
+         * @description Empty password keeps the stored credential — delete and recreate to remove a password.
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["RegistryRequest"];
+                };
+            };
+            responses: {
+                /** @description Registry updated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Registry not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        /** Remove registry credential */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Registry removed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Registry not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/services/{id}/domains": {
         parameters: {
             query?: never;
@@ -8312,6 +8582,26 @@ export interface components {
             username: string;
             /** @description Plaintext on write — stored as bcrypt htpasswd; never returned */
             password: string;
+        };
+        Registry: {
+            /** Format: uuid */
+            id?: string;
+            name?: string;
+            /** @description Registry host matched against the image reference — ghcr.io, registry.example.com, docker.io for Docker Hub */
+            host?: string;
+            username?: string;
+            has_password?: boolean;
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        RegistryRequest: {
+            name: string;
+            host: string;
+            username?: string;
+            /** @description Plaintext on write — stored encrypted; never returned. Empty on update keeps the stored credential. */
+            password?: string;
         };
         ServiceVolume: {
             /**

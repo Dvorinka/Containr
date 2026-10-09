@@ -1185,6 +1185,68 @@ export async function deleteService(serviceId: string): Promise<void> {
   });
 }
 
+export type CloneServiceInput = {
+  name?: string;
+  project_id?: string;
+  environment?: string;
+};
+
+export async function cloneService(serviceId: string, input: CloneServiceInput): Promise<{ service_id: string; name: string }> {
+  return requestJson<{ service_id: string; name: string }>(`/services/${serviceId}/clone`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function moveService(serviceId: string, projectId: string): Promise<void> {
+  await requestJson(`/services/${serviceId}/move`, {
+    method: 'POST',
+    body: JSON.stringify({ project_id: projectId }),
+  });
+}
+
+export type Registry = {
+  id: string;
+  name: string;
+  host: string;
+  username?: string;
+  has_password: boolean;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type RegistryInput = {
+  name: string;
+  host: string;
+  username?: string;
+  password?: string;
+};
+
+export async function listRegistries(): Promise<Registry[]> {
+  const payload = await requestJson<{ registries?: Registry[] }>('/registries');
+  return payload.registries ?? [];
+}
+
+export async function createRegistry(input: RegistryInput): Promise<Registry> {
+  const payload = await requestJson<{ registry: Registry }>('/registries', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return payload.registry;
+}
+
+export async function updateRegistry(id: string, input: RegistryInput): Promise<Registry> {
+  const payload = await requestJson<{ registry: Registry }>(`/registries/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
+  return payload.registry;
+}
+
+export async function deleteRegistry(id: string): Promise<void> {
+  await requestJson(`/registries/${id}`, { method: 'DELETE' });
+}
+
 function normalizeRuntime(runtime?: ServiceRuntime): ServiceRuntime {
   const state = runtime ?? { desired: 0, status: 'stopped' as const, urls: [], ports: [], containers: [] };
   // The API emits null (not []) for empty collections — coerce at the boundary.

@@ -336,6 +336,8 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			authed.POST("/services/:id/stop", handleServiceStop)
 			authed.POST("/services/:id/restart", handleServiceRestart)
 			authed.POST("/services/:id/redeploy", handleServiceRedeploy)
+			authed.POST("/services/:id/clone", handleCloneService)
+			authed.POST("/services/:id/move", handleMoveService)
 			authed.POST("/services/:id/deployments", handleCreateDeployment)
 			authed.POST("/deployments/:id/rollback", handleRollbackDeployment)
 			authed.POST("/deployments/:id/cancel", handleCancelDeployment)
@@ -355,6 +357,12 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 
 			// One-off exec console (docker exec, 30s ceiling)
 			authed.POST("/services/:id/exec", handleExecInService)
+
+			// Private-image registries — owner-scoped, credentials encrypted at rest.
+			authed.GET("/registries", handleListRegistries)
+			authed.POST("/registries", handleCreateRegistry)
+			authed.PUT("/registries/:id", handleUpdateRegistry)
+			authed.DELETE("/registries/:id", handleDeleteRegistry)
 
 			// Git integration — providers carry per-user credentials.
 			authed.GET("/git/github-app/install-url", handleGetGitHubAppInstallURL)
