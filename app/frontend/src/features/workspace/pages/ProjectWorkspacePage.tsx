@@ -8,12 +8,14 @@ import {
   createManagedDatabase,
   createService,
   getProjectById,
+  createProjectEnvironment,
   importComposeIntoProject,
   listConnectedGitRepositories,
   listGitBranches,
   listGitProviders,
   listGitRepositories,
   listProjectActivity,
+  listProjectEnvironments,
   listServiceLogs,
   listServiceVariables,
   listServicesByProject,
@@ -589,6 +591,22 @@ export function ProjectWorkspacePage() {
     () => (isDemoMode ? getDemoServicesByProject(projectId) : servicesQuery.data ?? []),
     [isDemoMode, projectId, servicesQuery.data],
   );
+  const environmentsQuery = useQuery({
+    queryKey: ['project-environments', projectId],
+    queryFn: () => listProjectEnvironments(projectId!),
+    enabled: !!projectId && !isDemoMode,
+  });
+  const [envFilter, setEnvFilter] = useState<string | null>(null);
+  const environments = environmentsQuery.data ?? [];
+  const visibleServices = useMemo(
+    () => (envFilter ? services.filter((s) => (s.environment ?? 'production') === envFilter) : services),
+    [services, envFilter],
+  );
+  const createEnvMutation = useMutation({
+    mutationFn: (name: string) => createProjectEnvironment(projectId!, name),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['project-environments', projectId] }),
+    onError: (err) => toast.showToast(err instanceof ApiError ? err.message : 'Failed to create environment', 'error'),
+  });
   const serviceIdFingerprint = services.map((service) => service.id).sort().join('|');
 
   const variablesQuery = useQuery({
@@ -850,18 +868,50 @@ export function ProjectWorkspacePage() {
 
                 {/* Service List */}
                 <div className="panel p-6">
-                  <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-3">Services</h3>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-medium text-[var(--text-secondary)]">Services</h3>
+                    {!isDemoMode && environments.length > 0 && (
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <button
+                          onClick={() => setEnvFilter(null)}
+                          className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                            envFilter === null
+                              ? 'bg-[var(--accent-primary)] text-white'
+                              : 'bg-[var(--surface-muted)] text-[var(--text-secondary)] hover:bg-[var(--surface-card)]'
+                          }`}
+                        >
+                          All
+                        </button>
+                        {environments.map((env) => (
+                          <button
+                            key={env.id}
+                            onClick={() => setEnvFilter(envFilter === env.name ? null : env.name)}
+                            className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                              envFilter === env.name
+                                ? 'bg-[var(--accent-primary)] text-white'
+                                : 'bg-[var(--surface-muted)] text-[var(--text-secondary)] hover:bg-[var(--surface-card)]'
+                            }`}
+                          >
+                            {env.name} ({env.service_count})
+                          </button>
+                        ))}
+                        <EnvCreateButton onCreate={(name) => createEnvMutation.mutate(name)} pending={createEnvMutation.isPending} />
+                      </div>
+                    )}
+                  </div>
                   <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] overflow-hidden divide-y divide-[var(--border-subtle)]">
-                    {services.length === 0 ? (
+                    {visibleServices.length === 0 ? (
                       <div className="p-8 text-center">
                         <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-[var(--surface-muted)] flex items-center justify-center">
                           <Layers size={20} className="text-[var(--text-tertiary)]" />
                         </div>
-                        <p className="text-sm text-[var(--text-secondary)]">No services deployed yet</p>
-                        <p className="text-xs text-[var(--text-muted)] mt-1">Add services from the Canvas view</p>
+                        <p className="text-sm text-[var(--text-secondary)]">
+                          {envFilter ? `No services in ${envFilter}` : 'No services deployed yet'}
+                        </p>
+                        {!envFilter && <p className="text-xs text-[var(--text-muted)] mt-1">Add services from the Canvas view</p>}
                       </div>
                     ) : (
-                      services.map((service) => (
+                      visibleServices.map((service) => (
                         <button
                           key={service.id}
                           onClick={() => navigate(serviceHref(service.id))}
@@ -1122,5 +1172,41 @@ export function ProjectWorkspacePage() {
         </div>
       )}
     </div>
+  );
+}
+
+// EnvCreateButton expands into an inline name input for a new environment.
+function EnvCreateButton({ onCreate, pending }: { onCreate: (name: string) => void; pending: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="px-2.5 py-1 rounded-full text-xs font-medium border border-dashed border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+      >
+        + env
+      </button>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1">
+      <input
+        autoFocus
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && name.trim()) {
+            onCreate(name.trim());
+            setName('');
+            setOpen(false);
+          }
+          if (e.key === 'Escape') setOpen(false);
+        }}
+        placeholder="staging"
+        className="w-24 px-2 py-1 rounded-full text-xs bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-[var(--text-primary)] outline-none"
+      />
+      {pending && <Loader2 size={12} className="animate-spin text-[var(--text-muted)]" />}
+    </span>
   );
 }

@@ -523,7 +523,11 @@ and wired refs, one click or one CLI call.
 - [x] **Preview environments runtime** — previews are real service clones:
   branch override, queued deployment, node-domain hostnames, TTL sweeper,
   promote = redeploy of the source at the preview branch.
-- [ ] **Environments** — env switcher, per-env vars/domains, promote.
+- [x] **Environments** — CRUD (`GET/POST /projects/:id/environments`,
+  `DELETE /environments/:id`), switcher chips with service counts in the
+  workspace, CLI `environments` + MCP parity. Per-env vars/domains ride the
+  service's own scope (one env per service); promote ships via preview
+  promote.
 - [ ] **sqlc port** — ~140 raw `database/sql` sites → `sqlc/queries/`.
 - [ ] **Tests** — canvas/wizard frontend coverage, deployment/template/
   webhook table tests, Playwright e2e golden path.

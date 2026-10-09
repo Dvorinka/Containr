@@ -9391,6 +9391,137 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{id}/environments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List project environments
+         * @description Returns each environment lane with a live service count — the data behind the environment switcher.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Project ID */
+                    id: components["parameters"]["ProjectIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Project environments */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            environments?: components["schemas"]["ProjectEnvironment"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Create an environment
+         * @description Adds a named environment lane. Names are lowercase alphanumeric with dashes, 1-50 chars, unique per project.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Project ID */
+                    id: components["parameters"]["ProjectIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Created environment */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            environment?: components["schemas"]["ProjectEnvironment"];
+                        };
+                    };
+                };
+                /** @description Environment already exists */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/environments/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete an empty environment
+         * @description Removes an environment lane; fails with 409 while it still holds services.
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Environment deleted */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Environment still contains services */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{id}/preview-environments": {
         parameters: {
             query?: never;
@@ -12487,6 +12618,18 @@ export interface components {
             networks?: string[];
             restart_policy?: Record<string, never>;
             health_check?: Record<string, never>;
+        };
+        ProjectEnvironment: {
+            /** Format: uuid */
+            id?: string;
+            name?: string;
+            /** Format: uuid */
+            project_id?: string;
+            service_count?: number;
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
         };
         PreviewEnvironment: {
             /** Format: uuid */

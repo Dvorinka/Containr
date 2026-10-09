@@ -307,6 +307,7 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			read.GET("/projects", handleGetProjects)
 			read.GET("/projects/:id", handleGetProject)
 			read.GET("/projects/:id/services", handleGetServices)
+			read.GET("/projects/:id/environments", handleListEnvironments)
 			read.GET("/projects/:id/preview-environments", handleGetPreviewEnvironments)
 			read.GET("/projects/:id/security/history", securityHandler.GetProjectSecurityHistory)
 			read.GET("/projects/:id/vulnerabilities", securityHandler.GetVulnerabilities)
@@ -476,6 +477,8 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			authed.POST("/databases/:id/backups/import", databaseHandler.ImportBackup)
 			authed.GET("/databases/:id/backups/:bid/download", databaseHandler.DownloadBackup)
 
+			authed.POST("/projects/:id/environments", handleCreateEnvironment)
+			authed.DELETE("/environments/:id", handleDeleteEnvironment)
 			authed.POST("/projects/:id/preview-environments", handleCreatePreviewEnvironment)
 			authed.PUT("/preview-environments/:id", handleUpdatePreviewEnvironment)
 			authed.DELETE("/preview-environments/:id", handleDeletePreviewEnvironment)
