@@ -9,6 +9,9 @@ import {
 } from '@/lib/api-client';
 import { useBuildUpdates } from '@/lib/use-build-updates';
 import { useDemoMode } from '@/lib/demo-mode';
+import { type FilterConfig } from '@/lib/dynamic-filter';
+import { useDynamicFilter, useFilterState } from '@/lib/use-dynamic-filter';
+import { FilterBar } from '@/shared/components';
 import { demoBuilds } from '@/lib/demo-data';
 import { formatRelative } from '@/lib/time';
 import {
@@ -32,6 +35,19 @@ const statusOptions: Array<{ value: '' | BuildStatus; label: string }> = [
   { value: 'success', label: 'Success' },
   { value: 'failed', label: 'Failed' },
   { value: 'cancelled', label: 'Cancelled' },
+];
+
+const BUILD_SCHEMA: FilterConfig<BuildEntity>[] = [
+  {
+    key: 'status', label: 'Status', type: 'select',
+    options: statusOptions.filter((o) => o.value !== '').map((o) => ({ value: o.value, label: o.label })),
+  },
+  { key: 'project', label: 'Project ID', type: 'search', searchFields: ['projectId'] },
+  { key: 'service', label: 'Service ID', type: 'search', searchFields: ['serviceId'] },
+  {
+    key: 'created', label: 'Time', type: 'date-range',
+    accessor: (b) => b.startedAt ?? b.completedAt,
+  },
 ];
 
 function StatusBadge({ status }: { status: BuildStatus }) {
@@ -72,9 +88,10 @@ export function BuildsPage() {
   const queryClient = useQueryClient();
   const isDemoMode = useDemoMode();
 
-  const [projectFilter, setProjectFilter] = useState('');
-  const [serviceFilter, setServiceFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'' | BuildStatus>('');
+  const { filters } = useFilterState(BUILD_SCHEMA);
+  const projectFilter = String(filters.project ?? '');
+  const serviceFilter = String(filters.service ?? '');
+  const statusFilter = filters.status === 'all' ? '' : String(filters.status ?? '');
   const [limit, setLimit] = useState(50);
   const [selectedBuild, setSelectedBuild] = useState<BuildEntity | null>(null);
 
@@ -85,20 +102,22 @@ export function BuildsPage() {
       listBuilds({
         projectId: projectFilter || undefined,
         serviceId: serviceFilter || undefined,
-        status: statusFilter || undefined,
+        status: (statusFilter || undefined) as BuildStatus | undefined,
         page: 1,
         limit,
       }),
   });
 
-  const builds = useMemo(
+  const rawBuilds = useMemo(
     () => (isDemoMode ? demoBuilds : buildsQuery.data?.builds ?? []),
     [isDemoMode, buildsQuery.data?.builds],
   );
+  const filter = useDynamicFilter<BuildEntity>({ data: rawBuilds, schema: BUILD_SCHEMA });
+  const builds = filter.filteredData;
 
   const subscribedBuildIds = useMemo(
-    () => (isDemoMode ? [] : builds.map((build) => build.id)),
-    [isDemoMode, builds],
+    () => (isDemoMode ? [] : rawBuilds.map((build) => build.id)),
+    [isDemoMode, rawBuilds],
   );
   const liveStatus = useBuildUpdates(subscribedBuildIds, ({ channel }) => {
     queryClient.invalidateQueries({ queryKey: ['builds-page'] });
@@ -217,46 +236,13 @@ export function BuildsPage() {
       {/* Filters */}
       <div className="w-full px-8">
         <div className="panel p-4">
-          <div className="flex items-center gap-2 mb-4">
+          <div className="flex items-center gap-2">
             <Filter size={16} className="text-[var(--text-tertiary)]" />
             <span className="text-sm font-medium text-[var(--text-secondary)]">Filters</span>
           </div>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <div>
-              <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)] mb-2">
-                Status
-              </label>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as '' | BuildStatus)}
-                className="w-full h-10 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm focus:border-[var(--accent-primary)] transition-colors"
-              >
-                {statusOptions.map((option) => (
-                  <option key={option.label} value={option.value}>{option.label}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)] mb-2">
-                Project ID
-              </label>
-              <input
-                value={projectFilter}
-                onChange={(e) => setProjectFilter(e.target.value)}
-                className="w-full h-10 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm focus:border-[var(--accent-primary)] transition-colors"
-                placeholder="project-123"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)] mb-2">
-                Service ID
-              </label>
-              <input
-                value={serviceFilter}
-                onChange={(e) => setServiceFilter(e.target.value)}
-                className="w-full h-10 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm focus:border-[var(--accent-primary)] transition-colors"
-                placeholder="service-abc"
-              />
+          <div className="flex flex-wrap items-end gap-3 mt-3">
+            <div className="flex-1">
+              <FilterBar {...filter} />
             </div>
             <div>
               <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)] mb-2">

@@ -2,8 +2,10 @@ import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { listActivity, type ActivityEntry } from '@/lib/api-client';
 import { useDemoMode } from '@/lib/demo-mode';
+import { type FilterConfig } from '@/lib/dynamic-filter';
+import { useDynamicFilter, useFilterState } from '@/lib/use-dynamic-filter';
 import { formatRelative } from '@/lib/time';
-import { DemoRestricted } from '@/shared/components';
+import { DemoRestricted, FilterBar } from '@/shared/components';
 import {
   Activity, AlertCircle, CheckCircle2, Database, GitBranch, Info, Key,
   Loader2, Package, Projector, Rocket, Shield, User, Users, Wrench,
@@ -22,23 +24,37 @@ const SEVERITY_STYLE: Record<string, { icon: typeof Info; cls: string; dot: stri
   info:    { icon: Info,          cls: 'text-[var(--accent-primary)]', dot: 'bg-[var(--accent-primary)]' },
 };
 
-const SEVERITIES = ['', 'error', 'warning', 'success', 'info'] as const;
+const SCHEMA: FilterConfig<ActivityEntry>[] = [
+  { key: 'q', label: 'Search', type: 'search', searchFields: ['label', 'action', 'user_email'] },
+  {
+    key: 'severity', label: 'Severity', type: 'select',
+    options: [
+      { value: 'error', label: 'Error' },
+      { value: 'warning', label: 'Warning' },
+      { value: 'success', label: 'Success' },
+      { value: 'info', label: 'Info' },
+    ],
+  },
+  { key: 'category', label: 'Category', type: 'select' },
+];
 
 export function ActivityPage() {
   const isDemoMode = useDemoMode();
-  const [severity, setSeverity] = useState('');
   const [page, setPage] = useState(1);
+  const { filters } = useFilterState(SCHEMA);
+  const severityParam = filters.severity === 'all' ? '' : String(filters.severity ?? '');
 
   const query = useQuery({
-    queryKey: ['activity-feed', severity, page],
-    queryFn: () => listActivity({ severity: severity || undefined, page, limit: 50 }),
+    queryKey: ['activity-feed', severityParam, page],
+    queryFn: () => listActivity({ severity: severityParam || undefined, page, limit: 50 }),
     enabled: !isDemoMode,
     refetchInterval: 15000,
   });
+  const filter = useDynamicFilter<ActivityEntry>({ data: query.data?.activity ?? [], schema: SCHEMA });
 
   if (isDemoMode) return <DemoRestricted feature="Activity" />;
 
-  const entries = query.data?.activity ?? [];
+  const entries = filter.filteredData;
 
   return (
     <div className="min-h-screen">
@@ -52,21 +68,11 @@ export function ActivityPage() {
       </div>
 
       <div className="px-8 py-6 space-y-4">
-        <div className="flex items-center gap-2">
-          {SEVERITIES.map((s) => (
-            <button
-              key={s || 'all'}
-              onClick={() => { setSeverity(s); setPage(1); }}
-              className={`v-mono text-[10px] uppercase px-3 py-1.5 rounded-md border transition-colors ${
-                severity === s
-                  ? 'border-[var(--accent-primary)] text-[var(--accent-primary)] bg-[var(--accent-primary)]/10'
-                  : 'border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)]'
-              }`}
-            >
-              {s || 'all'}
-            </button>
-          ))}
-          {query.isFetching && <Loader2 size={14} className="animate-spin text-[var(--text-muted)]" />}
+        <div className="flex items-start gap-3">
+          <div className="flex-1">
+            <FilterBar {...filter} />
+          </div>
+          {query.isFetching && <Loader2 size={14} className="animate-spin text-[var(--text-muted)] mt-3" />}
         </div>
 
         <div className="panel p-0 divide-y divide-[var(--border-subtle)]">
