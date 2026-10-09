@@ -178,6 +178,7 @@ func init() {
 	register(spec{"containr_nodes_uncordon", "Re-open a node for placement (admin). Args: id.", "POST", "/agents/{id}/uncordon", []string{"id"}, nil, false})
 	register(spec{"containr_nodes_drain", "Drain a node: cordon + remove all service containers via the agent + unpin affected services so they redeploy locally. Requires the node online (admin). Args: id.", "POST", "/agents/{id}/drain", []string{"id"}, nil, true})
 	register(spec{"containr_nodes_prune", "Enqueue a bounded docker system prune on a node (admin). Args: id; optional until (e.g. 168h), volumes (danger, off by default).", "POST", "/agents/{id}/prune", []string{"id"}, []string{"until", "volumes"}, true})
+	register(spec{"containr_nodes_upgrade", "Upgrade a node's agent to the server's bundled binary: downloads over the API, verifies sha256, swaps atomically, re-execs. Node must be online (admin). Args: id.", "POST", "/agents/{id}/upgrade", []string{"id"}, nil, true})
 	register(spec{"containr_nodes_commands", "List recent commands sent to a node agent (admin). Args: id.", "GET", "/agents/{id}/commands", []string{"id"}, nil, false})
 
 	// Scaling / HA / security

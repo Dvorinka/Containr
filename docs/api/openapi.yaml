@@ -5503,6 +5503,46 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /agents/{id}/upgrade:
+    post:
+      tags:
+        - Agents
+      summary: Upgrade the node agent
+      description: >-
+        Enqueues a `self_upgrade` command. The agent downloads its
+        replacement binary from this server's bundled `/agents/download`
+        endpoint, verifies the sha256, atomically swaps the executable, and
+        re-execs itself — the command result reports before the process
+        swaps. The node must be online, and the server must bundle a binary
+        for the node's architecture (`linux-amd64`/`linux-arm64`).
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AgentIdParam'
+      responses:
+        '202':
+          description: Upgrade command enqueued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  command: { type: object }
+                  platform: { type: string }
+                  version: { type: string }
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Node offline or no bundled binary for its architecture
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /agents/{id}/metrics:
     get:
       tags:

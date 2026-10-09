@@ -163,7 +163,14 @@ Take a node out of rotation or empty it entirely (admin):
 containr nodes cordon <id>    # no new pins; running replicas stay
 containr nodes uncordon <id>
 containr nodes drain <id>     # cordon + remove its containers + unpin services
+containr nodes upgrade <id>   # agent pulls its replacement from the server, re-execs
 ```
+
+`nodes upgrade` swaps the agent binary for the one bundled in the running
+server image — the agent downloads it over the API, verifies the sha256 the
+server computed, sanity-checks it, atomically replaces its own executable,
+and re-execs. The node must be online and the server must ship a binary for
+its architecture (`linux-amd64`/`linux-arm64`).
 
 ## Service domains and access
 

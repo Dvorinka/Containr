@@ -301,6 +301,18 @@ and wired refs, one click or one CLI call.
   documented ceilings. Remaining: `scheduling_rules` affinity
   policies, deployment status reported back from agent
   results, spread weighting by real capacity.
+- [x] **Agent self-upgrade** — `POST /agents/:id/upgrade` enqueues a
+  `self_upgrade` command carrying platform + sha256 + server version;
+  the agent downloads its replacement from `GET /agents/download/
+  :platform`, verifies the checksum, sanity-checks `--version`,
+  atomically swaps its own executable, reports the result, then
+  re-execs (`syscall.Exec`) — no supervisor needed. Agents now stamp
+  `main.version` via ldflags at image build and report it at
+  register/heartbeat (`node_agents.version` refreshes on re-register;
+  older agents keep their stored value). Surfaces: `nodes upgrade`
+  CLI, `containr_nodes_upgrade` MCP (confirm-gated), node-detail page
+  button (online-gated). Ceilings: linux amd64/arm64 only; agents on
+  other platforms get a `NO_BINARY` 409.
 - [🟡] **Build-on-node** — private registry pulls shipped: the dispatch
   payload carries the project owner's `registries` credentials for the
   image host; the agent `docker login`s for the pull and logs out after,

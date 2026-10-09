@@ -8732,6 +8732,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/agents/{id}/upgrade": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upgrade the node agent
+         * @description Enqueues a `self_upgrade` command. The agent downloads its replacement binary from this server's bundled `/agents/download` endpoint, verifies the sha256, atomically swaps the executable, and re-execs itself — the command result reports before the process swaps. The node must be online, and the server must bundle a binary for the node's architecture (`linux-amd64`/`linux-arm64`).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Node agent ID */
+                    id: components["parameters"]["AgentIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Upgrade command enqueued */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            command?: Record<string, never>;
+                            platform?: string;
+                            version?: string;
+                        };
+                    };
+                };
+                /** @description Agent not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Node offline or no bundled binary for its architecture */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/agents/{id}/metrics": {
         parameters: {
             query?: never;

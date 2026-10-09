@@ -3,14 +3,18 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -104,7 +108,15 @@ type registerResponse struct {
 	Status  string `json:"status"`
 }
 
+// version is stamped at build time via -ldflags "-X main.version=…".
+// The server reports it on upgrades so agents can show what they run.
+var version = "dev"
+
 func main() {
+	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "version") {
+		fmt.Printf("containr-agent %s\n", version)
+		return
+	}
 	cfg, err := loadConfig()
 	if err != nil {
 		log.Fatal(err)
@@ -167,6 +179,7 @@ func register(ctx context.Context, client *http.Client, cfg agentConfig) (string
 		"ip_address":   cfg.IP,
 		"port":         cfg.Port,
 		"capabilities": detectCapabilities(),
+		"version":      firstEnv("CONTAINR_AGENT_VERSION", version),
 		// Always send mesh so a removed interface clears stored state.
 		"mesh": detectMeshInterfaces(),
 	}
@@ -190,7 +203,7 @@ func sendHeartbeat(ctx context.Context, client *http.Client, cfg agentConfig, ag
 		"container_count": dockerContainerCount(),
 		"system_load":     readSystemLoad(),
 		"uptime":          readSystemUptime(),
-		"version":         firstEnv("CONTAINR_AGENT_VERSION", "dev"),
+		"version":         firstEnv("CONTAINR_AGENT_VERSION", version),
 	}
 	return postJSON(ctx, client, cfg, "/api/agents/heartbeat", payload, nil)
 }
@@ -216,7 +229,13 @@ func processCommands(ctx context.Context, client *http.Client, cfg agentConfig, 
 		return err
 	}
 	for _, item := range list.Commands {
-		result, runErr := executeCommand(item)
+		var result, reexecPath string
+		var runErr error
+		if item.Type == "self_upgrade" {
+			result, reexecPath, runErr = selfUpgrade(cfg, item.Payload)
+		} else {
+			result, runErr = executeCommand(item)
+		}
 		status := "completed"
 		errText := ""
 		if runErr != nil {
@@ -231,6 +250,12 @@ func processCommands(ctx context.Context, client *http.Client, cfg agentConfig, 
 		path := fmt.Sprintf("/api/agents/%s/commands/%s/result", agentID, item.ID)
 		if err := postJSON(ctx, client, cfg, path, payload, nil); err != nil {
 			log.Printf("report command result failed: command=%s err=%v", item.ID, err)
+		}
+		// Re-exec AFTER the result posts — the new binary picks up the loop.
+		if reexecPath != "" {
+			if err := syscall.Exec(reexecPath, os.Args, os.Environ()); err != nil {
+				log.Fatalf("re-exec after upgrade failed: %v", err)
+			}
 		}
 	}
 	return nil
@@ -255,6 +280,67 @@ func executeCommand(item command) (string, error) {
 	default:
 		return "", fmt.Errorf("unsupported command type %q", item.Type)
 	}
+}
+
+// selfUpgrade downloads the agent binary the server bundles for this
+// platform, verifies it, swaps it in atomically, and returns the path to
+// re-exec. On any failure the running binary is left untouched.
+func selfUpgrade(cfg agentConfig, payload map[string]interface{}) (string, string, error) {
+	platform := firstString(stringValue(payload["platform"]), runtime.GOOS+"-"+runtime.GOARCH)
+
+	exe, err := os.Executable()
+	if err != nil {
+		return "", "", fmt.Errorf("resolve own path: %w", err)
+	}
+	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = resolved
+	}
+
+	url := fmt.Sprintf("%s/api/agents/download/%s", cfg.APIURL, platform)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return "", "", err
+	}
+	resp, err := (&http.Client{Timeout: 2 * time.Minute}).Do(req)
+	if err != nil {
+		return "", "", fmt.Errorf("download %s: %w", platform, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", "", fmt.Errorf("download %s: server returned %d", platform, resp.StatusCode)
+	}
+
+	newPath := exe + ".new"
+	out, err := os.OpenFile(newPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o755)
+	if err != nil {
+		return "", "", fmt.Errorf("write %s: %w", newPath, err)
+	}
+	h := sha256.New()
+	if _, err := io.Copy(io.MultiWriter(out, h), resp.Body); err != nil {
+		out.Close()
+		os.Remove(newPath)
+		return "", "", fmt.Errorf("download write: %w", err)
+	}
+	out.Close()
+
+	if want := stringValue(payload["sha256"]); want != "" {
+		if got := hex.EncodeToString(h.Sum(nil)); got != want {
+			os.Remove(newPath)
+			return "", "", fmt.Errorf("sha256 mismatch: got %s want %s", got, want)
+		}
+	}
+
+	// Sanity: the new binary must at least report its version.
+	if verOut, err := exec.Command(newPath, "--version").CombinedOutput(); err != nil {
+		os.Remove(newPath)
+		return "", "", fmt.Errorf("new binary failed sanity check: %s", strings.TrimSpace(string(verOut)))
+	}
+
+	if err := os.Rename(newPath, exe); err != nil {
+		os.Remove(newPath)
+		return "", "", fmt.Errorf("swap binary: %w", err)
+	}
+	return fmt.Sprintf("upgraded to %s (%s)", firstString(stringValue(payload["version"]), "latest"), platform), exe, nil
 }
 
 // dockerPrune runs a bounded docker system prune. Volumes are excluded

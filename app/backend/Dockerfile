@@ -14,8 +14,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo \
     -ldflags "-X containr/internal/api.Version=${VERSION}" -o main cmd/server/main.go
 
 # Node-agent binaries served by the API for SSH/bootstrap installs.
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /agents/containr-agent-linux-amd64 ./cmd/agent && \
-    CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o /agents/containr-agent-linux-arm64 ./cmd/agent
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=${VERSION}" -o /agents/containr-agent-linux-amd64 ./cmd/agent && \
+    CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "-X main.version=${VERSION}" -o /agents/containr-agent-linux-arm64 ./cmd/agent
 
 # Build embedded Better Auth runtime dependencies
 FROM node:22-alpine AS auth-builder
