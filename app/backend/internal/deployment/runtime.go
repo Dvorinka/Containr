@@ -63,6 +63,12 @@ type RuntimeSpec struct {
 	// PlacementTags restricts auto/spread candidates to agents carrying
 	// every listed tag. An explicit NodeID pin bypasses tag filtering.
 	PlacementTags []string
+	// RemoteBuild makes target nodes docker-build Image from a packaged
+	// context artifact before replicas start (git-sourced remote deploys).
+	RemoteBuild *RemoteBuildSpec
+	// RemoteLoad makes target nodes docker-load a saved image tarball —
+	// remote rollbacks of locally-built tags.
+	RemoteLoad *RemoteLoadSpec
 }
 
 // RuntimeContainer describes one live replica.

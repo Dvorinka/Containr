@@ -49,7 +49,7 @@ dedicated console.
 - **Public project catalog** — approved projects are browsable anonymously; new projects stay private until an admin approves them
 - **Admin console** (`/admin`) — platform stats, project approval/edit/delete, user admin management
 - **Private networking** — every project gets an isolated Docker network; services reach each other by name (`web:3000`) and share variables via `${{service.KEY}}` references
-- **Deployments & builds** — Docker deploys with history, image rollback, live build status
+- **Deployments & builds** — Docker deploys with history, image rollback, live build status; git-sourced services build directly on remote node agents (no registry required)
 - **Runtime** — replicas, published ports, domains, health checks, restart policies; start/stop/restart/redeploy from canvas or service page
 - **Git integration** — GitHub, GitLab, Bitbucket, Gitea; webhooks, GitHub App
 - **Managed databases** — create PostgreSQL, MySQL, MariaDB, MongoDB, Redis, Dragonfly, or ClickHouse directly from `/databases`, with backup/restore

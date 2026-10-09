@@ -539,12 +539,16 @@ func createBuildContext(sourcePath, dockerfileContent string) (io.ReadCloser, er
 		return nil, err
 	}
 
-	// Add source files to tar
+	// Add source files to tar. The checkout's .git metadata is never build
+	// context — it bloats the tar and ships clone URLs to remote daemons.
 	err = filepath.Walk(sourcePath, func(file string, fi os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 		if fi.IsDir() {
+			if fi.Name() == ".git" {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 

@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	"containr/internal/build"
@@ -43,6 +44,8 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 		dockerClient = client
 		buildManager = build.NewBuildManager("/tmp/containr-builds", dockerClient)
 		deploymentEngine = deployment.NewDeploymentEngine(buildManager, dockerClient)
+		initArtifacts(filepath.Join("/tmp/containr-builds", "artifacts"))
+		purgeStaleArtifacts()
 		// Node-pinned services dispatch container lifecycle to the agent's
 		// command queue instead of the local Docker socket.
 		deploymentEngine.SetNodeRunner(newAgentNodeRunner(db))

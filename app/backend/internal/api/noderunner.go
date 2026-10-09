@@ -157,6 +157,45 @@ func (r *agentNodeRunner) reconcileOnAgents(ctx context.Context, spec deployment
 		})
 	}
 
+	// Ship the image to every distinct target agent before replicas start.
+	// RemoteBuild nodes docker-build from the packaged context artifact;
+	// RemoteLoad nodes docker-load a saved tarball (local-tag rollbacks).
+	// Registry-pullable images skip this — docker run pulls on demand.
+	if spec.RemoteBuild != nil || spec.RemoteLoad != nil {
+		seen := map[string]bool{}
+		for i := 0; i < replicas; i++ {
+			agentID := targetFor(i)
+			if seen[agentID] {
+				continue
+			}
+			seen[agentID] = true
+			if spec.RemoteBuild != nil {
+				buildArgs := map[string]interface{}{}
+				for k, v := range spec.RemoteBuild.BuildArgs {
+					buildArgs[k] = v
+				}
+				_, err := r.enqueueAndWaitTimeout(ctx, agentID, "", "build_image",
+					map[string]interface{}{
+						"artifact_id": spec.RemoteBuild.ArtifactID,
+						"image":       spec.Image,
+						"build_args":  buildArgs,
+						"no_cache":    spec.RemoteBuild.NoCache,
+					}, 25*time.Minute)
+				if err != nil {
+					return nil, fmt.Errorf("build image on node %s: %w", agentID, err)
+				}
+			} else if spec.RemoteLoad != nil {
+				_, err := r.enqueueAndWaitTimeout(ctx, agentID, "", "load_image",
+					map[string]interface{}{
+						"artifact_id": spec.RemoteLoad.ArtifactID,
+					}, 10*time.Minute)
+				if err != nil {
+					return nil, fmt.Errorf("load image on node %s: %w", agentID, err)
+				}
+			}
+		}
+	}
+
 	state := &deployment.RuntimeState{Desired: replicas, Status: "running"}
 	for i := 0; i < replicas; i++ {
 		agentID := targetFor(i)
@@ -375,6 +414,10 @@ func (r *agentNodeRunner) RetireService(ctx context.Context, serviceID string) e
 // poll on their own interval (≥5s), so this blocks — it runs inside the
 // deploy queue worker, never on a request path.
 func (r *agentNodeRunner) enqueueAndWait(ctx context.Context, agentID, containerID, cmdType string, payload map[string]interface{}) (string, error) {
+	return r.enqueueAndWaitTimeout(ctx, agentID, containerID, cmdType, payload, 8*time.Minute)
+}
+
+func (r *agentNodeRunner) enqueueAndWaitTimeout(ctx context.Context, agentID, containerID, cmdType string, payload map[string]interface{}, timeout time.Duration) (string, error) {
 	var cid sql.NullString
 	if containerID != "" {
 		cid = sql.NullString{String: containerID, Valid: true}
@@ -390,7 +433,7 @@ func (r *agentNodeRunner) enqueueAndWait(ctx context.Context, agentID, container
 		return "", err
 	}
 
-	deadline := time.Now().Add(8 * time.Minute) // image pulls on a cold node
+	deadline := time.Now().Add(timeout) // image pulls/builds on a cold node
 	for {
 		row, err := r.q.GetCommandForAgent(ctx, sqlcdb.GetCommandForAgentParams{
 			ID:          cmd.ID,

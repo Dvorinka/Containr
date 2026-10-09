@@ -336,6 +336,13 @@ func (c *Client) BuildImage(ctx context.Context, buildContext io.Reader, options
 	return resp, nil
 }
 
+// SaveImage streams refs as a docker-save tarball. Remote nodes receive
+// these through the artifact endpoint and docker load them — that is how
+// locally-built rollback tags reach nodes without a registry.
+func (c *Client) SaveImage(ctx context.Context, refs ...string) (io.ReadCloser, error) {
+	return c.cli.ImageSave(ctx, refs)
+}
+
 // RemoveImage removes an image
 func (c *Client) RemoveImage(ctx context.Context, imageID string, force bool) ([]image.DeleteResponse, error) {
 	return c.cli.ImageRemove(ctx, imageID, image.RemoveOptions{

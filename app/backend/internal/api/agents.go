@@ -769,7 +769,9 @@ func (h *NodeAgentHandler) CompleteCommand(c *gin.Context) {
 }
 
 // scrubCommandSecrets rewrites a completed command's payload with any
-// registry password blanked. Best-effort — a failed scrub leaves the row.
+// credential-bearing fields blanked — registry passwords and build-time
+// args (tokens like NPM_TOKEN ride along as build args). Best-effort — a
+// failed scrub leaves the row.
 func scrubCommandSecrets(ctx context.Context, q *sqlcdb.Queries, commandID string, payload pqtype.NullRawMessage) {
 	if !payload.Valid || len(payload.RawMessage) == 0 {
 		return
@@ -778,15 +780,24 @@ func scrubCommandSecrets(ctx context.Context, q *sqlcdb.Queries, commandID strin
 	if err := json.Unmarshal(payload.RawMessage, &doc); err != nil {
 		return
 	}
-	container, ok := doc["container"].(map[string]interface{})
-	if !ok {
+	dirty := false
+	if container, ok := doc["container"].(map[string]interface{}); ok {
+		if reg, ok := container["registry"].(map[string]interface{}); ok && reg["password"] != nil {
+			reg["password"] = "***"
+			dirty = true
+		}
+	}
+	for _, key := range []string{"build_args", "environment"} {
+		if args, ok := doc[key].(map[string]interface{}); ok && len(args) > 0 {
+			for k := range args {
+				args[k] = "***"
+			}
+			dirty = true
+		}
+	}
+	if !dirty {
 		return
 	}
-	reg, ok := container["registry"].(map[string]interface{})
-	if !ok || reg["password"] == nil {
-		return
-	}
-	reg["password"] = "***"
 	if err := q.ScrubCommandPayload(ctx, sqlcdb.ScrubCommandPayloadParams{
 		ID:      commandID,
 		Payload: rawJSON(doc),
@@ -1458,6 +1469,10 @@ func (h *NodeAgentHandler) SetupPublicRoutes(router *gin.RouterGroup) {
 		// public; the enroll token is the actual secret.
 		agents.GET("/install.sh", h.ServeInstallScript)
 		agents.GET("/download/:platform", h.ServeAgentBinary)
+
+		// Deploy artifacts (build contexts, image tarballs) — token-gated;
+		// the blobs are per-deployment source code, not public bootstrap.
+		agents.GET("/artifacts/:id", h.ServeArtifact)
 	}
 }
 

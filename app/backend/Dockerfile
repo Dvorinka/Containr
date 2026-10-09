@@ -30,7 +30,7 @@ COPY auth/src ./src
 # Final runtime image (Go API + Better Auth sidecar in one container)
 FROM node:22-alpine
 
-RUN apk --no-cache add ca-certificates tzdata wget
+RUN apk --no-cache add ca-certificates tzdata wget git
 
 RUN addgroup -g 1001 -S appgroup && \
     adduser -u 1001 -S appuser -G appgroup

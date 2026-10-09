@@ -316,7 +316,7 @@ func processCommands(ctx context.Context, client *http.Client, cfg agentConfig, 
 		if item.Type == "self_upgrade" {
 			result, reexecPath, runErr = selfUpgrade(cfg, item.Payload)
 		} else {
-			result, runErr = executeCommand(item)
+			result, runErr = executeCommand(cfg, item)
 		}
 		status := "completed"
 		errText := ""
@@ -343,7 +343,7 @@ func processCommands(ctx context.Context, client *http.Client, cfg agentConfig, 
 	return nil
 }
 
-func executeCommand(item command) (string, error) {
+func executeCommand(cfg agentConfig, item command) (string, error) {
 	switch item.Type {
 	case "create_container":
 		return createContainer(item.Payload)
@@ -360,6 +360,10 @@ func executeCommand(item command) (string, error) {
 			return out, nil
 		}
 		return out, err
+	case "build_image":
+		return buildImage(cfg, item.Payload)
+	case "load_image":
+		return loadImage(cfg, item.Payload)
 	case "prune":
 		return dockerPrune(item.Payload)
 	case "system_df":
@@ -566,6 +570,120 @@ func createContainer(payload map[string]interface{}) (string, error) {
 	}
 	out, _ := json.Marshal(map[string]interface{}{"name": name, "host_ports": hostPorts})
 	return string(out), nil
+}
+
+// fetchArtifact downloads a server-side deploy artifact (build context or
+// docker-save tarball) into a temp file the docker CLI consumes.
+func fetchArtifact(cfg agentConfig, artifactID string) (*os.File, error) {
+	if len(artifactID) != 32 {
+		return nil, fmt.Errorf("invalid artifact id")
+	}
+	url := fmt.Sprintf("%s/api/agents/artifacts/%s", cfg.APIURL, artifactID)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("X-Containr-Agent-Token", cfg.Token)
+	resp, err := (&http.Client{Timeout: 10 * time.Minute}).Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("download artifact: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("download artifact: server returned %d", resp.StatusCode)
+	}
+	f, err := os.CreateTemp("", "containr-artifact-*.tar")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := io.Copy(f, resp.Body); err != nil {
+		f.Close()
+		os.Remove(f.Name())
+		return nil, fmt.Errorf("write artifact: %w", err)
+	}
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		f.Close()
+		os.Remove(f.Name())
+		return nil, err
+	}
+	return f, nil
+}
+
+// buildImage docker-builds a packaged context tar on this node. The context
+// already carries its Dockerfile at the tar root, so `docker build -` can
+// stream it straight from stdin. Result reports the image digest so the
+// server records what each node actually produced.
+func buildImage(cfg agentConfig, payload map[string]interface{}) (string, error) {
+	image := stringValue(payload["image"])
+	artifactID := stringValue(payload["artifact_id"])
+	if image == "" || artifactID == "" {
+		return "", errors.New("build_image requires image and artifact_id")
+	}
+	f, err := fetchArtifact(cfg, artifactID)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	defer os.Remove(f.Name())
+
+	args := []string{"build", "-t", image}
+	if boolValue(payload["no_cache"]) {
+		args = append(args, "--no-cache")
+	}
+	// Bare --build-arg keys read their values from the process env — keeps
+	// token-bearing args out of the node's process list.
+	env := os.Environ()
+	if buildArgs, ok := payload["build_args"].(map[string]interface{}); ok {
+		for k, v := range buildArgs {
+			args = append(args, "--build-arg", k)
+			env = append(env, fmt.Sprintf("%s=%v", k, v))
+		}
+	}
+	args = append(args, "-")
+	cmd := exec.Command("docker", args...)
+	cmd.Stdin = f
+	cmd.Env = env
+	outBytes, err := cmd.CombinedOutput()
+	out := strings.TrimSpace(string(outBytes))
+	if err != nil {
+		return "", fmt.Errorf("docker build failed: %s", tailOutput(out, 4096))
+	}
+	digest, _ := runDocker("inspect", "-f", "{{.Id}}", image)
+	size, _ := runDocker("inspect", "-f", "{{.Size}}", image)
+	result, _ := json.Marshal(map[string]string{
+		"image": image, "id": digest, "size": size,
+		"log_tail": tailOutput(out, 4096),
+	})
+	return string(result), nil
+}
+
+// loadImage imports a docker-save tarball — rollbacks of locally-built tags
+// reach remote nodes this way since no registry serves containr-* images.
+func loadImage(cfg agentConfig, payload map[string]interface{}) (string, error) {
+	artifactID := stringValue(payload["artifact_id"])
+	if artifactID == "" {
+		return "", errors.New("load_image requires artifact_id")
+	}
+	f, err := fetchArtifact(cfg, artifactID)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	defer os.Remove(f.Name())
+	out, err := runDockerStdin(f, "load")
+	if err != nil {
+		return "", fmt.Errorf("docker load failed: %s", tailOutput(out, 4096))
+	}
+	return out, nil
+}
+
+// tailOutput bounds command results — full docker build logs would swamp
+// the agent_commands row.
+func tailOutput(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[len(s)-max:]
 }
 
 // registryHostOf mirrors the server's registryHost: first path segment with
@@ -775,6 +893,15 @@ func runDocker(args ...string) (string, error) {
 		return "", errors.New("missing docker target")
 	}
 	cmd := exec.Command("docker", args...)
+	output, err := cmd.CombinedOutput()
+	return strings.TrimSpace(string(output)), err
+}
+
+// runDockerStdin pipes stdin into docker — build contexts and saved image
+// tarballs stream in without a second copy on disk.
+func runDockerStdin(stdin io.Reader, args ...string) (string, error) {
+	cmd := exec.Command("docker", args...)
+	cmd.Stdin = stdin
 	output, err := cmd.CombinedOutput()
 	return strings.TrimSpace(string(output)), err
 }

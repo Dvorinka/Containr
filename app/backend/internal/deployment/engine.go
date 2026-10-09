@@ -95,12 +95,29 @@ type ServiceConfig struct {
 	// reuses it so public URLs survive restarts. 0 = pick ephemeral.
 	PublishedPort int32 `json:"published_port,omitempty"`
 	// NodeID pins the service to a registered node agent; "" = local Docker
-	// host. Remote placement requires a registry-pullable image — builds stay
-	// on the local host (build-on-node is not yet supported).
+	// host.
 	NodeID string `json:"node_id,omitempty"`
 	// Spread distributes replicas across every online, schedulable agent.
-	// Same registry-image constraint as NodeID.
 	Spread bool `json:"spread,omitempty"`
+	// RemoteBuild, when set, makes each target node docker-build the image
+	// itself from a packaged context artifact instead of pulling a registry
+	// tag. The image name comes from the deployment, not the spec.
+	RemoteBuild *RemoteBuildSpec `json:"remote_build,omitempty"`
+	// RemoteLoad ships a docker-save tarball to each target node — used for
+	// rollbacks of locally-built tags that no registry can serve.
+	RemoteLoad *RemoteLoadSpec `json:"remote_load,omitempty"`
+}
+
+// RemoteBuildSpec is the agent-side docker build request.
+type RemoteBuildSpec struct {
+	ArtifactID string            `json:"artifact_id"`
+	BuildArgs  map[string]string `json:"build_args,omitempty"`
+	NoCache    bool              `json:"no_cache,omitempty"`
+}
+
+// RemoteLoadSpec asks the agent to docker-load an image tarball artifact.
+type RemoteLoadSpec struct {
+	ArtifactID string `json:"artifact_id"`
 }
 
 type PortMapping struct {
@@ -209,6 +226,12 @@ type TriggerConfig struct {
 // (capacity checks, image info).
 func (de *DeploymentEngine) DockerClient() *docker.Client {
 	return de.dockerClient
+}
+
+// BuildManager exposes the engine's builders for context packaging — remote
+// nodes build the tar this produces themselves.
+func (de *DeploymentEngine) BuildManager() *build.BuildManager {
+	return de.buildManager
 }
 
 // SetNodeRunner wires remote-node dispatch for services pinned to an agent.
@@ -326,10 +349,18 @@ func (de *DeploymentEngine) executeDeployment(ctx context.Context, deployment *D
 	})
 }
 
-// buildImage builds the container image
+// buildImage builds the container image. "remote" build types produce no
+// local image — the target node builds or loads it from an artifact; the
+// deployment still needs a deterministic tag so every node names it alike.
 func (de *DeploymentEngine) buildImage(ctx context.Context, deployment *Deployment, buildConfig *BuildConfig) (string, error) {
 	if buildConfig == nil {
 		return "", fmt.Errorf("build config is required")
+	}
+	if buildConfig.BuildType == "remote" {
+		if buildConfig.PrebuiltImage != "" {
+			return buildConfig.PrebuiltImage, nil
+		}
+		return fmt.Sprintf("containr-%s-%s:%s", deployment.ServiceID, deployment.Environment, deployment.ID), nil
 	}
 
 	buildReq := &types.BuildRequest{
@@ -393,6 +424,8 @@ func (de *DeploymentEngine) deployService(ctx context.Context, deployment *Deplo
 		BasicAuthUsers: cfg.BasicAuthUsers,
 		NodeID:         cfg.NodeID,
 		Spread:         cfg.Spread,
+		RemoteBuild:    cfg.RemoteBuild,
+		RemoteLoad:     cfg.RemoteLoad,
 	}
 	for _, pm := range cfg.PortMappings {
 		if spec.Port == 0 {
