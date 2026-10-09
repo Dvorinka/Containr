@@ -43,6 +43,7 @@ type Querier interface {
 	DeleteDatabaseServiceByIDAndUser(ctx context.Context, arg DeleteDatabaseServiceByIDAndUserParams) error
 	DeleteOutboundWebhookByIDAndUser(ctx context.Context, arg DeleteOutboundWebhookByIDAndUserParams) error
 	DeleteProjectByID(ctx context.Context, projectID uuid.UUID) (int64, error)
+	DeleteServiceContainersOnAgent(ctx context.Context, arg DeleteServiceContainersOnAgentParams) error
 	DeleteUserInvite(ctx context.Context, id uuid.UUID) error
 	DeleteUserTemplate(ctx context.Context, arg DeleteUserTemplateParams) (int64, error)
 	GetActiveAgentAuthTokenByHash(ctx context.Context, tokenHash string) (AgentAuthToken, error)
@@ -100,6 +101,7 @@ type Querier interface {
 	MarkAllNotificationsReadByUser(ctx context.Context, arg MarkAllNotificationsReadByUserParams) error
 	MarkNotificationReadByIDAndUser(ctx context.Context, arg MarkNotificationReadByIDAndUserParams) error
 	MarkUserInviteUsed(ctx context.Context, arg MarkUserInviteUsedParams) error
+	PickLeastLoadedAgent(ctx context.Context) (string, error)
 	RevokeAgentAuthToken(ctx context.Context, id uuid.UUID) (AgentAuthToken, error)
 	RevokeUserToken(ctx context.Context, arg RevokeUserTokenParams) (int64, error)
 	SetDatabaseBackupRemoteKeyByID(ctx context.Context, arg SetDatabaseBackupRemoteKeyByIDParams) error
@@ -127,6 +129,7 @@ type Querier interface {
 	UpdateUserTemplate(ctx context.Context, arg UpdateUserTemplateParams) (int64, error)
 	UpdateWebhookDeliveryResult(ctx context.Context, arg UpdateWebhookDeliveryResultParams) error
 	UpsertEnvironmentVariable(ctx context.Context, arg UpsertEnvironmentVariableParams) error
+	UpsertServiceContainer(ctx context.Context, arg UpsertServiceContainerParams) error
 	UpsertServiceTemplate(ctx context.Context, arg UpsertServiceTemplateParams) error
 }
 

@@ -84,8 +84,21 @@ export type ServiceEntity = {
   staticDir?: string;
   sleepEnabled?: boolean;
   sleepIdleMinutes?: number;
+  nodeId?: string;
+  nodeName?: string;
   publicUrl?: string;
 };
+
+export type NodeOption = {
+  id: string;
+  name: string;
+  status: string;
+};
+
+export async function listNodeOptions(): Promise<NodeOption[]> {
+  const payload = await requestJson<{ nodes?: NodeOption[] }>('/nodes/options');
+  return payload.nodes ?? [];
+}
 
 export type ServiceDomain = {
   id: string;
@@ -680,6 +693,8 @@ function normalizeService(service: RawService): ServiceEntity | null {
     staticDir: service.static_dir,
     sleepEnabled: service.sleep_enabled,
     sleepIdleMinutes: service.sleep_idle_minutes,
+    nodeId: service.node_id,
+    nodeName: service.node_name,
     publicUrl: service.public_url,
   };
 }

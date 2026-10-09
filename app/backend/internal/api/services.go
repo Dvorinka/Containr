@@ -5,6 +5,7 @@ import (
 	"containr/internal/deployment"
 	"containr/internal/deployqueue"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -48,8 +49,12 @@ type Service struct {
 	StaticDir        string          `json:"static_dir,omitempty" db:"static_dir"`
 	SleepEnabled     bool            `json:"sleep_enabled" db:"-"`
 	SleepIdleMinutes int             `json:"sleep_idle_minutes" db:"-"`
-	CreatedAt        time.Time       `json:"created_at" db:"created_at"`
-	UpdatedAt        time.Time       `json:"updated_at" db:"updated_at"`
+	// NodeID pins the service to a node agent ("" = local Docker host,
+	// resolved "auto" picks the least-loaded online agent at write time).
+	NodeID    string    `json:"node_id,omitempty" db:"-"`
+	NodeName  string    `json:"node_name,omitempty" db:"-"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 }
 
 // loadServiceSleep fills the sleep-mode columns, which live outside the
@@ -61,6 +66,28 @@ func loadServiceSleep(db *database.DB, s *Service) {
 		s.ID,
 	).Scan(&s.SleepEnabled, &idle); err == nil {
 		s.SleepIdleMinutes = idle
+	}
+}
+
+// serviceNodeID reads the pin column directly — kept out of the wide service
+// SELECTs so pre-migration schemas keep working.
+func serviceNodeID(db *database.DB, serviceID uuid.UUID) string {
+	var id sql.NullString
+	if err := db.QueryRow(`SELECT node_id FROM services WHERE id = $1`, serviceID).Scan(&id); err == nil {
+		return id.String
+	}
+	return ""
+}
+
+// loadServiceNode fills the pin + the agent's display name for responses.
+func loadServiceNode(db *database.DB, s *Service) {
+	var name sql.NullString
+	s.NodeID = serviceNodeID(db, s.ID)
+	if s.NodeID == "" {
+		return
+	}
+	if err := db.QueryRow(`SELECT name FROM node_agents WHERE id = $1`, s.NodeID).Scan(&name); err == nil {
+		s.NodeName = name.String
 	}
 }
 
@@ -141,6 +168,9 @@ type CreateServiceRequest struct {
 	MemoryReserve   string          `json:"memory_reserve"`
 	StaticBuildCmd  string          `json:"static_build_cmd"`
 	StaticDir       string          `json:"static_dir"`
+	// NodeID pins placement to a node agent; "auto" picks the least-loaded
+	// online agent, "local"/"" runs on the Containr host.
+	NodeID string `json:"node_id"`
 }
 
 // UpdateServiceRequest represents a request to update a service
@@ -170,6 +200,8 @@ type UpdateServiceRequest struct {
 	StaticDir        *string          `json:"static_dir"`
 	SleepEnabled     *bool            `json:"sleep_enabled"`
 	SleepIdleMinutes *int             `json:"sleep_idle_minutes"`
+	// NodeID pins placement; pointer so "local"/"" explicitly clears the pin.
+	NodeID *string `json:"node_id"`
 }
 
 // handleGetServices retrieves all services for a project
@@ -253,6 +285,7 @@ func handleGetServices(c *gin.Context) {
 	// Reconcile stored status with live container state (no-op without Docker).
 	for i := range services {
 		liveServiceStatus(c, db.(*database.DB), &services[i])
+		loadServiceNode(db.(*database.DB), &services[i])
 	}
 
 	c.JSON(http.StatusOK, gin.H{"services": services})
@@ -409,6 +442,15 @@ func handleCreateService(c *gin.Context) {
 
 	sourceType := inferServiceSourceType(service)
 
+	if req.NodeID != "" {
+		nodeID, nodeErr := resolveNodePin(c.Request.Context(), db.(*database.DB), req.NodeID)
+		if nodeErr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": nodeErr.Error(), "code": "VALIDATION"})
+			return
+		}
+		service.NodeID = nodeID
+	}
+
 	// Insert service into database
 	_, err = db.(*database.DB).Exec(
 		`INSERT INTO services
@@ -417,16 +459,18 @@ func handleCreateService(c *gin.Context) {
 				 git_repo, git_branch, build_path, cpu, memory, replicas, port, domain,
 				 healthcheck_path, restart_policy, volumes,
 				 builder, cpu_reserve, memory_reserve, static_build_cmd, static_dir,
-				 created_at, updated_at)
+				 node_id, created_at, updated_at)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26,
-					$27, $28, $29, $30, $31, $32, $33)`,
+					$27, $28, $29, $30, $31, $32, $33, $34)`,
 		service.ID, service.ProjectID, service.Name, environmentID, service.Type,
 		sourceType, firstNonEmpty(service.GitRepo, service.Image), service.Image,
 		"", service.Command, service.Type, service.Status, service.Image, service.Command,
 		service.Environment, service.GitRepo, service.GitBranch, service.BuildPath, service.CPU, service.Memory,
 		service.Replicas, service.Port, service.Domain, service.HealthCheckPath, service.RestartPolicy,
 		volumesJSON, service.Builder, service.CPUReserve, service.MemoryReserve,
-		service.StaticBuildCmd, service.StaticDir, service.CreatedAt, service.UpdatedAt,
+		service.StaticBuildCmd, service.StaticDir,
+		sql.NullString{String: service.NodeID, Valid: service.NodeID != ""},
+		service.CreatedAt, service.UpdatedAt,
 	)
 
 	if err != nil {
@@ -456,7 +500,9 @@ func handleCreateService(c *gin.Context) {
 
 	LogAuditWithRequest(c, "service", service.ID.String(), "create", map[string]interface{}{
 		"name": service.Name, "type": service.Type, "project_id": service.ProjectID,
+		"node_id": service.NodeID,
 	})
+	loadServiceNode(db.(*database.DB), &service)
 
 	c.JSON(http.StatusCreated, gin.H{"service": service})
 }
@@ -547,6 +593,7 @@ func handleGetService(c *gin.Context) {
 	}
 	service.Domains = loadServiceDomains(db.(*database.DB), service.ID)
 	loadServiceSleep(db.(*database.DB), &service)
+	loadServiceNode(db.(*database.DB), &service)
 	maintenance, basicAuth := serviceAccess(db.(*database.DB), service.ID)
 	service.MaintenanceMode = maintenance
 	service.BasicAuth = basicAuthUsernames(basicAuth)
@@ -725,6 +772,17 @@ func handleUpdateService(c *gin.Context) {
 		volumesArg = volumesJSON
 	}
 
+	if req.NodeID != nil {
+		nodeID, nodeErr := resolveNodePin(c.Request.Context(), db.(*database.DB), *req.NodeID)
+		if nodeErr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": nodeErr.Error(), "code": "VALIDATION"})
+			return
+		}
+		existingService.NodeID = nodeID
+	} else {
+		existingService.NodeID = serviceNodeID(db.(*database.DB), serviceID)
+	}
+
 	existingService.UpdatedAt = time.Now()
 
 	// Update service in database
@@ -736,7 +794,7 @@ func handleUpdateService(c *gin.Context) {
 				restart_policy = $15, volumes = COALESCE($17::jsonb, volumes), updated_at = $16,
 				builder = $19, cpu_reserve = $20, memory_reserve = $21,
 				static_build_cmd = $22, static_dir = $23,
-				sleep_enabled = $24, sleep_idle_minutes = $25
+				sleep_enabled = $24, sleep_idle_minutes = $25, node_id = $26
 			WHERE id = $18`,
 		existingService.Name, existingService.Type, existingService.Image, existingService.Command,
 		existingService.Environment, existingService.GitRepo, existingService.GitBranch,
@@ -747,6 +805,7 @@ func handleUpdateService(c *gin.Context) {
 		existingService.Builder, existingService.CPUReserve, existingService.MemoryReserve,
 		existingService.StaticBuildCmd, existingService.StaticDir,
 		existingService.SleepEnabled, existingService.SleepIdleMinutes,
+		sql.NullString{String: existingService.NodeID, Valid: existingService.NodeID != ""},
 	)
 
 	if err != nil {
@@ -816,6 +875,7 @@ func handleUpdateService(c *gin.Context) {
 		}
 	}
 
+	loadServiceNode(db.(*database.DB), &existingService)
 	c.JSON(http.StatusOK, gin.H{"service": existingService})
 }
 
@@ -865,7 +925,7 @@ func handleDeleteService(c *gin.Context) {
 	// Remove runtime containers before dropping the row.
 	if engineValue, exists := c.Get("deployment_engine"); exists && engineValue != nil {
 		if engine, ok := engineValue.(*deployment.DeploymentEngine); ok {
-			_ = engine.RemoveServiceContainers(c.Request.Context(), serviceID.String())
+			removeServiceRuntime(c.Request.Context(), db.(*database.DB), engine, serviceID)
 		}
 	}
 

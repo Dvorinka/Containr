@@ -283,7 +283,24 @@ func createContainer(payload map[string]interface{}) (string, error) {
 		return "", errors.New("container name and image are required")
 	}
 
-	args := []string{"run", "-d", "--name", name, "--restart", "unless-stopped"}
+	// Redeploys reuse the deterministic name — clear the stale container
+	// first so `run` never fails on a name conflict.
+	_, _ = runDocker("rm", "-f", name)
+
+	args := []string{"run", "-d", "--name", name}
+	restart := firstString(stringValue(container["restart_policy"]), "unless-stopped")
+	args = append(args, "--restart", restart)
+	if labels, ok := container["labels"].(map[string]interface{}); ok {
+		for key, value := range labels {
+			args = append(args, "--label", fmt.Sprintf("%s=%v", key, value))
+		}
+	}
+	if mem := int64Value(container["memory"]); mem > 0 {
+		args = append(args, "--memory", fmt.Sprintf("%d", mem))
+	}
+	if cpus := floatValue(container["cpus"]); cpus > 0 {
+		args = append(args, "--cpus", fmt.Sprintf("%g", cpus))
+	}
 	if env, ok := container["environment"].(map[string]interface{}); ok {
 		for key, value := range env {
 			args = append(args, "-e", fmt.Sprintf("%s=%v", key, value))
@@ -298,8 +315,14 @@ func createContainer(payload map[string]interface{}) (string, error) {
 			hostPort := intValue(port["host_port"])
 			containerPort := intValue(port["container_port"])
 			protocol := firstString(stringValue(port["protocol"]), "tcp")
-			if hostPort > 0 && containerPort > 0 {
+			if containerPort <= 0 {
+				continue
+			}
+			if hostPort > 0 {
 				args = append(args, "-p", fmt.Sprintf("%d:%d/%s", hostPort, containerPort, protocol))
+			} else {
+				// Ephemeral host port — docker picks the binding.
+				args = append(args, "-p", fmt.Sprintf("%d/%s", containerPort, protocol))
 			}
 		}
 	}
@@ -321,6 +344,11 @@ func createContainer(payload map[string]interface{}) (string, error) {
 		}
 	}
 	args = append(args, image)
+	if cmd, ok := container["command"].([]interface{}); ok {
+		for _, arg := range cmd {
+			args = append(args, stringValue(arg))
+		}
+	}
 	return runDocker(args...)
 }
 
@@ -619,4 +647,36 @@ func intValue(value interface{}) int {
 func boolValue(value interface{}) bool {
 	typed, _ := value.(bool)
 	return typed
+}
+
+func int64Value(value interface{}) int64 {
+	switch typed := value.(type) {
+	case int64:
+		return typed
+	case int:
+		return int64(typed)
+	case float64:
+		return int64(typed)
+	case json.Number:
+		out, _ := typed.Int64()
+		return out
+	default:
+		return 0
+	}
+}
+
+func floatValue(value interface{}) float64 {
+	switch typed := value.(type) {
+	case float64:
+		return typed
+	case int:
+		return float64(typed)
+	case int64:
+		return float64(typed)
+	case json.Number:
+		out, _ := typed.Float64()
+		return out
+	default:
+		return 0
+	}
 }

@@ -228,6 +228,26 @@ func unmarshalRaw(raw pqtype.NullRawMessage, dst interface{}) {
 	}
 }
 
+// ListNodeOptions returns the minimal id/name/status list used by the service
+// placement picker — available to any authenticated user (no hostnames, IPs,
+// or telemetry).
+func (h *NodeAgentHandler) ListNodeOptions(c *gin.Context) {
+	rows, err := h.q.ListAgents(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list nodes"})
+		return
+	}
+	options := make([]gin.H, 0, len(rows))
+	for _, row := range rows {
+		options = append(options, gin.H{
+			"id":     row.ID,
+			"name":   row.Name,
+			"status": row.Status.String,
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"nodes": options})
+}
+
 func agentFromRow(row sqlcdb.NodeAgent) NodeAgent {
 	agent := NodeAgent{
 		ID:        row.ID,

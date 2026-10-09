@@ -11,10 +11,24 @@ import (
 	"containr/internal/types"
 )
 
+// NodeRunner deploys a service's containers onto a remote node agent.
+// Wired at boot; nil means every service runs on the local Docker host.
+type NodeRunner interface {
+	// ReconcileOnNode brings the node's containers in line with the spec and
+	// returns the resulting runtime state.
+	ReconcileOnNode(ctx context.Context, spec RuntimeSpec) (*RuntimeState, error)
+	// ControlService fans a lifecycle action ("start"|"stop"|"restart"|"remove")
+	// out to every replica of the service on the agent.
+	ControlService(ctx context.Context, serviceID, agentID, action string) error
+	// RemoveService tears down every replica of the service on the agent.
+	RemoveService(ctx context.Context, serviceID, agentID string) error
+}
+
 type DeploymentEngine struct {
 	buildManager  *build.BuildManager
 	dockerClient  *docker.Client
 	scheduler     *Scheduler
+	nodeRunner    NodeRunner
 	deployments   map[string]*Deployment
 	deploymentLog chan *DeploymentEvent
 }
@@ -67,6 +81,10 @@ type ServiceConfig struct {
 	// PublishedPort is the host port bound by the previous deployment; replica 0
 	// reuses it so public URLs survive restarts. 0 = pick ephemeral.
 	PublishedPort int32 `json:"published_port,omitempty"`
+	// NodeID pins the service to a registered node agent; "" = local Docker
+	// host. Remote placement requires a registry-pullable image — builds stay
+	// on the local host (build-on-node is not yet supported).
+	NodeID string `json:"node_id,omitempty"`
 }
 
 type PortMapping struct {
@@ -175,6 +193,11 @@ type TriggerConfig struct {
 // (capacity checks, image info).
 func (de *DeploymentEngine) DockerClient() *docker.Client {
 	return de.dockerClient
+}
+
+// SetNodeRunner wires remote-node dispatch for services pinned to an agent.
+func (de *DeploymentEngine) SetNodeRunner(r NodeRunner) {
+	de.nodeRunner = r
 }
 
 func NewDeploymentEngine(buildManager *build.BuildManager, dockerClient *docker.Client) *DeploymentEngine {
@@ -352,6 +375,7 @@ func (de *DeploymentEngine) deployService(ctx context.Context, deployment *Deplo
 		Maintenance:    cfg.Maintenance,
 		MaintenanceURL: cfg.MaintenanceURL,
 		BasicAuthUsers: cfg.BasicAuthUsers,
+		NodeID:         cfg.NodeID,
 	}
 	for _, pm := range cfg.PortMappings {
 		if spec.Port == 0 {

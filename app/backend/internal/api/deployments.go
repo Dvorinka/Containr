@@ -421,6 +421,20 @@ func runDeploymentAndSyncWithImage(
 		maintURL = maintenanceURL(db)
 	}
 
+	// Node-pinned services dispatch to the agent's command queue. Builds run
+	// on the local host, so remote placement only works for registry-pulled
+	// images — git-sourced and rollback deploys fail fast with that message.
+	nodeID := serviceNodeID(db, service.ID)
+	if nodeID != "" && (service.GitRepo != "" || imageOverride != "") {
+		failedAt := time.Now()
+		msg := "service is pinned to a remote node but remote nodes only run registry-pulled images (git builds and rollbacks stay local — build-on-node is not yet supported)"
+		_, _ = db.Exec(
+			`UPDATE deployments SET status = 'failed', error = $1, completed_at = $2, updated_at = $2 WHERE id = $3`,
+			msg, failedAt, dbDeployment.ID,
+		)
+		return
+	}
+
 	deployReq := &deployment.DeploymentRequest{
 		ProjectID:   service.ProjectID.String(),
 		ServiceID:   service.ID.String(),
@@ -447,6 +461,7 @@ func runDeploymentAndSyncWithImage(
 			Maintenance:    maintenanceMode,
 			MaintenanceURL: maintURL,
 			BasicAuthUsers: basicAuthUsers,
+			NodeID:         nodeID,
 		},
 		Trigger: deployment.TriggerConfig{
 			Type:      req.Trigger,

@@ -277,9 +277,18 @@ and wired refs, one click or one CLI call.
   `nodes commands`, MCP `containr_nodes_update|prune|commands`
   (confirm-gated), Usage-page per-node Prune button + auto toggle.
   `cmd/agent/main.go`, `notification_producers.go:scheduleAutoPrune`.
-- [ ] **Multi-node scheduling** — wire `scheduling_rules` (table exists):
-  pin/spread/affinity, prefer-lowest-usage; deploy engine routes to
-  `services.node_id` via agent commands (agent already runs containers).
+- [🟡] **Multi-node scheduling** — phase 1 shipped: `services.node_id`
+  pin (explicit / `auto` = least-loaded online / `local` = clear),
+  `NodeRunner` seam in the deploy engine routes reconcile to the agent's
+  command queue (`create_container` with image/env/cmd/ports/volumes/
+  labels/limits), `container_instances` inventory per (agent, service,
+  replica), remote stop/start/restart/delete fan-out, `GET
+  /nodes/options`, `--node` on services create/update + MCP + OpenAPI +
+  service-detail Placement section. Remote nodes run registry-pulled
+  images only — git builds, Traefik domains, and remote sleep are
+  documented ceilings. Remaining: `scheduling_rules` spread/affinity
+  policies, drain/cordon, deployment status reported back from agent
+  results, per-node resource-aware `auto` (currently count-based).
 - [ ] **Build-on-node** — agents currently `docker run` prebuilt images
   only; extend agent to pull registry images (build stays central) —
   private registry creds flow through Phase C.

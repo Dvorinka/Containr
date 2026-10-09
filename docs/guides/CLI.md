@@ -131,6 +131,22 @@ redeploy — `containr deploy <id>` to apply immediately.
 `volumes list` shows the node's docker volume inventory with in-use
 flags; `volumes delete <name>` removes an unused volume (admin scope).
 
+## Node placement
+
+Pin a service to a registered node agent, or let the scheduler pick the
+least-loaded online node:
+
+```bash
+containr services create --project <id> --name api --image ghcr.io/x/api:v1 --node <agent-id>
+containr services update <id> --node auto    # least-loaded online node
+containr services update <id> --node local   # move back to this server
+```
+
+Remote nodes run registry-pulled images only — git builds, domains
+(Traefik lives on the host), and sleep detection stay local. Start,
+stop, restart, redeploy, and delete all fan out to the pinned node's
+agent. `services get` shows the resolved `node_name`.
+
 ## Service domains and access
 
 A service can carry multiple hostnames; the default is mirrored to

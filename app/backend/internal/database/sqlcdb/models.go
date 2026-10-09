@@ -274,6 +274,7 @@ type Service struct {
 	MemoryReserve   string          `json:"memory_reserve"`
 	StaticBuildCmd  string          `json:"static_build_cmd"`
 	StaticDir       string          `json:"static_dir"`
+	NodeID          sql.NullString  `json:"node_id"`
 }
 
 type ServiceDomain struct {

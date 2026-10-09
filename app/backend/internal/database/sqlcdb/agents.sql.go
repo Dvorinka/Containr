@@ -229,6 +229,20 @@ func (q *Queries) DeleteAgent(ctx context.Context, id string) error {
 	return err
 }
 
+const deleteServiceContainersOnAgent = `-- name: DeleteServiceContainersOnAgent :exec
+DELETE FROM container_instances WHERE node_agent_id = $1 AND service_id = $2
+`
+
+type DeleteServiceContainersOnAgentParams struct {
+	NodeAgentID string `json:"node_agent_id"`
+	ServiceID   string `json:"service_id"`
+}
+
+func (q *Queries) DeleteServiceContainersOnAgent(ctx context.Context, arg DeleteServiceContainersOnAgentParams) error {
+	_, err := q.db.ExecContext(ctx, deleteServiceContainersOnAgent, arg.NodeAgentID, arg.ServiceID)
+	return err
+}
+
 const getAgent = `-- name: GetAgent :one
 SELECT id, name, hostname, ip_address, port, status, version, capabilities, resources, last_heartbeat, created_at, updated_at, metadata, auto_prune FROM node_agents WHERE id = $1
 `
@@ -661,6 +675,25 @@ func (q *Queries) ListPendingCommands(ctx context.Context, nodeAgentID string) (
 	return items, nil
 }
 
+const pickLeastLoadedAgent = `-- name: PickLeastLoadedAgent :one
+SELECT a.id FROM node_agents a
+LEFT JOIN LATERAL (
+    SELECT h.container_count FROM agent_heartbeats h
+    WHERE h.node_agent_id = a.id
+    ORDER BY h.timestamp DESC LIMIT 1
+) h ON true
+WHERE a.status = 'online'
+ORDER BY COALESCE(h.container_count, 0) ASC, a.created_at ASC
+LIMIT 1
+`
+
+func (q *Queries) PickLeastLoadedAgent(ctx context.Context) (string, error) {
+	row := q.db.QueryRowContext(ctx, pickLeastLoadedAgent)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
 const updateAgent = `-- name: UpdateAgent :one
 UPDATE node_agents SET
     name = $2,
@@ -767,5 +800,54 @@ type UpdateContainerStatusParams struct {
 
 func (q *Queries) UpdateContainerStatus(ctx context.Context, arg UpdateContainerStatusParams) error {
 	_, err := q.db.ExecContext(ctx, updateContainerStatus, arg.ID, arg.Status)
+	return err
+}
+
+const upsertServiceContainer = `-- name: UpsertServiceContainer :exec
+INSERT INTO container_instances (
+    id, name, image, project_id, service_id, node_agent_id,
+    status, resources, ports, environment, volumes, networks,
+    restart_policy, health_check
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+ON CONFLICT (id) DO UPDATE SET
+    image = EXCLUDED.image,
+    status = EXCLUDED.status,
+    updated_at = NOW()
+`
+
+type UpsertServiceContainerParams struct {
+	ID            string                `json:"id"`
+	Name          string                `json:"name"`
+	Image         string                `json:"image"`
+	ProjectID     string                `json:"project_id"`
+	ServiceID     string                `json:"service_id"`
+	NodeAgentID   string                `json:"node_agent_id"`
+	Status        pqtype.NullRawMessage `json:"status"`
+	Resources     pqtype.NullRawMessage `json:"resources"`
+	Ports         pqtype.NullRawMessage `json:"ports"`
+	Environment   pqtype.NullRawMessage `json:"environment"`
+	Volumes       pqtype.NullRawMessage `json:"volumes"`
+	Networks      pqtype.NullRawMessage `json:"networks"`
+	RestartPolicy pqtype.NullRawMessage `json:"restart_policy"`
+	HealthCheck   pqtype.NullRawMessage `json:"health_check"`
+}
+
+func (q *Queries) UpsertServiceContainer(ctx context.Context, arg UpsertServiceContainerParams) error {
+	_, err := q.db.ExecContext(ctx, upsertServiceContainer,
+		arg.ID,
+		arg.Name,
+		arg.Image,
+		arg.ProjectID,
+		arg.ServiceID,
+		arg.NodeAgentID,
+		arg.Status,
+		arg.Resources,
+		arg.Ports,
+		arg.Environment,
+		arg.Volumes,
+		arg.Networks,
+		arg.RestartPolicy,
+		arg.HealthCheck,
+	)
 	return err
 }

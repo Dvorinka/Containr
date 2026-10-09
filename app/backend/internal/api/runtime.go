@@ -18,6 +18,38 @@ import (
 	"github.com/google/uuid"
 )
 
+// serviceLifecycle routes a start/stop/restart action to the node agent when
+// the service is pinned, or to the local Docker engine otherwise. Remote
+// actions block on the agent's poll loop; that matches the synchronous
+// behavior the local path already has.
+func serviceLifecycle(ctx context.Context, db *database.DB, engine *deployment.DeploymentEngine, serviceID uuid.UUID, action string) error {
+	if nodeID := serviceNodeID(db, serviceID); nodeID != "" {
+		return engine.ControlServiceOnNode(ctx, serviceID.String(), nodeID, action)
+	}
+	switch action {
+	case "start":
+		return engine.StartService(ctx, serviceID.String())
+	case "stop":
+		return engine.StopService(ctx, serviceID.String())
+	case "restart":
+		if err := engine.StopService(ctx, serviceID.String()); err != nil {
+			return err
+		}
+		return engine.StartService(ctx, serviceID.String())
+	}
+	return fmt.Errorf("unsupported lifecycle action %q", action)
+}
+
+// removeServiceRuntime tears down replicas wherever they run — remote node
+// when pinned, local Docker otherwise.
+func removeServiceRuntime(ctx context.Context, db *database.DB, engine *deployment.DeploymentEngine, serviceID uuid.UUID) {
+	if nodeID := serviceNodeID(db, serviceID); nodeID != "" {
+		_ = engine.RemoveServiceContainersOnNode(ctx, serviceID.String(), nodeID)
+		return
+	}
+	_ = engine.RemoveServiceContainers(ctx, serviceID.String())
+}
+
 // serviceRuntimeSpec builds the container spec for a service: stored env vars
 // merged with ${{Service.KEY}} references resolved across the project.
 func serviceRuntimeSpec(db *database.DB, service Service) (deployment.RuntimeSpec, error) {
@@ -37,6 +69,7 @@ func serviceRuntimeSpec(db *database.DB, service Service) (deployment.RuntimeSpe
 		Domain:        service.Domain,
 		HealthPath:    service.HealthCheckPath,
 		RestartPolicy: service.RestartPolicy,
+		NodeID:        serviceNodeID(db, service.ID),
 	}
 	// Best effort: reuse the host port from the last live deployment so the
 	// public URL survives restarts. Column exists post-migration; older DBs
@@ -384,7 +417,7 @@ func handleServiceStart(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := engine.StartService(c.Request.Context(), service.ID.String()); err != nil {
+	if err := serviceLifecycle(c.Request.Context(), db, engine, service.ID, "start"); err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
 	}
@@ -402,7 +435,7 @@ func handleServiceStop(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := engine.StopService(c.Request.Context(), service.ID.String()); err != nil {
+	if err := serviceLifecycle(c.Request.Context(), db, engine, service.ID, "stop"); err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
 	}
@@ -421,11 +454,7 @@ func handleServiceRestart(c *gin.Context) {
 		return
 	}
 	ctx := c.Request.Context()
-	if err := engine.StopService(ctx, service.ID.String()); err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
-		return
-	}
-	if err := engine.StartService(ctx, service.ID.String()); err != nil {
+	if err := serviceLifecycle(ctx, db, engine, service.ID, "restart"); err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
 	}

@@ -60,7 +60,7 @@ var servicesGetCmd = &cobra.Command{
 			return nil
 		}
 		s, _ := unwrapObject(data, "service")
-		for _, k := range []string{"id", "name", "type", "status", "environment", "image", "git_repo", "git_branch", "domain", "port"} {
+		for _, k := range []string{"id", "name", "type", "status", "environment", "image", "git_repo", "git_branch", "domain", "port", "node_name"} {
 			fmt.Printf("%-14s %s\n", k+":", str(s, k))
 		}
 		return nil
@@ -79,7 +79,7 @@ var servicesCreateCmd = &cobra.Command{
 		body := map[string]interface{}{
 			"name": args[1],
 		}
-		for _, f := range []string{"type", "image", "git-repo", "git-branch", "build-path", "command", "environment", "domain", "restart-policy", "healthcheck-path", "cpu", "memory", "builder", "cpu-reserve", "memory-reserve", "static-cmd", "static-dir"} {
+		for _, f := range []string{"type", "image", "git-repo", "git-branch", "build-path", "command", "environment", "domain", "restart-policy", "healthcheck-path", "cpu", "memory", "builder", "cpu-reserve", "memory-reserve", "static-cmd", "static-dir", "node"} {
 			if v, _ := cmd.Flags().GetString(f); v != "" {
 				key := f
 				// JSON uses snake_case keys matching the API schema.
@@ -102,6 +102,8 @@ var servicesCreateCmd = &cobra.Command{
 					key = "static_build_cmd"
 				case "static-dir":
 					key = "static_dir"
+				case "node":
+					key = "node_id"
 				}
 				body[key] = v
 			}
@@ -159,7 +161,7 @@ var servicesUpdateCmd = &cobra.Command{
 			return err
 		}
 		body := map[string]interface{}{}
-		for _, f := range []string{"name", "image", "command", "domain", "restart-policy", "healthcheck-path", "cpu", "memory", "builder", "cpu-reserve", "memory-reserve", "static-cmd", "static-dir"} {
+		for _, f := range []string{"name", "image", "command", "domain", "restart-policy", "healthcheck-path", "cpu", "memory", "builder", "cpu-reserve", "memory-reserve", "static-cmd", "static-dir", "node"} {
 			if cmd.Flags().Changed(f) {
 				key := f
 				switch f {
@@ -175,6 +177,8 @@ var servicesUpdateCmd = &cobra.Command{
 					key = "static_build_cmd"
 				case "static-dir":
 					key = "static_dir"
+				case "node":
+					key = "node_id"
 				}
 				v, _ := cmd.Flags().GetString(f)
 				body[key] = v
@@ -490,6 +494,7 @@ func init() {
 	f.String("memory-reserve", "", "soft memory reservation (e.g. 128Mi)")
 	f.String("static-cmd", "", "build command for the static builder")
 	f.String("static-dir", "", "output dir for the static builder (default dist)")
+	f.String("node", "", "pin to a node agent id, or 'auto' for least-loaded (image services only)")
 
 	uf := servicesUpdateCmd.Flags()
 	uf.String("name", "", "service name")
@@ -514,6 +519,7 @@ func init() {
 	uf.String("static-dir", "", "output dir for the static builder (empty clears)")
 	uf.Bool("sleep", false, "enable scale-to-zero on idle (sleep mode)")
 	uf.Int("sleep-idle", 0, "idle minutes before sleeping (1-1440)")
+	uf.String("node", "", "pin to a node agent id, 'auto' for least-loaded, 'local' to clear")
 
 	for _, a := range []string{"start", "stop", "restart", "redeploy", "sleep", "wake"} {
 		verb := a

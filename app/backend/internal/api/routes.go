@@ -43,6 +43,9 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 		dockerClient = client
 		buildManager = build.NewBuildManager("/tmp/containr-builds", dockerClient)
 		deploymentEngine = deployment.NewDeploymentEngine(buildManager, dockerClient)
+		// Node-pinned services dispatch container lifecycle to the agent's
+		// command queue instead of the local Docker socket.
+		deploymentEngine.SetNodeRunner(newAgentNodeRunner(db))
 		// Restore managed sidecars (e.g. cloudflared) from saved settings.
 		syncManagedContainers(dockerClient, db)
 	}
@@ -355,6 +358,7 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 
 			// Cross-cutting ops view — active/queued/failed work
 			authed.GET("/operations", handleGetOperations)
+			authed.GET("/nodes/options", agentHandler.ListNodeOptions)
 			authed.GET("/activity", handleGetActivity)
 			authed.GET("/projects/:id/activity", handleGetProjectActivity)
 
