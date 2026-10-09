@@ -333,6 +333,9 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			// WebSocket endpoint
 			authed.GET("/ws", handleWebSocket)
 
+			// Cross-cutting ops view — active/queued/failed work
+			authed.GET("/operations", handleGetOperations)
+
 			// Outbound webhooks — signed event delivery to user HTTP endpoints
 			authed.GET("/webhooks", handleListOutboundWebhooks)
 			authed.POST("/webhooks", handleCreateOutboundWebhook)

@@ -82,6 +82,8 @@ webhooks list|create|update|delete|deliveries|test
                                outbound signed webhooks — create <name> <url>
                                --event 'service.*' (repeatable, '*' = all);
                                deliveries are HMAC-signed (X-Containr-Signature)
+operations                       live ops view: active deploys, queue depth,
+                               24h failures, cron runs, backups
 up                               deploy the current directory
 ```
 

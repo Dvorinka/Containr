@@ -129,6 +129,27 @@ func (q *Queue) Cancel(serviceID, deploymentID uuid.UUID) CancelState {
 	return NotFound
 }
 
+// ServiceQueueState reports queue depth for one service.
+type ServiceQueueState struct {
+	ServiceID uuid.UUID `json:"service_id"`
+	Running   bool      `json:"running"`
+	Queued    int       `json:"queued"`
+}
+
+// Snapshot returns per-service queue depth for observability.
+func (q *Queue) Snapshot() []ServiceQueueState {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	out := make([]ServiceQueueState, 0, len(q.states))
+	for id, st := range q.states {
+		if !st.running && len(st.pending) == 0 {
+			continue
+		}
+		out = append(out, ServiceQueueState{ServiceID: id, Running: st.running, Queued: len(st.pending)})
+	}
+	return out
+}
+
 // Do runs fn through the queue and waits for completion — for synchronous
 // endpoints (redeploy) that still must not overlap an in-flight deployment.
 // ctx bounds the wait, not the job; on timeout the job still runs to

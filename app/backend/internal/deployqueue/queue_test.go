@@ -125,6 +125,40 @@ func TestCancelActiveCancelsContext(t *testing.T) {
 	}
 }
 
+func TestSnapshot(t *testing.T) {
+	q := New()
+	if got := q.Snapshot(); len(got) != 0 {
+		t.Fatalf("empty queue snapshot = %v, want empty", got)
+	}
+
+	svc := uuid.New()
+	release := make(chan struct{})
+	q.Enqueue(svc, Job{Run: func(ctx context.Context) { <-release }})
+	q.Enqueue(svc, Job{Run: func(ctx context.Context) {}})
+	q.Enqueue(svc, Job{Run: func(ctx context.Context) {}})
+
+	deadline := time.After(2 * time.Second)
+	for {
+		snap := q.Snapshot()
+		if len(snap) == 1 && snap[0].Running {
+			if snap[0].ServiceID != svc {
+				t.Fatalf("snapshot service = %v, want %v", snap[0].ServiceID, svc)
+			}
+			if snap[0].Queued != 2 {
+				t.Fatalf("queued = %d, want 2", snap[0].Queued)
+			}
+			close(release)
+			return
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("snapshot never showed running job: %v", snap)
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+}
+
 func TestEnqueuePosition(t *testing.T) {
 	q := New()
 	svc := uuid.New()
