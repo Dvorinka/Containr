@@ -11021,6 +11021,10 @@ export interface components {
             spread?: boolean;
             /** @description Node tags required for remote placement — auto/spread only consider agents carrying every tag; re-resolved each reconcile. Mutually exclusive with an explicit node_id pin (read-only on responses when a pin is set). */
             placement_tags?: string[];
+            /** @description Extra Traefik middlewares defined for this service's router — keys 'middlewares.<name>.<type>[.<field>]' (e.g. 'middlewares.rl.ratelimit.average'), allowlist-validated; each defined middleware attaches to the router after builtins */
+            traefik_labels?: {
+                [key: string]: string;
+            };
             /** @description Computed public URL (published port or domain) */
             public_url?: string;
             /**
@@ -11097,6 +11101,10 @@ export interface components {
             spread?: boolean;
             /** @description Restrict remote placement to agents carrying every listed tag; mutually exclusive with an explicit pin or 'local' */
             placement_tags?: string[];
+            /** @description Extra Traefik middlewares on the service router — keys 'middlewares.<name>.<type>[.<field>]'; allowlist-validated */
+            traefik_labels?: {
+                [key: string]: string;
+            };
         };
         UpdateServiceRequest: {
             /** @description Service name */
@@ -11164,6 +11172,10 @@ export interface components {
             spread?: boolean;
             /** @description Restrict remote placement to agents carrying every listed tag; [] clears. Mutually exclusive with a pin or 'local' — clear the pin first */
             placement_tags?: string[];
+            /** @description Replace the service's Traefik middleware overrides — keys 'middlewares.<name>.<type>[.<field>]'; {} clears */
+            traefik_labels?: {
+                [key: string]: string;
+            };
         };
         ServiceDomain: {
             /** Format: uuid */

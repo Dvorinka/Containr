@@ -485,7 +485,7 @@ export function ServiceDetailPage() {
   const [volumesForm, setVolumesForm] = useState<ServiceVolume[] | null>(null);
   const [domainInput, setDomainInput] = useState('');
   const [domainChecks, setDomainChecks] = useState<Record<string, DomainCheckResult> | null>(null);
-  const [accessForm, setAccessForm] = useState<{ maintenance: boolean; basicAuth: string } | null>(null);
+  const [accessForm, setAccessForm] = useState<{ maintenance: boolean; basicAuth: string; traefikLabels: string } | null>(null);
   const [sleepDraft, setSleepDraft] = useState<{ id: string; enabled: boolean; minutes: string } | null>(null);
   const [nodeDraft, setNodeDraft] = useState<string | null>(null);
   const nodesQuery = useQuery({
@@ -2490,7 +2490,13 @@ export function ServiceDetailPage() {
                     <button
                       type="button"
                       onClick={() =>
-                        setAccessForm({ maintenance: Boolean(service.maintenanceMode), basicAuth: '' })
+                        setAccessForm({
+                          maintenance: Boolean(service.maintenanceMode),
+                          basicAuth: '',
+                          traefikLabels: Object.entries(service.traefikLabels ?? {})
+                            .map(([k, v]) => `${k}=${v}`)
+                            .join('\n'),
+                        })
                       }
                       className="px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium hover:border-[var(--border-default)] transition-colors"
                     >
@@ -2509,6 +2515,14 @@ export function ServiceDetailPage() {
                       <p className="text-[var(--text-tertiary)] uppercase tracking-wide">Basic auth</p>
                       <p className="mt-1 text-sm font-medium text-[var(--text-primary)]">
                         {(service.basicAuth ?? []).length > 0 ? (service.basicAuth ?? []).join(', ') : 'off'}
+                      </p>
+                    </div>
+                    <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] p-3">
+                      <p className="text-[var(--text-tertiary)] uppercase tracking-wide">Routing overrides</p>
+                      <p className="mt-1 text-sm font-medium text-[var(--text-primary)]">
+                        {Object.keys(service.traefikLabels ?? {}).length > 0
+                          ? `${Object.keys(service.traefikLabels ?? {}).length} label(s)`
+                          : 'off'}
                       </p>
                     </div>
                   </div>
@@ -2532,6 +2546,16 @@ export function ServiceDetailPage() {
                         className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm mono text-[var(--text-primary)]"
                       />
                     </div>
+                    <div>
+                      <label className="block text-xs text-[var(--text-tertiary)] mb-1">Routing overrides — Traefik middleware labels, key=value per line; empty clears</label>
+                      <textarea
+                        value={accessForm.traefikLabels}
+                        onChange={(e) => setAccessForm({ ...accessForm, traefikLabels: e.target.value })}
+                        rows={3}
+                        placeholder={"middlewares.rl.ratelimit.average=100\nmiddlewares.sec.headers.customresponseheaders.X-Frame-Options=DENY"}
+                        className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm mono text-[var(--text-primary)]"
+                      />
+                    </div>
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
@@ -2546,8 +2570,17 @@ export function ServiceDetailPage() {
                               return i > 0 ? { username: l.slice(0, i), password: l.slice(i + 1) } : null;
                             })
                             .filter((x): x is { username: string; password: string } => x !== null);
+                          const labels: Record<string, string> = {};
+                          accessForm.traefikLabels
+                            .split('\n')
+                            .map((l) => l.trim())
+                            .filter(Boolean)
+                            .forEach((l) => {
+                              const i = l.indexOf('=');
+                              if (i > 0) labels[l.slice(0, i).trim()] = l.slice(i + 1).trim();
+                            });
                           updateServiceMutation.mutate(
-                            { maintenance_mode: accessForm.maintenance, basic_auth: creds },
+                            { maintenance_mode: accessForm.maintenance, basic_auth: creds, traefik_labels: labels },
                             { onSuccess: () => setAccessForm(null) },
                           );
                         }}

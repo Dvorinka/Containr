@@ -88,6 +88,7 @@ export type ServiceEntity = {
   nodeName?: string;
   spread?: boolean;
   placementTags?: string[];
+  traefikLabels?: Record<string, string>;
   publicUrl?: string;
 };
 
@@ -702,6 +703,7 @@ function normalizeService(service: RawService): ServiceEntity | null {
     nodeName: service.node_name,
     spread: service.spread,
     placementTags: service.placement_tags,
+    traefikLabels: service.traefik_labels,
     publicUrl: service.public_url,
   };
 }
