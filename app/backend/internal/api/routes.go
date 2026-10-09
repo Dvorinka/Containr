@@ -333,6 +333,7 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			// publishes them.
 			authed.POST("/projects", handleCreateProject)
 			authed.POST("/projects/:id/services", handleCreateService)
+			authed.POST("/projects/:id/import-compose", handleImportProjectCompose)
 			authed.PUT("/projects/:id", handleUpdateProject)
 			authed.DELETE("/projects/:id", handleDeleteProject)
 

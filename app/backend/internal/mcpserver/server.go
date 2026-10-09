@@ -134,6 +134,7 @@ func init() {
 	register(spec{"containr_templates_plan", "Dry-resolve a template: expanded expressions, service refs, missing variables. Args: id, variables (object).", "POST", "/templates/{id}/plan", []string{"id"}, nil, false})
 	register(spec{"containr_templates_import_compose", "Convert docker-compose YAML into a v2 template graph config. Args: compose_yaml.", "POST", "/templates/import/compose", nil, []string{"compose_yaml"}, false})
 	register(spec{"containr_templates_deploy_graph", "Deploy an ad-hoc service graph without a stored template. Args: project_id, config ({services:[...]}), variables, plan, region.", "POST", "/templates/deploy", nil, []string{"project_id", "config", "variables", "plan", "region"}, false})
+	register(spec{"containr_projects_import_compose", "Deploy a docker-compose file straight into a project. Args: id (project), compose_yaml, variables, plan, region.", "POST", "/projects/{id}/import-compose", []string{"id"}, []string{"compose_yaml", "variables", "plan", "region"}, false})
 
 	// Notifications
 	register(spec{"containr_notifications_list", "List notifications", "GET", "/notifications", nil, nil, false})

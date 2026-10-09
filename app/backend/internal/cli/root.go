@@ -79,6 +79,7 @@ func init() {
 	rootCmd.AddCommand(commands.DatabasesCmd)
 	rootCmd.AddCommand(commands.CronCmd)
 	rootCmd.AddCommand(commands.TemplatesCmd)
+	rootCmd.AddCommand(commands.ImportCmd)
 	rootCmd.AddCommand(commands.NodesCmd)
 	rootCmd.AddCommand(commands.ScalingCmd)
 	rootCmd.AddCommand(commands.HACmd)

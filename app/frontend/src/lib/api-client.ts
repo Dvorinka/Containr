@@ -1748,6 +1748,25 @@ export async function importComposeTemplate(composeYaml: string): Promise<Compos
   return { config: payload.config, warnings: payload.warnings ?? [] };
 }
 
+export type ProjectComposeImportResult = {
+  created: Array<{ key: string; kind: string; id: string; name: string; deployment_id?: string }>;
+  warnings: string[];
+};
+
+export async function importComposeIntoProject(
+  projectId: string,
+  composeYaml: string,
+): Promise<ProjectComposeImportResult> {
+  const payload = await requestJson<{
+    created?: ProjectComposeImportResult['created'];
+    warnings?: string[];
+  }>(`/projects/${projectId}/import-compose`, {
+    method: 'POST',
+    body: JSON.stringify({ compose_yaml: composeYaml }),
+  });
+  return { created: payload.created ?? [], warnings: payload.warnings ?? [] };
+}
+
 export function serviceStatusClass(status: ServiceStatus): string {
   switch (status) {
     case 'running':

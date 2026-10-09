@@ -23,6 +23,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	dockercontainer "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
@@ -378,6 +380,13 @@ func (h *DatabaseHandler) createManagedDatabase(ctx context.Context, userID stri
 	now := time.Now()
 	version := h.getDefaultVersion(dbType)
 
+	var projectID uuid.NullUUID
+	if req.ProjectID != "" {
+		if parsed, parseErr := uuid.Parse(req.ProjectID); parseErr == nil {
+			projectID = uuid.NullUUID{UUID: parsed, Valid: true}
+		}
+	}
+
 	err = h.queries.CreateDatabaseService(ctx, sqlcdb.CreateDatabaseServiceParams{
 		ID:         databaseID,
 		UserID:     userID,
@@ -388,6 +397,7 @@ func (h *DatabaseHandler) createManagedDatabase(ctx context.Context, userID stri
 		Plan:       plan,
 		Region:     region,
 		PublicPort: req.PublicPort,
+		ProjectID:  projectID,
 		CreatedAt:  sql.NullTime{Time: now, Valid: true},
 		UpdatedAt:  sql.NullTime{Time: now, Valid: true},
 	})

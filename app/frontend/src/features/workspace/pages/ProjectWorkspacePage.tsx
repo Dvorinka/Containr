@@ -8,6 +8,7 @@ import {
   createManagedDatabase,
   createService,
   getProjectById,
+  importComposeIntoProject,
   listConnectedGitRepositories,
   listGitBranches,
   listGitProviders,
@@ -45,6 +46,7 @@ import {
   Search,
   GitBranch,
   Container,
+  FileUp,
 } from 'lucide-react';
 
 type WorkspaceView = 'canvas' | 'observability' | 'logs' | 'settings';
@@ -473,6 +475,8 @@ export function ProjectWorkspacePage() {
   const signedIn = isDemoMode || Boolean(sessionQuery.data);
   const [createOpen, setCreateOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [composeYaml, setComposeYaml] = useState('');
 
   const openAddService = () => {
     if (!signedIn) {
@@ -553,6 +557,25 @@ export function ProjectWorkspacePage() {
       setCreateOpen(false);
       queryClient.invalidateQueries({ queryKey: ['project-services', projectId] });
       queryClient.invalidateQueries({ queryKey: ['projects'] });
+    },
+  });
+
+  const composeImportMutation = useMutation({
+    mutationFn: (yaml: string) => importComposeIntoProject(projectId, yaml),
+    onSuccess: (result) => {
+      setImportOpen(false);
+      setComposeYaml('');
+      queryClient.invalidateQueries({ queryKey: ['project-services', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      const count = result.created.length;
+      const warn = result.warnings.length > 0 ? ` (${result.warnings.length} warning${result.warnings.length === 1 ? '' : 's'})` : '';
+      toast.showToast(`Imported ${count} resource${count === 1 ? '' : 's'} from compose${warn}`, 'success');
+      for (const warning of result.warnings) {
+        toast.showToast(warning, 'warning');
+      }
+    },
+    onError: (err) => {
+      toast.showToast(err instanceof Error ? err.message : 'Compose import failed', 'error');
     },
   });
 
@@ -721,14 +744,24 @@ export function ProjectWorkspacePage() {
             <kbd className="px-1 py-0.5 rounded bg-[var(--surface-card)] text-[10px] font-mono">⌘K</kbd>
           </button>
           {!isDemoMode && signedIn && (
-            <button
-              onClick={openAddService}
-              className="flex items-center gap-1.5 h-8 px-3 rounded-[var(--radius-md)] text-[var(--accent-on)] text-xs font-semibold shadow-lg hover:shadow-xl transition-all"
-              style={{ background: 'var(--accent-primary)' }}
-            >
-              <Plus size={14} />
-              <span className="hidden sm:inline">Add Service</span>
-            </button>
+            <>
+              <button
+                onClick={() => setImportOpen(true)}
+                className="flex items-center gap-1.5 h-8 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-xs font-medium text-[var(--text-secondary)] hover:border-[var(--border-default)] hover:text-[var(--text-primary)] transition-colors"
+                title="Deploy a docker-compose file into this project"
+              >
+                <FileUp size={14} />
+                <span className="hidden sm:inline">Compose</span>
+              </button>
+              <button
+                onClick={openAddService}
+                className="flex items-center gap-1.5 h-8 px-3 rounded-[var(--radius-md)] text-[var(--accent-on)] text-xs font-semibold shadow-lg hover:shadow-xl transition-all"
+                style={{ background: 'var(--accent-primary)' }}
+              >
+                <Plus size={14} />
+                <span className="hidden sm:inline">Add Service</span>
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -971,6 +1004,49 @@ export function ProjectWorkspacePage() {
             navigate(`/templates?project=${projectId}`);
           }}
         />
+      )}
+
+      {/* Compose Import */}
+      {importOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-[var(--bg-void)]/80 backdrop-blur-sm" onClick={() => setImportOpen(false)} />
+          <div className="relative w-full max-w-2xl panel p-6">
+            <div className="flex items-center gap-3 mb-1">
+              <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
+                <FileUp size={20} className="text-[var(--accent-primary)]" />
+              </div>
+              <h3 className="text-xl font-semibold text-[var(--text-primary)]">Import docker-compose</h3>
+            </div>
+            <p className="text-sm text-[var(--text-secondary)]">
+              Paste a docker-compose.yml. Services deploy in dependency order; postgres, mysql, redis, mongo,
+              mariadb, clickhouse and dragonfly images become managed databases reachable by service name.
+            </p>
+            <textarea
+              value={composeYaml}
+              onChange={(e) => setComposeYaml(e.target.value)}
+              spellCheck={false}
+              className="mt-5 w-full h-72 px-4 py-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all mono text-sm resize-none"
+              placeholder={'services:\n  web:\n    image: nginx:alpine\n    ports:\n      - "80"\n  db:\n    image: postgres:16-alpine\n    environment:\n      POSTGRES_PASSWORD: secret'}
+            />
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setImportOpen(false)}
+                className="h-10 px-4 rounded-[var(--radius-md)] text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => composeImportMutation.mutate(composeYaml)}
+                disabled={composeImportMutation.isPending || composeYaml.trim().length === 0}
+                className="h-10 px-5 rounded-[var(--radius-md)] text-sm font-semibold text-[var(--accent-on)] disabled:opacity-50 transition-all flex items-center gap-2"
+                style={{ background: 'var(--accent-primary)' }}
+              >
+                {composeImportMutation.isPending && <Loader2 size={14} className="animate-spin" />}
+                Deploy stack
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Command Palette */}

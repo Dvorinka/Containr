@@ -116,6 +116,7 @@ type DatabaseService struct {
 	ExternalSsl      bool           `json:"external_ssl"`
 	PublicPort       bool           `json:"public_port"`
 	BackupTargetID   sql.NullString `json:"backup_target_id"`
+	ProjectID        uuid.NullUUID  `json:"project_id"`
 	CreatedAt        sql.NullTime   `json:"created_at"`
 	UpdatedAt        sql.NullTime   `json:"updated_at"`
 }

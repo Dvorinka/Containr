@@ -66,6 +66,11 @@ templates list|get|create|delete|deploy|plan|import-compose|deploy-graph
                                import-compose <compose.yml|-> converts a compose file into
                                a v2 graph config; deploy-graph <project-id> <config.json|->
                                deploys an ad-hoc service graph
+import compose <project-id> <compose.yml|->
+                               deploys a docker-compose file straight into a project —
+                               no template row. DB images become managed databases
+                               attached under their service name; --var K=V overrides
+                               template variables
 nodes list|get|delete|tokens     node agents + onboarding tokens (admin)
 scaling status|policies|services|scale
 ha status|alerts|health|policies|enable|disable|failover
