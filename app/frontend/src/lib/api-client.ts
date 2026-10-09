@@ -1866,6 +1866,50 @@ export async function getOperations(): Promise<OperationsView> {
   return requestJson<OperationsView>('/operations');
 }
 
+export type Banner = {
+  id: string;
+  title: string;
+  body: string;
+  level: 'info' | 'success' | 'warning' | 'error';
+  active: boolean;
+  dismissible: boolean;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  created_at: string;
+};
+
+export type BannerInput = {
+  title?: string;
+  body?: string;
+  level?: Banner['level'];
+  active?: boolean;
+  dismissible?: boolean;
+  starts_at?: string;
+  ends_at?: string;
+};
+
+export async function listActiveBanners(): Promise<Banner[]> {
+  const payload = await requestJson<{ banners?: Banner[] }>('/banners/active');
+  return payload.banners ?? [];
+}
+
+export async function listAdminBanners(): Promise<Banner[]> {
+  const payload = await requestJson<{ banners?: Banner[] }>('/admin/banners');
+  return payload.banners ?? [];
+}
+
+export async function createBanner(input: BannerInput): Promise<Banner> {
+  return requestJson<Banner>('/admin/banners', { method: 'POST', body: JSON.stringify(input) });
+}
+
+export async function updateBanner(id: string, input: BannerInput): Promise<Banner> {
+  return requestJson<Banner>(`/admin/banners/${id}`, { method: 'PATCH', body: JSON.stringify(input) });
+}
+
+export async function deleteBanner(id: string): Promise<void> {
+  await requestJson(`/admin/banners/${id}`, { method: 'DELETE' });
+}
+
 export function serviceStatusClass(status: ServiceStatus): string {
   switch (status) {
     case 'running':

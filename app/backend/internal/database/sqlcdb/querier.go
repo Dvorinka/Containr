@@ -21,6 +21,7 @@ type Querier interface {
 	CreateAgent(ctx context.Context, arg CreateAgentParams) (NodeAgent, error)
 	CreateAgentAuthToken(ctx context.Context, arg CreateAgentAuthTokenParams) (AgentAuthToken, error)
 	CreateBackupTarget(ctx context.Context, arg CreateBackupTargetParams) error
+	CreateBanner(ctx context.Context, arg CreateBannerParams) (Banner, error)
 	CreateCommand(ctx context.Context, arg CreateCommandParams) (AgentCommand, error)
 	CreateContainer(ctx context.Context, arg CreateContainerParams) (ContainerInstance, error)
 	CreateDatabaseBackup(ctx context.Context, arg CreateDatabaseBackupParams) error
@@ -36,6 +37,7 @@ type Querier interface {
 	DatabaseServiceExistsByIDAndUser(ctx context.Context, arg DatabaseServiceExistsByIDAndUserParams) (bool, error)
 	DeleteAgent(ctx context.Context, id string) error
 	DeleteBackupTargetByIDAndUser(ctx context.Context, arg DeleteBackupTargetByIDAndUserParams) error
+	DeleteBanner(ctx context.Context, id uuid.UUID) error
 	DeleteDatabaseServiceByID(ctx context.Context, id string) error
 	DeleteDatabaseServiceByIDAndUser(ctx context.Context, arg DeleteDatabaseServiceByIDAndUserParams) error
 	DeleteOutboundWebhookByIDAndUser(ctx context.Context, arg DeleteOutboundWebhookByIDAndUserParams) error
@@ -46,6 +48,7 @@ type Querier interface {
 	GetAgentByHostAndIP(ctx context.Context, arg GetAgentByHostAndIPParams) (NodeAgent, error)
 	GetBackupTargetByID(ctx context.Context, id string) (BackupTarget, error)
 	GetBackupTargetByIDAndUser(ctx context.Context, arg GetBackupTargetByIDAndUserParams) (BackupTarget, error)
+	GetBannerByID(ctx context.Context, id uuid.UUID) (Banner, error)
 	GetCommandForAgent(ctx context.Context, arg GetCommandForAgentParams) (AgentCommand, error)
 	GetContainer(ctx context.Context, id string) (ContainerInstance, error)
 	GetContainerForAgent(ctx context.Context, arg GetContainerForAgentParams) (ContainerInstance, error)
@@ -63,11 +66,13 @@ type Querier interface {
 	GetUserTokenByHash(ctx context.Context, tokenHash string) (UserToken, error)
 	InsertAgentHeartbeat(ctx context.Context, arg InsertAgentHeartbeatParams) error
 	InsertProjectEnvironment(ctx context.Context, arg InsertProjectEnvironmentParams) error
+	ListActiveBanners(ctx context.Context) ([]Banner, error)
 	ListAgentAuthTokens(ctx context.Context) ([]AgentAuthToken, error)
 	ListAgentHeartbeatsSince(ctx context.Context, arg ListAgentHeartbeatsSinceParams) ([]AgentHeartbeat, error)
 	ListAgents(ctx context.Context) ([]NodeAgent, error)
 	ListAllDatabaseServices(ctx context.Context) ([]DatabaseService, error)
 	ListBackupTargetsByUser(ctx context.Context, userID string) ([]BackupTarget, error)
+	ListBanners(ctx context.Context) ([]Banner, error)
 	ListCommandsForAgent(ctx context.Context, nodeAgentID string) ([]AgentCommand, error)
 	ListContainersForAgent(ctx context.Context, nodeAgentID string) ([]ContainerInstance, error)
 	ListDatabaseBackupsByDatabaseAndUser(ctx context.Context, arg ListDatabaseBackupsByDatabaseAndUserParams) ([]DatabaseBackup, error)
@@ -106,6 +111,7 @@ type Querier interface {
 	UpdateAgent(ctx context.Context, arg UpdateAgentParams) (NodeAgent, error)
 	UpdateAgentHeartbeat(ctx context.Context, arg UpdateAgentHeartbeatParams) error
 	UpdateBackupTargetByIDAndUser(ctx context.Context, arg UpdateBackupTargetByIDAndUserParams) error
+	UpdateBanner(ctx context.Context, arg UpdateBannerParams) (Banner, error)
 	UpdateContainerStatus(ctx context.Context, arg UpdateContainerStatusParams) error
 	UpdateDatabaseServiceNameAndPlanByIDAndUser(ctx context.Context, arg UpdateDatabaseServiceNameAndPlanByIDAndUserParams) error
 	UpdateDatabaseServiceNameByIDAndUser(ctx context.Context, arg UpdateDatabaseServiceNameByIDAndUserParams) error

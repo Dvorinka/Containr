@@ -1,3 +1,4 @@
+export * from './BannerBar';
 export * from './DemoGate';
 export * from './ErrorBoundary';
 export * from './LoadingSpinner';

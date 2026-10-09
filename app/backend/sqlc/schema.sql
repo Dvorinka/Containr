@@ -302,3 +302,17 @@ CREATE TABLE webhook_deliveries (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     delivered_at TIMESTAMP WITH TIME ZONE
 );
+
+CREATE TABLE banners (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title VARCHAR(255) NOT NULL,
+    body TEXT NOT NULL DEFAULT '',
+    level VARCHAR(20) NOT NULL DEFAULT 'info',
+    active BOOLEAN NOT NULL DEFAULT true,
+    dismissible BOOLEAN NOT NULL DEFAULT true,
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    starts_at TIMESTAMP WITH TIME ZONE,
+    ends_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
