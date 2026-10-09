@@ -121,12 +121,14 @@ Token: account/workspace token (Authorization: Bearer) or a project token.
 		}
 
 		for _, p := range plans {
-			body := map[string]interface{}{"name": p.Name}
+			body := map[string]interface{}{
+				"name":        p.Name,
+				"type":        "web",
+				"environment": "production",
+			}
 			if p.Source.Image != "" {
-				body["type"] = "image"
 				body["image"] = p.Source.Image
 			} else if repo := railwayRepoURL(p.Source.Repo); repo != "" {
-				body["type"] = "git"
 				body["git_repo"] = repo
 			} else {
 				fmt.Fprintf(os.Stderr, "warning: %s has no source — skipping\n", p.Name)

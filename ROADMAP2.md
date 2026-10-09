@@ -398,9 +398,12 @@ and wired refs, one click or one CLI call.
   services (git-repo/image + command + replicas), variables, custom +
   service domains → recreates via the Containr API. Project tokens and
   account tokens both supported. `cli/commands/migrate.go`.
-- [ ] **dflow importer** — `containr migrate dflow` via Payload REST
-  export or Mongo dump: servers→nodes, projects, services(+vars/
-  domains/volumes), databases, templates. Onboards dflow refugees.
+- [x] **dflow importer** — `containr migrate dflow --url --api-key
+  --project --into --dry-run`: pages the Payload REST collections
+  (users API-Key auth) → services (app→git/web, docker→image,
+  database→typed image + DATABASE_URL for external providers),
+  variables (empty encrypted values flagged), bind volumes, domains.
+  Soft-deleted services excluded. `cli/commands/migrate_dflow.go`.
 - [x] **`containr import compose`** — `POST /projects/:id/import-compose`
   deploys a compose file straight into a project; CLI `import compose`,
   MCP tool, workspace import modal; project delete cascades to
