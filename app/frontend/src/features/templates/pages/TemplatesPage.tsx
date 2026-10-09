@@ -8,6 +8,7 @@ import {
   getCurrentUserProfile,
   getTemplateById,
   importComposeTemplate,
+  importGitComposeTemplate,
   listProjects,
   listTemplates,
   updateTemplate,
@@ -154,6 +155,10 @@ export function TemplatesPage() {
   const [composeYaml, setComposeYaml] = useState('');
   const [composeWarnings, setComposeWarnings] = useState<string[]>([]);
   const [composeError, setComposeError] = useState<string | null>(null);
+  const [composeMode, setComposeMode] = useState<'paste' | 'git'>('paste');
+  const [gitRepo, setGitRepo] = useState('');
+  const [gitPath, setGitPath] = useState('');
+  const [gitRef, setGitRef] = useState('');
 
   const [lastDeployment, setLastDeployment] = useState<{
     projectId: string;
@@ -364,7 +369,10 @@ export function TemplatesPage() {
   });
 
   const composeImportMutation = useMutation({
-    mutationFn: (yaml: string) => importComposeTemplate(yaml),
+    mutationFn: () =>
+      composeMode === 'git'
+        ? importGitComposeTemplate(gitRepo.trim(), gitPath.trim(), gitRef.trim())
+        : importComposeTemplate(composeYaml),
     onSuccess: (result) => {
       setComposeWarnings(result.warnings);
       setComposeError(null);
@@ -1107,7 +1115,7 @@ export function TemplatesPage() {
               <div>
                 <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">Import docker-compose</h2>
                 <p className="text-xs text-[var(--text-tertiary)]">
-                  Paste a compose file — known database images become managed databases, everything else becomes services.
+                  Paste a compose file or pull one from a git repo — known database images become managed databases.
                 </p>
               </div>
               <button
@@ -1118,13 +1126,67 @@ export function TemplatesPage() {
                 <X size={15} />
               </button>
             </div>
-            <textarea
-              value={composeYaml}
-              onChange={(e) => setComposeYaml(e.target.value)}
-              spellCheck={false}
-              placeholder={'services:\n  db:\n    image: postgres:16\n  web:\n    image: myapp:latest\n    depends_on: [db]'}
-              className="mono min-h-[320px] flex-1 resize-none bg-[var(--bg-void)] p-4 text-[12.5px] leading-relaxed text-[var(--text-secondary)] outline-none"
-            />
+            <div className="flex gap-1 border-b border-[var(--border-subtle)] px-5 pt-3">
+              {(['paste', 'git'] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setComposeMode(m)}
+                  className={`rounded-t-[var(--radius-md)] px-3 py-1.5 text-xs font-medium ${
+                    composeMode === m
+                      ? 'bg-[var(--surface-muted)] text-[var(--text-primary)]'
+                      : 'text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'
+                  }`}
+                >
+                  {m === 'paste' ? 'Paste YAML' : 'From git repo'}
+                </button>
+              ))}
+            </div>
+            {composeMode === 'paste' ? (
+              <textarea
+                value={composeYaml}
+                onChange={(e) => setComposeYaml(e.target.value)}
+                spellCheck={false}
+                placeholder={'services:\n  db:\n    image: postgres:16\n  web:\n    image: myapp:latest\n    depends_on: [db]'}
+                className="mono min-h-[320px] flex-1 resize-none bg-[var(--bg-void)] p-4 text-[12.5px] leading-relaxed text-[var(--text-secondary)] outline-none"
+              />
+            ) : (
+              <div className="flex min-h-[320px] flex-1 flex-col gap-3 bg-[var(--bg-void)] p-4">
+                <label className="text-xs text-[var(--text-tertiary)]">
+                  Repository
+                  <input
+                    value={gitRepo}
+                    onChange={(e) => setGitRepo(e.target.value)}
+                    spellCheck={false}
+                    placeholder="owner/repo or https://github.com/owner/repo.git"
+                    className="mono mt-1 w-full rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-base)] px-3 py-2 text-[12.5px] text-[var(--text-secondary)] outline-none focus:border-[var(--accent-primary)]"
+                  />
+                </label>
+                <label className="text-xs text-[var(--text-tertiary)]">
+                  Compose file path <span className="opacity-60">(optional — compose.yaml / docker-compose.yml searched)</span>
+                  <input
+                    value={gitPath}
+                    onChange={(e) => setGitPath(e.target.value)}
+                    spellCheck={false}
+                    placeholder="deploy/compose.yml"
+                    className="mono mt-1 w-full rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-base)] px-3 py-2 text-[12.5px] text-[var(--text-secondary)] outline-none focus:border-[var(--accent-primary)]"
+                  />
+                </label>
+                <label className="text-xs text-[var(--text-tertiary)]">
+                  Branch or commit <span className="opacity-60">(optional)</span>
+                  <input
+                    value={gitRef}
+                    onChange={(e) => setGitRef(e.target.value)}
+                    spellCheck={false}
+                    placeholder="main"
+                    className="mono mt-1 w-full rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-base)] px-3 py-2 text-[12.5px] text-[var(--text-secondary)] outline-none focus:border-[var(--accent-primary)]"
+                  />
+                </label>
+                <p className="text-[11px] text-[var(--text-tertiary)]">
+                  Private repos use your connected git providers for credentials.
+                </p>
+              </div>
+            )}
             {composeError ? (
               <div className="border-t border-[var(--border-subtle)] bg-[var(--error-soft)] px-5 py-2.5 text-xs text-[var(--error)]">
                 {composeError}
@@ -1140,8 +1202,8 @@ export function TemplatesPage() {
               </button>
               <button
                 type="button"
-                onClick={() => composeImportMutation.mutate(composeYaml)}
-                disabled={!composeYaml.trim() || composeImportMutation.isPending}
+                onClick={() => composeImportMutation.mutate()}
+                disabled={(composeMode === 'paste' ? !composeYaml.trim() : !gitRepo.trim()) || composeImportMutation.isPending}
                 className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] bg-[var(--accent-primary)] px-4 py-2 text-xs font-semibold text-[var(--accent-on)] disabled:opacity-50"
               >
                 {composeImportMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <FileCode size={13} />}

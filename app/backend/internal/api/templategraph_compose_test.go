@@ -1,6 +1,8 @@
 package api
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -122,5 +124,44 @@ func TestComposeToSpecsWarnings(t *testing.T) {
 	}
 	if !strings.Contains(joined, "UNSET_VAR") {
 		t.Errorf("missing env warning: %v", warnings)
+	}
+}
+
+func TestResolveRepoFileContainment(t *testing.T) {
+	dir := t.TempDir()
+	inner := filepath.Join(dir, "sub")
+	if err := os.MkdirAll(inner, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(inner, "compose.yml"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	p, err := resolveRepoFile(dir, "sub/compose.yml")
+	if err != nil {
+		t.Fatalf("valid file rejected: %v", err)
+	}
+	if p != filepath.Join(dir, "sub", "compose.yml") {
+		t.Errorf("unexpected path %q", p)
+	}
+
+	for _, bad := range []string{"", "/etc/passwd", "../escape.yml", "..", "sub/../../out.yml"} {
+		if _, err := resolveRepoFile(dir, bad); err == nil {
+			t.Errorf("path %q should have been rejected", bad)
+		}
+	}
+	if _, err := resolveRepoFile(dir, "sub"); err == nil {
+		t.Error("directory accepted as file")
+	}
+}
+
+func TestIsCommitSHA(t *testing.T) {
+	if !isCommitSHA("0123456789abcdef0123456789abcdef01234567") {
+		t.Error("40-hex ref not recognised as a commit")
+	}
+	for _, bad := range []string{"main", "v1.2.3", "0123456789abcdef0123456789abcdef0123456", "0123456789abcdef0123456789abcdef0123456G"} {
+		if isCommitSHA(bad) {
+			t.Errorf("ref %q misclassified as commit SHA", bad)
+		}
 	}
 }

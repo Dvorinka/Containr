@@ -3243,6 +3243,80 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/templates/import/git": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import a compose file from a git repository
+         * @description Fetches a compose file out of a git repository and runs it through
+         *     the same conversion as POST /templates/import/compose. `repo`
+         *     accepts a clone URL, ssh remote, or `owner/repo` shorthand —
+         *     connected git providers (including GitHub App installs) supply
+         *     credentials, so private repositories work. `path` defaults to
+         *     `compose.yaml`, `compose.yml`, `docker-compose.yml`, then
+         *     `docker-compose.yaml`; `ref` selects a branch or commit SHA.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description Clone URL, ssh remote, or owner/repo shorthand */
+                        repo: string;
+                        /** @description Repo-relative compose file path (searched by convention when empty) */
+                        path?: string;
+                        /** @description Branch name or 40-char commit SHA */
+                        ref?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Converted config */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            config?: components["schemas"]["TemplateConfig"];
+                            variables?: Record<string, never>[];
+                            warnings?: string[];
+                        };
+                    };
+                };
+                /** @description Invalid repo reference, compose file missing, or conversion error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Git fetch failed */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/templates/deploy": {
         parameters: {
             query?: never;

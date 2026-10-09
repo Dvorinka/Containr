@@ -194,6 +194,32 @@ var templatesImportComposeCmd = &cobra.Command{
 	},
 }
 
+var templatesImportGitCmd = &cobra.Command{
+	Use:   "import-git <repo> [path]",
+	Short: "Fetch a compose file from a git repo and convert it into a template graph config",
+	Long:  "repo accepts a clone URL, ssh remote, or owner/repo shorthand resolved via connected git providers (private repos included). path defaults to compose.yaml/yml or docker-compose.yml/yaml. --ref selects a branch or commit.",
+	Args:  cobra.RangeArgs(1, 2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		body := map[string]string{"repo": args[0]}
+		if len(args) > 1 {
+			body["path"] = args[1]
+		}
+		if v, _ := cmd.Flags().GetString("ref"); v != "" {
+			body["ref"] = v
+		}
+		c, err := client()
+		if err != nil {
+			return err
+		}
+		data, err := c.Do("POST", "/templates/import/git", body)
+		if err != nil {
+			return err
+		}
+		PrintRaw(data)
+		return nil
+	},
+}
+
 var templatesDeployGraphCmd = &cobra.Command{
 	Use:   "deploy-graph <project-id> <config.json|->",
 	Short: "Deploy an ad-hoc service graph (v2 config with services[]) without a stored template",
@@ -257,5 +283,6 @@ func init() {
 	templatesDeployCmd.Flags().StringArrayVar(&tplDeployVars, "var", nil, "Template variable override (KEY=VALUE, repeatable)")
 	templatesPlanCmd.Flags().StringArrayVar(&tplDeployVars, "var", nil, "Template variable override (KEY=VALUE, repeatable)")
 	templatesDeployGraphCmd.Flags().StringArrayVar(&tplDeployVars, "var", nil, "Template variable override (KEY=VALUE, repeatable)")
-	TemplatesCmd.AddCommand(templatesListCmd, templatesGetCmd, templatesCreateCmd, templatesDeleteCmd, templatesDeployCmd, templatesPlanCmd, templatesImportComposeCmd, templatesDeployGraphCmd)
+	templatesImportGitCmd.Flags().String("ref", "", "git branch or commit (default: remote HEAD)")
+	TemplatesCmd.AddCommand(templatesListCmd, templatesGetCmd, templatesCreateCmd, templatesDeleteCmd, templatesDeployCmd, templatesPlanCmd, templatesImportComposeCmd, templatesImportGitCmd, templatesDeployGraphCmd)
 }

@@ -103,7 +103,8 @@ services:
       - n8n_storage:/home/node/.n8n
     command: worker
     depends_on:
-      - n8n
+      n8n:
+        condition: service_started
       redis:
         condition: service_healthy
       postgres:

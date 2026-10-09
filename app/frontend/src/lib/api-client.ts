@@ -1924,6 +1924,21 @@ export async function importComposeTemplate(composeYaml: string): Promise<Compos
   return { config: payload.config, warnings: payload.warnings ?? [] };
 }
 
+export async function importGitComposeTemplate(
+  repo: string,
+  path: string,
+  ref: string,
+): Promise<ComposeImportResult> {
+  const payload = await requestJson<{ config?: Record<string, unknown>; warnings?: string[] }>(
+    '/templates/import/git',
+    { method: 'POST', body: JSON.stringify({ repo, path: path || undefined, ref: ref || undefined }) },
+  );
+  if (!payload.config || typeof payload.config !== 'object') {
+    throw new ApiError('Git import response is invalid', 500);
+  }
+  return { config: payload.config, warnings: payload.warnings ?? [] };
+}
+
 export type ProjectComposeImportResult = {
   created: Array<{ key: string; kind: string; id: string; name: string; deployment_id?: string }>;
   warnings: string[];
