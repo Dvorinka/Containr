@@ -198,6 +198,15 @@ type AgentHeartbeat struct {
 	SystemLoad     SystemLoad    `json:"system_load"`
 	Uptime         int64         `json:"uptime"`
 	Version        string        `json:"version"`
+	// Containers reports managed-container liveness — {name, state} per
+	// containr.managed container on the node — so remote replica status
+	// reflects reality between reconciles (exits, OOMs, crash loops).
+	Containers []AgentContainerState `json:"containers,omitempty"`
+}
+
+type AgentContainerState struct {
+	Name  string `json:"name"`
+	State string `json:"state"`
 }
 
 type SystemLoad struct {
@@ -663,6 +672,20 @@ func (h *NodeAgentHandler) SendHeartbeat(c *gin.Context) {
 		// Keep heartbeat endpoint available even if history table is not yet migrated.
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to persist heartbeat"})
 		return
+	}
+
+	// Reconcile remote container liveness — exits and crash loops surface
+	// in inventory between reconciles. Best-effort, never fatal.
+	for _, rc := range heartbeat.Containers {
+		if rc.Name == "" || rc.State == "" {
+			continue
+		}
+		stateJSON, _ := json.Marshal(rc.State)
+		_ = h.q.UpdateContainerStateByName(ctx, sqlcdb.UpdateContainerStateByNameParams{
+			Name:        rc.Name,
+			NodeAgentID: heartbeat.NodeAgentID,
+			Column3:     stateJSON,
+		})
 	}
 
 	c.Status(http.StatusOK)

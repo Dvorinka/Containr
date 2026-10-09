@@ -203,6 +203,15 @@ ON CONFLICT (id) DO UPDATE SET
 -- name: DeleteServiceContainersOnAgent :exec
 DELETE FROM container_instances WHERE node_agent_id = $1 AND service_id = $2;
 
+-- name: UpdateContainerStateByName :exec
+-- Agent heartbeat reports real docker state; reconcile inventory for rows
+-- this node owns. Tombstones win — never resurrect a removed replica.
+UPDATE container_instances SET
+    status = jsonb_set(status, '{state}', $3::jsonb),
+    updated_at = NOW()
+WHERE name = $1 AND node_agent_id = $2
+  AND status->>'state' IS DISTINCT FROM 'removed';
+
 -- name: ListServiceAgents :many
 -- Distinct agents holding inventory rows for a service.
 SELECT DISTINCT node_agent_id FROM container_instances WHERE service_id = $1;

@@ -204,8 +204,29 @@ func sendHeartbeat(ctx context.Context, client *http.Client, cfg agentConfig, ag
 		"system_load":     readSystemLoad(),
 		"uptime":          readSystemUptime(),
 		"version":         firstEnv("CONTAINR_AGENT_VERSION", version),
+		"containers":      managedContainerStates(),
 	}
 	return postJSON(ctx, client, cfg, "/api/agents/heartbeat", payload, nil)
+}
+
+// managedContainerStates lists every containr-managed container's docker
+// state so the server can reflect exits and crash loops between reconciles.
+// One docker call per heartbeat; nil on error (states simply go stale).
+func managedContainerStates() []map[string]string {
+	out, err := runDocker("ps", "-a",
+		"--filter", "label=containr.managed=true",
+		"--format", "{{.Names}}\t{{.State}}")
+	if err != nil {
+		return nil
+	}
+	var states []map[string]string
+	for _, line := range strings.Split(out, "\n") {
+		parts := strings.SplitN(line, "\t", 2)
+		if len(parts) == 2 && parts[0] != "" {
+			states = append(states, map[string]string{"name": parts[0], "state": parts[1]})
+		}
+	}
+	return states
 }
 
 func processCommands(ctx context.Context, client *http.Client, cfg agentConfig, agentID string) error {

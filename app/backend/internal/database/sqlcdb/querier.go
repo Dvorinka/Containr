@@ -139,6 +139,9 @@ type Querier interface {
 	// Agent reports the real host bindings after create — persist them with
 	// the status flip so ingress can route to the assigned port.
 	UpdateContainerPorts(ctx context.Context, arg UpdateContainerPortsParams) error
+	// Agent heartbeat reports real docker state; reconcile inventory for rows
+	// this node owns. Tombstones win — never resurrect a removed replica.
+	UpdateContainerStateByName(ctx context.Context, arg UpdateContainerStateByNameParams) error
 	UpdateContainerStatus(ctx context.Context, arg UpdateContainerStatusParams) error
 	UpdateDatabaseServiceNameAndPlanByIDAndUser(ctx context.Context, arg UpdateDatabaseServiceNameAndPlanByIDAndUserParams) error
 	UpdateDatabaseServiceNameByIDAndUser(ctx context.Context, arg UpdateDatabaseServiceNameByIDAndUserParams) error

@@ -1053,6 +1053,27 @@ func (q *Queries) UpdateContainerPorts(ctx context.Context, arg UpdateContainerP
 	return err
 }
 
+const updateContainerStateByName = `-- name: UpdateContainerStateByName :exec
+UPDATE container_instances SET
+    status = jsonb_set(status, '{state}', $3::jsonb),
+    updated_at = NOW()
+WHERE name = $1 AND node_agent_id = $2
+  AND status->>'state' IS DISTINCT FROM 'removed'
+`
+
+type UpdateContainerStateByNameParams struct {
+	Name        string          `json:"name"`
+	NodeAgentID string          `json:"node_agent_id"`
+	Column3     json.RawMessage `json:"column_3"`
+}
+
+// Agent heartbeat reports real docker state; reconcile inventory for rows
+// this node owns. Tombstones win — never resurrect a removed replica.
+func (q *Queries) UpdateContainerStateByName(ctx context.Context, arg UpdateContainerStateByNameParams) error {
+	_, err := q.db.ExecContext(ctx, updateContainerStateByName, arg.Name, arg.NodeAgentID, arg.Column3)
+	return err
+}
+
 const updateContainerStatus = `-- name: UpdateContainerStatus :exec
 UPDATE container_instances SET status = $2, updated_at = NOW()
 WHERE id = $1
