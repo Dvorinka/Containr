@@ -38,8 +38,17 @@ for platform in $PLATFORMS; do
         -ldflags "$LDFLAGS" \
         -o "bin/${MCP_NAME}" \
         ./cmd/mcp
-    
-    echo "✅ Built bin/${OUTPUT_NAME} + bin/${MCP_NAME}"
+done
+
+# Node agents are linux-only — the download endpoint serves the same two
+# arches, and install-agent.sh falls back to these GH release assets.
+for arch in amd64 arm64; do
+    echo "📦 Building agent for linux/${arch}..."
+    CGO_ENABLED=0 GOOS=linux GOARCH=$arch go build \
+        -ldflags "-X main.version=${VERSION}" \
+        -o "bin/containr-agent-linux-${arch}" \
+        ./cmd/agent
+    echo "✅ Built bin/containr-agent-linux-${arch}"
 done
 
 echo "🎉 CLI build complete!"
