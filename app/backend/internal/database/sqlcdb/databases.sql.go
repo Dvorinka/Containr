@@ -88,6 +88,52 @@ func (q *Queries) CreateDatabaseService(ctx context.Context, arg CreateDatabaseS
 	return err
 }
 
+const createExternalDatabaseService = `-- name: CreateExternalDatabaseService :exec
+INSERT INTO database_services (id, user_id, name, type, status, version, plan, region,
+    provider, external_host, external_port, external_name, external_username, external_password, external_ssl,
+    created_at, updated_at)
+VALUES ($1, $2, $3, $4, 'running', $5, $6, $7, 'external', $8, $9, $10, $11, $12, $13, $14, $15)
+`
+
+type CreateExternalDatabaseServiceParams struct {
+	ID               string         `json:"id"`
+	UserID           string         `json:"user_id"`
+	Name             string         `json:"name"`
+	Type             string         `json:"type"`
+	Version          string         `json:"version"`
+	Plan             string         `json:"plan"`
+	Region           string         `json:"region"`
+	ExternalHost     sql.NullString `json:"external_host"`
+	ExternalPort     sql.NullInt32  `json:"external_port"`
+	ExternalName     sql.NullString `json:"external_name"`
+	ExternalUsername sql.NullString `json:"external_username"`
+	ExternalPassword string         `json:"external_password"`
+	ExternalSsl      bool           `json:"external_ssl"`
+	CreatedAt        sql.NullTime   `json:"created_at"`
+	UpdatedAt        sql.NullTime   `json:"updated_at"`
+}
+
+func (q *Queries) CreateExternalDatabaseService(ctx context.Context, arg CreateExternalDatabaseServiceParams) error {
+	_, err := q.db.ExecContext(ctx, createExternalDatabaseService,
+		arg.ID,
+		arg.UserID,
+		arg.Name,
+		arg.Type,
+		arg.Version,
+		arg.Plan,
+		arg.Region,
+		arg.ExternalHost,
+		arg.ExternalPort,
+		arg.ExternalName,
+		arg.ExternalUsername,
+		arg.ExternalPassword,
+		arg.ExternalSsl,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	return err
+}
+
 const databaseServiceExistsByIDAndUser = `-- name: DatabaseServiceExistsByIDAndUser :one
 SELECT EXISTS(
   SELECT 1 FROM database_services WHERE id = $1 AND user_id = $2
@@ -150,7 +196,7 @@ func (q *Queries) GetDatabaseBackupByIDAndDatabaseAndUser(ctx context.Context, a
 }
 
 const getDatabaseServiceByID = `-- name: GetDatabaseServiceByID :one
-SELECT id, user_id, name, type, status, version, plan, region, connection_url, backup_schedule, next_backup_at, created_at, updated_at
+SELECT database_services.id, database_services.user_id, database_services.name, database_services.type, database_services.status, database_services.version, database_services.plan, database_services.region, database_services.connection_url, database_services.backup_schedule, database_services.next_backup_at, database_services.provider, database_services.external_host, database_services.external_port, database_services.external_name, database_services.external_username, database_services.external_password, database_services.external_ssl, database_services.created_at, database_services.updated_at
 FROM database_services
 WHERE id = $1
 `
@@ -170,6 +216,13 @@ func (q *Queries) GetDatabaseServiceByID(ctx context.Context, id string) (Databa
 		&i.ConnectionUrl,
 		&i.BackupSchedule,
 		&i.NextBackupAt,
+		&i.Provider,
+		&i.ExternalHost,
+		&i.ExternalPort,
+		&i.ExternalName,
+		&i.ExternalUsername,
+		&i.ExternalPassword,
+		&i.ExternalSsl,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -177,7 +230,7 @@ func (q *Queries) GetDatabaseServiceByID(ctx context.Context, id string) (Databa
 }
 
 const getDatabaseServiceByIDAndUser = `-- name: GetDatabaseServiceByIDAndUser :one
-SELECT id, user_id, name, type, status, version, plan, region, connection_url, backup_schedule, next_backup_at, created_at, updated_at
+SELECT database_services.id, database_services.user_id, database_services.name, database_services.type, database_services.status, database_services.version, database_services.plan, database_services.region, database_services.connection_url, database_services.backup_schedule, database_services.next_backup_at, database_services.provider, database_services.external_host, database_services.external_port, database_services.external_name, database_services.external_username, database_services.external_password, database_services.external_ssl, database_services.created_at, database_services.updated_at
 FROM database_services
 WHERE id = $1 AND user_id = $2
 `
@@ -202,6 +255,13 @@ func (q *Queries) GetDatabaseServiceByIDAndUser(ctx context.Context, arg GetData
 		&i.ConnectionUrl,
 		&i.BackupSchedule,
 		&i.NextBackupAt,
+		&i.Provider,
+		&i.ExternalHost,
+		&i.ExternalPort,
+		&i.ExternalName,
+		&i.ExternalUsername,
+		&i.ExternalPassword,
+		&i.ExternalSsl,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -222,7 +282,7 @@ func (q *Queries) GetDatabaseServiceOwnerID(ctx context.Context, id string) (str
 }
 
 const listAllDatabaseServices = `-- name: ListAllDatabaseServices :many
-SELECT id, user_id, name, type, status, version, plan, region, connection_url, backup_schedule, next_backup_at, created_at, updated_at
+SELECT database_services.id, database_services.user_id, database_services.name, database_services.type, database_services.status, database_services.version, database_services.plan, database_services.region, database_services.connection_url, database_services.backup_schedule, database_services.next_backup_at, database_services.provider, database_services.external_host, database_services.external_port, database_services.external_name, database_services.external_username, database_services.external_password, database_services.external_ssl, database_services.created_at, database_services.updated_at
 FROM database_services
 ORDER BY created_at DESC
 `
@@ -248,6 +308,13 @@ func (q *Queries) ListAllDatabaseServices(ctx context.Context) ([]DatabaseServic
 			&i.ConnectionUrl,
 			&i.BackupSchedule,
 			&i.NextBackupAt,
+			&i.Provider,
+			&i.ExternalHost,
+			&i.ExternalPort,
+			&i.ExternalName,
+			&i.ExternalUsername,
+			&i.ExternalPassword,
+			&i.ExternalSsl,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -311,7 +378,7 @@ func (q *Queries) ListDatabaseBackupsByDatabaseAndUser(ctx context.Context, arg 
 }
 
 const listDatabaseServicesByUser = `-- name: ListDatabaseServicesByUser :many
-SELECT id, user_id, name, type, status, version, plan, region, connection_url, backup_schedule, next_backup_at, created_at, updated_at
+SELECT database_services.id, database_services.user_id, database_services.name, database_services.type, database_services.status, database_services.version, database_services.plan, database_services.region, database_services.connection_url, database_services.backup_schedule, database_services.next_backup_at, database_services.provider, database_services.external_host, database_services.external_port, database_services.external_name, database_services.external_username, database_services.external_password, database_services.external_ssl, database_services.created_at, database_services.updated_at
 FROM database_services
 WHERE user_id = $1
 ORDER BY created_at DESC
@@ -338,6 +405,13 @@ func (q *Queries) ListDatabaseServicesByUser(ctx context.Context, userID string)
 			&i.ConnectionUrl,
 			&i.BackupSchedule,
 			&i.NextBackupAt,
+			&i.Provider,
+			&i.ExternalHost,
+			&i.ExternalPort,
+			&i.ExternalName,
+			&i.ExternalUsername,
+			&i.ExternalPassword,
+			&i.ExternalSsl,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {

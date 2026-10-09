@@ -30,6 +30,10 @@ import {
   createDatabaseBackup,
   restoreDatabaseBackup,
   createManagedDatabase,
+  registerExternalDatabase,
+  testDatabaseConnection,
+  testDatabaseConnectionByID,
+  type ExternalDatabaseInput,
   listServicesByProject,
   listServiceVariables,
   updateServiceVariables,
@@ -1901,7 +1905,11 @@ export function DatabasesPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [bindDb, setBindDb] = useState<DatabaseEntity | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [createMode, setCreateMode] = useState<'managed' | 'external'>('managed');
   const [createForm, setCreateForm] = useState({ name: '', type: 'postgresql', plan: 'hobby', region: 'local' });
+  const [externalForm, setExternalForm] = useState({ name: '', type: 'postgresql', host: '', port: '', database: '', username: '', password: '', ssl: false });
+  const [externalProbe, setExternalProbe] = useState<{ ok: boolean; latency_ms?: number; error?: string } | null>(null);
+  const [externalTestResult, setExternalTestResult] = useState<Record<string, { ok: boolean; latency_ms?: number; error?: string }>>({});
   const [createError, setCreateError] = useState<string | null>(null);
   const databasesQuery = useQuery({
     queryKey: ['databases'],
@@ -1928,6 +1936,40 @@ export function DatabasesPage() {
     onError: (error) => {
       setCreateError(error instanceof Error ? error.message : 'Failed to create database');
     },
+  });
+  const externalPayload = (): ExternalDatabaseInput => ({
+    name: externalForm.name.trim(),
+    type: externalForm.type,
+    host: externalForm.host.trim(),
+    port: Number(externalForm.port) || undefined,
+    database: externalForm.database.trim() || undefined,
+    username: externalForm.username.trim() || undefined,
+    password: externalForm.password || undefined,
+    ssl: externalForm.ssl,
+  });
+  const registerExternalMutation = useMutation({
+    mutationFn: () => registerExternalDatabase(externalPayload()),
+    onSuccess: () => {
+      setCreateOpen(false);
+      setExternalForm({ name: '', type: 'postgresql', host: '', port: '', database: '', username: '', password: '', ssl: false });
+      setExternalProbe(null);
+      setCreateError(null);
+      invalidate();
+    },
+    onError: (error) => {
+      setCreateError(error instanceof Error ? error.message : 'Failed to register database');
+    },
+  });
+  const probeMutation = useMutation({
+    mutationFn: () => testDatabaseConnection(externalPayload()),
+    onSuccess: (result) => setExternalProbe(result),
+    onError: (error) => setExternalProbe({ ok: false, error: error instanceof Error ? error.message : 'probe failed' }),
+  });
+  const testByIdMutation = useMutation({
+    mutationFn: (id: string) => testDatabaseConnectionByID(id),
+    onSuccess: (result, id) => setExternalTestResult((prev) => ({ ...prev, [id]: result })),
+    onError: (error, id) =>
+      setExternalTestResult((prev) => ({ ...prev, [id]: { ok: false, error: error instanceof Error ? error.message : 'probe failed' } })),
   });
   const actionMutation = useMutation({
     mutationFn: ({ id, action }: { id: string; action: 'start' | 'stop' | 'restart' }) =>
@@ -2014,9 +2056,16 @@ export function DatabasesPage() {
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium text-[var(--text-primary)]">{db.name}</span>
                         <span className="text-xs px-1.5 py-0.5 rounded bg-[var(--surface-muted)] text-[var(--text-secondary)] mono">{db.type}{db.version ? ` ${db.version}` : ''}</span>
+                        {db.provider === 'external' && (
+                          <span className="text-xs px-1.5 py-0.5 rounded bg-[var(--accent-primary-soft)] text-[var(--accent-primary)]">external</span>
+                        )}
                         <span className={`text-xs px-1.5 py-0.5 rounded ${dbStatusClass[db.status ?? ''] ?? 'bg-[var(--surface-muted)] text-[var(--text-muted)]'}`}>{db.status}</span>
                       </div>
-                      <p className="mt-0.5 text-xs text-[var(--text-muted)]">{db.plan} · {db.region}</p>
+                      <p className="mt-0.5 text-xs text-[var(--text-muted)]">
+                        {db.provider === 'external' && db.external
+                          ? `${db.external.host}:${db.external.port}${db.external.database ? ` · ${db.external.database}` : ''}`
+                          : `${db.plan} · ${db.region}`}
+                      </p>
                     </div>
                     <ChevronDown size={15} className={`shrink-0 text-[var(--text-muted)] transition-transform ${expanded ? 'rotate-180' : ''}`} />
                   </button>
@@ -2044,6 +2093,25 @@ export function DatabasesPage() {
                         {signedIn ? (
                           <>
                         <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)] mr-1">Actions</span>
+                        {db.provider === 'external' ? (
+                          <>
+                            <button
+                              onClick={() => testByIdMutation.mutate(db.id ?? '')}
+                              disabled={testByIdMutation.isPending}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-secondary)] hover:border-[var(--border-default)] disabled:opacity-40 transition-colors"
+                            >
+                              <RefreshCw size={11} /> Test connection
+                            </button>
+                            {externalTestResult[db.id ?? ''] && (
+                              <span className={`text-xs ${externalTestResult[db.id ?? '']?.ok ? 'text-[var(--success)]' : 'text-[var(--error)]'}`}>
+                                {externalTestResult[db.id ?? '']?.ok
+                                  ? `reachable (${externalTestResult[db.id ?? '']?.latency_ms ?? 0}ms)`
+                                  : `unreachable — ${externalTestResult[db.id ?? '']?.error ?? 'probe failed'}`}
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <>
                         <button
                           onClick={() => actionMutation.mutate({ id: db.id ?? '', action: 'start' })}
                           disabled={running || actionMutation.isPending}
@@ -2065,6 +2133,8 @@ export function DatabasesPage() {
                         >
                           <RefreshCw size={11} /> Restart
                         </button>
+                          </>
+                        )}
                         <button
                           onClick={() => setBindDb(bindDb?.id === db.id ? null : db)}
                           disabled={!db.connection_url}
@@ -2107,6 +2177,7 @@ export function DatabasesPage() {
                         </div>
                       )}
 
+                      {db.provider !== 'external' && (
                       <div>
                         <div className="mb-2 flex items-center justify-between">
                           <p className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Backups</p>
@@ -2163,6 +2234,7 @@ export function DatabasesPage() {
                           </p>
                         )}
                       </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -2177,18 +2249,125 @@ export function DatabasesPage() {
           <div className="w-full max-w-md overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--bg-base)] shadow-2xl">
             <div className="border-b border-[var(--border-subtle)] px-5 py-4">
               <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">New database</h2>
-              <p className="text-xs text-[var(--text-tertiary)]">Provision a managed database service.</p>
+              <div className="mt-3 flex gap-1 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] p-1">
+                {(['managed', 'external'] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => { setCreateMode(mode); setCreateError(null); }}
+                    className={`flex-1 rounded-[calc(var(--radius-md)-2px)] px-3 py-1.5 text-xs font-medium capitalize transition-colors ${createMode === mode ? 'bg-[var(--bg-base)] text-[var(--text-primary)] shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'}`}
+                  >
+                    {mode}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-[var(--text-tertiary)]">
+                {createMode === 'managed' ? 'Provision a managed database service.' : 'Register a database hosted outside Containr.'}
+              </p>
             </div>
             <div className="space-y-4 px-5 py-4">
               <div>
                 <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Name</label>
                 <input
-                  value={createForm.name}
-                  onChange={(e) => setCreateForm((f) => ({ ...f, name: e.target.value }))}
+                  value={createMode === 'managed' ? createForm.name : externalForm.name}
+                  onChange={(e) => (createMode === 'managed' ? setCreateForm((f) => ({ ...f, name: e.target.value })) : setExternalForm((f) => ({ ...f, name: e.target.value })))}
                   placeholder="my-postgres"
                   className="h-10 w-full rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 text-sm focus:border-[var(--accent-primary)]"
                 />
               </div>
+              {createMode === 'external' ? (
+                <>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Type</label>
+                      <select
+                        value={externalForm.type}
+                        onChange={(e) => setExternalForm((f) => ({ ...f, type: e.target.value }))}
+                        className="h-10 w-full rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-2 text-sm focus:border-[var(--accent-primary)]"
+                      >
+                        {DATABASE_TYPES.map((t) => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="col-span-2">
+                      <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Host</label>
+                      <input
+                        value={externalForm.host}
+                        onChange={(e) => setExternalForm((f) => ({ ...f, host: e.target.value }))}
+                        placeholder="db.example.com"
+                        className="h-10 w-full rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 text-sm focus:border-[var(--accent-primary)]"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Port</label>
+                      <input
+                        value={externalForm.port}
+                        onChange={(e) => setExternalForm((f) => ({ ...f, port: e.target.value }))}
+                        placeholder="default"
+                        className="h-10 w-full rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 text-sm focus:border-[var(--accent-primary)]"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Database</label>
+                      <input
+                        value={externalForm.database}
+                        onChange={(e) => setExternalForm((f) => ({ ...f, database: e.target.value }))}
+                        placeholder="optional"
+                        className="h-10 w-full rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 text-sm focus:border-[var(--accent-primary)]"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Username</label>
+                      <input
+                        value={externalForm.username}
+                        onChange={(e) => setExternalForm((f) => ({ ...f, username: e.target.value }))}
+                        placeholder="optional"
+                        className="h-10 w-full rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 text-sm focus:border-[var(--accent-primary)]"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Password</label>
+                      <input
+                        type="password"
+                        value={externalForm.password}
+                        onChange={(e) => setExternalForm((f) => ({ ...f, password: e.target.value }))}
+                        placeholder="optional"
+                        className="h-10 w-full rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 text-sm focus:border-[var(--accent-primary)]"
+                      />
+                    </div>
+                  </div>
+                  <label className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+                    <input
+                      type="checkbox"
+                      checked={externalForm.ssl}
+                      onChange={(e) => setExternalForm((f) => ({ ...f, ssl: e.target.checked }))}
+                      className="accent-[var(--accent-primary)]"
+                    />
+                    Require TLS/SSL
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => probeMutation.mutate()}
+                      disabled={probeMutation.isPending || externalForm.host.trim().length === 0}
+                      className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:border-[var(--border-default)] disabled:opacity-40"
+                    >
+                      {probeMutation.isPending ? <Loader2 size={12} className="animate-spin" /> : null}
+                      Test connection
+                    </button>
+                    {externalProbe && (
+                      <span className={`text-xs ${externalProbe.ok ? 'text-[var(--success)]' : 'text-[var(--error)]'}`}>
+                        {externalProbe.ok ? `reachable (${externalProbe.latency_ms ?? 0}ms)` : `unreachable — ${externalProbe.error ?? 'probe failed'}`}
+                      </span>
+                    )}
+                  </div>
+                </>
+              ) : (
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Type</label>
@@ -2224,6 +2403,7 @@ export function DatabasesPage() {
                   />
                 </div>
               </div>
+              )}
               {createError ? (
                 <div className="rounded-[var(--radius-md)] bg-[var(--error-soft)] px-3.5 py-2.5 text-xs text-[var(--error)]">{createError}</div>
               ) : null}
@@ -2238,12 +2418,15 @@ export function DatabasesPage() {
               </button>
               <button
                 type="button"
-                onClick={() => createMutation.mutate()}
-                disabled={createMutation.isPending || createForm.name.trim().length === 0}
+                onClick={() => (createMode === 'managed' ? createMutation.mutate() : registerExternalMutation.mutate())}
+                disabled={
+                  (createMode === 'managed' ? createMutation.isPending : registerExternalMutation.isPending) ||
+                  (createMode === 'managed' ? createForm.name.trim().length === 0 : externalForm.name.trim().length === 0 || externalForm.host.trim().length === 0)
+                }
                 className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] bg-[var(--accent-primary)] px-4 py-2 text-xs font-semibold text-[var(--accent-on)] disabled:opacity-50"
               >
-                {createMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : null}
-                Create database
+                {(createMode === 'managed' ? createMutation.isPending : registerExternalMutation.isPending) ? <Loader2 size={13} className="animate-spin" /> : null}
+                {createMode === 'managed' ? 'Create database' : 'Register database'}
               </button>
             </div>
           </div>

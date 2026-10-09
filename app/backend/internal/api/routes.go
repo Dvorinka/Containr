@@ -387,6 +387,9 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			authed.POST("/builds/plan", buildHandler.GetBuildPlan)
 
 			authed.POST("/databases", databaseHandler.CreateDatabase)
+			authed.POST("/databases/register-external", databaseHandler.RegisterExternalDatabase)
+			authed.POST("/databases/test-connection", databaseHandler.TestDatabaseConnection)
+			authed.POST("/databases/:id/test-connection", databaseHandler.TestDatabaseConnectionByID)
 			authed.PUT("/databases/:id", databaseHandler.UpdateDatabase)
 			authed.DELETE("/databases/:id", databaseHandler.DeleteDatabase)
 			authed.POST("/databases/:id/action", databaseHandler.PerformDatabaseAction)

@@ -2050,6 +2050,80 @@ paths:
               schema:
                 $ref: '#/components/schemas/DatabaseCreateResponse'
 
+  /databases/register-external:
+    post:
+      tags:
+        - Databases
+      summary: Register external database
+      description: Record a database hosted elsewhere — connection is probed first (postgres/redis get protocol-level checks, others TCP). Password stored encrypted, never returned.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/ExternalDatabaseRequest'
+                - type: object
+                  required: [name]
+      responses:
+        '201':
+          description: External database registered
+        '400':
+          description: Validation failed or connection probe failed
+        '409':
+          description: Name already in use
+
+  /databases/test-connection:
+    post:
+      tags:
+        - Databases
+      summary: Probe a database connection
+      description: Ad-hoc connectivity check — postgres via libpq ping, redis/dragonfly via PING, other engines via TCP dial. Always 200; `ok` carries the result.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExternalDatabaseRequest'
+      responses:
+        '200':
+          description: Probe result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  latency_ms:
+                    type: integer
+                  error:
+                    type: string
+
+  /databases/{id}/test-connection:
+    post:
+      tags:
+        - Databases
+      summary: Re-probe a registered external database
+      description: Uses the stored credentials. External databases only.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Probe result (`ok` carries the outcome)
+        '404':
+          description: Database not found
+
   /databases/{id}:
     get:
       tags:
@@ -6313,6 +6387,12 @@ components:
         backup_schedule:
           type: string
           description: Cron expression for automatic backups, empty when unset
+        provider:
+          type: string
+          enum: [managed, external]
+          description: managed = Containr-provisioned container; external = registered connection to a database hosted elsewhere
+        external:
+          $ref: '#/components/schemas/DatabaseExternal'
         next_backup_at:
           type: string
           format: date-time
@@ -6354,6 +6434,49 @@ components:
         region:
           type: string
           description: Database region
+
+    DatabaseExternal:
+      type: object
+      properties:
+        host:
+          type: string
+        port:
+          type: integer
+        database:
+          type: string
+        username:
+          type: string
+        has_password:
+          type: boolean
+        ssl:
+          type: boolean
+
+    ExternalDatabaseRequest:
+      type: object
+      required:
+        - type
+        - host
+      properties:
+        name:
+          type: string
+          description: Display name (required for register, unused for probes)
+        type:
+          type: string
+          enum: [postgresql, redis, mysql, mariadb, mongodb, clickhouse, dragonfly]
+        host:
+          type: string
+        port:
+          type: integer
+          description: Defaults to the engine's standard port
+        database:
+          type: string
+        username:
+          type: string
+        password:
+          type: string
+          description: Stored encrypted; never returned
+        ssl:
+          type: boolean
 
     UpdateDatabaseRequest:
       type: object

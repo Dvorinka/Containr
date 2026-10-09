@@ -139,6 +139,13 @@ CREATE TABLE database_services (
     connection_url TEXT,
     backup_schedule VARCHAR(100),
     next_backup_at TIMESTAMP WITH TIME ZONE,
+    provider VARCHAR(20) NOT NULL DEFAULT 'managed',
+    external_host VARCHAR(255),
+    external_port INTEGER,
+    external_name VARCHAR(255),
+    external_username VARCHAR(255),
+    external_password TEXT NOT NULL DEFAULT '',
+    external_ssl BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
