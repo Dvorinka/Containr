@@ -119,6 +119,9 @@ func resolveServiceEnv(db *database.DB, service Service) (map[string]string, err
 	}
 
 	resolve := func(serviceName, key string) (string, bool) {
+		if strings.EqualFold(serviceName, "shared") {
+			return resolveSharedVar(db, service.ProjectID, key)
+		}
 		id, ok := byName[strings.ToLower(serviceName)]
 		if !ok {
 			return "", false

@@ -26,6 +26,7 @@ import type { ServiceVariable } from '../auto-connections';
 import { ProjectCanvas } from '../canvas/ProjectCanvas';
 import { canvasStorageKey, clearCanvasMetadata } from '../storage';
 import { MetricsDashboard } from '../components/MetricsDashboard';
+import { SharedVariablesSection } from '../components/SharedVariablesSection';
 import { CommandPalette, StatusBadge, LiveIndicator, useToast } from '@/shared/components';
 import {
   ArrowLeft,
@@ -934,6 +935,8 @@ export function ProjectWorkspacePage() {
                     <p className="mono mt-2 text-xs text-[var(--text-secondary)] break-all">{canvasStorageKey(project.id)}</p>
                   </div>
                 </div>
+
+                {!isDemoMode && signedIn && <SharedVariablesSection projectId={project.id} />}
 
                 <div className="mt-6 pt-6 border-t border-[var(--border-subtle)]">
                   <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-3">Local Data</h3>
