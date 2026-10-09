@@ -2350,6 +2350,189 @@ paths:
               schema:
                 $ref: '#/components/schemas/MessageResponse'
 
+  # Outbound Webhooks
+  /webhooks:
+    get:
+      tags:
+        - Webhooks
+      summary: List outbound webhooks
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Webhooks for the caller (secrets masked)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  webhooks:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/OutboundWebhook'
+    post:
+      tags:
+        - Webhooks
+      summary: Create an outbound webhook
+      description: |
+        Receives signed POST deliveries for every audited action matching
+        the event list — "resource.action" names, "resource.*" wildcards,
+        or "*" for everything. The secret is returned once; deliveries
+        carry X-Containr-Signature: sha256=<hmac> over the raw body.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - url
+                - events
+              properties:
+                name:
+                  type: string
+                url:
+                  type: string
+                secret:
+                  type: string
+                  description: Signing secret (auto-generated when omitted)
+                events:
+                  type: array
+                  items:
+                    type: string
+                  example: ["service.*", "deployment.fail"]
+                headers:
+                  type: object
+                  additionalProperties:
+                    type: string
+                enabled:
+                  type: boolean
+                  default: true
+      responses:
+        '201':
+          description: Webhook created (secret revealed once)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutboundWebhook'
+        '400':
+          description: Invalid name, URL, or empty event list
+
+  /webhooks/{id}:
+    patch:
+      tags:
+        - Webhooks
+      summary: Update a webhook
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                url:
+                  type: string
+                secret:
+                  type: string
+                events:
+                  type: array
+                  items:
+                    type: string
+                headers:
+                  type: object
+                  additionalProperties:
+                    type: string
+                enabled:
+                  type: boolean
+      responses:
+        '200':
+          description: Updated webhook
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutboundWebhook'
+        '404':
+          description: Webhook not found
+    delete:
+      tags:
+        - Webhooks
+      summary: Delete a webhook
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  /webhooks/{id}/deliveries:
+    get:
+      tags:
+        - Webhooks
+      summary: List delivery attempts for a webhook
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Recent deliveries (newest first, max 100)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deliveries:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WebhookDelivery'
+
+  /webhooks/{id}/test:
+    post:
+      tags:
+        - Webhooks
+      summary: Queue a test ping delivery
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '202':
+          description: Delivery queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
   # Audit Logs
   /audit-logs:
     get:
@@ -6952,6 +7135,72 @@ components:
             $ref: '#/components/schemas/Notification'
         unread:
           type: integer
+
+    OutboundWebhook:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        url:
+          type: string
+        secret:
+          type: string
+          description: Only present on create/update responses
+        events:
+          type: array
+          items:
+            type: string
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+        enabled:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    WebhookDelivery:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        webhook_id:
+          type: string
+          format: uuid
+        event:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+          enum: [pending, success, failed]
+        response_status:
+          type: integer
+          nullable: true
+        response_body:
+          type: string
+          nullable: true
+        attempts:
+          type: integer
+        duration_ms:
+          type: integer
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        delivered_at:
+          type: string
+          format: date-time
+          nullable: true
 
     AuditLogListResponse:
       type: object

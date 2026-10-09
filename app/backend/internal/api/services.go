@@ -454,6 +454,10 @@ func handleCreateService(c *gin.Context) {
 	}
 	service.Domains = loadServiceDomains(db.(*database.DB), service.ID)
 
+	LogAuditWithRequest(c, "service", service.ID.String(), "create", map[string]interface{}{
+		"name": service.Name, "type": service.Type, "project_id": service.ProjectID,
+	})
+
 	c.JSON(http.StatusCreated, gin.H{"service": service})
 }
 
@@ -875,6 +879,8 @@ func handleDeleteService(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete service"})
 		return
 	}
+
+	LogAuditWithRequest(c, "service", serviceID.String(), "delete", map[string]interface{}{})
 
 	c.JSON(http.StatusOK, gin.H{"message": "Service deleted successfully"})
 }

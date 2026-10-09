@@ -175,6 +175,19 @@ type Notification struct {
 	CreatedAt    sql.NullTime   `json:"created_at"`
 }
 
+type OutboundWebhook struct {
+	ID        uuid.UUID             `json:"id"`
+	UserID    uuid.UUID             `json:"user_id"`
+	Name      string                `json:"name"`
+	Url       string                `json:"url"`
+	Secret    string                `json:"secret"`
+	Events    json.RawMessage       `json:"events"`
+	Headers   pqtype.NullRawMessage `json:"headers"`
+	Enabled   bool                  `json:"enabled"`
+	CreatedAt sql.NullTime          `json:"created_at"`
+	UpdatedAt sql.NullTime          `json:"updated_at"`
+}
+
 type Project struct {
 	ID          uuid.UUID      `json:"id"`
 	Name        string         `json:"name"`
@@ -285,4 +298,18 @@ type UserToken struct {
 	LastUsedAt sql.NullTime `json:"last_used_at"`
 	RevokedAt  sql.NullTime `json:"revoked_at"`
 	CreatedAt  sql.NullTime `json:"created_at"`
+}
+
+type WebhookDelivery struct {
+	ID             uuid.UUID             `json:"id"`
+	WebhookID      uuid.UUID             `json:"webhook_id"`
+	Event          string                `json:"event"`
+	Payload        pqtype.NullRawMessage `json:"payload"`
+	Status         string                `json:"status"`
+	ResponseStatus sql.NullInt32         `json:"response_status"`
+	ResponseBody   sql.NullString        `json:"response_body"`
+	Attempts       int32                 `json:"attempts"`
+	DurationMs     sql.NullInt32         `json:"duration_ms"`
+	CreatedAt      sql.NullTime          `json:"created_at"`
+	DeliveredAt    sql.NullTime          `json:"delivered_at"`
 }

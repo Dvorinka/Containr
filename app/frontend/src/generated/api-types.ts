@@ -3507,6 +3507,256 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/webhooks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List outbound webhooks */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Webhooks for the caller (secrets masked) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            webhooks?: components["schemas"]["OutboundWebhook"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Create an outbound webhook
+         * @description Receives signed POST deliveries for every audited action matching
+         *     the event list — "resource.action" names, "resource.*" wildcards,
+         *     or "*" for everything. The secret is returned once; deliveries
+         *     carry X-Containr-Signature: sha256=<hmac> over the raw body.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name: string;
+                        url: string;
+                        /** @description Signing secret (auto-generated when omitted) */
+                        secret?: string;
+                        /**
+                         * @example [
+                         *       "service.*",
+                         *       "deployment.fail"
+                         *     ]
+                         */
+                        events: string[];
+                        headers?: {
+                            [key: string]: string;
+                        };
+                        /** @default true */
+                        enabled?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Webhook created (secret revealed once) */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OutboundWebhook"];
+                    };
+                };
+                /** @description Invalid name, URL, or empty event list */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/webhooks/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a webhook */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Deleted */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MessageResponse"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        /** Update a webhook */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name?: string;
+                        url?: string;
+                        secret?: string;
+                        events?: string[];
+                        headers?: {
+                            [key: string]: string;
+                        };
+                        enabled?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Updated webhook */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OutboundWebhook"];
+                    };
+                };
+                /** @description Webhook not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/webhooks/{id}/deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List delivery attempts for a webhook */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Recent deliveries (newest first, max 100) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            deliveries?: components["schemas"]["WebhookDelivery"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/webhooks/{id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Queue a test ping delivery */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Delivery queued */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MessageResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/audit-logs": {
         parameters: {
             query?: never;
@@ -9922,6 +10172,43 @@ export interface components {
         NotificationListResponse: {
             notifications?: components["schemas"]["Notification"][];
             unread?: number;
+        };
+        OutboundWebhook: {
+            /** Format: uuid */
+            id?: string;
+            name?: string;
+            url?: string;
+            /** @description Only present on create/update responses */
+            secret?: string;
+            events?: string[];
+            headers?: {
+                [key: string]: string;
+            };
+            enabled?: boolean;
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        WebhookDelivery: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            webhook_id?: string;
+            event?: string;
+            payload?: {
+                [key: string]: unknown;
+            };
+            /** @enum {string} */
+            status?: "pending" | "success" | "failed";
+            response_status?: number | null;
+            response_body?: string | null;
+            attempts?: number;
+            duration_ms?: number | null;
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            delivered_at?: string | null;
         };
         AuditLogListResponse: {
             audit_logs?: components["schemas"]["AuditLog"][];

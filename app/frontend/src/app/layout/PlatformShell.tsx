@@ -27,6 +27,7 @@ import {
   UploadCloud,
   User,
   Users,
+  Webhook,
 } from 'lucide-react';
 import {
   getCurrentUserProfile,
@@ -67,6 +68,7 @@ const navSections: NavSection[] = [
     items: [
       { label: 'People', href: '/people', icon: Users, hint: 'Members & access' },
       { label: 'Audit Logs', href: '/settings/audit-logs', icon: ScrollText, hint: 'Activity trail' },
+      { label: 'Webhooks', href: '/settings/webhooks', icon: Webhook, hint: 'Signed event delivery' },
       { label: 'Settings', href: '/settings', icon: Settings, hint: 'Platform preferences' },
       { label: 'Docs', href: '/docs', icon: BookOpen, hint: 'Guides & reference' },
     ],

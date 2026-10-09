@@ -1767,6 +1767,66 @@ export async function importComposeIntoProject(
   return { created: payload.created ?? [], warnings: payload.warnings ?? [] };
 }
 
+export type OutboundWebhook = {
+  id: string;
+  name: string;
+  url: string;
+  secret?: string;
+  events: string[];
+  headers?: Record<string, string>;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type WebhookDelivery = {
+  id: string;
+  webhook_id: string;
+  event: string;
+  status: 'pending' | 'success' | 'failed';
+  response_status?: number | null;
+  response_body?: string | null;
+  attempts: number;
+  duration_ms?: number | null;
+  created_at: string;
+  delivered_at?: string | null;
+};
+
+export async function listWebhooks(): Promise<OutboundWebhook[]> {
+  const payload = await requestJson<{ webhooks?: OutboundWebhook[] }>('/webhooks');
+  return payload.webhooks ?? [];
+}
+
+export type WebhookInput = {
+  name: string;
+  url: string;
+  events: string[];
+  secret?: string;
+  headers?: Record<string, string>;
+  enabled?: boolean;
+};
+
+export async function createWebhook(input: WebhookInput): Promise<OutboundWebhook> {
+  return requestJson<OutboundWebhook>('/webhooks', { method: 'POST', body: JSON.stringify(input) });
+}
+
+export async function updateWebhook(id: string, input: Partial<WebhookInput>): Promise<OutboundWebhook> {
+  return requestJson<OutboundWebhook>(`/webhooks/${id}`, { method: 'PATCH', body: JSON.stringify(input) });
+}
+
+export async function deleteWebhook(id: string): Promise<void> {
+  await requestJson(`/webhooks/${id}`, { method: 'DELETE' });
+}
+
+export async function listWebhookDeliveries(id: string): Promise<WebhookDelivery[]> {
+  const payload = await requestJson<{ deliveries?: WebhookDelivery[] }>(`/webhooks/${id}/deliveries`);
+  return payload.deliveries ?? [];
+}
+
+export async function testWebhook(id: string): Promise<void> {
+  await requestJson(`/webhooks/${id}/test`, { method: 'POST', body: JSON.stringify({}) });
+}
+
 export function serviceStatusClass(status: ServiceStatus): string {
   switch (status) {
     case 'running':

@@ -87,6 +87,7 @@ func init() {
 	rootCmd.AddCommand(commands.GatewayCmd)
 	rootCmd.AddCommand(commands.AdminCmd)
 	rootCmd.AddCommand(commands.NotificationsCmd)
+	rootCmd.AddCommand(commands.WebhooksCmd)
 	rootCmd.AddCommand(commands.UpCmd)
 }
 

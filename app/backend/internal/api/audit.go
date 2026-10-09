@@ -52,6 +52,8 @@ func LogAudit(userID, resource, resourceID, action string, details map[string]in
 
 	if err != nil {
 	}
+
+	emitWebhookEvent(userID, resource, resourceID, action, details)
 }
 
 func LogAuditWithRequest(c *gin.Context, resource, resourceID, action string, details map[string]interface{}) {
@@ -79,6 +81,8 @@ func LogAuditWithRequest(c *gin.Context, resource, resourceID, action string, de
 
 	if err != nil {
 	}
+
+	emitWebhookEvent(userIDStr, resource, resourceID, action, details)
 }
 
 var auditDB *database.DB

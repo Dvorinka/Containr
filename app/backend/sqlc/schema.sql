@@ -275,3 +275,30 @@ CREATE TABLE user_tokens (
     revoked_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+CREATE TABLE outbound_webhooks (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    url VARCHAR(500) NOT NULL,
+    secret TEXT NOT NULL DEFAULT '',
+    events JSONB NOT NULL DEFAULT '[]'::jsonb,
+    headers JSONB,
+    enabled BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE webhook_deliveries (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    webhook_id UUID NOT NULL REFERENCES outbound_webhooks(id) ON DELETE CASCADE,
+    event VARCHAR(255) NOT NULL,
+    payload JSONB,
+    status VARCHAR(50) NOT NULL DEFAULT 'pending',
+    response_status INTEGER,
+    response_body TEXT,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    duration_ms INTEGER,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    delivered_at TIMESTAMP WITH TIME ZONE
+);

@@ -86,7 +86,7 @@ Legend: ✅ done · 🟡 partial/different · ❌ missing · ➖ not applicable 
 | Multi-tenant organisations + custom RBAC (per-resource CRUD, create-limits, read-scope) | 🟡 `is_admin` + `project_members` | Defer full RBAC; design PAT scopes role-compatible |
 | Team invite links/emails | 🟡 manual user create only | `POST /invites` → link join |
 | User API keys → full REST API | ❌ **the big gap** — session/JWT only | PATs (Phase A) |
-| Outbound webhooks (collection events, HMAC, custom headers) | ❌ | `webhooks` table + delivery log |
+| Outbound webhooks (collection events, HMAC, custom headers) | ✅ `outbound_webhooks` + `webhook_deliveries`, HMAC `X-Containr-Signature`, wildcard events, 3-retry, UI page | — |
 | Banners (global + per-tenant, dismissible) | ❌ | `banners` table + top bar |
 | White-label (logo/favicon/title/OG/theme colors) | ❌ | `app_settings.branding` — **Containr remains the default brand** |
 | Activity feed (icon/severity/category/metadata, 90-day TTL job) | 🟡 `audit_logs` coarser | Enrich + project feed UI |
@@ -278,9 +278,10 @@ and wired refs, one click or one CLI call.
 
 ## 8. Phase G — Platform polish
 
-- [ ] **Outbound webhooks** — `webhooks(url, secret, events[], headers,
-  enabled)` + `webhook_deliveries` log; HMAC `X-Containr-Signature`;
-  events: `deployment.* service.* database.* security.* agent.*`.
+- [x] **Outbound webhooks** — `outbound_webhooks(url, secret, events[],
+  headers, enabled)` + `webhook_deliveries` log; HMAC
+  `X-Containr-Signature`; wildcard events on every audited action;
+  CLI + MCP + `/settings/webhooks` page with delivery log + test ping.
 - [ ] **Activity feed** — enrich `audit_logs` with `severity category
   icon label metadata`; per-project timeline + global feed; TTL job.
 - [ ] **Banners** — `banners(title, body, level, scope, active)`; top
@@ -345,8 +346,10 @@ and wired refs, one click or one CLI call.
 - [ ] **dflow importer** — `containr migrate dflow` via Payload REST
   export or Mongo dump: servers→nodes, projects, services(+vars/
   domains/volumes), databases, templates. Onboards dflow refugees.
-- [ ] **`containr import compose`** — Phase-E parser straight to a
-  project (no template intermediate).
+- [x] **`containr import compose`** — `POST /projects/:id/import-compose`
+  deploys a compose file straight into a project; CLI `import compose`,
+  MCP tool, workspace import modal; project delete cascades to
+  graph-provisioned managed databases (`database_services.project_id`).
 - [ ] **Template registry** — optional `CONTAINR_TEMPLATE_REGISTRY_URL`
   fetch/publish; bundled catalog works offline (dflow's self-contained
   principle — nothing phones home).
