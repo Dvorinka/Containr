@@ -1164,6 +1164,12 @@ export async function drainAgent(id: string): Promise<DrainResult> {
   return requestJson<DrainResult>(`/agents/${id}/drain`, { method: 'POST' });
 }
 
+export type UpgradeResult = { platform: string; version: string };
+
+export async function upgradeAgent(id: string): Promise<UpgradeResult> {
+  return requestJson<UpgradeResult>(`/agents/${id}/upgrade`, { method: 'POST' });
+}
+
 export async function getAgent(id: string): Promise<NodeAgentEntity | null> {
   const payload = await requestJson<{ agent?: RawNodeAgent }>(`/agents/${id}`);
   return payload.agent ? normalizeAgent(payload.agent) : null;

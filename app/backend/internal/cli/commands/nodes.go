@@ -190,6 +190,24 @@ var nodesDrainCmd = &cobra.Command{
 	},
 }
 
+var nodesUpgradeCmd = &cobra.Command{
+	Use:   "upgrade <id>",
+	Short: "Upgrade the node agent to the server's bundled binary",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := client()
+		if err != nil {
+			return err
+		}
+		data, err := c.Do("POST", "/agents/"+args[0]+"/upgrade", nil)
+		if err != nil {
+			return err
+		}
+		PrintRaw(data)
+		return nil
+	},
+}
+
 var nodesCommandsCmd = &cobra.Command{
 	Use:   "commands <id>",
 	Short: "List recent commands sent to a node agent",
@@ -277,5 +295,5 @@ func init() {
 	nodesPruneCmd.Flags().String("until", "", "only prune objects older than this duration (e.g. 168h)")
 	nodesPruneCmd.Flags().Bool("volumes", false, "also prune volumes (destructive — asks twice)")
 	nodeTokensCmd.AddCommand(nodeTokensIssueCmd, nodeTokensListCmd, nodeTokensRevokeCmd)
-	NodesCmd.AddCommand(nodesListCmd, nodesGetCmd, nodesUpdateCmd, nodesCordonCmd, nodesUncordonCmd, nodesDrainCmd, nodesPruneCmd, nodesCommandsCmd, nodesDeleteCmd, nodeTokensCmd)
+	NodesCmd.AddCommand(nodesListCmd, nodesGetCmd, nodesUpdateCmd, nodesCordonCmd, nodesUncordonCmd, nodesDrainCmd, nodesUpgradeCmd, nodesPruneCmd, nodesCommandsCmd, nodesDeleteCmd, nodeTokensCmd)
 }

@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"math"
 	"net/http"
@@ -353,6 +354,7 @@ func (h *NodeAgentHandler) RegisterAgent(c *gin.Context) {
 		IPAddress    string            `json:"ip_address" binding:"required"`
 		Port         int               `json:"port" binding:"required"`
 		Capabilities AgentCapabilities `json:"capabilities" binding:"required"`
+		Version      string            `json:"version"`
 		AuthToken    string            `json:"auth_token"`
 		Mesh         map[string]string `json:"mesh"`
 	}
@@ -392,13 +394,14 @@ func (h *NodeAgentHandler) RegisterAgent(c *gin.Context) {
 			}
 		}
 		updated, err := h.q.UpdateAgent(ctx, sqlcdb.UpdateAgentParams{
-			ID:            existing.ID,
-			Name:          req.Name,
-			Hostname:      existing.Hostname,
-			IpAddress:     existing.IpAddress,
-			Port:          int32(req.Port),
-			Status:        sql.NullString{String: "connecting", Valid: true},
-			Version:       existing.Version,
+			ID:        existing.ID,
+			Name:      req.Name,
+			Hostname:  existing.Hostname,
+			IpAddress: existing.IpAddress,
+			Port:      int32(req.Port),
+			Status:    sql.NullString{String: "connecting", Valid: true},
+			// Older agents don't report a version — keep whatever's stored.
+			Version:       sql.NullString{String: firstNonEmpty(req.Version, existing.Version.String), Valid: true},
 			Capabilities:  rawJSON(req.Capabilities),
 			Resources:     existing.Resources,
 			LastHeartbeat: sql.NullTime{Time: time.Now(), Valid: true},
@@ -450,7 +453,7 @@ func (h *NodeAgentHandler) RegisterAgent(c *gin.Context) {
 		IpAddress:     req.IPAddress,
 		Port:          int32(req.Port),
 		Status:        sql.NullString{String: "connecting", Valid: true},
-		Version:       sql.NullString{},
+		Version:       sql.NullString{String: req.Version, Valid: req.Version != ""},
 		Capabilities:  rawJSON(req.Capabilities),
 		Resources:     rawJSON(resources),
 		LastHeartbeat: sql.NullTime{Time: time.Now(), Valid: true},
@@ -909,6 +912,76 @@ func (h *NodeAgentHandler) PruneAgent(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusAccepted, gin.H{"command": command})
+}
+
+// UpgradeAgent enqueues a self_upgrade command: the agent downloads its
+// replacement binary from this server's bundled /download endpoint,
+// verifies the sha256, swaps it in, and re-execs. Fails fast when no
+// bundled binary exists for the agent's architecture.
+func (h *NodeAgentHandler) UpgradeAgent(c *gin.Context) {
+	ctx := c.Request.Context()
+	id := c.Param("id")
+	agent, err := h.q.GetAgent(ctx, id)
+	if err != nil {
+		respondError(c, http.StatusNotFound, "NOT_FOUND", "Agent not found")
+		return
+	}
+	if agent.Status.String != "online" {
+		respondError(c, http.StatusConflict, "NODE_OFFLINE", "node is offline — reconnect it before upgrading")
+		return
+	}
+
+	arch := "amd64"
+	var caps struct {
+		SupportedArchitectures []string `json:"supported_architectures"`
+	}
+	unmarshalRaw(agent.Capabilities, &caps)
+	if len(caps.SupportedArchitectures) > 0 && caps.SupportedArchitectures[0] != "" {
+		arch = caps.SupportedArchitectures[0]
+	}
+	platform := "linux-" + arch // agents only ship for linux today
+
+	dir := os.Getenv("CONTAINR_AGENT_BIN_DIR")
+	if dir == "" {
+		dir = "/agents"
+	}
+	path := filepath.Join(dir, "containr-agent-"+platform)
+	sum, err := sha256File(path)
+	if err != nil {
+		respondError(c, http.StatusConflict, "NO_BINARY",
+			fmt.Sprintf("no bundled agent binary for %s on this server", platform))
+		return
+	}
+
+	command, err := h.q.CreateCommand(ctx, sqlcdb.CreateCommandParams{
+		ID:          uuid.New().String(),
+		Type:        "self_upgrade",
+		NodeAgentID: id,
+		Payload: rawJSON(map[string]interface{}{
+			"platform": platform,
+			"sha256":   sum,
+			"version":  Version,
+		}),
+	})
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, "INTERNAL", "failed to enqueue upgrade")
+		return
+	}
+	LogAuditWithRequest(c, "node", id, "upgrade", map[string]interface{}{"platform": platform, "version": Version})
+	c.JSON(http.StatusAccepted, gin.H{"command": command, "platform": platform, "version": Version})
+}
+
+func sha256File(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // ExecuteCommand executes a command on an agent
@@ -1390,6 +1463,7 @@ func (h *NodeAgentHandler) SetupAdminRoutes(router *gin.RouterGroup) {
 		agents.POST("/:id/cordon", h.CordonAgent)
 		agents.POST("/:id/uncordon", h.UncordonAgent)
 		agents.POST("/:id/drain", h.DrainAgent)
+		agents.POST("/:id/upgrade", h.UpgradeAgent)
 		agents.POST("/:id/prune", h.PruneAgent)
 		agents.POST("/:id/commands", h.ExecuteCommand)
 		agents.GET("/:id/commands", h.GetAgentCommands)

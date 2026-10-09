@@ -11,6 +11,7 @@ import {
   listAgentContainers,
   pruneAgent,
   updateAgent,
+  upgradeAgent,
   type AgentMetricPoint,
 } from '@/lib/api-client';
 import { getCurrentUserProfile } from '@/lib/api-client';
@@ -96,6 +97,10 @@ export function NodeDetailPage() {
   const drainMutation = useMutation({
     mutationFn: () => drainAgent(id),
     onSuccess: () => { setConfirmDrain(false); invalidate(); },
+  });
+  const upgradeMutation = useMutation({
+    mutationFn: () => upgradeAgent(id),
+    onSuccess: invalidate,
   });
 
   const agent = agentQuery.data;
@@ -214,6 +219,16 @@ export function NodeDetailPage() {
                     className="v-mono text-[11px] px-3 py-1.5 rounded-md border border-[var(--warning)]/40 text-[var(--warning)] hover:bg-[var(--warning)]/10 disabled:opacity-50"
                   >
                     drain
+                  </button>
+                  <button
+                    onClick={() => upgradeMutation.mutate()}
+                    disabled={upgradeMutation.isPending || !online}
+                    title={online
+                      ? `Upgrade agent to the server's bundled binary (server ${upgradeMutation.data?.version ?? 'build'}) — the agent restarts itself`
+                      : 'Node must be online to upgrade'}
+                    className="v-mono text-[11px] px-3 py-1.5 rounded-md border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-50"
+                  >
+                    {upgradeMutation.isPending ? 'upgrading…' : 'upgrade agent'}
                   </button>
                   <button
                     onClick={() => setConfirmVolumes(true)}
