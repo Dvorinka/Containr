@@ -53,6 +53,135 @@ func (q *Queries) CreateNotification(ctx context.Context, arg CreateNotification
 	return err
 }
 
+const deleteNotificationChannel = `-- name: DeleteNotificationChannel :execrows
+DELETE FROM notification_channels WHERE id = $1 AND user_id = $2
+`
+
+type DeleteNotificationChannelParams struct {
+	ID     uuid.UUID `json:"id"`
+	UserID uuid.UUID `json:"user_id"`
+}
+
+func (q *Queries) DeleteNotificationChannel(ctx context.Context, arg DeleteNotificationChannelParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteNotificationChannel, arg.ID, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const insertNotificationChannel = `-- name: InsertNotificationChannel :one
+INSERT INTO notification_channels (user_id, kind, endpoint, token)
+VALUES ($1, $2, $3, $4)
+RETURNING id, user_id, kind, endpoint, token, enabled, created_at, updated_at
+`
+
+type InsertNotificationChannelParams struct {
+	UserID   uuid.UUID      `json:"user_id"`
+	Kind     string         `json:"kind"`
+	Endpoint string         `json:"endpoint"`
+	Token    sql.NullString `json:"token"`
+}
+
+func (q *Queries) InsertNotificationChannel(ctx context.Context, arg InsertNotificationChannelParams) (NotificationChannel, error) {
+	row := q.db.QueryRowContext(ctx, insertNotificationChannel,
+		arg.UserID,
+		arg.Kind,
+		arg.Endpoint,
+		arg.Token,
+	)
+	var i NotificationChannel
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Kind,
+		&i.Endpoint,
+		&i.Token,
+		&i.Enabled,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const listAllNotificationChannelsByUser = `-- name: ListAllNotificationChannelsByUser :many
+SELECT id, user_id, kind, endpoint, token, enabled, created_at, updated_at
+FROM notification_channels
+WHERE user_id = $1
+ORDER BY created_at
+`
+
+func (q *Queries) ListAllNotificationChannelsByUser(ctx context.Context, userID uuid.UUID) ([]NotificationChannel, error) {
+	rows, err := q.db.QueryContext(ctx, listAllNotificationChannelsByUser, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []NotificationChannel{}
+	for rows.Next() {
+		var i NotificationChannel
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Kind,
+			&i.Endpoint,
+			&i.Token,
+			&i.Enabled,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listNotificationChannelsByUser = `-- name: ListNotificationChannelsByUser :many
+SELECT id, user_id, kind, endpoint, token, enabled, created_at, updated_at
+FROM notification_channels
+WHERE user_id = $1 AND enabled
+ORDER BY created_at
+`
+
+func (q *Queries) ListNotificationChannelsByUser(ctx context.Context, userID uuid.UUID) ([]NotificationChannel, error) {
+	rows, err := q.db.QueryContext(ctx, listNotificationChannelsByUser, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []NotificationChannel{}
+	for rows.Next() {
+		var i NotificationChannel
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Kind,
+			&i.Endpoint,
+			&i.Token,
+			&i.Enabled,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listNotificationsByUser = `-- name: ListNotificationsByUser :many
 SELECT id, user_id, kind, title, body, resource_type, resource_id, read_at, created_at
 FROM notifications

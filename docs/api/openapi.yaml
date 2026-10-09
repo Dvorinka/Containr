@@ -2474,6 +2474,114 @@ paths:
               schema:
                 $ref: '#/components/schemas/MessageResponse'
 
+  /notifications/channels:
+    get:
+      tags:
+        - Notifications
+      summary: List push notification channels (ntfy/Gotify)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Channel list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  channels:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/NotificationChannel'
+    post:
+      tags:
+        - Notifications
+      summary: Add a push notification channel
+      description: ntfy endpoint should include the topic (e.g. https://ntfy.example.com/my-alerts); Gotify endpoint is the server base URL with the app token in `token`.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind, endpoint]
+              properties:
+                kind:
+                  type: string
+                  enum: [ntfy, gotify]
+                endpoint:
+                  type: string
+                  format: uri
+                token:
+                  type: string
+                  description: ntfy access token (Bearer) or Gotify app token
+      responses:
+        '201':
+          description: Channel created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  channel:
+                    $ref: '#/components/schemas/NotificationChannel'
+        '400':
+          $ref: '#/components/schemas/Error'
+
+  /notifications/channels/{id}:
+    delete:
+      tags:
+        - Notifications
+      summary: Delete a push notification channel
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '404':
+          $ref: '#/components/schemas/Error'
+
+  /notifications/channels/{id}/test:
+    post:
+      tags:
+        - Notifications
+      summary: Send a test notification through a push channel
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Test delivered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '502':
+          description: Push delivery failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   # Outbound Webhooks
   /webhooks:
     get:
@@ -8157,6 +8265,24 @@ components:
             $ref: '#/components/schemas/Notification'
         unread:
           type: integer
+
+    NotificationChannel:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [ntfy, gotify]
+        endpoint:
+          type: string
+          format: uri
+        enabled:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
 
     OutboundWebhook:
       type: object

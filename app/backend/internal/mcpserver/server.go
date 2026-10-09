@@ -145,6 +145,10 @@ func init() {
 	// Notifications
 	register(spec{"containr_notifications_list", "List notifications", "GET", "/notifications", nil, nil, false})
 	register(spec{"containr_notifications_read", "Mark a notification read, or all notifications with id=all", "POST", "/notifications/{id}/read", []string{"id"}, nil, false})
+	register(spec{"containr_notification_channels_list", "List push notification channels (ntfy/Gotify)", "GET", "/notifications/channels", nil, nil, false})
+	register(spec{"containr_notification_channels_create", "Add a push notification channel. Args: kind (ntfy|gotify), endpoint (full URL incl. ntfy topic or Gotify base), token (ntfy access token or Gotify app token).", "POST", "/notifications/channels", nil, []string{"kind", "endpoint", "token"}, false})
+	register(spec{"containr_notification_channels_test", "Send a test notification through a push channel. Args: id.", "POST", "/notifications/channels/{id}/test", []string{"id"}, nil, false})
+	register(spec{"containr_notification_channels_delete", "Delete a push notification channel. Args: id. Requires confirm=true.", "DELETE", "/notifications/channels/{id}", []string{"id"}, nil, true})
 
 	register(spec{"containr_webhooks_list", "List outbound webhooks", "GET", "/webhooks", nil, nil, false})
 	register(spec{"containr_webhooks_create", "Create an outbound webhook. Args: name, url, events (list, e.g. [\"service.*\",\"*\"]), secret (auto-generated if omitted), headers, enabled.", "POST", "/webhooks", nil, []string{"name", "url", "events", "secret", "headers", "enabled"}, false})

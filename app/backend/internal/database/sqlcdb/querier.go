@@ -44,6 +44,7 @@ type Querier interface {
 	DeleteBanner(ctx context.Context, id uuid.UUID) error
 	DeleteDatabaseServiceByID(ctx context.Context, id string) error
 	DeleteDatabaseServiceByIDAndUser(ctx context.Context, arg DeleteDatabaseServiceByIDAndUserParams) error
+	DeleteNotificationChannel(ctx context.Context, arg DeleteNotificationChannelParams) (int64, error)
 	DeleteOutboundWebhookByIDAndUser(ctx context.Context, arg DeleteOutboundWebhookByIDAndUserParams) error
 	DeleteProjectByID(ctx context.Context, projectID uuid.UUID) (int64, error)
 	DeleteProjectEnvironment(ctx context.Context, arg DeleteProjectEnvironmentParams) error
@@ -75,12 +76,14 @@ type Querier interface {
 	GetUserInviteByTokenHash(ctx context.Context, tokenHash string) (UserInvite, error)
 	GetUserTokenByHash(ctx context.Context, tokenHash string) (UserToken, error)
 	InsertAgentHeartbeat(ctx context.Context, arg InsertAgentHeartbeatParams) error
+	InsertNotificationChannel(ctx context.Context, arg InsertNotificationChannelParams) (NotificationChannel, error)
 	InsertProjectEnvironment(ctx context.Context, arg InsertProjectEnvironmentParams) error
 	ListActiveBanners(ctx context.Context) ([]Banner, error)
 	ListAgentAuthTokens(ctx context.Context) ([]AgentAuthToken, error)
 	ListAgentHeartbeatsSince(ctx context.Context, arg ListAgentHeartbeatsSinceParams) ([]AgentHeartbeat, error)
 	ListAgents(ctx context.Context) ([]NodeAgent, error)
 	ListAllDatabaseServices(ctx context.Context) ([]DatabaseService, error)
+	ListAllNotificationChannelsByUser(ctx context.Context, userID uuid.UUID) ([]NotificationChannel, error)
 	ListBackupTargetsByUser(ctx context.Context, userID string) ([]BackupTarget, error)
 	ListBanners(ctx context.Context) ([]Banner, error)
 	ListCommandsForAgent(ctx context.Context, nodeAgentID string) ([]AgentCommand, error)
@@ -90,6 +93,7 @@ type Querier interface {
 	ListDatabaseServicesByUser(ctx context.Context, userID string) ([]DatabaseService, error)
 	ListDueDatabaseBackups(ctx context.Context) ([]ListDueDatabaseBackupsRow, error)
 	ListEnabledOutboundWebhooks(ctx context.Context) ([]OutboundWebhook, error)
+	ListNotificationChannelsByUser(ctx context.Context, userID uuid.UUID) ([]NotificationChannel, error)
 	ListNotificationsByUser(ctx context.Context, arg ListNotificationsByUserParams) ([]Notification, error)
 	ListOutboundWebhooksByUser(ctx context.Context, userID uuid.UUID) ([]OutboundWebhook, error)
 	ListPendingCommands(ctx context.Context, nodeAgentID string) ([]AgentCommand, error)

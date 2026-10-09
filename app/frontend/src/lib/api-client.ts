@@ -2596,6 +2596,42 @@ export async function markAllNotificationsRead(): Promise<void> {
   await requestJson('/notifications/read-all', { method: 'POST' });
 }
 
+export type NotificationChannel = {
+  id: string;
+  kind: 'ntfy' | 'gotify';
+  endpoint: string;
+  enabled: boolean;
+  created_at: string;
+};
+
+export async function listNotificationChannels(): Promise<NotificationChannel[]> {
+  const payload = await requestJson<{ channels?: NotificationChannel[] }>('/notifications/channels');
+  return payload.channels ?? [];
+}
+
+export async function createNotificationChannel(input: {
+  kind: 'ntfy' | 'gotify';
+  endpoint: string;
+  token?: string;
+}): Promise<NotificationChannel> {
+  const payload = await requestJson<{ channel: NotificationChannel }>('/notifications/channels', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return payload.channel;
+}
+
+export async function deleteNotificationChannel(id: string): Promise<void> {
+  await requestJson(`/notifications/channels/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export async function testNotificationChannel(id: string): Promise<void> {
+  await requestJson(`/notifications/channels/${encodeURIComponent(id)}/test`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+}
+
 export type PreviewEnvironmentEntity = components['schemas']['PreviewEnvironment'];
 
 export async function listPreviewEnvironments(projectId: string): Promise<PreviewEnvironmentEntity[]> {

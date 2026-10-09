@@ -94,6 +94,14 @@ export interface AppNotification {
   created_at?: string;
 }
 
+export interface NotificationChannel {
+  id: string;
+  kind: 'ntfy' | 'gotify';
+  endpoint: string;
+  enabled: boolean;
+  created_at?: string;
+}
+
 // Masked value the API returns for secret variables; echoing it back on
 // update preserves the stored ciphertext.
 export const MASKED_SECRET = '********';
@@ -236,6 +244,33 @@ export class Api {
 
   markAllNotificationsRead() {
     return this.req<unknown>('POST', '/notifications/read-all');
+  }
+
+  notificationChannels() {
+    return this.req<{ channels: NotificationChannel[] }>(
+      'GET',
+      '/notifications/channels',
+    ).then((r) => r.channels ?? []);
+  }
+
+  addNotificationChannel(input: {
+    kind: 'ntfy' | 'gotify';
+    endpoint: string;
+    token?: string;
+  }) {
+    return this.req<{ channel: NotificationChannel }>(
+      'POST',
+      '/notifications/channels',
+      input,
+    );
+  }
+
+  deleteNotificationChannel(id: string) {
+    return this.req<unknown>('DELETE', `/notifications/channels/${id}`);
+  }
+
+  testNotificationChannel(id: string) {
+    return this.req<unknown>('POST', `/notifications/channels/${id}/test`, {});
   }
 
   serviceDeployments(id: string) {
