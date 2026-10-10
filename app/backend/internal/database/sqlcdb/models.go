@@ -98,6 +98,34 @@ type ContainerInstance struct {
 	UpdatedAt     sql.NullTime          `json:"updated_at"`
 }
 
+type CronExecution struct {
+	ID         uuid.UUID      `json:"id"`
+	CronJobID  uuid.UUID      `json:"cron_job_id"`
+	StartedAt  time.Time      `json:"started_at"`
+	FinishedAt sql.NullTime   `json:"finished_at"`
+	Status     sql.NullString `json:"status"`
+	Output     sql.NullString `json:"output"`
+	Error      sql.NullString `json:"error"`
+}
+
+type CronJob struct {
+	ID         uuid.UUID      `json:"id"`
+	ProjectID  uuid.UUID      `json:"project_id"`
+	ServiceID  uuid.UUID      `json:"service_id"`
+	Name       string         `json:"name"`
+	Schedule   string         `json:"schedule"`
+	Command    string         `json:"command"`
+	Timezone   sql.NullString `json:"timezone"`
+	Enabled    sql.NullBool   `json:"enabled"`
+	LastRunAt  sql.NullTime   `json:"last_run_at"`
+	NextRunAt  sql.NullTime   `json:"next_run_at"`
+	LastStatus sql.NullString `json:"last_status"`
+	LastOutput sql.NullString `json:"last_output"`
+	Retention  sql.NullInt32  `json:"retention"`
+	CreatedAt  sql.NullTime   `json:"created_at"`
+	UpdatedAt  sql.NullTime   `json:"updated_at"`
+}
+
 type DatabaseBackup struct {
 	ID          string         `json:"id"`
 	DatabaseID  string         `json:"database_id"`

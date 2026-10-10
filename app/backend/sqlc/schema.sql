@@ -459,3 +459,31 @@ CREATE TABLE instance_metrics (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     PRIMARY KEY (service_id, timestamp, instance_id)
 );
+
+CREATE TABLE cron_jobs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    service_id UUID NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    schedule VARCHAR(100) NOT NULL,
+    command TEXT NOT NULL,
+    timezone VARCHAR(50) DEFAULT 'UTC',
+    enabled BOOLEAN DEFAULT true,
+    last_run_at TIMESTAMP WITH TIME ZONE,
+    next_run_at TIMESTAMP WITH TIME ZONE,
+    last_status VARCHAR(50),
+    last_output TEXT,
+    retention INTEGER DEFAULT 30,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE cron_executions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    cron_job_id UUID NOT NULL REFERENCES cron_jobs(id) ON DELETE CASCADE,
+    started_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    finished_at TIMESTAMP WITH TIME ZONE,
+    status VARCHAR(50) DEFAULT 'pending',
+    output TEXT,
+    error TEXT
+);

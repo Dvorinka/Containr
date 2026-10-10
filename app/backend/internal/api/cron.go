@@ -65,13 +65,47 @@ type UpdateCronJobRequest struct {
 	Retention int    `json:"retention"`
 }
 
+// cronJobFrom maps the sqlc row onto the string-ID API model.
+func cronJobFrom(j sqlcdb.CronJob) CronJob {
+	return CronJob{
+		ID:         j.ID.String(),
+		ProjectID:  j.ProjectID.String(),
+		ServiceID:  j.ServiceID.String(),
+		Name:       j.Name,
+		Schedule:   j.Schedule,
+		Command:    j.Command,
+		Timezone:   j.Timezone.String,
+		Enabled:    j.Enabled.Bool,
+		LastRunAt:  timePtrNT(j.LastRunAt),
+		NextRunAt:  timePtrNT(j.NextRunAt),
+		LastStatus: j.LastStatus.String,
+		LastOutput: j.LastOutput.String,
+		Retention:  int(j.Retention.Int32),
+		CreatedAt:  j.CreatedAt.Time,
+		UpdatedAt:  j.UpdatedAt.Time,
+	}
+}
+
+// cronExecutionFrom maps the sqlc row onto the string-ID API model.
+func cronExecutionFrom(e sqlcdb.CronExecution) CronExecution {
+	return CronExecution{
+		ID:         e.ID.String(),
+		CronJobID:  e.CronJobID.String(),
+		StartedAt:  e.StartedAt,
+		FinishedAt: timePtrNT(e.FinishedAt),
+		Status:     e.Status.String,
+		Output:     e.Output.String,
+		Error:      e.Error.String,
+	}
+}
+
 // cronJobProjectID resolves the project a cron job belongs to.
 func cronJobProjectID(db *database.DB, jobID string) (uuid.UUID, bool) {
-	var projectID uuid.UUID
-	err := db.QueryRow(
-		`SELECT cj.project_id FROM cron_jobs cj WHERE cj.id = $1`,
-		jobID,
-	).Scan(&projectID)
+	id, err := uuid.Parse(jobID)
+	if err != nil {
+		return uuid.Nil, false
+	}
+	projectID, err := sqlcdb.New(db.DB).GetCronJobProjectID(context.Background(), id)
 	if err != nil {
 		return uuid.Nil, false
 	}
@@ -137,15 +171,14 @@ func handleCreateCronJob(c *gin.Context) {
 		return
 	}
 
-	var ownerCheck string
-	err := db.QueryRow(
-		`SELECT p.owner_id FROM projects p 
-		 JOIN services s ON s.project_id = p.id 
-		 WHERE s.id = $1`,
-		req.ServiceID,
-	).Scan(&ownerCheck)
+	svcID, err := uuid.Parse(req.ServiceID)
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+		return
+	}
+	ownerCheck, err := sqlcdb.New(db.DB).GetCronOwnerViaService(context.Background(), svcID)
 
-	if err != nil || (ownerCheck != userID && !contextIsAdmin(c)) {
+	if err != nil || (ownerCheck.String() != userID && !contextIsAdmin(c)) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 		return
 	}
@@ -178,11 +211,20 @@ func handleCreateCronJob(c *gin.Context) {
 		UpdatedAt: time.Now(),
 	}
 
-	_, err = db.Exec(
-		`INSERT INTO cron_jobs (id, project_id, service_id, name, schedule, command, timezone, enabled, next_run_at, retention, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-		job.ID, job.ProjectID, job.ServiceID, job.Name, job.Schedule, job.Command, job.Timezone, job.Enabled, job.NextRunAt, job.Retention, job.CreatedAt, job.UpdatedAt,
-	)
+	err = sqlcdb.New(db.DB).InsertCronJob(context.Background(), sqlcdb.InsertCronJobParams{
+		ID:        uuid.MustParse(job.ID),
+		ProjectID: uuid.MustParse(job.ProjectID),
+		ServiceID: uuid.MustParse(job.ServiceID),
+		Name:      job.Name,
+		Schedule:  job.Schedule,
+		Command:   job.Command,
+		Timezone:  sql.NullString{String: job.Timezone, Valid: true},
+		Enabled:   sql.NullBool{Bool: job.Enabled, Valid: true},
+		NextRunAt: ntPtr(job.NextRunAt),
+		Retention: sql.NullInt32{Int32: int32(job.Retention), Valid: true},
+		CreatedAt: sql.NullTime{Time: job.CreatedAt, Valid: true},
+		UpdatedAt: sql.NullTime{Time: job.UpdatedAt, Valid: true},
+	})
 
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create cron job"})
@@ -201,22 +243,17 @@ func handleGetCronJob(c *gin.Context) {
 	db := c.MustGet("db").(*database.DB)
 	jobID := c.Param("id")
 
-	var job CronJob
-	err := db.QueryRow(
-		`SELECT cj.id, cj.project_id, cj.service_id, cj.name, cj.schedule, cj.timezone,
-		        cj.enabled, cj.last_run_at, cj.next_run_at, cj.last_status, cj.last_output,
-		        cj.retention, cj.created_at, cj.updated_at
-		 FROM cron_jobs cj
-		 WHERE cj.id = $1`,
-		jobID,
-	).Scan(&job.ID, &job.ProjectID, &job.ServiceID, &job.Name, &job.Schedule, &job.Timezone,
-		&job.Enabled, &job.LastRunAt, &job.NextRunAt, &job.LastStatus, &job.LastOutput,
-		&job.Retention, &job.CreatedAt, &job.UpdatedAt)
-
+	jid, err := uuid.Parse(jobID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Cron job not found"})
 		return
 	}
+	row, err := sqlcdb.New(db.DB).GetCronJob(context.Background(), jid)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Cron job not found"})
+		return
+	}
+	job := cronJobFrom(row)
 
 	projectID, found := cronJobProjectID(db, jobID)
 	if !found {
@@ -242,15 +279,14 @@ func handleUpdateCronJob(c *gin.Context) {
 		return
 	}
 
-	var ownerCheck string
-	err := db.QueryRow(
-		`SELECT p.owner_id FROM cron_jobs cj
-		 JOIN projects p ON cj.project_id = p.id
-		 WHERE cj.id = $1`,
-		jobID,
-	).Scan(&ownerCheck)
+	jid, err := uuid.Parse(jobID)
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+		return
+	}
+	ownerCheck, err := sqlcdb.New(db.DB).GetCronJobOwner(context.Background(), jid)
 
-	if err != nil || (ownerCheck != userID && !contextIsAdmin(c)) {
+	if err != nil || (ownerCheck.String() != userID && !contextIsAdmin(c)) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 		return
 	}
@@ -312,21 +348,19 @@ func handleDeleteCronJob(c *gin.Context) {
 	db := c.MustGet("db").(*database.DB)
 	jobID := c.Param("id")
 
-	var ownerCheck string
-	err := db.QueryRow(
-		`SELECT p.owner_id FROM cron_jobs cj
-		 JOIN projects p ON cj.project_id = p.id
-		 WHERE cj.id = $1`,
-		jobID,
-	).Scan(&ownerCheck)
+	jid, err := uuid.Parse(jobID)
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+		return
+	}
+	ownerCheck, err := sqlcdb.New(db.DB).GetCronJobOwner(context.Background(), jid)
 
-	if err != nil || (ownerCheck != userID && !contextIsAdmin(c)) {
+	if err != nil || (ownerCheck.String() != userID && !contextIsAdmin(c)) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 		return
 	}
 
-	_, err = db.Exec("DELETE FROM cron_jobs WHERE id = $1", jobID)
-	if err != nil {
+	if err := sqlcdb.New(db.DB).DeleteCronJob(context.Background(), jid); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete cron job"})
 		return
 	}
@@ -350,29 +384,20 @@ func handleGetCronExecutions(c *gin.Context) {
 		return
 	}
 
-	rows, err := db.Query(
-		`SELECT id, cron_job_id, started_at, finished_at, status, output, error
-		 FROM cron_executions 
-		 WHERE cron_job_id = $1 
-		 ORDER BY started_at DESC 
-		 LIMIT 100`,
-		jobID,
-	)
-
+	jid, err := uuid.Parse(jobID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch executions"})
 		return
 	}
-	defer rows.Close()
+	rows, err := sqlcdb.New(db.DB).ListCronExecutions(context.Background(), jid)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch executions"})
+		return
+	}
 
 	var executions []CronExecution
-	for rows.Next() {
-		var exec CronExecution
-		err := rows.Scan(&exec.ID, &exec.CronJobID, &exec.StartedAt, &exec.FinishedAt, &exec.Status, &exec.Output, &exec.Error)
-		if err != nil {
-			continue
-		}
-		executions = append(executions, exec)
+	for _, e := range rows {
+		executions = append(executions, cronExecutionFrom(e))
 	}
 
 	c.JSON(http.StatusOK, gin.H{"executions": executions})
@@ -383,29 +408,33 @@ func handleTriggerCronJob(c *gin.Context) {
 	db := c.MustGet("db").(*database.DB)
 	jobID := c.Param("id")
 
-	var job CronJob
-	var ownerCheck string
-	err := db.QueryRow(
-		`SELECT cj.service_id, cj.command, cj.schedule, cj.timezone, cj.retention, p.owner_id
-		 FROM cron_jobs cj
-		 JOIN projects p ON cj.project_id = p.id
-		 WHERE cj.id = $1`,
-		jobID,
-	).Scan(&job.ServiceID, &job.Command, &job.Schedule, &job.Timezone, &job.Retention, &ownerCheck)
-
-	if err != nil || (ownerCheck != userID && !contextIsAdmin(c)) {
+	jid, err := uuid.Parse(jobID)
+	if err != nil {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 		return
+	}
+	trig, err := sqlcdb.New(db.DB).GetCronJobForTrigger(context.Background(), jid)
+	if err != nil || (trig.OwnerID.String() != userID && !contextIsAdmin(c)) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+		return
+	}
+	job := CronJob{
+		ServiceID: trig.ServiceID.String(),
+		Command:   trig.Command,
+		Schedule:  trig.Schedule,
+		Timezone:  trig.Timezone.String,
+		Retention: int(trig.Retention.Int32),
 	}
 
 	execID := uuid.New().String()
 	now := time.Now()
 
-	_, err = db.Exec(
-		`INSERT INTO cron_executions (id, cron_job_id, started_at, status)
-		 VALUES ($1, $2, $3, $4)`,
-		execID, jobID, now, "running",
-	)
+	_ = sqlcdb.New(db.DB).InsertCronExecution(context.Background(), sqlcdb.InsertCronExecutionParams{
+		ID:        uuid.MustParse(execID),
+		CronJobID: jid,
+		StartedAt: now,
+		Status:    sql.NullString{String: "running", Valid: true},
+	})
 
 	dockerClient, _ := c.Get("docker_client")
 	dockerCli, _ := dockerClient.(*docker.Client)
@@ -458,39 +487,25 @@ func StartCronScheduler(ctx context.Context, db *database.DB, dockerClient *dock
 }
 
 func runDueCronJobs(db *database.DB, dockerClient *docker.Client) {
-	rows, err := db.Query(
-		`SELECT id, project_id, service_id, name, schedule, command, timezone, enabled, retention
-		 FROM cron_jobs
-		 WHERE enabled = TRUE AND next_run_at IS NOT NULL AND next_run_at <= NOW()`)
+	q := sqlcdb.New(db.DB)
+	jobs, err := q.ListDueCronJobs(context.Background())
 	if err != nil {
 		log.Printf("cron scheduler: failed to list due jobs: %v", err)
 		return
 	}
-	defer rows.Close()
-
-	type dueJob struct {
-		CronJob
-		Command string
-	}
-	var jobs []dueJob
-	for rows.Next() {
-		var j dueJob
-		if err := rows.Scan(&j.ID, &j.ProjectID, &j.ServiceID, &j.Name, &j.Schedule,
-			&j.Command, &j.Timezone, &j.Enabled, &j.Retention); err != nil {
-			continue
-		}
-		jobs = append(jobs, j)
-	}
 
 	for _, j := range jobs {
 		execID := uuid.New().String()
-		if _, err := db.Exec(
-			`INSERT INTO cron_executions (id, cron_job_id, started_at, status) VALUES ($1, $2, $3, $4)`,
-			execID, j.ID, time.Now(), "running"); err != nil {
+		if err := q.InsertCronExecution(context.Background(), sqlcdb.InsertCronExecutionParams{
+			ID:        uuid.MustParse(execID),
+			CronJobID: j.ID,
+			StartedAt: time.Now(),
+			Status:    sql.NullString{String: "running", Valid: true},
+		}); err != nil {
 			log.Printf("cron scheduler: failed to record execution for %s: %v", j.ID, err)
 			continue
 		}
-		go executeCronJob(db, dockerClient, j.ID, j.ServiceID, execID, j.Command, j.Schedule, j.Timezone, j.Retention)
+		go executeCronJob(db, dockerClient, j.ID.String(), j.ServiceID.String(), execID, j.Command, j.Schedule, j.Timezone.String, int(j.Retention.Int32))
 	}
 }
 
@@ -584,23 +599,32 @@ func executeCronJob(db *database.DB, dockerClient *docker.Client, jobID, service
 	}
 
 	now := time.Now()
-	db.Exec(
-		`UPDATE cron_executions SET finished_at = $1, status = $2, output = $3, error = $4 WHERE id = $5`,
-		now, status, output, errText, execID,
-	)
+	q := sqlcdb.New(db.DB)
+	if eid, err := uuid.Parse(execID); err == nil {
+		_ = q.FinishCronExecution(context.Background(), sqlcdb.FinishCronExecutionParams{
+			FinishedAt: sql.NullTime{Time: now, Valid: true},
+			Status:     sql.NullString{String: status, Valid: true},
+			Output:     sql.NullString{String: output, Valid: true},
+			Error:      sql.NullString{String: errText, Valid: true},
+			ID:         eid,
+		})
+	}
 
 	next, _ := calculateNextRun(schedule, timezone)
-	db.Exec(
-		`UPDATE cron_jobs SET last_run_at = $1, last_status = $2, last_output = $3, next_run_at = $4 WHERE id = $5`,
-		now, status, output, next, jobID,
-	)
+	if jid, err := uuid.Parse(jobID); err == nil {
+		_ = q.UpdateCronJobRun(context.Background(), sqlcdb.UpdateCronJobRunParams{
+			LastRunAt:  sql.NullTime{Time: now, Valid: true},
+			LastStatus: sql.NullString{String: status, Valid: true},
+			LastOutput: sql.NullString{String: output, Valid: true},
+			NextRunAt:  ntPtr(next),
+			ID:         jid,
+		})
 
-	if retention > 0 {
-		db.Exec(
-			`DELETE FROM cron_executions WHERE cron_job_id = $1 AND id NOT IN (
-				SELECT id FROM cron_executions WHERE cron_job_id = $1
-				ORDER BY started_at DESC LIMIT $2)`,
-			jobID, retention,
-		)
+		if retention > 0 {
+			_ = q.TrimCronExecutions(context.Background(), sqlcdb.TrimCronExecutionsParams{
+				CronJobID: jid,
+				Limit:     int32(retention),
+			})
+		}
 	}
 }
