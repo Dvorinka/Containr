@@ -25,6 +25,17 @@ func (q *Queries) GetLastDeployedImage(ctx context.Context, serviceID uuid.UUID)
 	return image, err
 }
 
+const getServiceDomainText = `-- name: GetServiceDomainText :one
+SELECT COALESCE(domain,'') AS domain FROM services WHERE id = $1
+`
+
+func (q *Queries) GetServiceDomainText(ctx context.Context, id uuid.UUID) (string, error) {
+	row := q.db.QueryRowContext(ctx, getServiceDomainText, id)
+	var domain string
+	err := row.Scan(&domain)
+	return domain, err
+}
+
 const getServicePort = `-- name: GetServicePort :one
 SELECT COALESCE(port, 0) AS port FROM services WHERE id = $1
 `
@@ -116,6 +127,17 @@ func (q *Queries) GetServiceRuntimeWithOwner(ctx context.Context, id uuid.UUID) 
 		&i.OwnerID,
 	)
 	return i, err
+}
+
+const getServiceStatusText = `-- name: GetServiceStatusText :one
+SELECT COALESCE(status,'') AS status FROM services WHERE id = $1
+`
+
+func (q *Queries) GetServiceStatusText(ctx context.Context, id uuid.UUID) (string, error) {
+	row := q.db.QueryRowContext(ctx, getServiceStatusText, id)
+	var status string
+	err := row.Scan(&status)
+	return status, err
 }
 
 const getServiceVariableValue = `-- name: GetServiceVariableValue :one
@@ -246,6 +268,50 @@ func (q *Queries) ListServiceVariablesWithSecret(ctx context.Context, serviceID 
 	for rows.Next() {
 		var i ListServiceVariablesWithSecretRow
 		if err := rows.Scan(&i.Key, &i.Value, &i.IsSecret); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSleepCandidates = `-- name: ListSleepCandidates :many
+SELECT id, project_id, name, COALESCE(status,'') AS status,
+       COALESCE(sleep_idle_minutes, 15) AS sleep_idle_minutes
+FROM services
+WHERE sleep_enabled AND COALESCE(status,'') IN ('running','deployed','degraded','starting')
+`
+
+type ListSleepCandidatesRow struct {
+	ID               uuid.UUID `json:"id"`
+	ProjectID        uuid.UUID `json:"project_id"`
+	Name             string    `json:"name"`
+	Status           string    `json:"status"`
+	SleepIdleMinutes int32     `json:"sleep_idle_minutes"`
+}
+
+func (q *Queries) ListSleepCandidates(ctx context.Context) ([]ListSleepCandidatesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listSleepCandidates)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSleepCandidatesRow{}
+	for rows.Next() {
+		var i ListSleepCandidatesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.Name,
+			&i.Status,
+			&i.SleepIdleMinutes,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
