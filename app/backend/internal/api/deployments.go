@@ -803,9 +803,15 @@ func splitImageReference(image, fallbackTag string) (string, string) {
 		return "", fallbackTag
 	}
 
+	// Digest-pinned refs (name[:tag]@sha256:…) carry no usable tag — the
+	// colon lives inside the digest and must not be split.
+	if strings.Contains(image, "@") {
+		return image, fallbackTag
+	}
+
 	lastSlash := strings.LastIndex(image, "/")
 	lastColon := strings.LastIndex(image, ":")
-	if lastColon > lastSlash && !strings.Contains(image[lastColon:], "@") {
+	if lastColon > lastSlash {
 		return image[:lastColon], image[lastColon+1:]
 	}
 
