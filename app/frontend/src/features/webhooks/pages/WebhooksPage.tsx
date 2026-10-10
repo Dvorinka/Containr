@@ -193,7 +193,7 @@ export function WebhooksPage() {
           title="Webhooks"
           titleAccent="_"
           sub="Signed HTTP delivery for every platform event — deploys, restarts, deletes"
-          trail={
+          actions={
             <GhostBtn onClick={() => setCreating(true)}>
               <Plus size={13} /> New webhook
             </GhostBtn>

@@ -271,7 +271,7 @@ export function STable<T extends { id?: string | number }>({ cols, rows, rowKey,
               className={`s-dt-h ${c.sortable !== false ? 'sortable' : ''} ${sortKey === c.key ? 'on' : ''}`}
               onClick={() => {
                 if (c.sortable === false) return;
-                setSortDir(sortKey === c.key ? -sortDir : 1);
+                setSortDir(sortKey === c.key ? (sortDir === 1 ? -1 : 1) : 1);
                 setSortKey(c.key);
               }}
             >
