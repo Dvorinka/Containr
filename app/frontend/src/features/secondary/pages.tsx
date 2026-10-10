@@ -1253,7 +1253,11 @@ export function GitHubAppCallbackPage() {
     mutationFn: (appCode: string) => convertGitHubAppCode(appCode),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['github-app-status'] });
-      navigate('/settings', { replace: true });
+      // The setup wizard stashes a return marker before submitting the
+      // manifest form — resume there instead of the settings page.
+      const inSetup = sessionStorage.getItem('containr.setup_return') === '1';
+      sessionStorage.removeItem('containr.setup_return');
+      navigate(inSetup ? '/setup' : '/settings', { replace: true });
     },
   });
   const firedRef = useRef(false);

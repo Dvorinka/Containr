@@ -3705,6 +3705,50 @@ paths:
                     type: boolean
                     description: True when the owner re-opened public registration in Settings
 
+  /setup/status:
+    get:
+      tags:
+        - Authentication
+      summary: First-run setup status
+      description: Public. Drives the setup wizard — needs_setup is true until setup_completed is recorded. Instances with users and projects that predate the wizard report completed automatically.
+      responses:
+        '200':
+          description: Setup state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  has_users:
+                    type: boolean
+                  setup_completed:
+                    type: boolean
+                  needs_setup:
+                    type: boolean
+                  has_github_app:
+                    type: boolean
+                    description: GitHub App credentials configured (manifest flow or env)
+                  has_tunnel:
+                    type: boolean
+                    description: Cloudflare tunnel token configured
+                  signup_enabled:
+                    type: boolean
+
+  /setup/complete:
+    post:
+      tags:
+        - Authentication
+      summary: Mark the setup wizard complete
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Setup completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
   /settings:
     get:
       tags:

@@ -286,6 +286,7 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 			public.POST("/auth/register", handleRegister)
 			public.GET("/maintenance", handleMaintenancePage)
 			public.GET("/branding", handleGetBranding)
+			public.GET("/setup/status", handleSetupStatus)
 
 			// Invite accept flow — validates the link, then registers
 			// even while public signup is closed.
@@ -355,6 +356,7 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 		{
 			authed.GET("/user/profile", handleGetProfile)
 			authed.PUT("/user/profile", handleUpdateProfile)
+			authed.POST("/setup/complete", handleSetupComplete)
 
 			// Personal access tokens for CLI/MCP/agent auth.
 			authed.GET("/user/tokens", handleListUserTokens)
