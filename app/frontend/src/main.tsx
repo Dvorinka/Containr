@@ -23,6 +23,7 @@ const queryClient = new QueryClient({
 // High-churn or bulky keys never hit localStorage — a stale log tail is
 // worse than none.
 const NEVER_PERSIST = new Set([
+  'auth-session',
   'shell-notifications',
   'notifications',
   'service-logs',

@@ -25,7 +25,7 @@ const SEVERITY_STYLE: Record<string, { icon: typeof Info; cls: string; dot: stri
 };
 
 const SCHEMA: FilterConfig<ActivityEntry>[] = [
-  { key: 'q', label: 'Search', type: 'search', searchFields: ['label', 'action', 'user_email'] },
+  { key: 'q', label: 'events', type: 'search', searchFields: ['label', 'action', 'user_email'] },
   {
     key: 'severity', label: 'Severity', type: 'select',
     options: [
@@ -67,7 +67,7 @@ export function ActivityPage() {
         </div>
       </div>
 
-      <div className="px-8 py-6 space-y-4">
+      <div className="px-4 py-6 sm:px-8 space-y-4">
         <div className="flex items-start gap-3">
           <div className="flex-1">
             <FilterBar {...filter} />

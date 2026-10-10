@@ -192,7 +192,7 @@ export function BuildsPage() {
       )}
 
       {/* Stats Overview */}
-      <div className="w-full px-8 py-6">
+      <div className="w-full px-4 py-6 sm:px-8">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="panel p-4">
             <div className="flex items-center justify-between mb-3">
@@ -263,7 +263,7 @@ export function BuildsPage() {
       </div>
 
       {/* Build Table */}
-      <div className="w-full px-8 py-6">
+      <div className="w-full px-4 py-6 sm:px-8">
         <div className="panel overflow-hidden">
           {!isDemoMode && buildsQuery.isLoading ? (
             <div className="p-12 text-center">

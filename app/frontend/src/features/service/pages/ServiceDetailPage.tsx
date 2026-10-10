@@ -143,7 +143,7 @@ function StatusBadge({ status }: { status: string }) {
 export function ServiceDetailPage() {
   const { projectId = '', serviceId = '' } = useParams<{ projectId: string; serviceId: string }>();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const isDemoMode = useDemoMode();
   const sessionQuery = useAuthSession({ enabled: !isDemoMode });
@@ -791,7 +791,7 @@ export function ServiceDetailPage() {
       )}
 
       {/* Metrics Overview */}
-      <div className="w-full px-8 py-6">
+      <div className="w-full px-4 py-6 sm:px-8">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <EnhancedMetricCard
             title="CPU Usage"
@@ -904,7 +904,18 @@ export function ServiceDetailPage() {
           return (
             <button
               key={item.key}
-              onClick={() => setActiveSection(item.key)}
+              onClick={() => {
+                setActiveSection(item.key);
+                setSearchParams(
+                  (prev) => {
+                    const next = new URLSearchParams(prev);
+                    if (item.key === 'metrics') next.delete('section');
+                    else next.set('section', item.key);
+                    return next;
+                  },
+                  { replace: true },
+                );
+              }}
               className={`tab ${active ? 'active' : ''}`}
             >
               <Icon size={14} />
@@ -1189,7 +1200,7 @@ export function ServiceDetailPage() {
                       {' '}
                       <span className="text-[var(--accent-primary)]">{entry.stream}</span>
                       {' '}
-                      {entry.message}
+                      {entry.message.replace(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z?\s+/, '')}
                     </p>
                   ))}
                 </div>
@@ -1362,7 +1373,7 @@ export function ServiceDetailPage() {
               </div>
             ) : (
               <div className="space-y-2">
-                <div className="grid grid-cols-[1fr_1fr_auto_auto] gap-2 px-1">
+                <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto] gap-2 px-1">
                   <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Key</span>
                   <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Value</span>
                   <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Secret</span>
@@ -1370,7 +1381,7 @@ export function ServiceDetailPage() {
                 </div>
                 {varRows.map((row, i) => (
                   <div key={i}>
-                    <div className="grid grid-cols-[1fr_1fr_auto_auto] gap-2 items-center">
+                    <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto] gap-2 items-center">
                       <input
                         value={row.key}
                         onChange={(e) => updateVarRow(i, { key: e.target.value })}

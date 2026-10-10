@@ -537,7 +537,7 @@ and wired refs, one click or one CLI call.
   workspace, CLI `environments` + MCP parity. Per-env vars/domains ride the
   service's own scope (one env per service); promote ships via preview
   promote.
-- [ ] **sqlc port** — ~265 raw `database/sql` sites → `sqlc/queries/`. Done in tranches (dynamic queries stay raw). Tranches merged: metrics storage + service domains (#75), service clone/move ops (#76), preview environments (#77), deployments + rollback (#78). Remaining: runtime, compliance, cron, git, security, auth, sleeper, scanner, gateway, and smaller files.
+- [x] **sqlc port** — all static `database/sql` call sites → `sqlc/queries/` + generated `sqlcdb`. Merged: metrics + domains (#75), service clone/move (#76), preview environments (#77), deployments + rollback (#78), runtime ops (#79), cron (#80), sleep/wake sweeper (#81), git providers/repos/webhooks (#82), auth + security (#83), operations/settings/audit/activity/builds/misc + apwhy gateway (#84). Raw SQL remains only for runtime-assembled statements (filtered lists, sparse updates) and Better Auth `auth_users` probes.
 - [ ] **Tests** — canvas/wizard frontend coverage, deployment/template/
   webhook table tests, Playwright e2e golden path.
 - [x] **First-run wizard** — public `GET /setup/status` + authed

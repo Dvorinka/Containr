@@ -78,7 +78,7 @@ export function SharedVariablesSection({ projectId }: { projectId: string }) {
       ) : (
         <div className="space-y-2">
           {rows.map((row, i) => (
-            <div key={i} className="grid grid-cols-[1fr_1fr_auto_auto] gap-2 items-center">
+            <div key={i} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto] gap-2 items-center">
               <input
                 value={row.key}
                 onChange={(e) => updateRow(i, { key: e.target.value })}

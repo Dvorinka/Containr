@@ -765,7 +765,7 @@ export function ProjectWorkspacePage() {
           </span>
           <button
             onClick={() => setCommandPaletteOpen(true)}
-            className="hidden md:flex items-center gap-2 h-8 px-2.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-[var(--text-muted)] text-xs hover:border-[var(--border-default)] hover:text-[var(--text-secondary)] transition-colors"
+            className="hidden lg:flex items-center gap-2 h-8 px-2.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-[var(--text-muted)] text-xs hover:border-[var(--border-default)] hover:text-[var(--text-secondary)] transition-colors"
           >
             <Search size={12} />
             <kbd className="px-1 py-0.5 rounded bg-[var(--surface-card)] text-[10px] font-mono">⌘K</kbd>
@@ -826,7 +826,7 @@ export function ProjectWorkspacePage() {
             </div>
           </div>
         )}
-        <div className="w-full px-8 py-6">
+        <div className="w-full px-4 py-6 sm:px-8">
           <section className="min-w-0">
             {activeView === 'observability' && (
               <div className="space-y-6">
@@ -860,11 +860,7 @@ export function ProjectWorkspacePage() {
                 </div>
 
                 {/* Metrics Dashboard */}
-                <MetricsDashboard
-                  isRunning={runningServices > 0}
-                  onStop={() => toast.showToast('Services stopped', 'warning')}
-                  onRestart={() => toast.showToast('Services restarted', 'success')}
-                />
+                <MetricsDashboard services={visibleServices} isDemoMode={isDemoMode} />
 
                 {/* Service List */}
                 <div className="panel p-6">

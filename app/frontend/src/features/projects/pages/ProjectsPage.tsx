@@ -211,9 +211,9 @@ export function ProjectsPage() {
 
   return (
     <div className="min-h-screen">
-      <div className="w-full px-8 py-6">
+      <div className="w-full px-4 py-6 sm:px-8">
         {/* Page head */}
-        <div className="mb-6 flex items-center justify-between gap-5">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-x-5 gap-y-3">
           <div>
             <h1 className="v-title">Projects<span className="v-cursor">_</span></h1>
             <p className="v-mono mt-1.5 text-[11px] text-[var(--text-tertiary)]">

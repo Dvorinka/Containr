@@ -330,7 +330,7 @@ export function NodeDetailPage() {
         </div>
       </div>
 
-      <div className="px-8 py-6 space-y-6">
+      <div className="px-4 py-6 sm:px-8 space-y-6">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Stat label="cpu" value={latest ? `${latest.cpu.usage_percent.toFixed(0)}%` : '—'} sub={latest ? `${latest.cpu.cores} cores` : ''} />
           <Stat label="memory" value={latest ? `${latest.memory.usage_percent.toFixed(0)}%` : '—'} sub={latest ? `${formatBytes(latest.memory.available)} free of ${formatBytes(latest.memory.limit)}` : ''} />

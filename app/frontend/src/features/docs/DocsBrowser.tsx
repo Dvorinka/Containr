@@ -15,6 +15,7 @@ function renderMarkdown(markdown: string): string {
 
 function excerpt(markdown: string, length = 140): string {
   const text = markdown
+    .replace(/^#[^\n]*\n/, ' ')
     .replace(/```[\s\S]*?```/g, ' ')
     .replace(/[#>*`\-[\]()]/g, ' ')
     .replace(/\s+/g, ' ')
@@ -119,7 +120,7 @@ export function DocsBrowser() {
 
       <div className="min-w-0 flex-1 overflow-y-auto max-md:hidden">
         {selected ? (
-          <article className="docs-article px-8 py-6">
+          <article className="docs-article px-4 py-6 sm:px-8">
             <p className="mb-1 text-[11px] font-medium uppercase tracking-wider text-[var(--text-tertiary)]">
               {selected.section} / {selected.path}
             </p>
