@@ -13,6 +13,11 @@ export function formatRelative(iso?: string): string {
   const hour = 60 * minute;
   const day = 24 * hour;
 
+  // Future-dated or year-plus-old timestamps are effectively meaningless —
+  // surface them as absent rather than "739898d ago".
+  if (diffMs < 0 || diffMs > 365 * day) {
+    return 'n/a';
+  }
   if (diffMs < minute) {
     return 'just now';
   }

@@ -1,24 +1,25 @@
 import { useEffect, useState } from 'react';
 import { Command } from 'cmdk';
 import {
+  ArrowRight,
   Box,
+  CornerDownRight,
   Database,
-  Github,
-  Image,
   Clock,
   Search,
-  Settings,
-  FileText,
-  Activity,
-  LayoutGrid,
 } from 'lucide-react';
+
+export interface PaletteTarget {
+  label: string;
+  target: string;
+  description?: string;
+}
 
 interface CommandItem {
   id: string;
   label: string;
   description?: string;
   icon: typeof Box;
-  shortcut?: string;
   action: () => void;
   category?: string;
 }
@@ -27,14 +28,39 @@ interface CommandPaletteProps {
   open: boolean;
   onClose: () => void;
   onAddService?: (type: string) => void;
-  onNavigate?: (path: string) => void;
+  onNavigate?: (target: string) => void;
+  /** Navigate-group items; falls back to the full app route map. */
+  navTargets?: PaletteTarget[];
+  /** Extra searchable "Open …" rows, e.g. projects. */
+  openTargets?: PaletteTarget[];
 }
+
+const APP_NAV: PaletteTarget[] = [
+  { label: 'Dashboard', target: '/', description: 'Index — stats, nodes, deploys' },
+  { label: 'Projects', target: '/projects', description: 'All projects' },
+  { label: 'Templates', target: '/templates', description: 'Template catalog' },
+  { label: 'Builds', target: '/builds', description: 'Build pipeline' },
+  { label: 'Databases', target: '/databases', description: 'Managed databases' },
+  { label: 'Operations', target: '/operations', description: 'Backups, cron, maintenance' },
+  { label: 'Activity', target: '/activity', description: 'Platform event feed' },
+  { label: 'High Availability', target: '/ha', description: 'Failover & alerts' },
+  { label: 'Security', target: '/security', description: 'Access, sessions, secrets' },
+  { label: 'Usage', target: '/usage', description: 'Resource consumption' },
+  { label: 'People', target: '/people', description: 'Team & access control' },
+  { label: 'Audit Logs', target: '/settings/audit-logs', description: 'Recorded actions' },
+  { label: 'Webhooks', target: '/settings/webhooks', description: 'Signed event delivery' },
+  { label: 'Settings', target: '/settings', description: 'Platform preferences' },
+  { label: 'Docs', target: '/docs', description: 'Guides & reference' },
+  { label: 'Landing', target: '/landing', description: 'Public page' },
+];
 
 export function CommandPalette({
   open,
   onClose,
   onAddService,
   onNavigate,
+  navTargets,
+  openTargets,
 }: CommandPaletteProps) {
   if (!open) return null;
 
@@ -43,6 +69,8 @@ export function CommandPalette({
       onClose={onClose}
       onAddService={onAddService}
       onNavigate={onNavigate}
+      navTargets={navTargets}
+      openTargets={openTargets}
     />
   );
 }
@@ -51,6 +79,8 @@ function CommandPaletteContent({
   onClose,
   onAddService,
   onNavigate,
+  navTargets,
+  openTargets,
 }: Omit<CommandPaletteProps, 'open'>) {
   const [search, setSearch] = useState('');
 
@@ -66,130 +96,69 @@ function CommandPaletteContent({
     return () => document.removeEventListener('keydown', down);
   }, [onClose]);
 
-  const commands: CommandItem[] = [
-    {
-      id: 'add-web',
-      label: 'Add Web Service',
-      description: 'Deploy a web application',
-      icon: Box,
-      shortcut: 'W',
-      category: 'Create',
-      action: () => {
-        onAddService?.('web');
-        onClose();
+  const commands: CommandItem[] = [];
+
+  // Create items only exist where onAddService is wired — elsewhere the
+  // entries would silently no-op.
+  if (onAddService) {
+    commands.push(
+      {
+        id: 'add-web',
+        label: 'Add Web Service',
+        description: 'Deploy a web application',
+        icon: Box,
+        category: 'Create',
+        action: () => { onAddService('web'); onClose(); },
       },
-    },
-    {
-      id: 'add-worker',
-      label: 'Add Worker Service',
-      description: 'Deploy a background worker',
-      icon: Clock,
-      shortcut: 'K',
-      category: 'Create',
-      action: () => {
-        onAddService?.('worker');
-        onClose();
+      {
+        id: 'add-worker',
+        label: 'Add Worker Service',
+        description: 'Deploy a background worker',
+        icon: Clock,
+        category: 'Create',
+        action: () => { onAddService('worker'); onClose(); },
       },
-    },
-    {
-      id: 'add-database',
-      label: 'Add Database',
-      description: 'Provision a PostgreSQL database',
-      icon: Database,
-      shortcut: 'D',
-      category: 'Create',
-      action: () => {
-        onAddService?.('database');
-        onClose();
+      {
+        id: 'add-database',
+        label: 'Add Database',
+        description: 'Provision a PostgreSQL database',
+        icon: Database,
+        category: 'Create',
+        action: () => { onAddService('database'); onClose(); },
       },
-    },
-    {
-      id: 'add-cron',
-      label: 'Add Cron Job',
-      description: 'Schedule a recurring task',
-      icon: Clock,
-      category: 'Create',
-      action: () => {
-        onAddService?.('cron');
-        onClose();
+      {
+        id: 'add-cron',
+        label: 'Add Cron Job',
+        description: 'Schedule a recurring task',
+        icon: Clock,
+        category: 'Create',
+        action: () => { onAddService('cron'); onClose(); },
       },
-    },
-    {
-      id: 'connect-github',
-      label: 'Connect GitHub Repo',
-      description: 'Link a repository for auto-deploy',
-      icon: Github,
-      category: 'Connect',
-      action: () => {
-        onClose();
-      },
-    },
-    {
-      id: 'deploy-image',
-      label: 'Deploy Docker Image',
-      description: 'Deploy from a container registry',
-      icon: Image,
-      category: 'Connect',
-      action: () => {
-        onClose();
-      },
-    },
-    {
-      id: 'goto-dashboard',
-      label: 'Go to Dashboard',
-      icon: LayoutGrid,
-      shortcut: 'H',
-      category: 'Navigate',
-      action: () => {
-        onNavigate?.('dashboard');
-        onClose();
-      },
-    },
-    {
-      id: 'goto-canvas',
-      label: 'Go to Canvas',
-      icon: LayoutGrid,
-      shortcut: 'C',
-      category: 'Navigate',
-      action: () => {
-        onNavigate?.('canvas');
-        onClose();
-      },
-    },
-    {
-      id: 'goto-logs',
-      label: 'Go to Logs',
-      icon: FileText,
-      shortcut: 'L',
-      category: 'Navigate',
-      action: () => {
-        onNavigate?.('logs');
-        onClose();
-      },
-    },
-    {
-      id: 'goto-metrics',
-      label: 'Go to Metrics',
-      icon: Activity,
-      shortcut: 'M',
-      category: 'Navigate',
-      action: () => {
-        onNavigate?.('observability');
-        onClose();
-      },
-    },
-    {
-      id: 'goto-settings',
-      label: 'Go to Settings',
-      icon: Settings,
-      shortcut: 'S',
-      category: 'Navigate',
-      action: () => {
-        onNavigate?.('settings');
-        onClose();
-      },
-    },
-  ];
+    );
+  }
+
+  if (onNavigate) {
+    (navTargets ?? APP_NAV).forEach((t, i) =>
+      commands.push({
+        id: `nav-${i}`,
+        label: t.label,
+        description: t.description,
+        icon: CornerDownRight,
+        category: 'Navigate',
+        action: () => { onNavigate(t.target); onClose(); },
+      }),
+    );
+    (openTargets ?? []).forEach((t, i) =>
+      commands.push({
+        id: `open-${i}`,
+        label: t.label,
+        description: t.description,
+        icon: ArrowRight,
+        category: 'Open',
+        action: () => { onNavigate(t.target); onClose(); },
+      }),
+    );
+  }
 
   const filteredCommands = commands.filter(
     (cmd) =>
@@ -208,6 +177,10 @@ function CommandPaletteContent({
     {} as Record<string, CommandItem[]>
   );
 
+  const placeholder = onNavigate
+    ? 'Search pages, projects, actions…'
+    : 'What would you like to create?';
+
   return (
     <div className="fixed inset-0 z-50">
       <div
@@ -224,7 +197,7 @@ function CommandPaletteContent({
             <Command.Input
               value={search}
               onValueChange={setSearch}
-              placeholder="What would you like to create?"
+              placeholder={placeholder}
               className="flex-1 bg-transparent text-[var(--text-primary)] placeholder:text-[var(--text-muted)] text-sm outline-none"
             />
             <kbd className="px-2 py-0.5 rounded bg-[var(--surface-muted)] text-[10px] font-mono text-[var(--text-muted)]">
@@ -251,18 +224,13 @@ function CommandPaletteContent({
                       onSelect={item.action}
                       className="flex items-center gap-3 px-3 py-2 rounded-[var(--radius-md)] cursor-pointer text-[var(--text-secondary)] hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)] aria-selected:bg-[var(--accent-primary-soft)] aria-selected:text-[var(--accent-primary)] transition-colors"
                     >
-                      <span className="s-ibox !h-7 !w-7"><Icon /></span>
+                      <span className="s-ibox !h-7 !w-7"><Icon size={13.5} /></span>
                       <div className="flex-1">
                         <div className="text-sm font-medium">{item.label}</div>
                         {item.description && (
                           <div className="text-xs text-[var(--text-muted)]">{item.description}</div>
                         )}
                       </div>
-                      {item.shortcut && (
-                        <kbd className="px-2 py-0.5 rounded bg-[var(--surface-muted)] text-[10px] font-mono text-[var(--text-muted)]">
-                          {item.shortcut}
-                        </kbd>
-                      )}
                     </Command.Item>
                   );
                 })}

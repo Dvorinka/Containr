@@ -17,12 +17,12 @@ import { GhostBtn, QuietBtn } from '@/shared/components/sentry';
 
 function sanitizeRedirect(raw: string | null): string {
   if (!raw) {
-    return '/projects';
+    return '/';
   }
 
   const value = raw.trim();
   if (!value.startsWith('/') || value.startsWith('//')) {
-    return '/projects';
+    return '/';
   }
 
   return value;
@@ -271,7 +271,7 @@ export function AcceptInvitePage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (sessionQuery.data) {
-    return <Navigate to="/projects" replace />;
+    return <Navigate to="/" replace />;
   }
 
   const boundEmail = inviteQuery.data?.email ?? undefined;
@@ -288,7 +288,7 @@ export function AcceptInvitePage() {
       // account, sign-in creates the browser session.
       await signInWithEmail(effectiveEmail.trim(), password);
       await queryClient.invalidateQueries({ queryKey: ['auth-session'] });
-      navigate('/projects', { replace: true });
+      navigate('/', { replace: true });
     } catch (exception) {
       setError(exception instanceof Error ? exception.message : 'Failed to accept invite');
     } finally {

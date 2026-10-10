@@ -376,7 +376,12 @@ export function NodeDetailPage() {
                     <p className="truncate text-sm text-[var(--text-primary)]">{c.name ?? c.id}</p>
                     <p className="truncate v-mono text-[11px] text-[var(--text-tertiary)]">{c.image}</p>
                   </div>
-                  <span className="v-mono text-[11px] text-[var(--text-secondary)]">{c.status ?? '—'}</span>
+                  {/* Persisted query cache can replay the raw status object — flatten defensively. */}
+                  <span className="v-mono text-[11px] text-[var(--text-secondary)]">
+                    {typeof c.status === 'string'
+                      ? c.status
+                      : (c.status as { state?: string } | undefined)?.state ?? '—'}
+                  </span>
                 </div>
               ))}
             </div>

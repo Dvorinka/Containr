@@ -1124,6 +1124,9 @@ export function ProjectWorkspacePage() {
             return next;
           });
         }}
+        navTargets={viewItems
+          .filter((item) => signedIn || !item.authOnly)
+          .map((item) => ({ label: `Go to ${item.label}`, target: item.key }))}
       />
 
       {/* Error Banner */}

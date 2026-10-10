@@ -40,7 +40,7 @@ export function SetupWizardPage() {
     mutationFn: completeSetup,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['setup-status'] });
-      navigate('/projects', { replace: true });
+      navigate('/', { replace: true });
     },
   });
 
@@ -54,7 +54,7 @@ export function SetupWizardPage() {
 
   // Wizard is optional once the instance is already configured.
   if (status && !status.needs_setup && !override) {
-    return <Navigate to="/projects" replace />;
+    return <Navigate to="/" replace />;
   }
 
   const steps: { key: Step; label: string }[] = [

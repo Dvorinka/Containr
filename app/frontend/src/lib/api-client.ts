@@ -1239,9 +1239,17 @@ export type AgentContainer = {
   created_at?: string;
 };
 
+type RawAgentContainer = Omit<AgentContainer, 'status'> & {
+  status?: string | { state?: string; health?: string };
+};
+
 export async function listAgentContainers(id: string): Promise<AgentContainer[]> {
-  const payload = await requestJson<{ containers?: AgentContainer[] }>(`/agents/${id}/containers`);
-  return payload.containers ?? [];
+  const payload = await requestJson<{ containers?: RawAgentContainer[] }>(`/agents/${id}/containers`);
+  // The wire sends status as a Docker state object — flatten to its state string.
+  return (payload.containers ?? []).map((c) => ({
+    ...c,
+    status: typeof c.status === 'string' ? c.status : c.status?.state || '—',
+  }));
 }
 
 export type AgentCommand = {

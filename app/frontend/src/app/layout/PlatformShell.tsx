@@ -43,9 +43,11 @@ import {
   markAllNotificationsRead,
   markNotificationRead,
   pullUpgradeImage,
+  listProjects,
 } from '@/lib/api-client';
 import { signOutAuthSession } from '@/lib/auth-client';
 import { isDemoSearch } from '@/lib/demo-mode';
+import { demoProjects } from '@/lib/demo-data';
 import { useAuthSession } from '@/lib/use-auth-session';
 import { BannerBar, BrandWordmark, CommandPalette, useToast } from '@/shared/components';
 
@@ -273,15 +275,19 @@ export function PlatformShell() {
     .toUpperCase() || 'C';
 
   const paletteNavigate = (target: string) => {
-    const routes: Record<string, string> = {
-      dashboard: '/',
-      canvas: '/projects',
-      logs: '/activity',
-      observability: '/operations',
-      settings: '/settings',
-    };
-    navigate(href(routes[target] ?? '/'));
+    navigate(href(target));
   };
+
+  // Project deep-links for the palette — only fetched once it opens.
+  const paletteProjectsQuery = useQuery({
+    queryKey: ['palette-projects'],
+    queryFn: () => listProjects(),
+    enabled: paletteOpen && !isDemoMode,
+    staleTime: 60_000,
+  });
+  const paletteProjects = isDemoMode
+    ? demoProjects
+    : paletteProjectsQuery.data ?? [];
 
   if (!isDemoMode && signedIn && setupQuery.data?.needs_setup) {
     return <Navigate to="/setup" replace />;
@@ -474,7 +480,7 @@ export function PlatformShell() {
               <kbd>⌘ K</kbd>
             </button>
 
-            <span className="v-env">{isDemoMode ? 'env:demo' : 'env:production'}</span>
+            <span className="v-env">{isDemoMode ? 'env:demo' : `env:${import.meta.env.MODE}`}</span>
 
             <div className="flex-1" />
 
@@ -623,6 +629,11 @@ export function PlatformShell() {
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
         onNavigate={paletteNavigate}
+        openTargets={paletteProjects.map((p) => ({
+          label: p.name,
+          target: `/projects/${p.id}`,
+          description: 'Project workspace',
+        }))}
       />
     </div>
   );

@@ -148,6 +148,7 @@ type RangeKey = '1h' | '24h' | '7d';
 function formatRelative(date?: string): string {
   if (!date) return '—';
   const diff = Date.now() - new Date(date).getTime();
+  if (diff < 0 || diff > 365 * 86_400_000) return '—';
   if (diff < 60_000) return 'just now';
   if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
   if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
