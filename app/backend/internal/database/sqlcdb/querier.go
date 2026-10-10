@@ -59,6 +59,7 @@ type Querier interface {
 	DeleteAllServiceDomains(ctx context.Context, serviceID uuid.UUID) error
 	DeleteBackupTargetByIDAndUser(ctx context.Context, arg DeleteBackupTargetByIDAndUserParams) error
 	DeleteBanner(ctx context.Context, id uuid.UUID) error
+	DeleteCronJob(ctx context.Context, id uuid.UUID) error
 	DeleteDatabaseServiceByID(ctx context.Context, id string) error
 	DeleteDatabaseServiceByIDAndUser(ctx context.Context, arg DeleteDatabaseServiceByIDAndUserParams) error
 	DeleteNotificationChannel(ctx context.Context, arg DeleteNotificationChannelParams) (int64, error)
@@ -72,6 +73,7 @@ type Querier interface {
 	DeleteUserInvite(ctx context.Context, id uuid.UUID) error
 	DeleteUserTemplate(ctx context.Context, arg DeleteUserTemplateParams) (int64, error)
 	FailDeployment(ctx context.Context, arg FailDeploymentParams) error
+	FinishCronExecution(ctx context.Context, arg FinishCronExecutionParams) error
 	GetActiveAgentAuthTokenByHash(ctx context.Context, tokenHash string) (AgentAuthToken, error)
 	GetAgent(ctx context.Context, id string) (NodeAgent, error)
 	GetAgentByHostAndIP(ctx context.Context, arg GetAgentByHostAndIPParams) (NodeAgent, error)
@@ -81,6 +83,11 @@ type Querier interface {
 	GetCommandForAgent(ctx context.Context, arg GetCommandForAgentParams) (AgentCommand, error)
 	GetContainer(ctx context.Context, id string) (ContainerInstance, error)
 	GetContainerForAgent(ctx context.Context, arg GetContainerForAgentParams) (ContainerInstance, error)
+	GetCronJob(ctx context.Context, id uuid.UUID) (CronJob, error)
+	GetCronJobForTrigger(ctx context.Context, id uuid.UUID) (GetCronJobForTriggerRow, error)
+	GetCronJobOwner(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
+	GetCronJobProjectID(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
+	GetCronOwnerViaService(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	GetDatabaseBackupByIDAndDatabaseAndUser(ctx context.Context, arg GetDatabaseBackupByIDAndDatabaseAndUserParams) (DatabaseBackup, error)
 	GetDatabaseServiceByID(ctx context.Context, id string) (DatabaseService, error)
 	GetDatabaseServiceByIDAndUser(ctx context.Context, arg GetDatabaseServiceByIDAndUserParams) (DatabaseService, error)
@@ -120,6 +127,8 @@ type Querier interface {
 	GetUserInviteByTokenHash(ctx context.Context, tokenHash string) (UserInvite, error)
 	GetUserTokenByHash(ctx context.Context, tokenHash string) (UserToken, error)
 	InsertAgentHeartbeat(ctx context.Context, arg InsertAgentHeartbeatParams) error
+	InsertCronExecution(ctx context.Context, arg InsertCronExecutionParams) error
+	InsertCronJob(ctx context.Context, arg InsertCronJobParams) error
 	InsertDeployment(ctx context.Context, arg InsertDeploymentParams) error
 	InsertNotificationChannel(ctx context.Context, arg InsertNotificationChannelParams) (NotificationChannel, error)
 	InsertPendingDeployment(ctx context.Context, arg InsertPendingDeploymentParams) error
@@ -134,10 +143,12 @@ type Querier interface {
 	ListBanners(ctx context.Context) ([]Banner, error)
 	ListCommandsForAgent(ctx context.Context, nodeAgentID string) ([]AgentCommand, error)
 	ListContainersForAgent(ctx context.Context, nodeAgentID string) ([]ContainerInstance, error)
+	ListCronExecutions(ctx context.Context, cronJobID uuid.UUID) ([]CronExecution, error)
 	ListDatabaseBackupsByDatabaseAndUser(ctx context.Context, arg ListDatabaseBackupsByDatabaseAndUserParams) ([]DatabaseBackup, error)
 	ListDatabaseServicesByProject(ctx context.Context, projectID uuid.NullUUID) ([]DatabaseService, error)
 	ListDatabaseServicesByUser(ctx context.Context, userID string) ([]DatabaseService, error)
 	ListDeploymentsForService(ctx context.Context, arg ListDeploymentsForServiceParams) ([]ListDeploymentsForServiceRow, error)
+	ListDueCronJobs(ctx context.Context) ([]ListDueCronJobsRow, error)
 	ListDueDatabaseBackups(ctx context.Context) ([]ListDueDatabaseBackupsRow, error)
 	ListEnabledOutboundWebhooks(ctx context.Context) ([]OutboundWebhook, error)
 	ListExpiredPreviewsForUser(ctx context.Context, arg ListExpiredPreviewsForUserParams) ([]ListExpiredPreviewsForUserRow, error)
@@ -215,6 +226,7 @@ type Querier interface {
 	TouchAgentAuthToken(ctx context.Context, tokenHash string) error
 	TouchServiceDomainChecked(ctx context.Context, id uuid.UUID) error
 	TouchUserToken(ctx context.Context, id uuid.UUID) error
+	TrimCronExecutions(ctx context.Context, arg TrimCronExecutionsParams) error
 	UpdateAgent(ctx context.Context, arg UpdateAgentParams) (NodeAgent, error)
 	UpdateAgentHeartbeat(ctx context.Context, arg UpdateAgentHeartbeatParams) error
 	UpdateBackupTargetByIDAndUser(ctx context.Context, arg UpdateBackupTargetByIDAndUserParams) error
@@ -227,6 +239,7 @@ type Querier interface {
 	// removed replica. $4 is the cumulative rx+tx byte counter.
 	UpdateContainerStateByName(ctx context.Context, arg UpdateContainerStateByNameParams) error
 	UpdateContainerStatus(ctx context.Context, arg UpdateContainerStatusParams) error
+	UpdateCronJobRun(ctx context.Context, arg UpdateCronJobRunParams) error
 	UpdateDatabaseServiceNameAndPlanByIDAndUser(ctx context.Context, arg UpdateDatabaseServiceNameAndPlanByIDAndUserParams) error
 	UpdateDatabaseServiceNameByIDAndUser(ctx context.Context, arg UpdateDatabaseServiceNameByIDAndUserParams) error
 	UpdateDatabaseServicePlanByIDAndUser(ctx context.Context, arg UpdateDatabaseServicePlanByIDAndUserParams) error
