@@ -44,19 +44,26 @@ func validHostname(d string) bool {
 }
 
 func loadServiceDomains(db *database.DB, serviceID uuid.UUID) []ServiceDomain {
-	rows, err := db.Query(
-		`SELECT id, service_id, domain, is_default, cert_type, cert_status, last_checked_at, created_at
-		 FROM service_domains WHERE service_id = $1 ORDER BY is_default DESC, created_at ASC`, serviceID)
+	rows, err := sqlcdb.New(db.DB).ListServiceDomains(context.Background(), serviceID)
 	if err != nil {
 		return nil
 	}
-	defer rows.Close()
-	out := []ServiceDomain{}
-	for rows.Next() {
-		var d ServiceDomain
-		if err := rows.Scan(&d.ID, &d.ServiceID, &d.Domain, &d.IsDefault, &d.CertType, &d.CertStatus, &d.LastCheckedAt, &d.CreatedAt); err == nil {
-			out = append(out, d)
+	out := make([]ServiceDomain, 0, len(rows))
+	for _, r := range rows {
+		d := ServiceDomain{
+			ID:         r.ID,
+			ServiceID:  r.ServiceID,
+			Domain:     r.Domain,
+			IsDefault:  r.IsDefault,
+			CertType:   r.CertType,
+			CertStatus: r.CertStatus,
+			CreatedAt:  r.CreatedAt,
 		}
+		if r.LastCheckedAt.Valid {
+			t := r.LastCheckedAt.Time
+			d.LastCheckedAt = &t
+		}
+		out = append(out, d)
 	}
 	return out
 }
@@ -104,22 +111,20 @@ func dnsLabel(name string) string {
 // base domain; spread services union every eligible node's base domain.
 // Local services get nothing — there is no instance-level base domain yet.
 func serviceAutoDomains(db *database.DB, serviceID uuid.UUID) []string {
-	var name string
-	var nodeID sql.NullString
-	var spread bool
-	if err := db.QueryRow(
-		`SELECT name, node_id, COALESCE(spread, false) FROM services WHERE id = $1`, serviceID,
-	).Scan(&name, &nodeID, &spread); err != nil {
+	ctx := context.Background()
+	q := sqlcdb.New(db.DB)
+	brief, err := q.GetServicePlacementBrief(ctx, serviceID)
+	if err != nil {
 		return nil
 	}
-	label := dnsLabel(name)
+	label := dnsLabel(brief.Name)
 	if label == "" {
 		return nil
 	}
 
 	var bases []string
-	ctx := context.Background()
-	q := sqlcdb.New(db.DB)
+	nodeID := brief.NodeID
+	spread := brief.Spread
 	switch {
 	case nodeID.Valid && nodeID.String != "":
 		if a, err := q.GetAgent(ctx, nodeID.String); err == nil && a.DefaultDomain != "" {
@@ -142,24 +147,25 @@ func serviceAutoDomains(db *database.DB, serviceID uuid.UUID) []string {
 // syncDefaultDomain writes the is_default row back to services.domain so
 // legacy reads (CLI tables, public_url) keep working.
 func syncDefaultDomain(db *database.DB, serviceID uuid.UUID) {
-	var domain string
-	err := db.QueryRow(
-		`SELECT domain FROM service_domains WHERE service_id = $1 AND is_default`, serviceID).Scan(&domain)
+	ctx := context.Background()
+	q := sqlcdb.New(db.DB)
+	domain, err := q.GetServiceDomainDefault(ctx, serviceID)
 	if err == sql.ErrNoRows {
-		err = db.QueryRow(
-			`SELECT domain FROM service_domains WHERE service_id = $1 ORDER BY created_at ASC LIMIT 1`, serviceID).Scan(&domain)
+		domain, err = q.GetServiceDomainFirst(ctx, serviceID)
 	}
 	if err == sql.ErrNoRows {
 		domain = ""
 	}
-	_, _ = db.Exec(`UPDATE services SET domain = $1 WHERE id = $2`, domain, serviceID)
+	_ = q.SetServiceLegacyDomain(ctx, sqlcdb.SetServiceLegacyDomainParams{Domain: domain, ID: serviceID})
 }
 
 // serviceAccess loads the maintenance/basic-auth columns for the runtime spec.
 func serviceAccess(db *database.DB, serviceID uuid.UUID) (maintenance bool, basicAuth string) {
-	_ = db.QueryRow(`SELECT maintenance_mode, basic_auth_users FROM services WHERE id = $1`, serviceID).
-		Scan(&maintenance, &basicAuth)
-	return maintenance, basicAuth
+	row, err := sqlcdb.New(db.DB).GetServiceAccess(context.Background(), serviceID)
+	if err != nil {
+		return false, ""
+	}
+	return row.MaintenanceMode, row.BasicAuthUsers
 }
 
 // maintenanceURL is the redirect target for maintenance mode — the public
@@ -204,11 +210,12 @@ func basicAuthUsernames(encoded string) []string {
 // serviceWriteAccess mirrors the service update handler's access check.
 func serviceWriteAccess(c *gin.Context, db *database.DB, serviceID uuid.UUID) bool {
 	userID, _ := c.Get("user_id")
-	var ok bool
-	err := db.QueryRow(
-		`SELECT EXISTS(SELECT 1 FROM services s JOIN projects p ON s.project_id = p.id
-			WHERE s.id = $1 AND (p.owner_id = $2 OR $3::bool))`,
-		serviceID, userID, contextIsAdmin(c)).Scan(&ok)
+	uid, _ := userID.(uuid.UUID)
+	ok, err := sqlcdb.New(db.DB).ServiceWriteAccess(context.Background(), sqlcdb.ServiceWriteAccessParams{
+		ID:      serviceID,
+		OwnerID: uid,
+		Column3: contextIsAdmin(c),
+	})
 	return err == nil && ok
 }
 
@@ -255,9 +262,11 @@ func handleAddServiceDomain(c *gin.Context) {
 		return
 	}
 
+	ctx := c.Request.Context()
+	q := sqlcdb.New(db.(*database.DB).DB)
+
 	// First domain on a service becomes the default automatically.
-	var count int
-	_ = db.(*database.DB).QueryRow(`SELECT COUNT(*) FROM service_domains WHERE service_id = $1`, serviceID).Scan(&count)
+	count, _ := q.CountServiceDomains(ctx, serviceID)
 	makeDefault := req.IsDefault || count == 0
 
 	tx, err := db.(*database.DB).Begin()
@@ -266,19 +275,18 @@ func handleAddServiceDomain(c *gin.Context) {
 		return
 	}
 	defer tx.Rollback()
+	qtx := q.WithTx(tx)
 	if makeDefault {
-		if _, err := tx.Exec(`UPDATE service_domains SET is_default = false WHERE service_id = $1`, serviceID); err != nil {
+		if err := qtx.ClearServiceDomainDefault(ctx, serviceID); err != nil {
 			respondError(c, http.StatusInternalServerError, "INTERNAL", "Failed to add domain")
 			return
 		}
 	}
-	var inserted ServiceDomain
-	err = tx.QueryRow(
-		`INSERT INTO service_domains (service_id, domain, is_default)
-		 VALUES ($1, $2, $3)
-		 RETURNING id, service_id, domain, is_default, cert_type, cert_status, created_at`,
-		serviceID, domain, makeDefault).
-		Scan(&inserted.ID, &inserted.ServiceID, &inserted.Domain, &inserted.IsDefault, &inserted.CertType, &inserted.CertStatus, &inserted.CreatedAt)
+	row, err := qtx.CreateServiceDomain(ctx, sqlcdb.CreateServiceDomainParams{
+		ServiceID: serviceID,
+		Domain:    domain,
+		IsDefault: makeDefault,
+	})
 	if err != nil {
 		if strings.Contains(err.Error(), "duplicate") || strings.Contains(err.Error(), "unique") {
 			respondError(c, http.StatusConflict, "CONFLICT", "Domain already attached to this service")
@@ -292,7 +300,15 @@ func handleAddServiceDomain(c *gin.Context) {
 		return
 	}
 	syncDefaultDomain(db.(*database.DB), serviceID)
-	c.JSON(http.StatusCreated, gin.H{"domain": inserted})
+	c.JSON(http.StatusCreated, gin.H{"domain": ServiceDomain{
+		ID:         row.ID,
+		ServiceID:  row.ServiceID,
+		Domain:     row.Domain,
+		IsDefault:  row.IsDefault,
+		CertType:   row.CertType,
+		CertStatus: row.CertStatus,
+		CreatedAt:  row.CreatedAt,
+	}})
 }
 
 func handleDeleteServiceDomain(c *gin.Context) {
@@ -315,9 +331,8 @@ func handleDeleteServiceDomain(c *gin.Context) {
 		respondError(c, http.StatusBadRequest, "VALIDATION", "Invalid domain ID")
 		return
 	}
-	res, err := db.(*database.DB).Exec(
-		`DELETE FROM service_domains WHERE id = $1 AND service_id = $2`, domainID, serviceID)
-	affected, _ := res.RowsAffected()
+	affected, err := sqlcdb.New(db.(*database.DB).DB).DeleteServiceDomain(
+		c.Request.Context(), sqlcdb.DeleteServiceDomainParams{ID: domainID, ServiceID: serviceID})
 	if err != nil || affected == 0 {
 		respondError(c, http.StatusNotFound, "NOT_FOUND", "Domain not found")
 		return
@@ -346,14 +361,12 @@ func handleSetDefaultDomain(c *gin.Context) {
 		respondError(c, http.StatusBadRequest, "VALIDATION", "Invalid domain ID")
 		return
 	}
-	res, err := db.(*database.DB).Exec(
-		`UPDATE service_domains SET is_default = (id = $1) WHERE service_id = $2`,
-		domainID, serviceID)
+	affected, err := sqlcdb.New(db.(*database.DB).DB).SetServiceDomainDefault(
+		c.Request.Context(), sqlcdb.SetServiceDomainDefaultParams{ID: domainID, ServiceID: serviceID})
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, "INTERNAL", "Failed to set default domain")
 		return
 	}
-	affected, _ := res.RowsAffected()
 	if affected == 0 {
 		respondError(c, http.StatusNotFound, "NOT_FOUND", "Domain not found")
 		return
@@ -421,7 +434,7 @@ func handleCheckServiceDomains(c *gin.Context) {
 			r.Status = "ok"
 		}
 		results = append(results, r)
-		_, _ = dbh.Exec(`UPDATE service_domains SET last_checked_at = NOW() WHERE id = $1`, d.ID)
+		_ = sqlcdb.New(dbh.DB).TouchServiceDomainChecked(c.Request.Context(), d.ID)
 	}
 	c.JSON(http.StatusOK, gin.H{"domains": results})
 }

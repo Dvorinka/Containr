@@ -537,7 +537,7 @@ and wired refs, one click or one CLI call.
   workspace, CLI `environments` + MCP parity. Per-env vars/domains ride the
   service's own scope (one env per service); promote ships via preview
   promote.
-- [ ] **sqlc port** — ~140 raw `database/sql` sites → `sqlc/queries/`.
+- [ ] **sqlc port** — ~300 raw `database/sql` sites → `sqlc/queries/`. Done in tranches (dynamic queries stay raw): metrics storage + service domains ported.
 - [ ] **Tests** — canvas/wizard frontend coverage, deployment/template/
   webhook table tests, Playwright e2e golden path.
 - [x] **First-run wizard** — public `GET /setup/status` + authed

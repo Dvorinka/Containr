@@ -13,12 +13,17 @@ import (
 )
 
 type Querier interface {
+	// Portable bucket bucketing (no TimescaleDB): floor epoch seconds into
+	// bucket-sized buckets, then back to timestamptz.
+	AggregateNodeMetrics(ctx context.Context, arg AggregateNodeMetricsParams) ([]AggregateNodeMetricsRow, error)
+	ClearServiceDomainDefault(ctx context.Context, serviceID uuid.UUID) error
 	ClearServiceNodePins(ctx context.Context, nodeID sql.NullString) (int64, error)
 	CompleteCommand(ctx context.Context, arg CompleteCommandParams) (AgentCommand, error)
 	CountDatabaseServicesByUserAndName(ctx context.Context, arg CountDatabaseServicesByUserAndNameParams) (int64, error)
 	CountDatabasesUsingBackupTarget(ctx context.Context, targetID sql.NullString) (int64, error)
 	CountEnvironmentServices(ctx context.Context, environmentID uuid.UUID) (int64, error)
 	CountProjectsByUser(ctx context.Context, arg CountProjectsByUserParams) (int64, error)
+	CountServiceDomains(ctx context.Context, serviceID uuid.UUID) (int64, error)
 	CountServicesByProjectAndName(ctx context.Context, arg CountServicesByProjectAndNameParams) (int64, error)
 	CountUnreadNotificationsByUser(ctx context.Context, userID uuid.UUID) (int64, error)
 	CreateAgent(ctx context.Context, arg CreateAgentParams) (NodeAgent, error)
@@ -33,6 +38,7 @@ type Querier interface {
 	CreateNotification(ctx context.Context, arg CreateNotificationParams) error
 	CreateOutboundWebhook(ctx context.Context, arg CreateOutboundWebhookParams) error
 	CreateProject(ctx context.Context, arg CreateProjectParams) (Project, error)
+	CreateServiceDomain(ctx context.Context, arg CreateServiceDomainParams) (CreateServiceDomainRow, error)
 	CreateServiceFromTemplate(ctx context.Context, arg CreateServiceFromTemplateParams) error
 	CreateUserInvite(ctx context.Context, arg CreateUserInviteParams) (UserInvite, error)
 	CreateUserTemplate(ctx context.Context, arg CreateUserTemplateParams) error
@@ -49,6 +55,7 @@ type Querier interface {
 	DeleteProjectByID(ctx context.Context, projectID uuid.UUID) (int64, error)
 	DeleteProjectEnvironment(ctx context.Context, arg DeleteProjectEnvironmentParams) error
 	DeleteServiceContainersOnAgent(ctx context.Context, arg DeleteServiceContainersOnAgentParams) error
+	DeleteServiceDomain(ctx context.Context, arg DeleteServiceDomainParams) (int64, error)
 	DeleteUserInvite(ctx context.Context, id uuid.UUID) error
 	DeleteUserTemplate(ctx context.Context, arg DeleteUserTemplateParams) (int64, error)
 	GetActiveAgentAuthTokenByHash(ctx context.Context, tokenHash string) (AgentAuthToken, error)
@@ -72,6 +79,10 @@ type Querier interface {
 	GetProjectOwnerByID(ctx context.Context, projectID uuid.UUID) (uuid.UUID, error)
 	GetProjectOwnerID(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	GetProjectRoleForUser(ctx context.Context, arg GetProjectRoleForUserParams) (string, error)
+	GetServiceAccess(ctx context.Context, id uuid.UUID) (GetServiceAccessRow, error)
+	GetServiceDomainDefault(ctx context.Context, serviceID uuid.UUID) (string, error)
+	GetServiceDomainFirst(ctx context.Context, serviceID uuid.UUID) (string, error)
+	GetServicePlacementBrief(ctx context.Context, id uuid.UUID) (GetServicePlacementBriefRow, error)
 	GetServiceTemplateByID(ctx context.Context, id string) (ServiceTemplate, error)
 	GetUserInviteByTokenHash(ctx context.Context, tokenHash string) (UserInvite, error)
 	GetUserTokenByHash(ctx context.Context, tokenHash string) (UserToken, error)
@@ -93,6 +104,8 @@ type Querier interface {
 	ListDatabaseServicesByUser(ctx context.Context, userID string) ([]DatabaseService, error)
 	ListDueDatabaseBackups(ctx context.Context) ([]ListDueDatabaseBackupsRow, error)
 	ListEnabledOutboundWebhooks(ctx context.Context) ([]OutboundWebhook, error)
+	ListInstanceMetrics(ctx context.Context, arg ListInstanceMetricsParams) ([]ListInstanceMetricsRow, error)
+	ListNodeMetrics(ctx context.Context, arg ListNodeMetricsParams) ([]ListNodeMetricsRow, error)
 	ListNotificationChannelsByUser(ctx context.Context, userID uuid.UUID) ([]NotificationChannel, error)
 	ListNotificationsByUser(ctx context.Context, arg ListNotificationsByUserParams) ([]Notification, error)
 	ListOutboundWebhooksByUser(ctx context.Context, userID uuid.UUID) ([]OutboundWebhook, error)
@@ -112,6 +125,8 @@ type Querier interface {
 	// Distinct agents holding inventory rows for a service.
 	ListServiceAgents(ctx context.Context, serviceID string) ([]string, error)
 	ListServiceContainers(ctx context.Context, serviceID string) ([]ListServiceContainersRow, error)
+	ListServiceDomains(ctx context.Context, serviceID uuid.UUID) ([]ServiceDomain, error)
+	ListServiceMetrics(ctx context.Context, arg ListServiceMetricsParams) ([]ListServiceMetricsRow, error)
 	ListServiceTemplatesByCategoryForUser(ctx context.Context, arg ListServiceTemplatesByCategoryForUserParams) ([]ServiceTemplate, error)
 	ListServiceTemplatesForUser(ctx context.Context, ownerID uuid.NullUUID) ([]ServiceTemplate, error)
 	ListUserInvites(ctx context.Context) ([]UserInvite, error)
@@ -129,6 +144,7 @@ type Querier interface {
 	RevokeAgentAuthToken(ctx context.Context, id uuid.UUID) (AgentAuthToken, error)
 	RevokeUserToken(ctx context.Context, arg RevokeUserTokenParams) (int64, error)
 	ScrubCommandPayload(ctx context.Context, arg ScrubCommandPayloadParams) error
+	ServiceWriteAccess(ctx context.Context, arg ServiceWriteAccessParams) (bool, error)
 	SetAgentDefaultDomain(ctx context.Context, arg SetAgentDefaultDomainParams) error
 	SetAgentSchedulable(ctx context.Context, arg SetAgentSchedulableParams) error
 	SetAgentTags(ctx context.Context, arg SetAgentTagsParams) error
@@ -142,7 +158,10 @@ type Querier interface {
 	SetDatabaseServiceStatusByID(ctx context.Context, arg SetDatabaseServiceStatusByIDParams) error
 	SetDatabaseServiceStatusByIDAndUser(ctx context.Context, arg SetDatabaseServiceStatusByIDAndUserParams) error
 	SetProjectApproved(ctx context.Context, arg SetProjectApprovedParams) (int64, error)
+	SetServiceDomainDefault(ctx context.Context, arg SetServiceDomainDefaultParams) (int64, error)
+	SetServiceLegacyDomain(ctx context.Context, arg SetServiceLegacyDomainParams) error
 	TouchAgentAuthToken(ctx context.Context, tokenHash string) error
+	TouchServiceDomainChecked(ctx context.Context, id uuid.UUID) error
 	TouchUserToken(ctx context.Context, id uuid.UUID) error
 	UpdateAgent(ctx context.Context, arg UpdateAgentParams) (NodeAgent, error)
 	UpdateAgentHeartbeat(ctx context.Context, arg UpdateAgentHeartbeatParams) error
@@ -164,7 +183,10 @@ type Querier interface {
 	UpdateUserTemplate(ctx context.Context, arg UpdateUserTemplateParams) (int64, error)
 	UpdateWebhookDeliveryResult(ctx context.Context, arg UpdateWebhookDeliveryResultParams) error
 	UpsertEnvironmentVariable(ctx context.Context, arg UpsertEnvironmentVariableParams) error
+	UpsertInstanceMetrics(ctx context.Context, arg UpsertInstanceMetricsParams) error
+	UpsertNodeMetrics(ctx context.Context, arg UpsertNodeMetricsParams) error
 	UpsertServiceContainer(ctx context.Context, arg UpsertServiceContainerParams) error
+	UpsertServiceMetrics(ctx context.Context, arg UpsertServiceMetricsParams) error
 	UpsertServiceTemplate(ctx context.Context, arg UpsertServiceTemplateParams) error
 }
 
