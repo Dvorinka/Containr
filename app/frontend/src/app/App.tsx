@@ -28,6 +28,7 @@ import {
 } from '@/features/secondary/pages';
 import { NodeDetailPage } from '@/features/nodes/NodeDetailPage';
 import { AcceptInvitePage, SignInPage, SignUpPage } from '@/features/auth/pages';
+import { SetupWizardPage } from '@/features/setup/SetupWizardPage';
 import { useAuthSession } from '@/lib/use-auth-session';
 import { useDemoMode } from '@/lib/demo-mode';
 import { getCurrentUserProfile } from '@/lib/api-client';
@@ -138,6 +139,7 @@ export default function App() {
         <Route path="/auth/sign-in" element={<SignInPage />} />
         <Route path="/auth/sign-up" element={<SignUpPage />} />
         <Route path="/auth/accept-invite" element={<AcceptInvitePage />} />
+        <Route path="/setup" element={<SetupWizardPage />} />
 
         {/* Public browsing — approved projects, templates, docs. */}
         {/* Project workspace renders outside the shell — fullscreen canvas, no nav chrome */}

@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
@@ -36,6 +36,7 @@ import {
   getCurrentUserProfile,
   getUpgradeStatus,
   pingServer,
+  getSetupStatus,
   listNotifications,
   markAllNotificationsRead,
   markNotificationRead,
@@ -185,6 +186,13 @@ export function PlatformShell() {
     enabled: !isDemoMode && signedIn,
     refetchInterval: 30_000,
   });
+  // Fresh installs get routed through the setup wizard until the flag lands.
+  const setupQuery = useQuery({
+    queryKey: ['setup-status'],
+    queryFn: getSetupStatus,
+    enabled: !isDemoMode && signedIn,
+    staleTime: 60_000,
+  });
   const markReadMutation = useMutation({
     mutationFn: (id: string) => markNotificationRead(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['shell-notifications'] }),
@@ -246,6 +254,10 @@ export function PlatformShell() {
       {initials}
     </div>
   );
+
+  if (!isDemoMode && signedIn && setupQuery.data?.needs_setup) {
+    return <Navigate to="/setup" replace />;
+  }
 
   return (
     <div className="app-shell min-h-screen">

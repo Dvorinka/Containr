@@ -537,8 +537,12 @@ and wired refs, one click or one CLI call.
 - [ ] **sqlc port** — ~140 raw `database/sql` sites → `sqlc/queries/`.
 - [ ] **Tests** — canvas/wizard frontend coverage, deployment/template/
   webhook table tests, Playwright e2e golden path.
-- [ ] **First-run wizard** — admin → GitHub App (manifest flow from
-  Phase G makes this self-serve) → Tunnel → done.
+- [x] **First-run wizard** — public `GET /setup/status` + authed
+  `POST /setup/complete`; `/setup` page steps admin account → GitHub App
+  manifest flow (callback returns to the wizard via a session marker) →
+  optional Cloudflare tunnel token → done. Shell redirects signed-in
+  users to `/setup` while `needs_setup`; installs with existing projects
+  auto-complete so nobody gets nagged retroactively.
 - [ ] **Self-upgrade loop verification**, docs freshness, v1.0.0 release.
 
 ## 11. Deliberately not imported from dflow

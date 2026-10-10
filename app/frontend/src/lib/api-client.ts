@@ -499,6 +499,23 @@ export async function pingServer(): Promise<void> {
   }
 }
 
+export type SetupStatus = {
+  has_users: boolean;
+  setup_completed: boolean;
+  needs_setup: boolean;
+  has_github_app: boolean;
+  has_tunnel: boolean;
+  signup_enabled: boolean;
+};
+
+export async function getSetupStatus(): Promise<SetupStatus> {
+  return requestJson<SetupStatus>('/setup/status');
+}
+
+export async function completeSetup(): Promise<void> {
+  await requestJson('/setup/complete', { method: 'POST', body: JSON.stringify({}) });
+}
+
 export function getAgentPublicBaseUrl(): string {
   return `${API_ROOT}/api/agents`;
 }
