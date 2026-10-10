@@ -226,7 +226,7 @@ export function WebhooksPage() {
         </div>
       </div>
 
-      <div className="w-full px-8 py-6 space-y-4 max-w-4xl">
+      <div className="w-full px-4 py-6 sm:px-8 space-y-4 max-w-4xl">
         {secret && (
           <div className="panel-soft p-4 flex items-center gap-3">
             <div className="flex-1 min-w-0">

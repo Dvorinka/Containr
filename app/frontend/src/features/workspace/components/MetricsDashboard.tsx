@@ -1,306 +1,205 @@
-import { useEffect, useState } from 'react';
-import {
-  LineMetricChart,
-  DualLineChart,
-  DonutChart,
-} from '@/shared/components';
-
-interface MetricData {
-  cpu: number[];
-  ram: number;
-  ramUsed: string;
-  cache: number;
-  cacheBreakdown: { cache: number; nonCache: number; total: number };
-  users: number[];
-  performance: number[];
-  performanceAlt: number[];
-  upSpeed: number;
-  downSpeed: number;
-}
+import { useEffect, useRef, useState } from 'react';
+import { useQueries } from '@tanstack/react-query';
+import { Cpu, HardDrive, ArrowDownUp, Boxes } from 'lucide-react';
+import { LineMetricChart, DonutChart } from '@/shared/components';
+import { getServiceMetrics, type ServiceMetrics } from '@/lib/api-client';
+import { formatBytes } from '@/lib/time';
 
 interface MetricsDashboardProps {
-  projectId?: string;
-  isRunning?: boolean;
-  onStop?: () => void;
-  onRestart?: () => void;
+  services: { id: string; name: string; status: string }[];
+  isDemoMode?: boolean;
 }
 
-function getRandom(min: number, max: number) {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
+const cardStyle: React.CSSProperties = {
+  background: 'var(--surface-card, rgba(255,255,255,0.03))',
+  border: '1px solid var(--border-subtle, rgba(255,255,255,0.09))',
+  borderRadius: '14px',
+  padding: '18px 20px',
+};
+
+function healthLabel(pct: number): { text: string; color: string } {
+  if (pct < 50) return { text: 'Good', color: 'var(--success, #5ee6a0)' };
+  if (pct < 80) return { text: 'Average', color: 'var(--warning, #f2c94c)' };
+  return { text: 'High', color: 'var(--error, #ff6b6b)' };
 }
 
-function generateInitialData(): MetricData {
-  return {
-    cpu: Array.from({ length: 24 }, () => getRandom(10, 45)),
-    ram: getRandom(50, 85),
-    ramUsed: '5.4 GB',
-    cache: 352,
-    cacheBreakdown: { cache: 212, nonCache: 85.5, total: 1750 },
-    users: Array.from({ length: 15 }, () => getRandom(40, 110)),
-    performance: Array.from({ length: 12 }, () => getRandom(70, 95)),
-    performanceAlt: Array.from({ length: 12 }, () => getRandom(60, 85)),
-    upSpeed: 10.4,
-    downSpeed: 5.2,
-  };
-}
+export function MetricsDashboard({ services, isDemoMode = false }: MetricsDashboardProps) {
+  const liveServices = services.filter((s) => s.status === 'running');
 
-export function MetricsDashboard({
-  isRunning = true,
-}: MetricsDashboardProps) {
-  const [data, setData] = useState<MetricData>(generateInitialData);
-  const [timeRange, setTimeRange] = useState<'day' | 'month' | 'year'>('day');
+  const metricsQueries = useQueries({
+    queries: liveServices.map((service) => ({
+      queryKey: ['service-metrics', service.id],
+      queryFn: () => getServiceMetrics(service.id),
+      enabled: !isDemoMode,
+      refetchInterval: 5000,
+      retry: false,
+    })),
+  });
 
+  const samples = metricsQueries
+    .map((q) => q.data)
+    .filter((m): m is ServiceMetrics => Boolean(m) && m!.status === 'ok');
+
+  const totalCpu = samples.reduce((sum, m) => sum + m.cpu_percent, 0);
+  const avgCpu = samples.length > 0 ? totalCpu / samples.length : 0;
+  const memUsed = samples.reduce((sum, m) => sum + m.memory_usage_bytes, 0);
+  const memLimit = samples.reduce((sum, m) => sum + m.memory_limit_bytes, 0);
+  const memPct = memLimit > 0 ? (memUsed / memLimit) * 100 : 0;
+  const netRx = samples.reduce((sum, m) => sum + m.network_rx_bytes, 0);
+  const netTx = samples.reduce((sum, m) => sum + m.network_tx_bytes, 0);
+  const instanceCount = samples.reduce((sum, m) => sum + m.instances.length, 0);
+
+  // Rolling history for the sparklines — accumulated from real samples.
+  const [cpuHistory, setCpuHistory] = useState<number[]>([]);
+  const [netHistory, setNetHistory] = useState<{ rx: number[]; tx: number[] }>({ rx: [], tx: [] });
+  const lastNetRef = useRef<{ rx: number; tx: number; at: number } | null>(null);
+
+  const samplesKey = samples.map((s) => `${s.service_id}:${s.collected_at}`).join('|');
+  const avgCpuRef = avgCpu;
+  const netRxRef = netRx;
+  const netTxRef = netTx;
   useEffect(() => {
-    if (!isRunning) return;
+    if (!samplesKey) return;
+    const now = Date.now();
+    const prev = lastNetRef.current;
+    const elapsed = prev ? Math.max(1, (now - prev.at) / 1000) : 0;
+    const rxRate = prev && elapsed > 0 ? Math.max(0, (netRxRef - prev.rx) / elapsed) : 0;
+    const txRate = prev && elapsed > 0 ? Math.max(0, (netTxRef - prev.tx) / elapsed) : 0;
+    lastNetRef.current = { rx: netRxRef, tx: netTxRef, at: now };
+    setCpuHistory((h) => [...h, Math.min(100, avgCpuRef)].slice(-24));
+    setNetHistory((h) => ({ rx: [...h.rx, rxRate].slice(-24), tx: [...h.tx, txRate].slice(-24) }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the samples' collected_at signature
+  }, [samplesKey]);
 
-    const interval = setInterval(() => {
-      setData((prev) => {
-        const newCpu = [...prev.cpu.slice(1), getRandom(10, 45)];
-        const newUsers = [...prev.users.slice(1), getRandom(60, 110)];
-        const newPerf = [...prev.performance.slice(1), getRandom(82, 99)];
-        const newPerfAlt = [...prev.performanceAlt.slice(1), getRandom(60, 85)];
-
-        return {
-          ...prev,
-          cpu: newCpu,
-          ram: getRandom(50, 85),
-          ramUsed: `${(8 * (prev.ram / 100)).toFixed(1)} GB`,
-          users: newUsers,
-          performance: newPerf,
-          performanceAlt: newPerfAlt,
-          upSpeed: parseFloat((Math.random() * 5 + 8).toFixed(1)),
-          downSpeed: parseFloat((Math.random() * 3 + 4).toFixed(1)),
-        };
-      });
-    }, 2000);
-
-    return () => clearInterval(interval);
-  }, [isRunning]);
-
-  const currentCpu = data.cpu[data.cpu.length - 1];
-  const currentUsers = data.users[data.users.length - 1];
-  const currentPerf = data.performance[data.performance.length - 1];
+  const cpuHealth = healthLabel(avgCpu);
+  const memHealth = healthLabel(memPct);
+  const reporting = samples.length;
+  const noData = !isDemoMode && liveServices.length > 0 && reporting === 0;
 
   return (
     <div>
-      {/* Metrics Header - self.html exact match */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-        <span style={{ fontSize: '15px', fontWeight: 700, color: '#e8e9f0' }}>Metrics</span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <button style={{
-            height: '32px',
-            padding: '0 12px',
-            borderRadius: '9px',
-            border: '1px solid rgba(255,255,255,0.09)',
-            background: 'rgba(255,255,255,0.04)',
-            color: '#9295a4',
-            fontSize: '12.5px',
-            fontWeight: 500,
-            fontFamily: 'inherit',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-          }}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
-            </svg>
-            Filter
-          </button>
-          <div className="pill-group">
-            {(['day', 'month', 'year'] as const).map((range) => (
-              <div
-                key={range}
-                className={`pill ${timeRange === range ? 'active' : ''}`}
-                onClick={() => setTimeRange(range)}
-              >
-                {range.charAt(0).toUpperCase() + range.slice(1)}
-              </div>
-            ))}
+      <div className="flex items-center justify-between mb-4">
+        <span className="text-[15px] font-bold text-[var(--text-primary)]">Metrics</span>
+        <span className="text-xs text-[var(--text-muted)]">
+          {isDemoMode
+            ? 'sample data'
+            : reporting > 0
+              ? `${reporting} service${reporting === 1 ? '' : 's'} reporting · every 5s`
+              : 'no running services'}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {/* CPU */}
+        <div style={cardStyle}>
+          <div className="flex items-center gap-2.5 mb-3">
+            <span className="card-icon"><Cpu size={16} /></span>
+            <span className="text-sm font-semibold text-[var(--text-primary)]">CPU Usage</span>
           </div>
+          <div className="text-4xl font-black tracking-tight text-[var(--text-primary)]">
+            {avgCpu.toFixed(1)}%
+          </div>
+          <div className="mt-1 text-xs text-[var(--text-tertiary)]">
+            <span style={{ color: cpuHealth.color, fontWeight: 700 }}>{cpuHealth.text}</span>
+            {' '}avg across running services
+          </div>
+          <div style={{ height: 64, marginTop: 12 }}>
+            {cpuHistory.length > 1 ? (
+              <LineMetricChart data={cpuHistory} color="var(--accent-primary)" fillOpacity={0.15} showArea height={64} />
+            ) : (
+              <div className="h-full rounded bg-[var(--surface-muted)] opacity-40" />
+            )}
+          </div>
+        </div>
+
+        {/* Memory */}
+        <div style={cardStyle}>
+          <div className="flex items-center gap-2.5 mb-3">
+            <span className="card-icon"><HardDrive size={16} /></span>
+            <span className="text-sm font-semibold text-[var(--text-primary)]">Memory</span>
+          </div>
+          <div className="text-4xl font-black tracking-tight text-[var(--text-primary)]">
+            {memPct.toFixed(0)}%
+          </div>
+          <div className="mt-1 text-xs text-[var(--text-tertiary)]">
+            <span style={{ color: memHealth.color, fontWeight: 700 }}>{memHealth.text}</span>
+            {' '}{formatBytes(memUsed)} used
+          </div>
+          <div className="mt-2 flex justify-center">
+            <DonutChart percentage={memPct} size={110} thickness={12} />
+          </div>
+          <div className="mt-1 text-center text-xs text-[var(--text-tertiary)] mono">
+            {formatBytes(memUsed)} / {memLimit > 0 ? formatBytes(memLimit) : '∞'}
+          </div>
+        </div>
+
+        {/* Network */}
+        <div style={cardStyle}>
+          <div className="flex items-center gap-2.5 mb-3">
+            <span className="card-icon"><ArrowDownUp size={16} /></span>
+            <span className="text-sm font-semibold text-[var(--text-primary)]">Network</span>
+          </div>
+          <div className="text-4xl font-black tracking-tight text-[var(--text-primary)]">
+            {formatBytes(netRx)}
+          </div>
+          <div className="mt-1 text-xs text-[var(--text-tertiary)]">
+            <span style={{ color: 'var(--accent-primary)', fontWeight: 700 }}>RX</span>
+            {' '}total · TX {formatBytes(netTx)}
+          </div>
+          <div style={{ height: 64, marginTop: 12 }}>
+            {netHistory.rx.length > 1 ? (
+              <LineMetricChart data={netHistory.rx} color="#7ab8ff" fillOpacity={0.12} showArea height={64} />
+            ) : (
+              <div className="h-full rounded bg-[var(--surface-muted)] opacity-40" />
+            )}
+          </div>
+          <div className="mt-2 text-[11px] text-[var(--text-muted)] mono">
+            {netHistory.rx.length > 0
+              ? `↓ ${formatBytes(netHistory.rx[netHistory.rx.length - 1])}/s · ↑ ${formatBytes(netHistory.tx[netHistory.tx.length - 1])}/s`
+              : 'rate accumulating…'}
+          </div>
+        </div>
+
+        {/* Instances */}
+        <div style={cardStyle}>
+          <div className="flex items-center gap-2.5 mb-3">
+            <span className="card-icon"><Boxes size={16} /></span>
+            <span className="text-sm font-semibold text-[var(--text-primary)]">Instances</span>
+          </div>
+          <div className="text-4xl font-black tracking-tight text-[var(--text-primary)]">
+            {isDemoMode ? liveServices.length : instanceCount}
+          </div>
+          <div className="mt-1 text-xs text-[var(--text-tertiary)]">
+            <span style={{ color: 'var(--success, #5ee6a0)', fontWeight: 700 }}>Running</span>
+            {' '}containers across {liveServices.length} service{liveServices.length === 1 ? '' : 's'}
+          </div>
+          <ul className="mt-3 space-y-1.5">
+            {liveServices.slice(0, 4).map((service, i) => {
+              const m = samples.find((s) => s.service_id === service.id);
+              return (
+                <li key={service.id} className="flex items-center justify-between text-xs">
+                  <span className="truncate text-[var(--text-secondary)]">
+                    <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-[var(--success,#5ee6a0)] align-middle" />
+                    {service.name}
+                  </span>
+                  <span className="mono text-[var(--text-muted)]">
+                    {m ? `${m.cpu_percent.toFixed(1)}%` : i < 3 ? '—' : ''}
+                  </span>
+                </li>
+              );
+            })}
+            {liveServices.length > 4 && (
+              <li className="text-[11px] text-[var(--text-muted)]">+{liveServices.length - 4} more</li>
+            )}
+          </ul>
         </div>
       </div>
 
-      {/* Row 1: CPU, RAM, Cache - self.html exact: 13px gap */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.95fr', gap: '13px', marginBottom: '13px' }}>
-        {/* CPU Card */}
-        <div className="card">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-            <div className="card-icon"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg></div>
-            <span style={{ fontSize: '14px', fontWeight: 600, color: '#e8e9f0' }}>CPU Usage</span>
-          </div>
-          <div style={{ fontSize: '38px', fontWeight: 900, letterSpacing: '-1.5px', lineHeight: 1, color: '#e8e9f0' }}>{currentCpu}%</div>
-          <div style={{ fontSize: '12px', color: '#6b6e7d', marginTop: '4px' }}>
-            <span style={{ color: currentCpu < 50 ? '#5ee6a0' : currentCpu < 75 ? '#f2c94c' : '#b4e34a', fontWeight: 700 }}>
-              {currentCpu < 50 ? 'Good' : currentCpu < 75 ? 'Average' : 'High'}
-            </span>{' '}
-            Daily usage
-          </div>
-          <div style={{ height: 76, margin: '12px 0 6px' }}>
-            <LineMetricChart data={data.cpu} color="#b4e34a" height={76} />
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '4px' }}>
-            <span style={{ fontSize: '13px', color: '#6b6e7d', fontWeight: 500, cursor: 'pointer' }}>Details</span>
-            <div className="arrow-btn">
-              <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
-            </div>
-          </div>
-        </div>
-
-        {/* RAM Card */}
-        <div className="card">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-            <div className="card-icon"><svg viewBox="0 0 24 24"><rect x="2" y="8" width="20" height="8" rx="2"/><path d="M6 8V6M10 8V6M14 8V6M18 8V6M6 16v2M18 16v2"/></svg></div>
-            <span style={{ fontSize: '14px', fontWeight: 600, color: '#e8e9f0' }}>RAM Usage</span>
-          </div>
-          <div style={{ fontSize: '38px', fontWeight: 900, letterSpacing: '-1.5px', lineHeight: 1, color: '#e8e9f0' }}>{data.ram}%</div>
-          <div style={{ fontSize: '12px', color: '#6b6e7d', marginTop: '4px' }}>
-            <span style={{ color: data.ram < 60 ? '#5ee6a0' : '#f2c94c', fontWeight: 700 }}>
-              {data.ram < 60 ? 'Good' : 'Average'}
-            </span>{' '}
-            Daily usage
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', margin: '10px 0 4px', position: 'relative' }}>
-            <DonutChart percent={data.ram} color="#f2c94c" size={160} thickness={16} />
-            <div style={{ position: 'absolute', bottom: 14, textAlign: 'center' }}>
-              <div style={{ fontSize: '10.5px', color: '#6b6e7d', marginBottom: 1 }}>Used</div>
-              <div style={{ fontSize: '12.5px', fontWeight: 700, color: '#e8e9f0' }}>{data.ramUsed} / 8GB</div>
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '4px' }}>
-            <span style={{ fontSize: '13px', color: '#6b6e7d', fontWeight: 500, cursor: 'pointer' }}>Details</span>
-            <div className="arrow-btn">
-              <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
-            </div>
-          </div>
-        </div>
-
-        {/* Cache Card */}
-        <div className="card">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-            <div className="card-icon"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></div>
-            <span style={{ fontSize: '14px', fontWeight: 600, color: '#e8e9f0' }}>Cache</span>
-          </div>
-          <div style={{ fontSize: '38px', fontWeight: 900, letterSpacing: '-1.5px', lineHeight: 1, color: '#e8e9f0' }}>{data.cache} MB</div>
-          <div style={{ fontSize: '12px', color: '#6b6e7d', marginTop: '4px' }}>
-            <span style={{ color: '#f2c94c', fontWeight: 700 }}>220MB Average</span>{' '}
-            cached images and files
-          </div>
-
-          {/* Segmented Bar */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', margin: '16px 0 15px', height: '32px' }}>
-            <div className="cache-seg" style={{ width: '43%', background: '#ff6b5b', borderRadius: '10px 4px 4px 10px' }} />
-            <div className="cache-seg" style={{ width: '13%', background: '#8c6ef0', borderRadius: '5px' }} />
-            <div className="cache-seg" style={{ flex: 1, background: 'rgba(255,255,255,0.07)', borderRadius: '4px 10px 10px 4px' }} />
-          </div>
-
-          {/* Stats row */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr auto 1fr', gap: 0, alignItems: 'stretch' }}>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#6b6e7d', marginBottom: '5px' }}>
-                <div className="stat-dot" style={{ background: '#ff6b5b' }} />
-                Cache
-              </div>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
-                <span style={{ fontSize: '15px', fontWeight: 800, color: '#e8e9f0' }}>212 MB</span>
-                <span style={{ fontSize: '11px', color: '#6b6e7d' }}>12%</span>
-              </div>
-            </div>
-            <div style={{ width: '1px', background: 'rgba(255,255,255,0.08)', margin: '0 16px' }} />
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#6b6e7d', marginBottom: '5px' }}>
-                <div className="stat-dot" style={{ background: '#8c6ef0' }} />
-                Non-Cache
-              </div>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
-                <span style={{ fontSize: '15px', fontWeight: 800, color: '#e8e9f0' }}>85.5 MB</span>
-                <span style={{ fontSize: '11px', color: '#6b6e7d' }}>4%</span>
-              </div>
-            </div>
-            <div style={{ width: '1px', background: 'rgba(255,255,255,0.08)', margin: '0 16px' }} />
-            <div>
-              <div style={{ fontSize: '11px', color: '#6b6e7d', marginBottom: '5px' }}>Total</div>
-              <div style={{ fontSize: '15px', fontWeight: 800, color: '#e8e9f0' }}>1.75 GB</div>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '16px' }}>
-            <span style={{ fontSize: '13px', color: '#6b6e7d', fontWeight: 500, cursor: 'pointer' }}>Details</span>
-            <div className="arrow-btn">
-              <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Row 2: Active Users, Performance - self.html exact: 13px gap */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '13px' }}>
-        {/* Active Users - horizontal layout */}
-        <div className="card" style={{ flexDirection: 'row', padding: 0, overflow: 'hidden' }}>
-          <div style={{ flex: 1, padding: '20px 18px 18px 20px', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-              <div className="card-icon"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
-              <span style={{ fontSize: '14px', fontWeight: 600, color: '#e8e9f0' }}>Active User</span>
-            </div>
-            <div style={{ fontSize: '36px', fontWeight: 900, letterSpacing: '-1.5px', lineHeight: 1, color: '#e8e9f0' }}>{currentUsers} K</div>
-            <div style={{ fontSize: '12px', color: '#6b6e7d', marginTop: '4px' }}>User active right now</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '12px', flexWrap: 'wrap' }}>
-              {['🇨🇳', '🇮🇩', '🇲🇲', '🇲🇾', '🇯🇵', '🇮🇳', '🇰🇷', '🇵🇭'].map((flag, i) => (
-                <span key={i} className="flag">{flag}</span>
-              ))}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 'auto', paddingTop: '14px' }}>
-              <span style={{ fontSize: '13px', color: '#6b6e7d', fontWeight: 500, cursor: 'pointer' }}>Details</span>
-              <div className="arrow-btn">
-                <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
-              </div>
-            </div>
-          </div>
-          <div style={{ width: '50%', padding: '16px 14px 46px 0', display: 'flex', alignItems: 'flex-end' }}>
-            <LineMetricChart data={data.users} color="var(--accent-primary)" fillOpacity={0.15} showArea height={130} />
-          </div>
-        </div>
-
-        {/* Performance Card */}
-        <div className="card">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-            <div className="card-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>
-            <span style={{ fontSize: '14px', fontWeight: 600, color: '#e8e9f0' }}>Performance</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px', flex: 1 }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '36px', fontWeight: 900, letterSpacing: '-1.5px', lineHeight: 1, color: '#e8e9f0' }}>{currentPerf}%</div>
-              <div style={{ fontSize: '12px', color: '#6b6e7d', marginTop: '4px' }}>
-                <span style={{ color: currentPerf > 85 ? '#5ee6a0' : '#f2c94c', fontWeight: 700 }}>
-                  {currentPerf > 85 ? 'Good' : 'Average'}
-                </span>{' '}
-                Last scan
-              </div>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
-              <div style={{ width: 134, height: 58 }}>
-                <DualLineChart data1={data.performance} data2={data.performanceAlt} height={58} />
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-end' }}>
-                <div className="speed-row" style={{ color: '#7ab8ff' }}>
-                  <svg viewBox="0 0 24 24"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 19 19 12"/></svg>
-                  <span>{data.upSpeed}</span> Mbps
-                </div>
-                <div className="speed-row" style={{ color: 'var(--accent-primary)' }}>
-                  <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 5 5 12"/></svg>
-                  <span>{data.downSpeed}</span> Mbps
-                </div>
-              </div>
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '14px' }}>
-            <span style={{ fontSize: '13px', color: '#6b6e7d', fontWeight: 500, cursor: 'pointer' }}>Check Speed</span>
-            <div className="arrow-btn">
-              <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
-            </div>
-          </div>
-        </div>
-      </div>
+      {noData && (
+        <p className="mt-3 text-xs text-[var(--text-muted)]">
+          Metrics collector is not reporting yet — check that the node agent is online.
+        </p>
+      )}
     </div>
   );
 }

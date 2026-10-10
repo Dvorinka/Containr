@@ -492,11 +492,12 @@ export function getApiBaseUrl(): string {
 
 // pingServer hits the public /health route — any HTTP response proves
 // reachability, and no auth means no 401 noise in the connectivity probe.
-export async function pingServer(): Promise<void> {
+export async function pingServer(): Promise<boolean> {
   const res = await fetch(`${API_ROOT}/health`);
   if (!res.ok) {
     throw new Error(`Server returned ${res.status}`);
   }
+  return true;
 }
 
 export type SetupStatus = {

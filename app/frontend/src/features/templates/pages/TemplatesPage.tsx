@@ -541,7 +541,7 @@ export function TemplatesPage() {
       )}
 
       {/* Main Content */}
-      <div className="w-full px-8 py-6">
+      <div className="w-full px-4 py-6 sm:px-8">
         <div className="grid grid-cols-1 xl:grid-cols-[380px_1fr] gap-6">
           {/* Template List */}
           <section className="panel overflow-hidden">
@@ -857,7 +857,11 @@ export function TemplatesPage() {
                     </div>
                   </div>
 
-                  {!signedIn ? (
+                  {sessionQuery.isPending && !isDemoMode ? (
+                    <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-4 py-5 text-center">
+                      <Loader2 size={16} className="mx-auto animate-spin text-[var(--text-muted)]" />
+                    </div>
+                  ) : !signedIn ? (
                     <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-4 py-5 text-center">
                       <p className="text-sm text-[var(--text-secondary)]">
                         Sign in to deploy this template into one of your projects.

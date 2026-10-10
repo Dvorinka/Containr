@@ -59,8 +59,12 @@ export default defineConfig({
     },
     proxy: {
       // Same-origin API path for dev - matches the nginx proxy in the shipped image
+      '/health': {
+        target: process.env.VITE_API_PROXY ?? 'http://localhost:8082',
+        changeOrigin: true,
+      },
       '/api': {
-        target: 'http://localhost:8082',
+        target: process.env.VITE_API_PROXY ?? 'http://localhost:8082',
         changeOrigin: true,
         ws: true,
       },

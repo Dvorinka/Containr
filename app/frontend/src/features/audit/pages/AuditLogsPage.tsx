@@ -85,7 +85,7 @@ export function AuditLogsPage() {
         </div>
       </div>
 
-      <div className="w-full px-8 py-6">
+      <div className="w-full px-4 py-6 sm:px-8">
         <section className="panel p-6">
           <FilterBar {...filter} />
 
@@ -140,7 +140,7 @@ export function AuditLogsPage() {
                       <td className="px-3 py-2.5 mono text-xs text-[var(--text-tertiary)] max-w-[140px] truncate" title={log.resourceId}>
                         {log.resourceId || '—'}
                       </td>
-                      <td className="px-3 py-2.5 mono text-xs text-[var(--text-tertiary)]">{log.ipAddress || '—'}</td>
+                      <td className="px-3 py-2.5 mono text-xs text-[var(--text-tertiary)]">{log.ipAddress?.replace(/\/\d+$/, '') || '—'}</td>
                       <td className="px-3 py-2.5 mono text-xs text-[var(--text-tertiary)] max-w-[220px] truncate" title={log.details}>
                         {log.details && log.details !== '{}' ? log.details : '—'}
                       </td>

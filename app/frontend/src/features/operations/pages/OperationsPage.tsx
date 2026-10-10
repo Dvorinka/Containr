@@ -88,7 +88,7 @@ export function OperationsPage() {
           <Loader2 size={20} className="animate-spin text-[var(--text-muted)]" />
         </div>
       ) : (
-        <div className="w-full px-8 py-6 space-y-6">
+        <div className="w-full px-4 py-6 sm:px-8 space-y-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="panel-soft p-4">
               <p className="text-xs uppercase tracking-wider text-[var(--text-muted)]">In flight</p>

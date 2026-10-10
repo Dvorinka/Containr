@@ -436,7 +436,7 @@ export function UsagePage() {
         title="Usage"
         description="Platform usage metrics and operational summaries"
       />
-      <div className="w-full px-8 py-6">
+      <div className="w-full px-4 py-6 sm:px-8">
         <div className="flex items-center gap-2 mb-6">
           <div className={`w-2 h-2 rounded-full ${liveStatus === 'live' ? 'bg-[var(--success)] animate-pulse' : 'bg-[var(--text-muted)]'}`} />
           <span className={`text-sm ${liveStatus === 'live' ? 'text-[var(--success)]' : 'text-[var(--text-muted)]'}`}>
@@ -844,7 +844,7 @@ export function PeoplePage() {
         title="People"
         description="Team management and access control"
       />
-      <div className="w-full px-8 py-6">
+      <div className="w-full px-4 py-6 sm:px-8">
         {profileQuery.isLoading ? (
           <div className="py-16 text-center">
             <Loader2 size={24} className="animate-spin mx-auto text-[var(--text-tertiary)]" />
@@ -888,7 +888,7 @@ export function PeoplePage() {
               </div>
 
               <form
-                className="grid gap-3 lg:grid-cols-[1fr_1fr_1fr_auto]"
+                className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]"
                 onSubmit={(event) => {
                   event.preventDefault();
                   createUserMutation.mutate();
@@ -2145,7 +2145,7 @@ export function SettingsPage() {
         title="Settings"
         description="Manage account profile and local configuration"
       />
-      <div className="w-full px-8 py-6">
+      <div className="w-full px-4 py-6 sm:px-8">
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           {/* Profile Section */}
           <section className="panel p-6">
@@ -2376,7 +2376,7 @@ export function DocsPage() {
         title="Docs"
         description="Guides and references — synced from GitHub, cached offline"
       />
-      <div className="w-full px-8 py-6">
+      <div className="w-full px-4 py-6 sm:px-8">
         <DocsBrowser />
       </div>
     </div>
@@ -2513,7 +2513,7 @@ export function DatabasesPage() {
         title="Databases"
         description="Managed database services — connection info, runtime actions and backups"
       />
-      <div className="w-full px-8 py-6">
+      <div className="w-full px-4 py-6 sm:px-8">
         <div className="mb-5 flex items-center justify-between">
           <p className="text-xs text-[var(--text-tertiary)]">
             {databases.length} {databases.length === 1 ? 'database' : 'databases'}
@@ -3251,7 +3251,7 @@ export function HighAvailabilityPage() {
         title="High availability"
         description="Failover manager, policies, and active alerts"
       />
-      <div className="p-8 space-y-8">
+      <div className="p-4 space-y-8 sm:p-8">
         <div className="flex items-center gap-2 text-xs text-[var(--text-tertiary)]">
           <ShieldCheck size={13} className="text-[var(--accent-primary)]" />
           <span>HA state feeds the platform security posture.</span>
@@ -3615,39 +3615,43 @@ export function SecurityPage() {
 
   const projectsQuery = useQuery({ queryKey: ['projects'], queryFn: () => listProjects(), enabled: !isDemoMode });
   const projects = isDemoMode ? demoProjects : projectsQuery.data ?? [];
+
+  // Auto-select the first project so the page never renders empty — derived, not
+  // stored, so clearing the select still shows the empty state explicitly.
+  const effectiveProjectId = projectId || projects[0]?.id || '';
   const servicesQuery = useQuery({
-    queryKey: ['services', projectId],
-    queryFn: () => listServicesByProject(projectId),
-    enabled: !isDemoMode && Boolean(projectId),
+    queryKey: ['services', effectiveProjectId],
+    queryFn: () => listServicesByProject(effectiveProjectId),
+    enabled: !isDemoMode && Boolean(effectiveProjectId),
   });
-  const services = isDemoMode ? getDemoServicesByProject(projectId) : servicesQuery.data ?? [];
+  const services = isDemoMode ? getDemoServicesByProject(effectiveProjectId) : servicesQuery.data ?? [];
   const metricsQuery = useQuery({
-    queryKey: ['security-metrics', projectId],
-    queryFn: () => getSecurityMetrics(projectId),
-    enabled: !isDemoMode && Boolean(projectId),
+    queryKey: ['security-metrics', effectiveProjectId],
+    queryFn: () => getSecurityMetrics(effectiveProjectId),
+    enabled: !isDemoMode && Boolean(effectiveProjectId),
     refetchInterval: 15_000,
   });
   const historyQuery = useQuery({
-    queryKey: ['security-history', projectId],
-    queryFn: () => getSecurityHistory(projectId),
-    enabled: !isDemoMode && Boolean(projectId),
+    queryKey: ['security-history', effectiveProjectId],
+    queryFn: () => getSecurityHistory(effectiveProjectId),
+    enabled: !isDemoMode && Boolean(effectiveProjectId),
     refetchInterval: 15_000,
   });
   const vulnsQuery = useQuery({
-    queryKey: ['security-vulns', projectId],
-    queryFn: () => listVulnerabilities(projectId),
-    enabled: !isDemoMode && Boolean(projectId),
+    queryKey: ['security-vulns', effectiveProjectId],
+    queryFn: () => listVulnerabilities(effectiveProjectId),
+    enabled: !isDemoMode && Boolean(effectiveProjectId),
   });
 
   const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: ['security-metrics', projectId] });
-    queryClient.invalidateQueries({ queryKey: ['security-history', projectId] });
-    queryClient.invalidateQueries({ queryKey: ['security-vulns', projectId] });
+    queryClient.invalidateQueries({ queryKey: ['security-metrics', effectiveProjectId] });
+    queryClient.invalidateQueries({ queryKey: ['security-history', effectiveProjectId] });
+    queryClient.invalidateQueries({ queryKey: ['security-vulns', effectiveProjectId] });
   };
 
   const scanMutation = useMutation({
     mutationFn: () => startSecurityScan({
-      project_id: projectId,
+      project_id: effectiveProjectId,
       service_id: scanServiceId || undefined,
       scan_type: scanType as 'dependency' | 'configuration' | 'comprehensive',
     }),
@@ -3661,10 +3665,10 @@ export function SecurityPage() {
 
   const metrics = isDemoMode ? demoSecurityMetrics : metricsQuery.data;
   const scanHistory = isDemoMode
-    ? demoSecurityScans.filter((s) => s.project_id === projectId)
+    ? demoSecurityScans.filter((s) => s.project_id === effectiveProjectId)
     : historyQuery.data ?? [];
   const vulns = (isDemoMode
-    ? demoVulnerabilities.filter((v) => v.project_id === projectId)
+    ? demoVulnerabilities.filter((v) => v.project_id === effectiveProjectId)
     : vulnsQuery.data ?? []
   ).filter((v) => v.status !== 'resolved');
   const pageError =
@@ -3677,7 +3681,7 @@ export function SecurityPage() {
         title="Security"
         description="Scan findings, security posture, and compliance status"
       />
-      <div className="p-8 space-y-8">
+      <div className="p-4 space-y-8 sm:p-8">
         <div className="flex items-center gap-2 text-xs text-[var(--text-tertiary)]">
           <HeartPulse size={13} className="text-[var(--accent-primary)]" />
           <span>Platform availability and failover live under High availability.</span>
@@ -3695,7 +3699,7 @@ export function SecurityPage() {
           <div>
             <label className="block text-xs text-[var(--text-tertiary)] mb-1">Project</label>
             <select
-              value={projectId}
+              value={effectiveProjectId}
               onChange={(e) => { setProjectId(e.target.value); setScanServiceId(''); }}
               className="px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)] w-56"
             >
@@ -3705,7 +3709,7 @@ export function SecurityPage() {
               ))}
             </select>
           </div>
-          {projectId && (
+          {effectiveProjectId && (
             <>
               <div>
                 <label className="block text-xs text-[var(--text-tertiary)] mb-1">Scan type</label>
@@ -3748,7 +3752,7 @@ export function SecurityPage() {
           )}
         </div>
 
-        {projectId && metrics && (
+        {effectiveProjectId && metrics && (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard
               title="Security score"
@@ -3779,7 +3783,7 @@ export function SecurityPage() {
           </div>
         )}
 
-        {projectId && (
+        {effectiveProjectId && (
           <div className="panel p-6">
             <div className="flex items-center gap-3 mb-4">
               <Shield size={18} className="text-[var(--accent-primary)]" />
@@ -3835,7 +3839,7 @@ export function SecurityPage() {
           </div>
         )}
 
-        {projectId && (
+        {effectiveProjectId && (
           <div className="panel p-6">
             <div className="flex items-center gap-3 mb-4">
               <Clock size={18} className="text-[var(--accent-primary)]" />
