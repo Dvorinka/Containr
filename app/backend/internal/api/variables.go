@@ -1,10 +1,13 @@
 package api
 
 import (
-	"containr/internal/database"
-	"containr/internal/secrets"
+	"database/sql"
 	"net/http"
 	"time"
+
+	"containr/internal/database"
+	"containr/internal/database/sqlcdb"
+	"containr/internal/secrets"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -147,7 +150,8 @@ func handleUpdateVariables(c *gin.Context) {
 	}
 	defer tx.Rollback()
 
-	_, err = tx.Exec("DELETE FROM environment_variables WHERE service_id = $1", serviceID)
+	txq := sqlcdb.New(tx)
+	err = txq.DeleteEnvVarsForService(c.Request.Context(), serviceID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to clear existing variables"})
 		return
@@ -164,12 +168,15 @@ func handleUpdateVariables(c *gin.Context) {
 		if v.IsSecret {
 			value = secrets.Encrypt(value)
 		}
-		varID := uuid.New()
-		_, err = tx.Exec(
-			`INSERT INTO environment_variables (id, service_id, key, value, is_secret, created_at, updated_at)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-			varID, serviceID, v.Key, value, v.IsSecret, now, now,
-		)
+		err = txq.InsertEnvVar(c.Request.Context(), sqlcdb.InsertEnvVarParams{
+			ID:        uuid.New(),
+			ServiceID: serviceID,
+			Key:       v.Key,
+			Value:     value,
+			IsSecret:  sql.NullBool{Bool: v.IsSecret, Valid: true},
+			CreatedAt: sql.NullTime{Time: now, Valid: true},
+			UpdatedAt: sql.NullTime{Time: now, Valid: true},
+		})
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to insert variable: " + v.Key})
 			return

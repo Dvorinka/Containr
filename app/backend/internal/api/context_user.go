@@ -1,9 +1,11 @@
 package api
 
 import (
+	"context"
 	"net/http"
 
 	"containr/internal/database"
+	"containr/internal/database/sqlcdb"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -57,15 +59,12 @@ func contextIsAdmin(c *gin.Context) bool {
 // public; unapproved ones are visible to the owner, project members, and
 // platform admins only.
 func projectReadAccess(c *gin.Context, db *database.DB, projectID uuid.UUID) (bool, bool) {
-	var isApproved bool
-	var ownerID string
-	err := db.QueryRow(
-		`SELECT is_approved, owner_id::text FROM projects WHERE id = $1`,
-		projectID,
-	).Scan(&isApproved, &ownerID)
+	q := sqlcdb.New(db.DB)
+	row, err := q.GetProjectReadAccess(context.Background(), projectID)
 	if err != nil {
 		return false, false
 	}
+	isApproved, ownerID := row.IsApproved, row.OwnerID
 	if isApproved || contextIsAdmin(c) {
 		return true, true
 	}
@@ -76,11 +75,11 @@ func projectReadAccess(c *gin.Context, db *database.DB, projectID uuid.UUID) (bo
 	if ownerID == userID {
 		return true, true
 	}
-	var member bool
-	if err := db.QueryRow(
-		`SELECT EXISTS(SELECT 1 FROM project_members WHERE project_id = $1 AND user_id = $2)`,
-		projectID, userID,
-	).Scan(&member); err == nil && member {
+	userUUID, _ := uuid.Parse(userID)
+	if member, err := q.ProjectMemberExists(context.Background(), sqlcdb.ProjectMemberExistsParams{
+		ProjectID: projectID,
+		UserID:    userUUID,
+	}); err == nil && member {
 		return true, true
 	}
 	return true, false
@@ -91,11 +90,8 @@ func projectReadAccess(c *gin.Context, db *database.DB, projectID uuid.UUID) (bo
 // project members, and platform admins may reach secret-adjacent data
 // such as variables and runtime logs.
 func projectManageAccess(c *gin.Context, db *database.DB, projectID uuid.UUID) (bool, bool) {
-	var ownerID string
-	err := db.QueryRow(
-		`SELECT owner_id::text FROM projects WHERE id = $1`,
-		projectID,
-	).Scan(&ownerID)
+	q := sqlcdb.New(db.DB)
+	ownerID, err := q.GetProjectOwnerText(context.Background(), projectID)
 	if err != nil {
 		return false, false
 	}
@@ -109,11 +105,11 @@ func projectManageAccess(c *gin.Context, db *database.DB, projectID uuid.UUID) (
 	if ownerID == userID {
 		return true, true
 	}
-	var member bool
-	if err := db.QueryRow(
-		`SELECT EXISTS(SELECT 1 FROM project_members WHERE project_id = $1 AND user_id = $2)`,
-		projectID, userID,
-	).Scan(&member); err == nil && member {
+	userUUID, _ := uuid.Parse(userID)
+	if member, err := q.ProjectMemberExists(context.Background(), sqlcdb.ProjectMemberExistsParams{
+		ProjectID: projectID,
+		UserID:    userUUID,
+	}); err == nil && member {
 		return true, true
 	}
 	return true, false
@@ -121,8 +117,7 @@ func projectManageAccess(c *gin.Context, db *database.DB, projectID uuid.UUID) (
 
 // serviceProjectID resolves the project that owns a service.
 func serviceProjectID(db *database.DB, serviceID uuid.UUID) (uuid.UUID, bool) {
-	var projectID uuid.UUID
-	err := db.QueryRow(`SELECT project_id FROM services WHERE id = $1`, serviceID).Scan(&projectID)
+	projectID, err := sqlcdb.New(db.DB).GetServiceProjectID(context.Background(), serviceID)
 	if err != nil {
 		return uuid.Nil, false
 	}

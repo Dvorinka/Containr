@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"containr/internal/database"
+	"containr/internal/database/sqlcdb"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -180,13 +181,13 @@ func handleGetProjectActivity(c *gin.Context) {
 	}
 
 	// Access check: approved / owner / member / admin.
-	var visible bool
-	if err := db.QueryRow(
-		`SELECT p.is_approved OR p.owner_id = $2::uuid OR $3::bool
-			OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = p.id AND pm.user_id = $2::uuid)
-		 FROM projects p WHERE p.id = $1`,
-		projectID, userID, contextIsAdmin(c),
-	).Scan(&visible); err != nil || !visible {
+	userUUID, _ := uuid.Parse(userID)
+	visible, err := sqlcdb.New(db.DB).CheckSecurityProjectAccess(context.Background(), sqlcdb.CheckSecurityProjectAccessParams{
+		ID:      uuid.MustParse(projectID),
+		OwnerID: userUUID,
+		Column3: contextIsAdmin(c),
+	})
+	if err != nil || !visible {
 		respondError(c, http.StatusNotFound, "NOT_FOUND", "project not found")
 		return
 	}
@@ -237,12 +238,12 @@ func StartAuditRetention(ctx context.Context, db *database.DB) {
 	}
 
 	prune := func() {
-		res, err := db.Exec(`DELETE FROM audit_logs WHERE created_at < NOW() - ($1::int * INTERVAL '1 day')`, days)
+		n, err := sqlcdb.New(db.DB).PruneAuditLogs(context.Background(), int32(days))
 		if err != nil {
 			log.Printf("audit retention prune failed: %v", err)
 			return
 		}
-		if n, _ := res.RowsAffected(); n > 0 {
+		if n > 0 {
 			log.Printf("audit retention: pruned %d rows older than %d days", n, days)
 		}
 	}
@@ -265,34 +266,24 @@ func StartAuditRetention(ctx context.Context, db *database.DB) {
 // backfillAuditMetadata classifies rows written before severity/category/label
 // existed so filters and the feed see uniform metadata.
 func backfillAuditMetadata(db *database.DB) {
-	cursor := uuid.Nil.String()
+	q := sqlcdb.New(db.DB)
+	cursor := uuid.Nil
 	for {
-		rows, err := db.Query(
-			`SELECT id::text, resource, action FROM audit_logs
-			 WHERE label = '' AND id > $1::uuid ORDER BY id LIMIT 500`, cursor)
+		rows, err := q.ListAuditBackfillBatch(context.Background(), cursor)
 		if err != nil {
 			log.Printf("audit backfill scan failed: %v", err)
 			return
 		}
-		type row struct{ id, resource, action string }
-		var batch []row
-		for rows.Next() {
-			var r row
-			if rows.Scan(&r.id, &r.resource, &r.action) == nil {
-				batch = append(batch, r)
-			}
-		}
-		rows.Close()
-		if len(batch) == 0 {
+		if len(rows) == 0 {
 			return
 		}
-		for _, r := range batch {
-			cursor = r.id
-			sev, cat, label := classifyAuditEvent(r.resource, r.action)
-			if _, err := db.Exec(
-				`UPDATE audit_logs SET severity = $1, category = $2, label = $3 WHERE id = $4::uuid`,
-				sev, cat, label, r.id,
-			); err != nil {
+		for _, r := range rows {
+			id, _ := uuid.Parse(r.ID)
+			cursor = id
+			sev, cat, label := classifyAuditEvent(r.Resource, r.Action)
+			if err := q.SetAuditLogMetadata(context.Background(), sqlcdb.SetAuditLogMetadataParams{
+				Severity: sev, Category: cat, Label: label, Column4: id,
+			}); err != nil {
 				log.Printf("audit backfill update failed: %v", err)
 			}
 		}

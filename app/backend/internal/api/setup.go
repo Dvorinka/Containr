@@ -5,10 +5,12 @@ package api
 // lives in app_settings so it survives restarts.
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
 	"containr/internal/database"
+	"containr/internal/database/sqlcdb"
 
 	"github.com/gin-gonic/gin"
 )
@@ -25,8 +27,7 @@ func setupComplete(db *database.DB, hasUsers bool) bool {
 	if !hasUsers {
 		return false
 	}
-	var projects int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM projects`).Scan(&projects); err == nil && projects > 0 {
+	if projects, err := sqlcdb.New(db.DB).CountProjects(context.Background()); err == nil && projects > 0 {
 		return true
 	}
 	return false

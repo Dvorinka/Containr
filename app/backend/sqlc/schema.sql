@@ -144,6 +144,17 @@ CREATE TABLE environment_variables (
     UNIQUE(service_id, key)
 );
 
+CREATE TABLE project_variables (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    key VARCHAR(255) NOT NULL,
+    value TEXT NOT NULL DEFAULT '',
+    is_secret BOOLEAN NOT NULL DEFAULT false,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    UNIQUE(project_id, key)
+);
+
 CREATE TABLE service_templates (
     id VARCHAR(50) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
@@ -587,6 +598,48 @@ CREATE TABLE vulnerabilities (
     status VARCHAR(50) NOT NULL DEFAULT 'open',
     found_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     resolved_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE app_settings (
+    key VARCHAR(255) PRIMARY KEY,
+    value TEXT NOT NULL DEFAULT '',
+    is_secret BOOLEAN NOT NULL DEFAULT false,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE audit_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    timestamp TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    user_id UUID,
+    action VARCHAR(100) NOT NULL,
+    resource VARCHAR(100) NOT NULL,
+    resource_id UUID,
+    details JSONB DEFAULT '{}',
+    ip_address INET,
+    user_agent TEXT,
+    success BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    severity TEXT NOT NULL DEFAULT 'info',
+    category TEXT NOT NULL DEFAULT '',
+    label TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE builds (
+    id VARCHAR(255) PRIMARY KEY,
+    project_id VARCHAR(255),
+    service_id VARCHAR(255),
+    status VARCHAR(50) NOT NULL DEFAULT 'pending',
+    progress INTEGER NOT NULL DEFAULT 0,
+    started_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMP WITH TIME ZONE,
+    image_name VARCHAR(500) NOT NULL DEFAULT '',
+    image_tag VARCHAR(200) NOT NULL DEFAULT '',
+    size BIGINT NOT NULL DEFAULT 0,
+    error TEXT,
+    log TEXT NOT NULL DEFAULT '',
+    metadata JSONB NOT NULL DEFAULT '{}',
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );

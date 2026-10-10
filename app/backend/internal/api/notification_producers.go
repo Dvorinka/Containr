@@ -9,6 +9,7 @@ import (
 	"containr/internal/database"
 	"containr/internal/database/sqlcdb"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -29,15 +30,13 @@ func notifyAdmins(db *database.DB, kind, title, body, resourceType, resourceID s
 	if db == nil {
 		return
 	}
-	rows, err := db.Query(`SELECT id FROM users WHERE is_admin`)
+	adminIDs, err := sqlcdb.New(db.DB).ListAdminUserIDs(context.Background())
 	if err != nil {
 		log.Printf("containr: notify admins lookup failed: %v", err)
 		return
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var id uuid.UUID
-		if err := rows.Scan(&id); err == nil {
+	for _, id := range adminIDs {
+		{
 			insertUserNotification(db, id.String(), kind, title, body, resourceType, resourceID)
 		}
 	}
@@ -73,34 +72,32 @@ type agentHealthRow struct {
 func reconcileAgentHealth(db *database.DB, staleAfter time.Duration) {
 	cutoff := time.Now().Add(-staleAfter)
 	var agents []agentHealthRow
-	rows, err := db.Query(
-		`SELECT id, COALESCE(name, hostname, id::text), COALESCE(status, ''),
-		        COALESCE(last_heartbeat < $1, TRUE), auto_prune
-		 FROM node_agents`, cutoff)
+	q := sqlcdb.New(db.DB)
+	agentRows, err := q.ListAgentHealthRows(context.Background(), sql.NullTime{Time: cutoff, Valid: true})
 	if err != nil {
 		log.Printf("containr: agent health sweep: %v", err)
 		return
 	}
-	for rows.Next() {
-		var a agentHealthRow
-		if err := rows.Scan(&a.id, &a.name, &a.status, &a.stale, &a.autoPrune); err == nil {
-			agents = append(agents, a)
-		}
+	for _, r := range agentRows {
+		agents = append(agents, agentHealthRow{
+			id: r.ID, name: r.Name, status: r.Status, stale: r.Stale, autoPrune: r.AutoPrune,
+		})
 	}
-	rows.Close()
 
 	for _, a := range agents {
 		switch {
 		case a.stale && a.status != "offline":
-			if _, err := db.Exec(
-				`UPDATE node_agents SET status = 'offline', updated_at = NOW() WHERE id = $1`, a.id); err != nil {
+			if err := q.SetAgentStatus(context.Background(), sqlcdb.SetAgentStatusParams{
+				Status: sql.NullString{String: "offline", Valid: true}, ID: a.id,
+			}); err != nil {
 				continue
 			}
 			notifyAdmins(db, "agent", "Node agent offline",
 				fmt.Sprintf("Agent %s missed its heartbeat for over %s.", a.name, staleAfter), "agent", a.id)
 		case !a.stale && a.status == "offline":
-			if _, err := db.Exec(
-				`UPDATE node_agents SET status = 'online', updated_at = NOW() WHERE id = $1`, a.id); err != nil {
+			if err := q.SetAgentStatus(context.Background(), sqlcdb.SetAgentStatusParams{
+				Status: sql.NullString{String: "online", Valid: true}, ID: a.id,
+			}); err != nil {
 				continue
 			}
 			notifyAdmins(db, "agent", "Node agent back online",
@@ -186,17 +183,17 @@ func checkForUpgrade(db *database.DB, currentVersion string) {
 		return
 	}
 
-	var lastNotified string
-	_ = db.QueryRow(`SELECT value FROM app_settings WHERE key = 'upgrade_notified_tag'`).Scan(&lastNotified)
+	lastNotified, _ := sqlcdb.New(db.DB).GetAppSetting(context.Background(), "upgrade_notified_tag")
 	if lastNotified == release.TagName {
 		return
 	}
 	notifyAdmins(db, "upgrade", "Containr update available",
 		fmt.Sprintf("Release %s is available (running %s). %s", release.TagName, currentVersion, release.HTMLURL),
 		"release", release.TagName)
-	_, _ = db.Exec(
-		`INSERT INTO app_settings (key, value, updated_at) VALUES ('upgrade_notified_tag', $1, NOW())
-		 ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = NOW()`, release.TagName)
+	_ = sqlcdb.New(db.DB).UpsertAppSettingValue(context.Background(), sqlcdb.UpsertAppSettingValueParams{
+		Key:   "upgrade_notified_tag",
+		Value: release.TagName,
+	})
 }
 
 // semverNewer reports whether candidate is a higher semver than current.

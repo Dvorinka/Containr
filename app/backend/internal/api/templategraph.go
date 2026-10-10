@@ -640,19 +640,20 @@ func deployTemplateGraph(
 	createdServiceIDs := []uuid.UUID{}
 	createdDatabaseIDs := []string{}
 	cleanup := func() {
+		q := sqlcdb.New(db.DB)
 		for _, sid := range createdServiceIDs {
 			if engine != nil {
 				removeServiceRuntime(context.Background(), db, engine, sid)
 			}
-			_, _ = db.Exec(`DELETE FROM environment_variables WHERE service_id = $1`, sid)
-			_, _ = db.Exec(`DELETE FROM services WHERE id = $1`, sid)
+			_ = q.DeleteEnvVarsForService(context.Background(), sid)
+			_ = q.DeleteServiceByID(context.Background(), sid)
 		}
 		for _, did := range createdDatabaseIDs {
 			if dbHandler != nil && dbHandler.dockerClient != nil {
 				_ = dbHandler.dockerClient.RemoveContainer(context.Background(), managedDatabaseContainerName(did), true)
 				_ = dbHandler.dockerClient.RemoveVolume(context.Background(), managedDatabaseVolumeName(did), true)
 			}
-			_, _ = db.Exec(`DELETE FROM database_services WHERE id = $1`, did)
+			_ = q.DeleteDatabaseServiceByID(context.Background(), did)
 		}
 	}
 
@@ -772,14 +773,19 @@ func deployTemplateGraph(
 		if builder == "" {
 			builder = "auto"
 		}
-		if _, err = tx.ExecContext(ctx,
-			`UPDATE services SET port = $1, healthcheck_path = $2, volumes = COALESCE($3::jsonb, '[]'::jsonb),
-			        git_repo = NULLIF($4, ''), git_branch = NULLIF($5, ''), builder = $6
-			 WHERE id = $7`,
-			m.spec.Port, strings.TrimSpace(m.spec.HealthCheck), volumesJSON,
-			strings.TrimSpace(m.spec.Repo), strings.TrimSpace(m.spec.Branch), builder,
-			serviceID,
-		); err != nil {
+		var volumesRaw json.RawMessage
+		if s, ok := volumesJSON.(string); ok {
+			volumesRaw = json.RawMessage(s)
+		}
+		if err = sqlcdb.New(tx).UpdateServiceDeployMeta(ctx, sqlcdb.UpdateServiceDeployMetaParams{
+			Port:            int32(m.spec.Port),
+			HealthcheckPath: strings.TrimSpace(m.spec.HealthCheck),
+			Column3:         volumesRaw,
+			Column4:         strings.TrimSpace(m.spec.Repo),
+			Column5:         strings.TrimSpace(m.spec.Branch),
+			Builder:         builder,
+			ID:              serviceID,
+		}); err != nil {
 			tx.Rollback()
 			cleanup()
 			return nil, &gin.H{"error": "Failed to configure service"}
@@ -861,15 +867,24 @@ func queueTemplateDeployment(c *gin.Context, db *database.DB, engine *deployment
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
-	if _, err := db.Exec(
-		`INSERT INTO deployments
-		 (id, service_id, version, commit_hash, status, image_name, image_tag, created_at, updated_at)
-		 VALUES ($1, $2, $3, NULL, $4, '', '', $5, $6)`,
-		dep.ID, dep.ServiceID, fmt.Sprintf("v%d", now.Unix()), dep.Status, dep.CreatedAt, dep.UpdatedAt,
-	); err != nil {
+	q := sqlcdb.New(db.DB)
+	if err := q.InsertDeployment(context.Background(), sqlcdb.InsertDeploymentParams{
+		ID:        dep.ID,
+		ServiceID: dep.ServiceID,
+		Version:   fmt.Sprintf("v%d", now.Unix()),
+		Status:    sql.NullString{String: dep.Status, Valid: true},
+		ImageName: sql.NullString{String: "", Valid: true},
+		ImageTag:  sql.NullString{String: "", Valid: true},
+		CreatedAt: sql.NullTime{Time: dep.CreatedAt, Valid: true},
+		UpdatedAt: sql.NullTime{Time: dep.UpdatedAt, Valid: true},
+	}); err != nil {
 		return uuid.Nil
 	}
-	_, _ = db.Exec(`UPDATE services SET status = 'queued', updated_at = $1 WHERE id = $2`, time.Now(), service.ID)
+	_ = q.SetServiceStatus(context.Background(), sqlcdb.SetServiceStatusParams{
+		Status:    sql.NullString{String: "queued", Valid: true},
+		UpdatedAt: sql.NullTime{Time: time.Now(), Valid: true},
+		ID:        service.ID,
+	})
 
 	getDeployQueue(c).Enqueue(service.ID, deployqueue.Job{
 		DeploymentID: dep.ID,

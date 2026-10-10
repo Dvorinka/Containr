@@ -116,7 +116,7 @@ func handleDeleteEnvironment(c *gin.Context) {
 		return
 	}
 	var projectID uuid.UUID
-	if err := db.QueryRow(`SELECT project_id FROM environments WHERE id = $1`, envID).Scan(&projectID); err != nil {
+	if projectID, err = sqlcdb.New(db.DB).GetEnvironmentProjectID(context.Background(), envID); err != nil {
 		respondError(c, http.StatusNotFound, "NOT_FOUND", "Environment not found")
 		return
 	}

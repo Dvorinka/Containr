@@ -411,12 +411,11 @@ func handleCreateFromTemplate(c *gin.Context) {
 		return
 	}
 
-	// sqlc's schema predates the runtime columns; port and healthcheck_path are
-	// written via raw SQL like every other service mutation path.
-	if _, err = tx.ExecContext(ctx,
-		`UPDATE services SET port = $1, healthcheck_path = $2 WHERE id = $3`,
-		config.Port, strings.TrimSpace(config.HealthCheck), serviceID,
-	); err != nil {
+	if err = sqlcdb.New(tx).UpdateServiceRuntimeMeta(ctx, sqlcdb.UpdateServiceRuntimeMetaParams{
+		Port:            int32(config.Port),
+		HealthcheckPath: strings.TrimSpace(config.HealthCheck),
+		ID:              serviceID,
+	}); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create service from template"})
 		return
 	}

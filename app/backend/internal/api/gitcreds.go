@@ -1,12 +1,16 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
 
 	"containr/internal/database"
+	"containr/internal/database/sqlcdb"
 	"containr/internal/source"
+
+	"github.com/google/uuid"
 )
 
 // resolveGitCloneSpec turns a service's git_repo (clone URL, ssh remote, or
@@ -22,26 +26,31 @@ func resolveGitCloneSpec(db *database.DB, ownerID, gitRepo, branch, commit, buil
 	}
 
 	spec := source.Spec{Branch: branch, Commit: commit, BuildPath: buildPath}
+	q := sqlcdb.New(db.DB)
+	ctx := context.Background()
 
-	var providerID string
+	ownerUUID, _ := uuid.Parse(ownerID)
+	var providerID uuid.UUID
 	if !strings.Contains(cloneURL, "://") {
 		// Bare owner/repo — the connected repository row knows the host.
-		err = db.QueryRow(
-			`SELECT clone_url, provider_id FROM git_repositories
-			 WHERE full_name = $1 AND user_id = $2 LIMIT 1`,
-			cloneURL, ownerID,
-		).Scan(&cloneURL, &providerID)
+		row, err := q.GetGitRepoCloneByFullName(ctx, sqlcdb.GetGitRepoCloneByFullNameParams{
+			FullName: cloneURL,
+			UserID:   ownerUUID,
+		})
 		if err != nil {
 			return source.Spec{}, fmt.Errorf("repository %s is not connected — connect it under Git settings or store a clone URL", raw)
 		}
+		cloneURL = row.CloneUrl
+		providerID = row.ProviderID
 	} else {
 		// URL form — match a connected repo for its provider when possible;
 		// an unmatched public URL still clones, just without credentials.
-		_ = db.QueryRow(
-			`SELECT provider_id FROM git_repositories
-			 WHERE clone_url = $1 AND user_id = $2 LIMIT 1`,
-			cloneURL, ownerID,
-		).Scan(&providerID)
+		if pid, err := q.GetGitRepoProviderByCloneURL(ctx, sqlcdb.GetGitRepoProviderByCloneURLParams{
+			CloneUrl: cloneURL,
+			UserID:   ownerUUID,
+		}); err == nil {
+			providerID = pid
+		}
 	}
 
 	if err := source.ValidateRemoteURL(cloneURL); err != nil {
@@ -49,17 +58,17 @@ func resolveGitCloneSpec(db *database.DB, ownerID, gitRepo, branch, commit, buil
 	}
 	spec.CloneURL = cloneURL
 
-	if providerID == "" {
+	if providerID == uuid.Nil {
 		return spec, nil
 	}
-	var name, apiURL, token string
-	if err := db.QueryRow(
-		`SELECT name, api_url, access_token FROM git_providers
-		 WHERE id = $1 AND user_id = $2`,
-		providerID, ownerID,
-	).Scan(&name, &apiURL, &token); err != nil {
+	prov, err := q.GetGitProviderForFetch(ctx, sqlcdb.GetGitProviderForFetchParams{
+		ID:     providerID,
+		UserID: ownerUUID,
+	})
+	if err != nil {
 		return spec, nil // provider row gone — anonymous clone still works for public repos
 	}
+	name, apiURL, token := prov.Name, prov.ApiUrl, prov.AccessToken
 
 	switch strings.ToLower(name) {
 	case "github_app":

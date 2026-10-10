@@ -11,6 +11,7 @@ import (
 	"containr/internal/build"
 	"containr/internal/config"
 	"containr/internal/database"
+	"containr/internal/database/sqlcdb"
 	"containr/internal/deployment"
 	"containr/internal/deployqueue"
 	"containr/internal/docker"
@@ -21,6 +22,7 @@ import (
 	"containr/internal/secrets"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg *config.Config) {
@@ -83,19 +85,18 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 		// 127.0.0.1 fallback stays for node-bound checks.
 		docker := dockerClient
 		haManager.WithServiceResolver(func(ctx context.Context, serviceID string) (string, int, error) {
-			var name, projectID string
-			var port int
-			err := db.QueryRowContext(ctx,
-				`SELECT name, project_id::text, COALESCE(port, 0) FROM services WHERE id = $1`,
-				serviceID,
-			).Scan(&name, &projectID, &port)
+			sid, err := uuid.Parse(serviceID)
 			if err != nil {
 				return "", 0, err
 			}
-			if err := docker.ConnectSelfToNetwork(ctx, deployment.ProjectNetworkName(projectID)); err != nil {
+			svc, err := sqlcdb.New(db.DB).GetServiceNameProjectPort(ctx, sid)
+			if err != nil {
 				return "", 0, err
 			}
-			return name, port, nil
+			if err := docker.ConnectSelfToNetwork(ctx, deployment.ProjectNetworkName(svc.ProjectID)); err != nil {
+				return "", 0, err
+			}
+			return svc.Name, int(svc.Port), nil
 		})
 	}
 	haAPIManager := NewHAManager(haManager)
@@ -137,31 +138,25 @@ func SetupRoutes(router *gin.Engine, db *database.DB, redis *database.Redis, cfg
 	// Boot sweep: in-memory engine state dies on restart, so anything that
 	// looked in-flight is actually orphaned — mark it failed rather than
 	// leaving phantom 'building'/'queued' rows.
-	_, _ = db.Exec(
-		`UPDATE deployments SET status = 'failed', error = 'Interrupted by server restart', completed_at = NOW(), updated_at = NOW()
-		 WHERE status IN ('queued', 'pending', 'building', 'deploying', 'rolling_back')`,
-	)
+	bootQ := sqlcdb.New(db.DB)
+	_ = bootQ.FailInterruptedDeployments(context.Background())
 
 	// Boot sweep: encrypt any plaintext secret values left over from before
 	// encryption-at-rest landed. Transparent and idempotent.
-	if encRows, err := db.Query(`SELECT id, value FROM environment_variables WHERE is_secret = TRUE`); err == nil {
-		type encRow struct {
-			id    string
-			value string
-		}
-		var toEncrypt []encRow
-		for encRows.Next() {
-			var r encRow
-			if err := encRows.Scan(&r.id, &r.value); err == nil && !secrets.IsEncrypted(r.value) {
-				toEncrypt = append(toEncrypt, r)
+	if encRows, err := bootQ.ListSecretEnvVars(context.Background()); err == nil {
+		toEncrypt := 0
+		for _, r := range encRows {
+			if secrets.IsEncrypted(r.Value) {
+				continue
+			}
+			if err := bootQ.UpdateEnvVarValue(context.Background(), sqlcdb.UpdateEnvVarValueParams{
+				Value: secrets.Encrypt(r.Value), ID: r.ID,
+			}); err == nil {
+				toEncrypt++
 			}
 		}
-		encRows.Close()
-		for _, r := range toEncrypt {
-			_, _ = db.Exec(`UPDATE environment_variables SET value = $1, updated_at = NOW() WHERE id = $2`, secrets.Encrypt(r.value), r.id)
-		}
-		if len(toEncrypt) > 0 {
-			log.Printf("secrets: encrypted %d plaintext secret variable(s)", len(toEncrypt))
+		if toEncrypt > 0 {
+			log.Printf("secrets: encrypted %d plaintext secret variable(s)", toEncrypt)
 		}
 	}
 

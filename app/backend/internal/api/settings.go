@@ -10,11 +10,13 @@ import (
 	"time"
 
 	"containr/internal/database"
+	"containr/internal/database/sqlcdb"
 	"containr/internal/docker"
 
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/api/types/registry"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 // Platform setting keys. Values stored in app_settings take precedence over
@@ -70,8 +72,7 @@ func handleGetBranding(c *gin.Context) {
 // then the caller's default.
 func settingValue(db *database.DB, key, envKey, fallback string) string {
 	if db != nil && db.DB != nil {
-		var value string
-		err := db.QueryRow(`SELECT value FROM app_settings WHERE key = $1`, key).Scan(&value)
+		value, err := sqlcdb.New(db.DB).GetAppSetting(context.Background(), key)
 		if err == nil {
 			return value
 		}
@@ -88,18 +89,15 @@ func settingValue(db *database.DB, key, envKey, fallback string) string {
 }
 
 func setSetting(db *database.DB, key, value string, secret bool) error {
-	_, err := db.Exec(`
-		INSERT INTO app_settings (key, value, is_secret, updated_at)
-		VALUES ($1, $2, $3, NOW())
-		ON CONFLICT (key) DO UPDATE
-		SET value = EXCLUDED.value, is_secret = EXCLUDED.is_secret, updated_at = NOW()
-	`, key, value, secret)
-	return err
+	return sqlcdb.New(db.DB).UpsertAppSetting(context.Background(), sqlcdb.UpsertAppSettingParams{
+		Key:      key,
+		Value:    value,
+		IsSecret: secret,
+	})
 }
 
 func deleteSetting(db *database.DB, key string) error {
-	_, err := db.Exec(`DELETE FROM app_settings WHERE key = $1`, key)
-	return err
+	return sqlcdb.New(db.DB).DeleteAppSetting(context.Background(), key)
 }
 
 // signupEnabled controls whether public registration stays open after the
@@ -110,11 +108,12 @@ func signupEnabled(db *database.DB) bool {
 }
 
 func isAdminUser(db *database.DB, userID string) bool {
-	var isAdmin bool
-	if err := db.QueryRow(`SELECT is_admin FROM users WHERE id = $1`, userID).Scan(&isAdmin); err != nil {
+	parsed, err := uuid.Parse(userID)
+	if err != nil {
 		return false
 	}
-	return isAdmin
+	isAdmin, err := sqlcdb.New(db.DB).GetUserIsAdmin(context.Background(), parsed)
+	return err == nil && isAdmin
 }
 
 func requireAdmin(c *gin.Context) (*database.DB, bool) {
@@ -242,8 +241,7 @@ func handleUpdateSettings(c *gin.Context) {
 // resolvedTunnelToken prefers the in-app value and falls back to the env.
 func resolvedTunnelToken(db *database.DB) (string, string) {
 	if db != nil && db.DB != nil {
-		var value string
-		if err := db.QueryRow(`SELECT value FROM app_settings WHERE key = $1`, settingCloudflareTunnelToken).Scan(&value); err == nil && strings.TrimSpace(value) != "" {
+		if value, err := sqlcdb.New(db.DB).GetAppSetting(context.Background(), settingCloudflareTunnelToken); err == nil && strings.TrimSpace(value) != "" {
 			return strings.TrimSpace(value), "app"
 		}
 	}

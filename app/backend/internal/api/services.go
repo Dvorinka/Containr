@@ -2,6 +2,7 @@ package api
 
 import (
 	"containr/internal/database"
+	"containr/internal/database/sqlcdb"
 	"containr/internal/deployment"
 	"containr/internal/deployqueue"
 	"context"
@@ -70,20 +71,18 @@ type Service struct {
 // loadServiceSleep fills the sleep-mode columns, which live outside the
 // wide service SELECTs. Missing columns (pre-migration) degrade to off.
 func loadServiceSleep(db *database.DB, s *Service) {
-	var idle int
-	if err := db.QueryRow(
-		`SELECT COALESCE(sleep_enabled, false), COALESCE(sleep_idle_minutes, 15) FROM services WHERE id = $1`,
-		s.ID,
-	).Scan(&s.SleepEnabled, &idle); err == nil {
-		s.SleepIdleMinutes = idle
+	row, err := sqlcdb.New(db.DB).GetServiceSleep(context.Background(), s.ID)
+	if err == nil {
+		s.SleepEnabled = row.SleepEnabled
+		s.SleepIdleMinutes = int(row.SleepIdleMinutes)
 	}
 }
 
 // serviceNodeID reads the pin column directly — kept out of the wide service
 // SELECTs so pre-migration schemas keep working.
 func serviceNodeID(db *database.DB, serviceID uuid.UUID) string {
-	var id sql.NullString
-	if err := db.QueryRow(`SELECT node_id FROM services WHERE id = $1`, serviceID).Scan(&id); err == nil {
+	id, err := sqlcdb.New(db.DB).GetServiceNodeID(context.Background(), serviceID)
+	if err == nil {
 		return id.String
 	}
 	return ""
@@ -91,17 +90,14 @@ func serviceNodeID(db *database.DB, serviceID uuid.UUID) string {
 
 // serviceSpread reads the spread column with the same lazy pattern.
 func serviceSpread(db *database.DB, serviceID uuid.UUID) bool {
-	var spread bool
-	if err := db.QueryRow(`SELECT COALESCE(spread, false) FROM services WHERE id = $1`, serviceID).Scan(&spread); err == nil {
-		return spread
-	}
-	return false
+	spread, err := sqlcdb.New(db.DB).GetServiceSpread(context.Background(), serviceID)
+	return err == nil && spread
 }
 
 // servicePlacementTags reads the placement_tags column with the lazy pattern.
 func servicePlacementTags(db *database.DB, serviceID uuid.UUID) []string {
-	var raw []byte
-	if err := db.QueryRow(`SELECT placement_tags FROM services WHERE id = $1`, serviceID).Scan(&raw); err != nil {
+	raw, err := sqlcdb.New(db.DB).GetServicePlacementTags(context.Background(), serviceID)
+	if err != nil {
 		return nil
 	}
 	var tags []string
@@ -179,8 +175,8 @@ func normalizeTraefikLabels(raw map[string]string) (map[string]string, error) {
 
 // serviceTraefikLabels lazy-reads the traefik_labels column.
 func serviceTraefikLabels(db *database.DB, serviceID uuid.UUID) map[string]string {
-	var raw []byte
-	if err := db.QueryRow(`SELECT traefik_labels FROM services WHERE id = $1`, serviceID).Scan(&raw); err != nil {
+	raw, err := sqlcdb.New(db.DB).GetServiceTraefikLabels(context.Background(), serviceID)
+	if err != nil {
 		return nil
 	}
 	var labels map[string]string
@@ -211,7 +207,6 @@ func tagsJSON(tags []string) []byte {
 // loadServiceNode fills the pin + spread + placement tags + the agent's
 // display name for responses.
 func loadServiceNode(db *database.DB, s *Service) {
-	var name sql.NullString
 	s.NodeID = serviceNodeID(db, s.ID)
 	s.Spread = serviceSpread(db, s.ID)
 	s.PlacementTags = servicePlacementTags(db, s.ID)
@@ -219,8 +214,8 @@ func loadServiceNode(db *database.DB, s *Service) {
 	if s.NodeID == "" {
 		return
 	}
-	if err := db.QueryRow(`SELECT name FROM node_agents WHERE id = $1`, s.NodeID).Scan(&name); err == nil {
-		s.NodeName = name.String
+	if name, err := sqlcdb.New(db.DB).GetNodeAgentName(context.Background(), s.NodeID); err == nil {
+		s.NodeName = name
 	}
 }
 
@@ -235,8 +230,8 @@ type ServiceVolume struct {
 // loadServiceVolumes reads the JSONB column; absent/invalid data degrades
 // to no mounts rather than failing the request.
 func loadServiceVolumes(db *database.DB, serviceID uuid.UUID) []deployment.VolumeMount {
-	var raw []byte
-	if err := db.QueryRow(`SELECT volumes FROM services WHERE id = $1`, serviceID).Scan(&raw); err != nil {
+	raw, err := sqlcdb.New(db.DB).GetServiceVolumes(context.Background(), serviceID)
+	if err != nil {
 		return nil
 	}
 	var stored []ServiceVolume
@@ -703,13 +698,11 @@ func handleCreateService(c *gin.Context) {
 }
 
 func getProjectEnvironmentID(db *database.DB, projectID uuid.UUID, environment string) (uuid.UUID, error) {
-	var environmentID uuid.UUID
-	err := db.QueryRow(
-		"SELECT id FROM environments WHERE project_id = $1 AND name = $2",
-		projectID,
-		environment,
-	).Scan(&environmentID)
-	return environmentID, err
+	row, err := sqlcdb.New(db.DB).GetProjectEnvironmentByName(context.Background(), sqlcdb.GetProjectEnvironmentByNameParams{
+		ProjectID: projectID,
+		Name:      environment,
+	})
+	return row.ID, err
 }
 
 func inferServiceSourceType(service Service) string {

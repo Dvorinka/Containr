@@ -1,10 +1,12 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"time"
 
 	"containr/internal/database"
+	"containr/internal/database/sqlcdb"
 	"containr/internal/secrets"
 
 	"github.com/gin-gonic/gin"
@@ -112,7 +114,8 @@ func handleUpdateProjectVariables(c *gin.Context) {
 	}
 	defer tx.Rollback()
 
-	if _, err = tx.Exec(`DELETE FROM project_variables WHERE project_id = $1`, projectID); err != nil {
+	txq := sqlcdb.New(tx)
+	if err = txq.DeleteProjectVariables(c.Request.Context(), projectID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to clear existing variables"})
 		return
 	}
@@ -127,11 +130,15 @@ func handleUpdateProjectVariables(c *gin.Context) {
 		if v.IsSecret {
 			value = secrets.Encrypt(value)
 		}
-		if _, err = tx.Exec(
-			`INSERT INTO project_variables (id, project_id, key, value, is_secret, created_at, updated_at)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-			uuid.New(), projectID, v.Key, value, v.IsSecret, now, now,
-		); err != nil {
+		if err = txq.InsertProjectVariable(c.Request.Context(), sqlcdb.InsertProjectVariableParams{
+			ID:        uuid.New(),
+			ProjectID: projectID,
+			Key:       v.Key,
+			Value:     value,
+			IsSecret:  v.IsSecret,
+			CreatedAt: now,
+			UpdatedAt: now,
+		}); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to insert variable: " + v.Key})
 			return
 		}
@@ -168,11 +175,10 @@ func handleUpdateProjectVariables(c *gin.Context) {
 
 // resolveSharedVar returns the decrypted value of a project variable.
 func resolveSharedVar(db *database.DB, projectID uuid.UUID, key string) (string, bool) {
-	var value string
-	err := db.QueryRow(
-		`SELECT value FROM project_variables WHERE project_id = $1 AND key = $2`,
-		projectID, key,
-	).Scan(&value)
+	value, err := sqlcdb.New(db.DB).GetProjectVariableValue(context.Background(), sqlcdb.GetProjectVariableValueParams{
+		ProjectID: projectID,
+		Key:       key,
+	})
 	if err != nil {
 		return "", false
 	}

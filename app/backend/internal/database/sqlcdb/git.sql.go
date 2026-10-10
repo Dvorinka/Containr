@@ -157,6 +157,28 @@ func (q *Queries) GetGitProviderTimestamps(ctx context.Context, id uuid.UUID) (G
 	return i, err
 }
 
+const getGitRepoCloneByFullName = `-- name: GetGitRepoCloneByFullName :one
+SELECT clone_url, provider_id FROM git_repositories
+WHERE full_name = $1 AND user_id = $2 LIMIT 1
+`
+
+type GetGitRepoCloneByFullNameParams struct {
+	FullName string    `json:"full_name"`
+	UserID   uuid.UUID `json:"user_id"`
+}
+
+type GetGitRepoCloneByFullNameRow struct {
+	CloneUrl   string    `json:"clone_url"`
+	ProviderID uuid.UUID `json:"provider_id"`
+}
+
+func (q *Queries) GetGitRepoCloneByFullName(ctx context.Context, arg GetGitRepoCloneByFullNameParams) (GetGitRepoCloneByFullNameRow, error) {
+	row := q.db.QueryRowContext(ctx, getGitRepoCloneByFullName, arg.FullName, arg.UserID)
+	var i GetGitRepoCloneByFullNameRow
+	err := row.Scan(&i.CloneUrl, &i.ProviderID)
+	return i, err
+}
+
 const getGitRepoForPush = `-- name: GetGitRepoForPush :one
 SELECT clone_url, full_name, user_id FROM git_repositories WHERE id = $1
 `
@@ -172,6 +194,23 @@ func (q *Queries) GetGitRepoForPush(ctx context.Context, id uuid.UUID) (GetGitRe
 	var i GetGitRepoForPushRow
 	err := row.Scan(&i.CloneUrl, &i.FullName, &i.UserID)
 	return i, err
+}
+
+const getGitRepoProviderByCloneURL = `-- name: GetGitRepoProviderByCloneURL :one
+SELECT provider_id FROM git_repositories
+WHERE clone_url = $1 AND user_id = $2 LIMIT 1
+`
+
+type GetGitRepoProviderByCloneURLParams struct {
+	CloneUrl string    `json:"clone_url"`
+	UserID   uuid.UUID `json:"user_id"`
+}
+
+func (q *Queries) GetGitRepoProviderByCloneURL(ctx context.Context, arg GetGitRepoProviderByCloneURLParams) (uuid.UUID, error) {
+	row := q.db.QueryRowContext(ctx, getGitRepoProviderByCloneURL, arg.CloneUrl, arg.UserID)
+	var provider_id uuid.UUID
+	err := row.Scan(&provider_id)
+	return provider_id, err
 }
 
 const getGitRepositoryByFullName = `-- name: GetGitRepositoryByFullName :one

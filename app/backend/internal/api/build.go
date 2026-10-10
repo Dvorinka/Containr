@@ -16,6 +16,7 @@ import (
 
 	"containr/internal/build"
 	"containr/internal/database"
+	"containr/internal/database/sqlcdb"
 	"containr/internal/docker"
 	"containr/internal/types"
 
@@ -669,39 +670,22 @@ func (h *BuildHandler) upsertBuild(status *BuildStatusResponse) error {
 	}
 
 	now := time.Now().UTC()
-	_, err := h.db.Exec(
-		`INSERT INTO builds
-		 (id, project_id, service_id, status, progress, started_at, completed_at, image_name, image_tag, size, error, log, metadata, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, $14)
-		 ON CONFLICT (id) DO UPDATE SET
-		   project_id = EXCLUDED.project_id,
-		   service_id = EXCLUDED.service_id,
-		   status = EXCLUDED.status,
-		   progress = EXCLUDED.progress,
-		   started_at = EXCLUDED.started_at,
-		   completed_at = EXCLUDED.completed_at,
-		   image_name = EXCLUDED.image_name,
-		   image_tag = EXCLUDED.image_tag,
-		   size = EXCLUDED.size,
-		   error = EXCLUDED.error,
-		   log = EXCLUDED.log,
-		   metadata = EXCLUDED.metadata,
-		   updated_at = EXCLUDED.updated_at`,
-		status.ID,
-		nullIfEmptyString(status.ProjectID),
-		nullIfEmptyString(status.ServiceID),
-		status.Status,
-		status.Progress,
-		status.StartedAt,
-		status.CompletedAt,
-		status.ImageName,
-		status.ImageTag,
-		status.Size,
-		nullIfEmptyString(status.Error),
-		status.Log,
-		jsonOrEmptyObject(metadataRaw),
-		now,
-	)
+	err := sqlcdb.New(h.db.DB).UpsertBuild(context.Background(), sqlcdb.UpsertBuildParams{
+		ID:          status.ID,
+		ProjectID:   nsNullIfEmpty(status.ProjectID),
+		ServiceID:   nsNullIfEmpty(status.ServiceID),
+		Status:      status.Status,
+		Progress:    int32(status.Progress),
+		StartedAt:   status.StartedAt,
+		CompletedAt: ntPtr(status.CompletedAt),
+		ImageName:   status.ImageName,
+		ImageTag:    status.ImageTag,
+		Size:        status.Size,
+		Error:       nsNullIfEmpty(status.Error),
+		Log:         status.Log,
+		Column13:    json.RawMessage(jsonOrEmptyObject(metadataRaw)),
+		CreatedAt:   now,
+	})
 	if err != nil && h.isMissingBuildsTable(err) {
 		return nil
 	}
@@ -713,18 +697,37 @@ func (h *BuildHandler) getBuildFromDB(buildID string) (BuildStatusResponse, bool
 		return BuildStatusResponse{}, false, nil
 	}
 
-	row := h.db.QueryRow(
-		`SELECT id, project_id, service_id, status, progress, started_at, completed_at, image_name, image_tag, size, error, log, metadata
-		 FROM builds
-		 WHERE id = $1`,
-		buildID,
-	)
-
-	build, found, err := scanBuildRow(row.Scan)
-	if err != nil && h.isMissingBuildsTable(err) {
-		return BuildStatusResponse{}, false, nil
+	row, err := sqlcdb.New(h.db.DB).GetBuild(context.Background(), buildID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) || h.isMissingBuildsTable(err) {
+			return BuildStatusResponse{}, false, nil
+		}
+		return BuildStatusResponse{}, false, err
 	}
-	return build, found, err
+	build := BuildStatusResponse{
+		ID:        row.ID,
+		ProjectID: row.ProjectID.String,
+		ServiceID: row.ServiceID.String,
+		Status:    row.Status,
+		Progress:  int(row.Progress),
+		StartedAt: row.StartedAt.UTC(),
+		ImageName: row.ImageName,
+		ImageTag:  row.ImageTag,
+		Size:      row.Size,
+		Error:     row.Error.String,
+		Log:       row.Log,
+	}
+	if t := timePtrNT(row.CompletedAt); t != nil {
+		u := t.UTC()
+		build.CompletedAt = &u
+	}
+	if len(row.Metadata) > 0 {
+		metadata := map[string]string{}
+		if err := json.Unmarshal(row.Metadata, &metadata); err == nil {
+			build.Metadata = metadata
+		}
+	}
+	return build, true, nil
 }
 
 func (h *BuildHandler) listBuildsFromDB(projectID, serviceID, status string, page, limit int) ([]BuildStatusResponse, int, error) {
@@ -808,19 +811,11 @@ func (h *BuildHandler) cancelBuildInDB(buildID string) bool {
 		return false
 	}
 	now := time.Now().UTC()
-	result, err := h.db.Exec(
-		`UPDATE builds
-		 SET status = 'cancelled',
-		     progress = 100,
-		     completed_at = $1,
-		     log = COALESCE(log, '') || $2,
-		     updated_at = $1
-		 WHERE id = $3
-		   AND status NOT IN ('success', 'failed', 'cancelled')`,
-		now,
-		h.formatLogLine("Cancellation requested")+"\n",
-		buildID,
-	)
+	affected, err := sqlcdb.New(h.db.DB).CancelBuild(context.Background(), sqlcdb.CancelBuildParams{
+		CompletedAt: sql.NullTime{Time: now, Valid: true},
+		Log:         h.formatLogLine("Cancellation requested") + "\n",
+		ID:          buildID,
+	})
 	if err != nil {
 		if h.isMissingBuildsTable(err) {
 			return false
@@ -828,9 +823,7 @@ func (h *BuildHandler) cancelBuildInDB(buildID string) bool {
 		log.Printf("failed to cancel build %s in database: %v", buildID, err)
 		return false
 	}
-
-	affected, err := result.RowsAffected()
-	if err != nil || affected == 0 {
+	if affected == 0 {
 		return false
 	}
 
@@ -909,12 +902,9 @@ func scanBuildRow(scan func(dest ...interface{}) error) (BuildStatusResponse, bo
 	return parsed, true, nil
 }
 
-func nullIfEmptyString(value string) interface{} {
+func nsNullIfEmpty(value string) sql.NullString {
 	trimmed := strings.TrimSpace(value)
-	if trimmed == "" {
-		return nil
-	}
-	return trimmed
+	return sql.NullString{String: trimmed, Valid: trimmed != ""}
 }
 
 func jsonOrEmptyObject(raw []byte) string {

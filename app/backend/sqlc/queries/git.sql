@@ -127,3 +127,11 @@ SELECT s.id, s.project_id, s.name,
        s.created_at, s.updated_at
 FROM services s
 WHERE (s.git_branch = $1 OR $1 = '') AND (s.git_repo = $2 OR s.git_repo = $3);
+
+-- name: GetGitRepoCloneByFullName :one
+SELECT clone_url, provider_id FROM git_repositories
+WHERE full_name = $1 AND user_id = $2 LIMIT 1;
+
+-- name: GetGitRepoProviderByCloneURL :one
+SELECT provider_id FROM git_repositories
+WHERE clone_url = $1 AND user_id = $2 LIMIT 1;

@@ -52,15 +52,11 @@ func EnsureAdminAccount(ctx context.Context, db *database.DB, cfg *config.Config
 		return
 	}
 
-	var userID string
-	err = db.QueryRowContext(ctx, `
-		INSERT INTO users (email, password_hash, name, is_admin)
-		VALUES ($1, $2, $3, true)
-		ON CONFLICT (email) DO UPDATE
-		SET is_admin = true, updated_at = NOW()
-		RETURNING id
-	`, email, string(hashed), name).Scan(&userID)
-	if err != nil {
+	if _, err := sqlcdb.New(db.DB).UpsertAdminUser(ctx, sqlcdb.UpsertAdminUserParams{
+		Email:        email,
+		PasswordHash: string(hashed),
+		Name:         name,
+	}); err != nil {
 		log.Printf("Admin bootstrap failed to upsert user %s: %v", email, err)
 		return
 	}
@@ -185,24 +181,18 @@ func handleAdminOverview(c *gin.Context) {
 func handleAdminListUsers(c *gin.Context) {
 	db := c.MustGet("db").(*database.DB)
 
-	rows, err := db.QueryContext(c.Request.Context(), `
-		SELECT id, email, name, COALESCE(avatar_url, ''), is_admin, COALESCE(to_char(created_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), '')
-		FROM users
-		ORDER BY created_at ASC
-	`)
+	rows, err := sqlcdb.New(db.DB).ListAdminUsers(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list users"})
 		return
 	}
-	defer rows.Close()
 
-	users := make([]adminUserRow, 0)
-	for rows.Next() {
-		var u adminUserRow
-		if err := rows.Scan(&u.ID, &u.Email, &u.Name, &u.AvatarURL, &u.IsAdmin, &u.CreatedAt); err != nil {
-			continue
-		}
-		users = append(users, u)
+	users := make([]adminUserRow, 0, len(rows))
+	for _, r := range rows {
+		users = append(users, adminUserRow{
+			ID: r.ID.String(), Email: r.Email, Name: r.Name,
+			AvatarURL: r.AvatarUrl, IsAdmin: r.IsAdmin, CreatedAt: r.CreatedAt,
+		})
 	}
 	c.JSON(http.StatusOK, gin.H{"users": users})
 }
@@ -229,15 +219,16 @@ func handleAdminSetUserAdmin(c *gin.Context) {
 		return
 	}
 
-	result, err := db.ExecContext(c.Request.Context(),
-		`UPDATE users SET is_admin = $1, updated_at = NOW() WHERE id = $2`,
-		req.IsAdmin, targetID,
-	)
+	targetUUID, _ := uuid.Parse(targetID)
+	n, err := sqlcdb.New(db.DB).SetUserAdmin(c.Request.Context(), sqlcdb.SetUserAdminParams{
+		IsAdmin: req.IsAdmin,
+		ID:      targetUUID,
+	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
 		return
 	}
-	if n, _ := result.RowsAffected(); n == 0 {
+	if n == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 		return
 	}
@@ -258,15 +249,13 @@ func handleAdminImpersonateUser(c *gin.Context) {
 		return
 	}
 
-	var email, name string
-	var isAdmin bool
-	err := db.QueryRowContext(c.Request.Context(),
-		`SELECT email, COALESCE(name, ''), is_admin FROM users WHERE id = $1`, targetID).
-		Scan(&email, &name, &isAdmin)
+	userUUID, _ := uuid.Parse(targetID)
+	info, err := sqlcdb.New(db.DB).GetAdminUserInfo(c.Request.Context(), userUUID)
 	if err != nil {
 		respondError(c, http.StatusNotFound, "NOT_FOUND", "user not found")
 		return
 	}
+	email, name, isAdmin := info.Email, info.Name, info.IsAdmin
 	if isAdmin {
 		respondError(c, http.StatusForbidden, "FORBIDDEN", "admin accounts cannot be impersonated")
 		return
@@ -286,9 +275,9 @@ func handleAdminImpersonateUser(c *gin.Context) {
 	}
 
 	LogAuditWithRequest(c, "user", targetID, "impersonate", map[string]interface{}{
-		"actor_id":    actorID,
+		"actor_id":     actorID,
 		"target_email": email,
-		"expires_at":  expiresAt.Format(time.RFC3339),
+		"expires_at":   expiresAt.Format(time.RFC3339),
 	})
 	c.JSON(http.StatusOK, gin.H{
 		"token":      token,

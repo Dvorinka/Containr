@@ -2,6 +2,9 @@ package api
 
 import (
 	"containr/internal/database"
+	"containr/internal/database/sqlcdb"
+	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -11,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/sqlc-dev/pqtype"
 )
 
 type AuditLog struct {
@@ -98,16 +102,20 @@ func LogAudit(userID, resource, resourceID, action string, details map[string]in
 	}
 
 	detailsJSON, _ := json.Marshal(details)
-	resourceUUID := parseUUIDOrNil(resourceID)
-	userUUID := parseUUIDOrNil(userID)
 	severity, category, label := classifyAuditEvent(resource, action)
 
-	auditID := uuid.New().String()
-	_, err := db.Exec(
-		`INSERT INTO audit_logs (id, user_id, resource, resource_id, action, details, severity, category, label, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-		auditID, userUUID, resource, resourceUUID, action, string(detailsJSON), severity, category, label, time.Now().UTC(),
-	)
+	err := sqlcdb.New(db.DB).InsertAuditLog(context.Background(), sqlcdb.InsertAuditLogParams{
+		ID:         uuid.New(),
+		UserID:     nullUUIDOrNil(userID),
+		Resource:   resource,
+		ResourceID: nullUUIDOrNil(resourceID),
+		Action:     action,
+		Details:    pqtype.NullRawMessage{RawMessage: detailsJSON, Valid: true},
+		Severity:   severity,
+		Category:   category,
+		Label:      label,
+		CreatedAt:  time.Now().UTC(),
+	})
 
 	if err != nil {
 	}
@@ -131,16 +139,24 @@ func LogAuditWithRequest(c *gin.Context, resource, resourceID, action string, de
 	if uid, ok := userID.(string); ok {
 		userIDStr = uid
 	}
-	userUUID := parseUUIDOrNil(userIDStr)
-	resourceUUID := parseUUIDOrNil(resourceID)
 	severity, category, label := classifyAuditEvent(resource, action)
 
-	auditID := uuid.New().String()
-	_, err := db.Exec(
-		`INSERT INTO audit_logs (id, user_id, resource, resource_id, action, details, ip_address, user_agent, severity, category, label, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12)`,
-		auditID, userUUID, resource, resourceUUID, action, string(detailsJSON), c.ClientIP(), c.GetHeader("User-Agent"), severity, category, label, time.Now().UTC(),
-	)
+	var inet pqtype.Inet
+	_ = inet.Scan(c.ClientIP())
+	err := sqlcdb.New(db.DB).InsertAuditLogWithRequest(context.Background(), sqlcdb.InsertAuditLogWithRequestParams{
+		ID:         uuid.New(),
+		UserID:     nullUUIDOrNil(userIDStr),
+		Resource:   resource,
+		ResourceID: nullUUIDOrNil(resourceID),
+		Action:     action,
+		Column6:    json.RawMessage(detailsJSON),
+		Column7:    inet,
+		UserAgent:  sql.NullString{String: c.GetHeader("User-Agent"), Valid: true},
+		Severity:   severity,
+		Category:   category,
+		Label:      label,
+		CreatedAt:  time.Now().UTC(),
+	})
 
 	if err != nil {
 	}
@@ -255,30 +271,29 @@ func handleGetResourceAuditLogs(c *gin.Context) {
 	resource := c.Param("resource")
 	resourceID := c.Param("id")
 
-	rows, err := db.Query(
-		`SELECT id, COALESCE(user_id::text, ''), resource, COALESCE(resource_id::text, ''), action, COALESCE(details::text, '{}'),
-		        COALESCE(ip_address::text, ''), COALESCE(user_agent, ''), created_at 
-		 FROM audit_logs 
-		 WHERE user_id::text = $1 AND resource = $2 AND resource_id::text = $3 
-		 ORDER BY created_at DESC 
-		 LIMIT 100`,
-		userID, resource, resourceID,
-	)
-
+	rows, err := sqlcdb.New(db.DB).ListResourceAuditLogs(context.Background(), sqlcdb.ListResourceAuditLogsParams{
+		UserID:     nullUUIDOrNil(userID),
+		Resource:   resource,
+		ResourceID: nullUUIDOrNil(resourceID),
+	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch audit logs"})
 		return
 	}
-	defer rows.Close()
 
 	var logs []AuditLog
-	for rows.Next() {
-		var log AuditLog
-		err := rows.Scan(&log.ID, &log.UserID, &log.Resource, &log.ResourceID, &log.Action, &log.Details, &log.IPAddress, &log.UserAgent, &log.CreatedAt)
-		if err != nil {
-			continue
-		}
-		logs = append(logs, log)
+	for _, row := range rows {
+		logs = append(logs, AuditLog{
+			ID:         row.ID.String(),
+			UserID:     row.UserID,
+			Resource:   row.Resource,
+			ResourceID: row.ResourceID,
+			Action:     row.Action,
+			Details:    row.Details,
+			IPAddress:  row.IpAddress,
+			UserAgent:  row.UserAgent,
+			CreatedAt:  row.CreatedAt,
+		})
 	}
 
 	c.JSON(http.StatusOK, gin.H{"audit_logs": logs})
@@ -301,4 +316,9 @@ func parseUUIDOrNil(raw string) interface{} {
 		return nil
 	}
 	return trimmed
+}
+
+func nullUUIDOrNil(raw string) uuid.NullUUID {
+	parsed, err := uuid.Parse(strings.TrimSpace(raw))
+	return uuid.NullUUID{UUID: parsed, Valid: err == nil}
 }
