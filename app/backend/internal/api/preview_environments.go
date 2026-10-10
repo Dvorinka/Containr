@@ -775,11 +775,7 @@ func resolvePreviewHost(db *database.DB, cloneID uuid.UUID, envName string) stri
 
 // loadServiceForDeploy hydrates the Service fields runDeploymentAndSync
 // needs — mirrors the loader in handleDeployService.
-func loadServiceForDeploy(db *database.DB, serviceID uuid.UUID) (Service, error) {
-	r, err := sqlcdb.New(db.DB).GetServiceForDeploy(context.Background(), serviceID)
-	if err != nil {
-		return Service{}, err
-	}
+func serviceForDeployFromRow(r sqlcdb.GetServiceForDeployRow) Service {
 	return Service{
 		ID: r.ID, ProjectID: r.ProjectID, Name: r.Name, Type: r.Type.String,
 		Status: r.Status.String, Image: r.Image.String, Command: r.Command.String,
@@ -791,7 +787,15 @@ func loadServiceForDeploy(db *database.DB, serviceID uuid.UUID) (Service, error)
 		Builder: r.Builder, CPUReserve: r.CpuReserve, MemoryReserve: r.MemoryReserve,
 		StaticBuildCmd: r.StaticBuildCmd, StaticDir: r.StaticDir,
 		CreatedAt: r.CreatedAt.Time, UpdatedAt: r.UpdatedAt.Time,
-	}, nil
+	}
+}
+
+func loadServiceForDeploy(db *database.DB, serviceID uuid.UUID) (Service, error) {
+	r, err := sqlcdb.New(db.DB).GetServiceForDeploy(context.Background(), serviceID)
+	if err != nil {
+		return Service{}, err
+	}
+	return serviceForDeployFromRow(r), nil
 }
 
 // StartPreviewSweeper expires preview environments past their TTL — tears

@@ -2,10 +2,11 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"os"
 	"strings"
-	"time"
 	"testing"
+	"time"
 
 	"containr/internal/database"
 	"containr/internal/database/sqlcdb"
@@ -337,4 +338,109 @@ func TestPreviewEnvironmentsLiveInvariants(t *testing.T) {
 		t.Fatalf("owner: %v %v", owner, err)
 	}
 	must(q.DeletePreviewEnvironment(ctx, previewID))
+}
+
+// Live deployment lifecycle: generated queries preserve list ordering,
+// the access join, and the status-transition writes.
+func TestDeploymentsLiveInvariants(t *testing.T) {
+	dsn := testDSNString(t)
+	db, err := database.NewConnection(dsn)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+	q := sqlcdb.New(db.DB)
+
+	userID := uuid.New()
+	projectID := uuid.New()
+	envID := uuid.New()
+	serviceID := uuid.New()
+	deployID := uuid.New()
+	suffix := strings.ReplaceAll(deployID.String()[:8], "-", "")
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatalf("setup: %v", err)
+		}
+	}
+	_, err = db.Exec(`INSERT INTO users (id, email, password_hash, name) VALUES ($1, $2, 'x', 'test')`,
+		userID, "dep-"+suffix+"@test.local")
+	must(err)
+	_, err = db.Exec(`INSERT INTO projects (id, name, owner_id, is_approved) VALUES ($1, $2, $3, true)`,
+		projectID, "dep-"+suffix, userID)
+	must(err)
+	_, err = db.Exec(`INSERT INTO environments (id, name, project_id) VALUES ($1, 'production', $2)`,
+		envID, projectID)
+	must(err)
+	_, err = db.Exec(`INSERT INTO services (id, name, project_id, environment_id, service_type, source_type, status)
+		VALUES ($1, $2, $3, $4, 'web', 'image', 'running')`,
+		serviceID, "dep-"+suffix, projectID, envID)
+	must(err)
+	defer func() { _, _ = db.Exec(`DELETE FROM users WHERE id = $1`, userID) }()
+
+	must(q.InsertDeployment(ctx, sqlcdb.InsertDeploymentParams{
+		ID:        deployID,
+		ServiceID: serviceID,
+		Version:   "v1-" + suffix,
+		Status:    sql.NullString{String: "pending", Valid: true},
+	}))
+	total, err := q.CountDeploymentsForService(ctx, serviceID)
+	if err != nil || total != 1 {
+		t.Fatalf("count: %v %d", err, total)
+	}
+	rows, err := q.ListDeploymentsForService(ctx, sqlcdb.ListDeploymentsForServiceParams{
+		ServiceID: serviceID, Limit: 10, Offset: 0})
+	if err != nil || len(rows) != 1 || rows[0].ID != deployID {
+		t.Fatalf("list: %v %+v", err, rows)
+	}
+
+	// Access join returns owner.
+	access, err := q.GetDeploymentAccess(ctx, deployID)
+	if err != nil || access.OwnerID != userID || access.ServiceID != serviceID {
+		t.Fatalf("access: %v %+v", err, access)
+	}
+
+	// Recent feed honors the access predicate.
+	feed, err := q.ListRecentAccessibleDeployments(ctx, sqlcdb.ListRecentAccessibleDeploymentsParams{
+		OwnerID: userID, Limit: 10, Offset: 0})
+	if err != nil {
+		t.Fatalf("feed: %v", err)
+	}
+	found := false
+	for _, d := range feed {
+		if d.ID == deployID && d.ServiceName == "dep-"+suffix {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("feed missing deployment: %+v", feed)
+	}
+
+	// Status transitions.
+	must(q.SetDeploymentStatus(ctx, sqlcdb.SetDeploymentStatusParams{
+		Status: sql.NullString{String: "queued", Valid: true}, UpdatedAt: sql.NullTime{Time: time.Now(), Valid: true}, ID: deployID}))
+	must(q.SyncDeploymentProgress(ctx, sqlcdb.SyncDeploymentProgressParams{
+		Status:    sql.NullString{String: "deployed", Valid: true},
+		ImageName: sql.NullString{String: "nginx", Valid: true},
+		ImageTag:  sql.NullString{String: "alpine", Valid: true},
+		UpdatedAt: sql.NullTime{Time: time.Now(), Valid: true},
+		ID:        deployID,
+	}))
+	r, err := q.GetDeploymentWithProject(ctx, deployID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if r.Status.String != "deployed" || r.ImageName.String != "nginx" || r.ProjectID != projectID {
+		t.Fatalf("post-sync row: %+v", r)
+	}
+	must(q.FailDeployment(ctx, sqlcdb.FailDeploymentParams{
+		Error:       sql.NullString{String: "boom", Valid: true},
+		CompletedAt: sql.NullTime{Time: time.Now(), Valid: true},
+		ID:          deployID,
+	}))
+	r, _ = q.GetDeploymentWithProject(ctx, deployID)
+	if r.Status.String != "failed" || r.Error.String != "boom" {
+		t.Fatalf("post-fail row: %+v", r)
+	}
 }
