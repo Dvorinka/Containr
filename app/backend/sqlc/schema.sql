@@ -98,11 +98,37 @@ CREATE TABLE service_domains (
 );
 
 CREATE TABLE deployments (
-    id UUID PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     service_id UUID NOT NULL REFERENCES services(id) ON DELETE CASCADE,
-    status VARCHAR(50),
+    version VARCHAR(255) NOT NULL,
+    commit_hash VARCHAR(255),
+    image_digest VARCHAR(255),
+    status VARCHAR(50) DEFAULT 'created',
+    build_log TEXT,
+    deployment_log TEXT,
+    started_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    image_name VARCHAR(255),
+    image_tag VARCHAR(255),
+    runtime_log TEXT,
+    error TEXT
+);
+
+CREATE TABLE preview_environments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL,
+    service_id UUID NOT NULL,
+    branch_name VARCHAR(255) NOT NULL,
+    pr_number INTEGER,
+    environment VARCHAR(255) NOT NULL,
+    status VARCHAR(50) NOT NULL DEFAULT 'building',
+    url TEXT,
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now(),
+    preview_service_id UUID
 );
 
 CREATE TABLE environment_variables (

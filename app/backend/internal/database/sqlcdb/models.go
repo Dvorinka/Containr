@@ -136,11 +136,22 @@ type DatabaseService struct {
 }
 
 type Deployment struct {
-	ID        uuid.UUID      `json:"id"`
-	ServiceID uuid.UUID      `json:"service_id"`
-	Status    sql.NullString `json:"status"`
-	CreatedAt sql.NullTime   `json:"created_at"`
-	UpdatedAt sql.NullTime   `json:"updated_at"`
+	ID            uuid.UUID      `json:"id"`
+	ServiceID     uuid.UUID      `json:"service_id"`
+	Version       string         `json:"version"`
+	CommitHash    sql.NullString `json:"commit_hash"`
+	ImageDigest   sql.NullString `json:"image_digest"`
+	Status        sql.NullString `json:"status"`
+	BuildLog      sql.NullString `json:"build_log"`
+	DeploymentLog sql.NullString `json:"deployment_log"`
+	StartedAt     sql.NullTime   `json:"started_at"`
+	CompletedAt   sql.NullTime   `json:"completed_at"`
+	CreatedAt     sql.NullTime   `json:"created_at"`
+	UpdatedAt     sql.NullTime   `json:"updated_at"`
+	ImageName     sql.NullString `json:"image_name"`
+	ImageTag      sql.NullString `json:"image_tag"`
+	RuntimeLog    sql.NullString `json:"runtime_log"`
+	Error         sql.NullString `json:"error"`
 }
 
 type Environment struct {
@@ -272,6 +283,21 @@ type OutboundWebhook struct {
 	Enabled   bool                  `json:"enabled"`
 	CreatedAt sql.NullTime          `json:"created_at"`
 	UpdatedAt sql.NullTime          `json:"updated_at"`
+}
+
+type PreviewEnvironment struct {
+	ID               uuid.UUID      `json:"id"`
+	ProjectID        uuid.UUID      `json:"project_id"`
+	ServiceID        uuid.UUID      `json:"service_id"`
+	BranchName       string         `json:"branch_name"`
+	PrNumber         sql.NullInt32  `json:"pr_number"`
+	Environment      string         `json:"environment"`
+	Status           string         `json:"status"`
+	Url              sql.NullString `json:"url"`
+	ExpiresAt        time.Time      `json:"expires_at"`
+	CreatedAt        sql.NullTime   `json:"created_at"`
+	UpdatedAt        sql.NullTime   `json:"updated_at"`
+	PreviewServiceID uuid.NullUUID  `json:"preview_service_id"`
 }
 
 type Project struct {

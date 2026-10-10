@@ -40,6 +40,68 @@ type PreviewEnvironment struct {
 	DeploymentID *uuid.UUID `json:"deployment_id,omitempty"`
 }
 
+// previewRowShape is the common column set the generated preview rows
+// carry — ListPreviewEnvironmentsForProjectRow and GetPreviewEnvironmentRow
+// share it.
+type previewRowShape struct {
+	ID               uuid.UUID
+	ProjectID        uuid.UUID
+	ServiceID        uuid.UUID
+	PreviewServiceID uuid.NullUUID
+	BranchName       string
+	PrNumber         sql.NullInt32
+	Environment      string
+	Status           string
+	Url              sql.NullString
+	ExpiresAt        time.Time
+	CreatedAt        sql.NullTime
+	UpdatedAt        sql.NullTime
+	SvcID            uuid.NullUUID
+	ServiceName      sql.NullString
+	ServiceType      sql.NullString
+}
+
+func previewFromRow(r previewRowShape) PreviewEnvironment {
+	env := PreviewEnvironment{
+		ID:          r.ID,
+		ProjectID:   r.ProjectID,
+		ServiceID:   r.ServiceID,
+		BranchName:  r.BranchName,
+		Environment: r.Environment,
+		Status:      r.Status,
+		URL:         r.Url.String,
+		CreatedAt:   r.CreatedAt.Time,
+		UpdatedAt:   r.UpdatedAt.Time,
+	}
+	if r.PreviewServiceID.Valid {
+		id := r.PreviewServiceID.UUID
+		env.PreviewServiceID = &id
+	}
+	if r.PrNumber.Valid {
+		n := int(r.PrNumber.Int32)
+		env.PRNumber = &n
+	}
+	if !r.ExpiresAt.IsZero() {
+		t := r.ExpiresAt
+		env.ExpiresAt = &t
+	}
+	if r.SvcID.Valid {
+		env.Service = &Service{
+			ID:   r.SvcID.UUID,
+			Name: r.ServiceName.String,
+			Type: r.ServiceType.String,
+		}
+	}
+	return env
+}
+
+func prNumberSQL(n *int) sql.NullInt32 {
+	if n == nil {
+		return sql.NullInt32{}
+	}
+	return sql.NullInt32{Int32: int32(*n), Valid: true}
+}
+
 // CreatePreviewEnvironmentRequest represents a request to create a preview environment
 type CreatePreviewEnvironmentRequest struct {
 	ProjectID  uuid.UUID `json:"project_id"`
@@ -86,51 +148,21 @@ func handleGetPreviewEnvironments(c *gin.Context) {
 	}
 
 	// Get preview environments for the project with service info
-	rows, err := db.(*database.DB).Query(
-		`SELECT pe.id, pe.project_id, pe.service_id, pe.preview_service_id, pe.branch_name, pe.pr_number,
-				pe.environment, pe.status, pe.url, pe.expires_at, pe.created_at, pe.updated_at,
-				s.id as service_id, s.name as service_name, s.type as service_type
-			FROM preview_environments pe
-			LEFT JOIN services s ON pe.service_id = s.id
-			WHERE pe.project_id = $1
-			ORDER BY pe.created_at DESC`,
-		projectID,
-	)
+	rows, err := sqlcdb.New(db.(*database.DB).DB).ListPreviewEnvironmentsForProject(c.Request.Context(), projectID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve preview environments"})
 		return
 	}
-	defer rows.Close()
 
-	var environments []PreviewEnvironment
-	for rows.Next() {
-		var env PreviewEnvironment
-		var serviceID sql.NullString
-		var serviceName sql.NullString
-		var serviceType sql.NullString
-
-		err := rows.Scan(
-			&env.ID, &env.ProjectID, &env.ServiceID, &env.PreviewServiceID, &env.BranchName, &env.PRNumber,
-			&env.Environment, &env.Status, &env.URL, &env.ExpiresAt, &env.CreatedAt, &env.UpdatedAt,
-			&serviceID, &serviceName, &serviceType,
-		)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to scan preview environment"})
-			return
-		}
-
-		if serviceID.Valid {
-			parsedServiceID, parseErr := uuid.Parse(serviceID.String)
-			if parseErr == nil {
-				env.Service = &Service{
-					ID:   parsedServiceID,
-					Name: serviceName.String,
-					Type: serviceType.String,
-				}
-			}
-		}
-
-		environments = append(environments, env)
+	environments := make([]PreviewEnvironment, 0, len(rows))
+	for _, r := range rows {
+		environments = append(environments, previewFromRow(previewRowShape{
+			ID: r.ID, ProjectID: r.ProjectID, ServiceID: r.ServiceID,
+			PreviewServiceID: r.PreviewServiceID, BranchName: r.BranchName,
+			PrNumber: r.PrNumber, Environment: r.Environment, Status: r.Status,
+			Url: r.Url, ExpiresAt: r.ExpiresAt, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+			SvcID: r.SvcID, ServiceName: r.ServiceName, ServiceType: r.ServiceType,
+		}))
 	}
 
 	c.JSON(http.StatusOK, gin.H{"preview_environments": environments})
@@ -171,48 +203,37 @@ func handleCreatePreviewEnvironment(c *gin.Context) {
 		return
 	}
 
-	// Check if project exists and user has access
-	var project Project
-	err = db.(*database.DB).QueryRow(
-		"SELECT id, name, owner_id FROM projects WHERE id = $1",
-		req.ProjectID,
-	).Scan(&project.ID, &project.Name, &project.OwnerID)
+	ctx := c.Request.Context()
+	q := sqlcdb.New(db.(*database.DB).DB)
 
+	// Check if project exists and user has access
+	project, err := q.GetProjectBrief(ctx, req.ProjectID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
 		return
 	}
 
 	// Check if user owns the project
-	if project.OwnerID != userID.(string) && !contextIsAdmin(c) {
+	if project.OwnerID.String() != userID.(string) && !contextIsAdmin(c) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 		return
 	}
 
 	// Check if service exists and belongs to the project
-	var service Service
-	err = db.(*database.DB).QueryRow(
-		"SELECT id, name, COALESCE(type, service_type, '') FROM services WHERE id = $1 AND project_id = $2",
-		req.ServiceID, req.ProjectID,
-	).Scan(&service.ID, &service.Name, &service.Type)
-
+	service, err := q.GetServiceTypeBrief(ctx, sqlcdb.GetServiceTypeBriefParams{
+		ID: req.ServiceID, ProjectID: req.ProjectID})
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Service not found or doesn't belong to this project"})
 		return
 	}
 
 	// Check if preview environment already exists for this branch and service
-	var count int
-	err = db.(*database.DB).QueryRow(
-		"SELECT COUNT(*) FROM preview_environments WHERE service_id = $1 AND branch_name = $2 AND status NOT IN ('expired', 'stopped')",
-		req.ServiceID, req.BranchName,
-	).Scan(&count)
-
+	count, err := q.CountActivePreviewsForBranch(ctx, sqlcdb.CountActivePreviewsForBranchParams{
+		ServiceID: req.ServiceID, BranchName: req.BranchName})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check existing preview environment"})
 		return
 	}
-
 	if count > 0 {
 		c.JSON(http.StatusConflict, gin.H{"error": "Preview environment already exists for this branch and service"})
 		return
@@ -237,29 +258,23 @@ func handleCreatePreviewEnvironment(c *gin.Context) {
 
 	// The clone's branch override is what makes it a preview — everything
 	// else (env vars, volumes, builder, resources) stays identical.
-	if _, err := db.(*database.DB).Exec(
-		`UPDATE services SET git_branch = $1, domain = '', updated_at = NOW() WHERE id = $2`,
-		req.BranchName, cloneID,
-	); err != nil {
-		_, _ = db.(*database.DB).Exec(`DELETE FROM services WHERE id = $1`, cloneID)
+	if err := q.UpdateServicePreviewBranch(ctx, sqlcdb.UpdateServicePreviewBranchParams{
+		GitBranch: sql.NullString{String: req.BranchName, Valid: true}, ID: cloneID}); err != nil {
+		_ = q.DeleteServiceByID(ctx, cloneID)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to configure preview service"})
 		return
 	}
 	// Cloned service_domains would collide with the parent's Traefik
 	// router — previews get their own hostname or none.
-	if _, err := db.(*database.DB).Exec(
-		`DELETE FROM service_domains WHERE service_id = $1`, cloneID,
-	); err != nil {
-		_, _ = db.(*database.DB).Exec(`DELETE FROM services WHERE id = $1`, cloneID)
+	if err := q.DeleteAllServiceDomains(ctx, cloneID); err != nil {
+		_ = q.DeleteServiceByID(ctx, cloneID)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to configure preview domains"})
 		return
 	}
 	previewHost := resolvePreviewHost(db.(*database.DB), cloneID, envName)
 	if previewHost != "" {
-		_, _ = db.(*database.DB).Exec(
-			`INSERT INTO service_domains (service_id, domain, is_default, cert_type) VALUES ($1, $2, true, 'tls')`,
-			cloneID, previewHost,
-		)
+		_ = q.CreatePreviewDomain(ctx, sqlcdb.CreatePreviewDomainParams{
+			ServiceID: cloneID, Domain: previewHost})
 	}
 
 	expiresAt := time.Now().Add(time.Duration(ttlHours) * time.Hour)
@@ -279,30 +294,36 @@ func handleCreatePreviewEnvironment(c *gin.Context) {
 		env.URL = "https://" + previewHost
 	}
 
-	_, err = db.(*database.DB).Exec(
-		`INSERT INTO preview_environments
-			(id, project_id, service_id, preview_service_id, branch_name, pr_number, environment,
-			 status, url, expires_at, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-		env.ID, env.ProjectID, env.ServiceID, cloneID, env.BranchName, env.PRNumber,
-		env.Environment, env.Status, env.URL, env.ExpiresAt, env.CreatedAt, env.UpdatedAt,
-	)
+	err = q.CreatePreviewEnvironment(ctx, sqlcdb.CreatePreviewEnvironmentParams{
+		ID:               env.ID,
+		ProjectID:        env.ProjectID,
+		ServiceID:        env.ServiceID,
+		PreviewServiceID: uuid.NullUUID{UUID: cloneID, Valid: true},
+		BranchName:       env.BranchName,
+		PrNumber:         prNumberSQL(env.PRNumber),
+		Environment:      env.Environment,
+		Status:           env.Status,
+		Url:              sql.NullString{String: env.URL, Valid: env.URL != ""},
+		ExpiresAt:        *env.ExpiresAt,
+		CreatedAt:        sql.NullTime{Time: env.CreatedAt, Valid: true},
+		UpdatedAt:        sql.NullTime{Time: env.UpdatedAt, Valid: true},
+	})
 	if err != nil {
-		_, _ = db.(*database.DB).Exec(`DELETE FROM services WHERE id = $1`, cloneID)
+		_ = q.DeleteServiceByID(ctx, cloneID)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create preview environment"})
 		return
 	}
 
 	deploymentID := uuid.New()
-	_, err = db.(*database.DB).Exec(
-		`INSERT INTO deployments
-			(id, service_id, version, commit_hash, status, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, 'pending', NOW(), NOW())`,
-		deploymentID, cloneID, "preview-"+env.Environment, req.BranchName,
-	)
+	err = q.InsertPendingDeployment(ctx, sqlcdb.InsertPendingDeploymentParams{
+		ID:         deploymentID,
+		ServiceID:  cloneID,
+		Version:    "preview-" + env.Environment,
+		CommitHash: sql.NullString{String: req.BranchName, Valid: true},
+	})
 	if err != nil {
-		_, _ = db.(*database.DB).Exec(`DELETE FROM preview_environments WHERE id = $1`, env.ID)
-		_, _ = db.(*database.DB).Exec(`DELETE FROM services WHERE id = $1`, cloneID)
+		_ = q.DeletePreviewEnvironment(ctx, env.ID)
+		_ = q.DeleteServiceByID(ctx, cloneID)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to provision preview deployment"})
 		return
 	}
@@ -349,43 +370,20 @@ func handleGetPreviewEnvironment(c *gin.Context) {
 
 	// Public when the parent project is approved; otherwise owner/member/admin.
 	userID := optionalUserUUID(c)
-	var env PreviewEnvironment
-	var serviceID sql.NullString
-	var serviceName sql.NullString
-	var serviceType sql.NullString
-	err = db.(*database.DB).QueryRow(
-		`SELECT pe.id, pe.project_id, pe.service_id, pe.preview_service_id, pe.branch_name, pe.pr_number,
-				pe.environment, pe.status, pe.url, pe.expires_at, pe.created_at, pe.updated_at,
-				s.id as service_id, s.name as service_name, s.type as service_type
-			FROM preview_environments pe
-			LEFT JOIN services s ON pe.service_id = s.id
-			JOIN projects p ON pe.project_id = p.id
-			WHERE pe.id = $1 AND (p.is_approved OR p.owner_id = $2 OR $3::bool
-				OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = p.id AND pm.user_id = $2))`,
-		envID, userID, contextIsAdmin(c),
-	).Scan(
-		&env.ID, &env.ProjectID, &env.ServiceID, &env.PreviewServiceID, &env.BranchName, &env.PRNumber,
-		&env.Environment, &env.Status, &env.URL, &env.ExpiresAt, &env.CreatedAt, &env.UpdatedAt,
-		&serviceID, &serviceName, &serviceType,
-	)
-
+	r, err := sqlcdb.New(db.(*database.DB).DB).GetPreviewEnvironment(
+		c.Request.Context(), sqlcdb.GetPreviewEnvironmentParams{
+			ID: envID, OwnerID: userID, Column3: contextIsAdmin(c)})
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Preview environment not found"})
 		return
 	}
-
-	// Populate service info if available
-	if serviceID.Valid {
-		parsedServiceID, parseErr := uuid.Parse(serviceID.String)
-		if parseErr == nil {
-			env.Service = &Service{
-				ID:   parsedServiceID,
-				Name: serviceName.String,
-				Type: serviceType.String,
-			}
-		}
-	}
-
+	env := previewFromRow(previewRowShape{
+		ID: r.ID, ProjectID: r.ProjectID, ServiceID: r.ServiceID,
+		PreviewServiceID: r.PreviewServiceID, BranchName: r.BranchName,
+		PrNumber: r.PrNumber, Environment: r.Environment, Status: r.Status,
+		Url: r.Url, ExpiresAt: r.ExpiresAt, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		SvcID: r.SvcID, ServiceName: r.ServiceName, ServiceType: r.ServiceType,
+	})
 	c.JSON(http.StatusOK, gin.H{"preview_environment": env})
 }
 
@@ -418,24 +416,21 @@ func handleUpdatePreviewEnvironment(c *gin.Context) {
 	}
 
 	// Check if preview environment exists and user has access
-	var existingEnv PreviewEnvironment
-	err = db.(*database.DB).QueryRow(
-		`SELECT pe.id, pe.project_id, pe.service_id, pe.branch_name, pe.pr_number, 
-				pe.environment, pe.status, pe.url, pe.expires_at, pe.created_at, pe.updated_at
-			FROM preview_environments pe
-			JOIN projects p ON pe.project_id = p.id
-			WHERE pe.id = $1 AND (p.owner_id = $2 OR $3::bool)`,
-		envID, userID, contextIsAdmin(c),
-	).Scan(
-		&existingEnv.ID, &existingEnv.ProjectID, &existingEnv.ServiceID, &existingEnv.BranchName,
-		&existingEnv.PRNumber, &existingEnv.Environment, &existingEnv.Status, &existingEnv.URL,
-		&existingEnv.ExpiresAt, &existingEnv.CreatedAt, &existingEnv.UpdatedAt,
-	)
-
+	uid, _ := uuid.Parse(fmt.Sprint(userID))
+	q := sqlcdb.New(db.(*database.DB).DB)
+	r, err := q.GetPreviewEnvironmentForWrite(
+		c.Request.Context(), sqlcdb.GetPreviewEnvironmentForWriteParams{
+			ID: envID, OwnerID: uid, Column3: contextIsAdmin(c)})
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Preview environment not found"})
 		return
 	}
+	existingEnv := previewFromRow(previewRowShape{
+		ID: r.ID, ProjectID: r.ProjectID, ServiceID: r.ServiceID,
+		BranchName: r.BranchName, PrNumber: r.PrNumber, Environment: r.Environment,
+		Status: r.Status, Url: r.Url, ExpiresAt: r.ExpiresAt,
+		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+	})
 
 	// Update fields if provided
 	if req.Status != "" {
@@ -455,12 +450,17 @@ func handleUpdatePreviewEnvironment(c *gin.Context) {
 	existingEnv.UpdatedAt = time.Now()
 
 	// Update preview environment in database
-	_, err = db.(*database.DB).Exec(
-		`UPDATE preview_environments 
-			SET status = $1, url = $2, expires_at = $3, updated_at = $4
-			WHERE id = $5`,
-		existingEnv.Status, existingEnv.URL, existingEnv.ExpiresAt, existingEnv.UpdatedAt, existingEnv.ID,
-	)
+	expiresAt := time.Time{}
+	if existingEnv.ExpiresAt != nil {
+		expiresAt = *existingEnv.ExpiresAt
+	}
+	err = q.UpdatePreviewEnvironment(c.Request.Context(), sqlcdb.UpdatePreviewEnvironmentParams{
+		Status:    existingEnv.Status,
+		Url:       sql.NullString{String: existingEnv.URL, Valid: existingEnv.URL != ""},
+		ExpiresAt: expiresAt,
+		UpdatedAt: sql.NullTime{Time: existingEnv.UpdatedAt, Valid: true},
+		ID:        existingEnv.ID,
+	})
 
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update preview environment"})
@@ -492,46 +492,34 @@ func handleDeletePreviewEnvironment(c *gin.Context) {
 		return
 	}
 
-	// Check if preview environment exists and user has access
-	var projectOwnerID string
-	err = db.(*database.DB).QueryRow(
-		`SELECT p.owner_id 
-			FROM preview_environments pe
-			JOIN projects p ON pe.project_id = p.id
-			WHERE pe.id = $1`,
-		envID,
-	).Scan(&projectOwnerID)
+	ctx := c.Request.Context()
+	q := sqlcdb.New(db.(*database.DB).DB)
 
+	// Check if preview environment exists and user has access
+	projectOwnerID, err := q.GetPreviewEnvironmentOwner(ctx, envID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Preview environment not found"})
 		return
 	}
 
 	// Check if user owns the project
-	if projectOwnerID != userID.(string) && !contextIsAdmin(c) {
+	if projectOwnerID.String() != userID.(string) && !contextIsAdmin(c) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 		return
 	}
 
 	// Tear down the clone's runtime and row — the preview is the clone.
-	var cloneID *uuid.UUID
-	_ = db.(*database.DB).QueryRow(
-		`SELECT preview_service_id FROM preview_environments WHERE id = $1`, envID,
-	).Scan(&cloneID)
-	if cloneID != nil {
+	if cloneID, err := q.GetPreviewServiceID(ctx, envID); err == nil && cloneID.Valid {
 		if engineValue, exists := c.Get("deployment_engine"); exists && engineValue != nil {
 			if engine, ok := engineValue.(*deployment.DeploymentEngine); ok {
-				removeServiceRuntime(c.Request.Context(), db.(*database.DB), engine, *cloneID)
+				removeServiceRuntime(ctx, db.(*database.DB), engine, cloneID.UUID)
 			}
 		}
-		_, _ = db.(*database.DB).Exec(`DELETE FROM services WHERE id = $1`, *cloneID)
+		_ = q.DeleteServiceByID(ctx, cloneID.UUID)
 	}
 
 	// Delete preview environment
-	_, err = db.(*database.DB).Exec(
-		"DELETE FROM preview_environments WHERE id = $1",
-		envID,
-	)
+	err = q.DeletePreviewEnvironment(ctx, envID)
 
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete preview environment"})
@@ -569,21 +557,29 @@ func handlePromotePreviewEnvironment(c *gin.Context) {
 		return
 	}
 
-	// Get preview environment details
-	var env PreviewEnvironment
-	err = db.(*database.DB).QueryRow(
-		`SELECT pe.id, pe.project_id, pe.service_id, pe.preview_service_id, pe.branch_name, pe.environment, pe.status
-			FROM preview_environments pe
-			JOIN projects p ON pe.project_id = p.id
-			WHERE pe.id = $1 AND (p.owner_id = $2 OR $3::bool)`,
-		envID, userID, contextIsAdmin(c),
-	).Scan(
-		&env.ID, &env.ProjectID, &env.ServiceID, &env.PreviewServiceID, &env.BranchName, &env.Environment, &env.Status,
-	)
+	ctx := c.Request.Context()
+	q := sqlcdb.New(db.(*database.DB).DB)
 
+	// Get preview environment details
+	uid, _ := uuid.Parse(fmt.Sprint(userID))
+	r, err := q.GetPreviewEnvironmentForPromote(
+		ctx, sqlcdb.GetPreviewEnvironmentForPromoteParams{
+			ID: envID, OwnerID: uid, Column3: contextIsAdmin(c)})
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Preview environment not found"})
 		return
+	}
+	env := PreviewEnvironment{
+		ID:          r.ID,
+		ProjectID:   r.ProjectID,
+		ServiceID:   r.ServiceID,
+		BranchName:  r.BranchName,
+		Environment: r.Environment,
+		Status:      r.Status,
+	}
+	if r.PreviewServiceID.Valid {
+		id := r.PreviewServiceID.UUID
+		env.PreviewServiceID = &id
 	}
 
 	// Check if preview environment is in a state that can be promoted
@@ -596,11 +592,12 @@ func handlePromotePreviewEnvironment(c *gin.Context) {
 	// branch onto its own deployment track.
 	deploymentID := uuid.New()
 	promotionVersion := fmt.Sprintf("promote-%s-%d", strings.ReplaceAll(env.BranchName, "/", "-"), time.Now().Unix())
-	_, err = db.(*database.DB).Exec(
-		`INSERT INTO deployments (id, service_id, version, commit_hash, status, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, 'pending', NOW(), NOW())`,
-		deploymentID, env.ServiceID, promotionVersion, env.BranchName,
-	)
+	err = q.InsertPendingDeployment(ctx, sqlcdb.InsertPendingDeploymentParams{
+		ID:         deploymentID,
+		ServiceID:  env.ServiceID,
+		Version:    promotionVersion,
+		CommitHash: sql.NullString{String: env.BranchName, Valid: true},
+	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create promotion deployment"})
 		return
@@ -628,18 +625,14 @@ func handlePromotePreviewEnvironment(c *gin.Context) {
 	if env.PreviewServiceID != nil {
 		if engineValue, exists := c.Get("deployment_engine"); exists && engineValue != nil {
 			if engine, ok := engineValue.(*deployment.DeploymentEngine); ok {
-				removeServiceRuntime(c.Request.Context(), db.(*database.DB), engine, *env.PreviewServiceID)
+				removeServiceRuntime(ctx, db.(*database.DB), engine, *env.PreviewServiceID)
 			}
 		}
-		_, _ = db.(*database.DB).Exec(`DELETE FROM services WHERE id = $1`, *env.PreviewServiceID)
+		_ = q.DeleteServiceByID(ctx, *env.PreviewServiceID)
 	}
 
-	if _, err := db.(*database.DB).Exec(
-		`UPDATE preview_environments
-		 SET status = 'stopped', updated_at = NOW()
-		 WHERE id = $1`,
-		env.ID,
-	); err != nil {
+	if err := q.MarkPreviewEnvironmentStatus(ctx, sqlcdb.MarkPreviewEnvironmentStatusParams{
+		Status: "stopped", ID: env.ID}); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update preview environment status"})
 		return
 	}
@@ -682,28 +675,27 @@ func handleCleanupExpiredPreviewEnvironments(c *gin.Context) {
 		return
 	}
 
+	ctx := c.Request.Context()
+	q := sqlcdb.New(db.(*database.DB).DB)
+	uid, _ := uuid.Parse(fmt.Sprint(userID))
+
 	// Find expired preview environments for user's projects
-	rows, err := db.(*database.DB).Query(
-		`SELECT pe.id, pe.project_id, pe.service_id, pe.preview_service_id, pe.branch_name, pe.environment
-			FROM preview_environments pe
-			JOIN projects p ON pe.project_id = p.id
-			WHERE (p.owner_id = $1 OR $2::bool) AND pe.expires_at < NOW() AND pe.status != 'expired'`,
-		userID, contextIsAdmin(c),
-	)
+	rows, err := q.ListExpiredPreviewsForUser(ctx, sqlcdb.ListExpiredPreviewsForUserParams{
+		OwnerID: uid, Column2: contextIsAdmin(c)})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to find expired preview environments"})
 		return
 	}
-	defer rows.Close()
 
-	var expiredEnvs []PreviewEnvironment
-	for rows.Next() {
-		var env PreviewEnvironment
-		err := rows.Scan(
-			&env.ID, &env.ProjectID, &env.ServiceID, &env.PreviewServiceID, &env.BranchName, &env.Environment,
-		)
-		if err != nil {
-			continue
+	expiredEnvs := make([]PreviewEnvironment, 0, len(rows))
+	for _, r := range rows {
+		env := PreviewEnvironment{
+			ID: r.ID, ProjectID: r.ProjectID, ServiceID: r.ServiceID,
+			BranchName: r.BranchName, Environment: r.Environment,
+		}
+		if r.PreviewServiceID.Valid {
+			id := r.PreviewServiceID.UUID
+			env.PreviewServiceID = &id
 		}
 		expiredEnvs = append(expiredEnvs, env)
 	}
@@ -711,20 +703,17 @@ func handleCleanupExpiredPreviewEnvironments(c *gin.Context) {
 	// Mark expired environments as expired and tear down their clones
 	cleanupCount := 0
 	for _, env := range expiredEnvs {
-		_, err := db.(*database.DB).Exec(
-			"UPDATE preview_environments SET status = 'expired', updated_at = NOW() WHERE id = $1",
-			env.ID,
-		)
-		if err != nil {
+		if err := q.MarkPreviewEnvironmentStatus(ctx, sqlcdb.MarkPreviewEnvironmentStatusParams{
+			Status: "expired", ID: env.ID}); err != nil {
 			continue
 		}
 		if env.PreviewServiceID != nil {
 			if engineValue, exists := c.Get("deployment_engine"); exists && engineValue != nil {
 				if engine, ok := engineValue.(*deployment.DeploymentEngine); ok {
-					removeServiceRuntime(c.Request.Context(), db.(*database.DB), engine, *env.PreviewServiceID)
+					removeServiceRuntime(ctx, db.(*database.DB), engine, *env.PreviewServiceID)
 				}
 			}
-			_, _ = db.(*database.DB).Exec(`DELETE FROM services WHERE id = $1`, *env.PreviewServiceID)
+			_ = q.DeleteServiceByID(ctx, *env.PreviewServiceID)
 		}
 		cleanupCount++
 	}
@@ -754,15 +743,13 @@ func resolvePreviewHost(db *database.DB, cloneID uuid.UUID, envName string) stri
 	if label == "" {
 		return ""
 	}
-	var nodeID sql.NullString
-	var spread bool
-	if err := db.QueryRow(
-		`SELECT node_id, COALESCE(spread, false) FROM services WHERE id = $1`, cloneID,
-	).Scan(&nodeID, &spread); err != nil {
-		return ""
-	}
 	q := sqlcdb.New(db.DB)
 	ctx := context.Background()
+	brief, err := q.GetServicePlacementBrief(ctx, cloneID)
+	if err != nil {
+		return ""
+	}
+	nodeID, spread := brief.NodeID, brief.Spread
 	var base string
 	switch {
 	case nodeID.Valid && nodeID.String != "":
@@ -789,30 +776,22 @@ func resolvePreviewHost(db *database.DB, cloneID uuid.UUID, envName string) stri
 // loadServiceForDeploy hydrates the Service fields runDeploymentAndSync
 // needs — mirrors the loader in handleDeployService.
 func loadServiceForDeploy(db *database.DB, serviceID uuid.UUID) (Service, error) {
-	var service Service
-	err := db.QueryRow(
-		`SELECT s.id, s.project_id, s.name, s.type, s.status, s.image, s.command,
-		        s.environment, s.git_repo, s.git_branch, s.build_path, s.cpu, s.memory,
-		        COALESCE(s.replicas, 1), COALESCE(s.port, 0),
-		        COALESCE(s.domain, ''), COALESCE(s.healthcheck_path, ''),
-		        COALESCE(s.restart_policy, 'unless-stopped'),
-		        COALESCE(s.builder, 'auto'), COALESCE(s.cpu_reserve, ''),
-		        COALESCE(s.memory_reserve, ''), COALESCE(s.static_build_cmd, ''),
-		        COALESCE(s.static_dir, ''),
-		        s.created_at, s.updated_at
-		 FROM services s
-		 WHERE s.id = $1`,
-		serviceID,
-	).Scan(
-		&service.ID, &service.ProjectID, &service.Name, &service.Type, &service.Status,
-		&service.Image, &service.Command, &service.Environment, &service.GitRepo,
-		&service.GitBranch, &service.BuildPath, &service.CPU, &service.Memory,
-		&service.Replicas, &service.Port, &service.Domain, &service.HealthCheckPath,
-		&service.RestartPolicy, &service.Builder, &service.CPUReserve,
-		&service.MemoryReserve, &service.StaticBuildCmd, &service.StaticDir,
-		&service.CreatedAt, &service.UpdatedAt,
-	)
-	return service, err
+	r, err := sqlcdb.New(db.DB).GetServiceForDeploy(context.Background(), serviceID)
+	if err != nil {
+		return Service{}, err
+	}
+	return Service{
+		ID: r.ID, ProjectID: r.ProjectID, Name: r.Name, Type: r.Type.String,
+		Status: r.Status.String, Image: r.Image.String, Command: r.Command.String,
+		Environment: r.Environment.String, GitRepo: r.GitRepo.String,
+		GitBranch: r.GitBranch.String, BuildPath: r.BuildPath.String,
+		CPU: r.Cpu.String, Memory: r.Memory.String,
+		Replicas: int(r.Replicas), Port: int(r.Port), Domain: r.Domain,
+		HealthCheckPath: r.HealthcheckPath, RestartPolicy: r.RestartPolicy,
+		Builder: r.Builder, CPUReserve: r.CpuReserve, MemoryReserve: r.MemoryReserve,
+		StaticBuildCmd: r.StaticBuildCmd, StaticDir: r.StaticDir,
+		CreatedAt: r.CreatedAt.Time, UpdatedAt: r.UpdatedAt.Time,
+	}, nil
 }
 
 // StartPreviewSweeper expires preview environments past their TTL — tears
@@ -838,54 +817,27 @@ func StartPreviewSweeper(ctx context.Context, db *database.DB, engine *deploymen
 
 // sweepExpiredPreviews retires previews whose TTL elapsed.
 func sweepExpiredPreviews(ctx context.Context, db *database.DB, engine *deployment.DeploymentEngine) {
-	rows, err := db.QueryContext(ctx,
-		`SELECT id, preview_service_id FROM preview_environments
-		 WHERE expires_at < NOW() AND status NOT IN ('expired', 'stopped')`)
+	q := sqlcdb.New(db.DB)
+	rows, err := q.ListSweepablePreviews(ctx)
 	if err != nil {
 		return
 	}
 	var ids []uuid.UUID
-	var clones []uuid.UUID
-	for rows.Next() {
-		var id uuid.UUID
-		var cloneID *uuid.UUID
-		if err := rows.Scan(&id, &cloneID); err == nil {
-			ids = append(ids, id)
-			if cloneID != nil {
-				clones = append(clones, *cloneID)
-			}
+	for _, r := range rows {
+		ids = append(ids, r.ID)
+		if r.PreviewServiceID.Valid {
+			removeServiceRuntime(ctx, db, engine, r.PreviewServiceID.UUID)
+			_ = q.DeleteServiceByID(ctx, r.PreviewServiceID.UUID)
 		}
 	}
-	rows.Close()
-	for _, cloneID := range clones {
-		removeServiceRuntime(ctx, db, engine, cloneID)
-		_, _ = db.ExecContext(ctx, `DELETE FROM services WHERE id = $1`, cloneID)
-	}
 	for _, id := range ids {
-		_, _ = db.ExecContext(ctx,
-			`UPDATE preview_environments SET status = 'expired', updated_at = NOW() WHERE id = $1`, id)
+		_ = q.MarkPreviewEnvironmentStatus(ctx, sqlcdb.MarkPreviewEnvironmentStatusParams{
+			Status: "expired", ID: id})
 	}
 }
 
 // syncPreviewStatuses folds the clone's live service status into the
 // preview row so list/detail endpoints reflect the real deploy state.
 func syncPreviewStatuses(ctx context.Context, db *database.DB) {
-	_, _ = db.ExecContext(ctx, `
-		UPDATE preview_environments pe
-		SET status = derived.st, updated_at = NOW()
-		FROM (
-			SELECT pe2.id,
-				CASE
-					WHEN s.status IN ('running', 'deployed') THEN 'running'
-					WHEN s.status IN ('failed', 'error') THEN 'failed'
-					WHEN s.status IN ('building', 'deploying', 'queued', 'pending', 'cloning') THEN 'building'
-					ELSE pe2.status
-				END AS st
-			FROM preview_environments pe2
-			JOIN services s ON pe2.preview_service_id = s.id
-		) derived
-		WHERE pe.id = derived.id
-		  AND pe.status IN ('building', 'running', 'failed')
-		  AND pe.status <> derived.st
-	`)
+	_ = sqlcdb.New(db.DB).SyncPreviewStatuses(ctx)
 }

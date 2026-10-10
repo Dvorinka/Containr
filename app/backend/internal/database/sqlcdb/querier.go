@@ -22,6 +22,7 @@ type Querier interface {
 	CloneServiceRow(ctx context.Context, arg CloneServiceRowParams) error
 	CloneServiceVariables(ctx context.Context, arg CloneServiceVariablesParams) error
 	CompleteCommand(ctx context.Context, arg CompleteCommandParams) (AgentCommand, error)
+	CountActivePreviewsForBranch(ctx context.Context, arg CountActivePreviewsForBranchParams) (int64, error)
 	CountDatabaseServicesByUserAndName(ctx context.Context, arg CountDatabaseServicesByUserAndNameParams) (int64, error)
 	CountDatabasesUsingBackupTarget(ctx context.Context, targetID sql.NullString) (int64, error)
 	CountEnvironmentServices(ctx context.Context, environmentID uuid.UUID) (int64, error)
@@ -41,6 +42,8 @@ type Querier interface {
 	CreateExternalDatabaseService(ctx context.Context, arg CreateExternalDatabaseServiceParams) error
 	CreateNotification(ctx context.Context, arg CreateNotificationParams) error
 	CreateOutboundWebhook(ctx context.Context, arg CreateOutboundWebhookParams) error
+	CreatePreviewDomain(ctx context.Context, arg CreatePreviewDomainParams) error
+	CreatePreviewEnvironment(ctx context.Context, arg CreatePreviewEnvironmentParams) error
 	CreateProject(ctx context.Context, arg CreateProjectParams) (Project, error)
 	CreateServiceDomain(ctx context.Context, arg CreateServiceDomainParams) (CreateServiceDomainRow, error)
 	CreateServiceFromTemplate(ctx context.Context, arg CreateServiceFromTemplateParams) error
@@ -50,12 +53,14 @@ type Querier interface {
 	CreateWebhookDelivery(ctx context.Context, arg CreateWebhookDeliveryParams) error
 	DatabaseServiceExistsByIDAndUser(ctx context.Context, arg DatabaseServiceExistsByIDAndUserParams) (bool, error)
 	DeleteAgent(ctx context.Context, id string) error
+	DeleteAllServiceDomains(ctx context.Context, serviceID uuid.UUID) error
 	DeleteBackupTargetByIDAndUser(ctx context.Context, arg DeleteBackupTargetByIDAndUserParams) error
 	DeleteBanner(ctx context.Context, id uuid.UUID) error
 	DeleteDatabaseServiceByID(ctx context.Context, id string) error
 	DeleteDatabaseServiceByIDAndUser(ctx context.Context, arg DeleteDatabaseServiceByIDAndUserParams) error
 	DeleteNotificationChannel(ctx context.Context, arg DeleteNotificationChannelParams) (int64, error)
 	DeleteOutboundWebhookByIDAndUser(ctx context.Context, arg DeleteOutboundWebhookByIDAndUserParams) error
+	DeletePreviewEnvironment(ctx context.Context, id uuid.UUID) error
 	DeleteProjectByID(ctx context.Context, projectID uuid.UUID) (int64, error)
 	DeleteProjectEnvironment(ctx context.Context, arg DeleteProjectEnvironmentParams) error
 	DeleteServiceByID(ctx context.Context, id uuid.UUID) error
@@ -79,6 +84,12 @@ type Querier interface {
 	GetLastAgentCommandByType(ctx context.Context, arg GetLastAgentCommandByTypeParams) (AgentCommand, error)
 	GetOutboundWebhookByID(ctx context.Context, id uuid.UUID) (OutboundWebhook, error)
 	GetOutboundWebhookByIDAndUser(ctx context.Context, arg GetOutboundWebhookByIDAndUserParams) (OutboundWebhook, error)
+	GetPreviewEnvironment(ctx context.Context, arg GetPreviewEnvironmentParams) (GetPreviewEnvironmentRow, error)
+	GetPreviewEnvironmentForPromote(ctx context.Context, arg GetPreviewEnvironmentForPromoteParams) (GetPreviewEnvironmentForPromoteRow, error)
+	GetPreviewEnvironmentForWrite(ctx context.Context, arg GetPreviewEnvironmentForWriteParams) (GetPreviewEnvironmentForWriteRow, error)
+	GetPreviewEnvironmentOwner(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
+	GetPreviewServiceID(ctx context.Context, id uuid.UUID) (uuid.NullUUID, error)
+	GetProjectBrief(ctx context.Context, id uuid.UUID) (GetProjectBriefRow, error)
 	GetProjectByIDForUser(ctx context.Context, arg GetProjectByIDForUserParams) (Project, error)
 	GetProjectEnvironmentByName(ctx context.Context, arg GetProjectEnvironmentByNameParams) (Environment, error)
 	GetProjectOwner(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
@@ -89,12 +100,15 @@ type Querier interface {
 	GetServiceDomainDefault(ctx context.Context, serviceID uuid.UUID) (string, error)
 	GetServiceDomainFirst(ctx context.Context, serviceID uuid.UUID) (string, error)
 	GetServiceEnvironment(ctx context.Context, id uuid.UUID) (string, error)
+	GetServiceForDeploy(ctx context.Context, id uuid.UUID) (GetServiceForDeployRow, error)
 	GetServicePlacementBrief(ctx context.Context, id uuid.UUID) (GetServicePlacementBriefRow, error)
 	GetServiceTemplateByID(ctx context.Context, id string) (ServiceTemplate, error)
+	GetServiceTypeBrief(ctx context.Context, arg GetServiceTypeBriefParams) (GetServiceTypeBriefRow, error)
 	GetUserInviteByTokenHash(ctx context.Context, tokenHash string) (UserInvite, error)
 	GetUserTokenByHash(ctx context.Context, tokenHash string) (UserToken, error)
 	InsertAgentHeartbeat(ctx context.Context, arg InsertAgentHeartbeatParams) error
 	InsertNotificationChannel(ctx context.Context, arg InsertNotificationChannelParams) (NotificationChannel, error)
+	InsertPendingDeployment(ctx context.Context, arg InsertPendingDeploymentParams) error
 	InsertProjectEnvironment(ctx context.Context, arg InsertProjectEnvironmentParams) error
 	ListActiveBanners(ctx context.Context) ([]Banner, error)
 	ListAgentAuthTokens(ctx context.Context) ([]AgentAuthToken, error)
@@ -111,6 +125,7 @@ type Querier interface {
 	ListDatabaseServicesByUser(ctx context.Context, userID string) ([]DatabaseService, error)
 	ListDueDatabaseBackups(ctx context.Context) ([]ListDueDatabaseBackupsRow, error)
 	ListEnabledOutboundWebhooks(ctx context.Context) ([]OutboundWebhook, error)
+	ListExpiredPreviewsForUser(ctx context.Context, arg ListExpiredPreviewsForUserParams) ([]ListExpiredPreviewsForUserRow, error)
 	ListInstanceMetrics(ctx context.Context, arg ListInstanceMetricsParams) ([]ListInstanceMetricsRow, error)
 	ListNodeMetrics(ctx context.Context, arg ListNodeMetricsParams) ([]ListNodeMetricsRow, error)
 	ListNotificationChannelsByUser(ctx context.Context, userID uuid.UUID) ([]NotificationChannel, error)
@@ -118,6 +133,7 @@ type Querier interface {
 	ListOutboundWebhooksByUser(ctx context.Context, userID uuid.UUID) ([]OutboundWebhook, error)
 	ListPendingCommands(ctx context.Context, nodeAgentID string) ([]AgentCommand, error)
 	ListPendingProjects(ctx context.Context) ([]Project, error)
+	ListPreviewEnvironmentsForProject(ctx context.Context, projectID uuid.UUID) ([]ListPreviewEnvironmentsForProjectRow, error)
 	ListProjectEnvironments(ctx context.Context, projectID uuid.UUID) ([]ListProjectEnvironmentsRow, error)
 	// Visibility model: a project is readable when it is approved for public
 	// display, when the caller owns or is a member of it, or when the caller is a
@@ -136,11 +152,13 @@ type Querier interface {
 	ListServiceMetrics(ctx context.Context, arg ListServiceMetricsParams) ([]ListServiceMetricsRow, error)
 	ListServiceTemplatesByCategoryForUser(ctx context.Context, arg ListServiceTemplatesByCategoryForUserParams) ([]ServiceTemplate, error)
 	ListServiceTemplatesForUser(ctx context.Context, ownerID uuid.NullUUID) ([]ServiceTemplate, error)
+	ListSweepablePreviews(ctx context.Context) ([]ListSweepablePreviewsRow, error)
 	ListUserInvites(ctx context.Context) ([]UserInvite, error)
 	ListUserTokens(ctx context.Context, userID uuid.UUID) ([]UserToken, error)
 	ListWebhookDeliveriesByWebhook(ctx context.Context, webhookID uuid.UUID) ([]WebhookDelivery, error)
 	MarkAllNotificationsReadByUser(ctx context.Context, arg MarkAllNotificationsReadByUserParams) error
 	MarkNotificationReadByIDAndUser(ctx context.Context, arg MarkNotificationReadByIDAndUserParams) error
+	MarkPreviewEnvironmentStatus(ctx context.Context, arg MarkPreviewEnvironmentStatusParams) error
 	MarkUserInviteUsed(ctx context.Context, arg MarkUserInviteUsedParams) error
 	MoveServiceProject(ctx context.Context, arg MoveServiceProjectParams) (int64, error)
 	// Resource-aware: lowest memory utilisation first, then cpu, then container
@@ -168,6 +186,7 @@ type Querier interface {
 	SetProjectApproved(ctx context.Context, arg SetProjectApprovedParams) (int64, error)
 	SetServiceDomainDefault(ctx context.Context, arg SetServiceDomainDefaultParams) (int64, error)
 	SetServiceLegacyDomain(ctx context.Context, arg SetServiceLegacyDomainParams) error
+	SyncPreviewStatuses(ctx context.Context) error
 	TouchAgentAuthToken(ctx context.Context, tokenHash string) error
 	TouchServiceDomainChecked(ctx context.Context, id uuid.UUID) error
 	TouchUserToken(ctx context.Context, id uuid.UUID) error
@@ -187,7 +206,9 @@ type Querier interface {
 	UpdateDatabaseServiceNameByIDAndUser(ctx context.Context, arg UpdateDatabaseServiceNameByIDAndUserParams) error
 	UpdateDatabaseServicePlanByIDAndUser(ctx context.Context, arg UpdateDatabaseServicePlanByIDAndUserParams) error
 	UpdateOutboundWebhook(ctx context.Context, arg UpdateOutboundWebhookParams) error
+	UpdatePreviewEnvironment(ctx context.Context, arg UpdatePreviewEnvironmentParams) error
 	UpdateProjectByID(ctx context.Context, arg UpdateProjectByIDParams) (int64, error)
+	UpdateServicePreviewBranch(ctx context.Context, arg UpdateServicePreviewBranchParams) error
 	UpdateUserTemplate(ctx context.Context, arg UpdateUserTemplateParams) (int64, error)
 	UpdateWebhookDeliveryResult(ctx context.Context, arg UpdateWebhookDeliveryResultParams) error
 	UpsertEnvironmentVariable(ctx context.Context, arg UpsertEnvironmentVariableParams) error
