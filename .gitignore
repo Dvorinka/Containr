@@ -124,3 +124,6 @@ ref/
 .playwright-mcp/
 canvas-*.png
 .vercel
+
+# Local design previews (not shipped)
+design/
