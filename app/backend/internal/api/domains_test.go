@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"strings"
+	"time"
 	"testing"
 
 	"containr/internal/database"
@@ -222,4 +223,118 @@ func TestCloneServiceRowLive(t *testing.T) {
 		cloneID).Scan(&varVal); err != nil || varVal != "bar" {
 		t.Fatalf("vars not cloned: %v %q", err, varVal)
 	}
+}
+
+// Live preview-environment test: generated queries must preserve the
+// access-check join, the status-sync CASE, and the sweep listing.
+func TestPreviewEnvironmentsLiveInvariants(t *testing.T) {
+	dsn := testDSNString(t)
+	db, err := database.NewConnection(dsn)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+	q := sqlcdb.New(db.DB)
+
+	userID := uuid.New()
+	projectID := uuid.New()
+	envID := uuid.New()
+	srcID := uuid.New()
+	cloneID := uuid.New()
+	previewID := uuid.New()
+	suffix := strings.ReplaceAll(previewID.String()[:8], "-", "")
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatalf("setup: %v", err)
+		}
+	}
+	_, err = db.Exec(`INSERT INTO users (id, email, password_hash, name) VALUES ($1, $2, 'x', 'test')`,
+		userID, "prev-"+suffix+"@test.local")
+	must(err)
+	_, err = db.Exec(`INSERT INTO projects (id, name, owner_id, is_approved) VALUES ($1, $2, $3, true)`,
+		projectID, "prev-"+suffix, userID)
+	must(err)
+	_, err = db.Exec(`INSERT INTO environments (id, name, project_id) VALUES ($1, 'production', $2)`,
+		envID, projectID)
+	must(err)
+	for _, p := range [][3]interface{}{{srcID, "src-" + suffix, "running"}, {cloneID, "clone-" + suffix, "running"}} {
+		_, err = db.Exec(`INSERT INTO services (id, name, project_id, environment_id, service_type, source_type, status)
+			VALUES ($1, $2, $3, $4, 'web', 'image', $5)`,
+			p[0], p[1], projectID, envID, p[2])
+		must(err)
+	}
+	defer func() { _, _ = db.Exec(`DELETE FROM users WHERE id = $1`, userID) }()
+
+	must(q.CreatePreviewEnvironment(ctx, sqlcdb.CreatePreviewEnvironmentParams{
+		ID:               previewID,
+		ProjectID:        projectID,
+		ServiceID:        srcID,
+		PreviewServiceID: uuid.NullUUID{UUID: cloneID, Valid: true},
+		BranchName:       "feat-" + suffix,
+		Environment:      "preview-feat-" + suffix,
+		Status:           "building",
+		ExpiresAt:        time.Now().Add(-time.Hour), // already past TTL → sweepable
+	}))
+
+	// List + service join.
+	rows, err := q.ListPreviewEnvironmentsForProject(ctx, projectID)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("list: %v %d", err, len(rows))
+	}
+	if rows[0].ID != previewID || !rows[0].SvcID.Valid || rows[0].ServiceName.String != "src-"+suffix {
+		t.Fatalf("list row: %+v", rows[0])
+	}
+
+	// Access-check join: owner reads; a stranger does not.
+	if _, err := q.GetPreviewEnvironment(ctx, sqlcdb.GetPreviewEnvironmentParams{
+		ID: previewID, OwnerID: userID}); err != nil {
+		t.Fatalf("owner read: %v", err)
+	}
+	if _, err := q.GetPreviewEnvironment(ctx, sqlcdb.GetPreviewEnvironmentParams{
+		ID: previewID, OwnerID: uuid.New()}); err != nil {
+		t.Fatalf("approved project should be public-read: %v", err)
+	}
+
+	// Status sync folds clone's 'running' into the preview row.
+	if err := q.SyncPreviewStatuses(ctx); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	var status string
+	if err := db.QueryRow(`SELECT status FROM preview_environments WHERE id = $1`, previewID).Scan(&status); err != nil {
+		t.Fatalf("read status: %v", err)
+	}
+	if status != "running" {
+		t.Fatalf("status after sync = %q, want running", status)
+	}
+
+	// TTL sweep picks it up (expired at insert), marks expired.
+	sweep, err := q.ListSweepablePreviews(ctx)
+	if err != nil {
+		t.Fatalf("sweep list: %v", err)
+	}
+	found := false
+	for _, s := range sweep {
+		if s.ID == previewID && s.PreviewServiceID.UUID == cloneID {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("sweepable list missing preview: %+v", sweep)
+	}
+	must(q.MarkPreviewEnvironmentStatus(ctx, sqlcdb.MarkPreviewEnvironmentStatusParams{Status: "expired", ID: previewID}))
+	sweep, _ = q.ListSweepablePreviews(ctx)
+	for _, s := range sweep {
+		if s.ID == previewID {
+			t.Fatal("expired preview still sweepable")
+		}
+	}
+
+	// Owner lookup and delete.
+	owner, err := q.GetPreviewEnvironmentOwner(ctx, previewID)
+	if err != nil || owner != userID {
+		t.Fatalf("owner: %v %v", owner, err)
+	}
+	must(q.DeletePreviewEnvironment(ctx, previewID))
 }
