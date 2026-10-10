@@ -1,6 +1,6 @@
 # Containr — Roadmap 2: The dflow Convergence
 
-Last verified: **2026-10-08** — deep pass over the full dflow codebase
+Last verified: **2026-10-10** — deep pass over the full dflow codebase
 (`~/Desktop/PROG+HTML/dflow`, community fork of dflow-sh/dflow, frozen for
 preservation) against Containr `main` (`15b5b0e`).
 
@@ -337,8 +337,9 @@ and wired refs, one click or one CLI call.
   and local + tags are rejected, empty array clears. Surfaces:
   `--placement-tags` on services create/update, `--tags` on
   `nodes update`, MCP args, OpenAPI, node-detail tag editor +
-  service-detail placement-tags input. Remaining: build-on-node,
-  remote sleep/wake, spread weighting by real capacity.
+  service-detail placement-tags input. Build-on-node and remote
+  sleep/wake both shipped (see below). Remaining: spread weighting
+  by real capacity.
 - [x] **Agent self-upgrade** — `POST /agents/:id/upgrade` enqueues a
   `self_upgrade` command carrying platform + sha256 + server version;
   the agent downloads its replacement from `GET /agents/download/
@@ -540,6 +541,15 @@ and wired refs, one click or one CLI call.
 - [x] **sqlc port** — all static `database/sql` call sites → `sqlc/queries/` + generated `sqlcdb`. Merged: metrics + domains (#75), service clone/move (#76), preview environments (#77), deployments + rollback (#78), runtime ops (#79), cron (#80), sleep/wake sweeper (#81), git providers/repos/webhooks (#82), auth + security (#83), operations/settings/audit/activity/builds/misc + apwhy gateway (#84). Raw SQL remains only for runtime-assembled statements (filtered lists, sparse updates) and Better Auth `auth_users` probes.
 - [ ] **Tests** — canvas/wizard frontend coverage, deployment/template/
   webhook table tests, Playwright e2e golden path.
+- [x] **UI/UX audit** — browser-driven pass over the whole app (PR #85):
+  fixed the stuck connectivity banner (`pingServer` returned
+  `undefined`), stale persisted sessions, fabricated observability
+  metrics (now real `getServiceMetrics` aggregation), mobile overflow,
+  Security blank state, deep-linkable service tabs, and a dozen
+  polish items.
+- [x] **Design previews** — gitignored `/design` holds three on-brand
+  HTML concepts (console, service detail, landing) on the product's
+  token system with a live white-label accent switcher.
 - [x] **First-run wizard** — public `GET /setup/status` + authed
   `POST /setup/complete`; `/setup` page steps admin account → GitHub App
   manifest flow (callback returns to the wizard via a session marker) →
