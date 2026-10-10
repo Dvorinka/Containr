@@ -489,3 +489,43 @@ CREATE TABLE cron_executions (
     output TEXT,
     error TEXT
 );
+
+CREATE TABLE git_providers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
+    api_url VARCHAR(255) NOT NULL,
+    webhook_url VARCHAR(255) NOT NULL,
+    access_token TEXT NOT NULL,
+    user_id UUID NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE git_repositories (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    provider_id UUID NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    full_name VARCHAR(255) NOT NULL,
+    description TEXT,
+    clone_url VARCHAR(255) NOT NULL,
+    webhook_url VARCHAR(255),
+    default_branch VARCHAR(255) DEFAULT 'main',
+    is_private BOOLEAN DEFAULT false,
+    user_id UUID NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE git_webhooks (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    repo_id UUID NOT NULL,
+    provider_id UUID NOT NULL,
+    events TEXT NOT NULL,
+    webhook_secret TEXT NOT NULL,
+    remote_webhook_id VARCHAR(255),
+    active BOOLEAN DEFAULT true,
+    branch_filter VARCHAR(255),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
