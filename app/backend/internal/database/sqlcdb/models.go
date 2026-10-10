@@ -161,6 +161,31 @@ type EnvironmentVariable struct {
 	UpdatedAt sql.NullTime `json:"updated_at"`
 }
 
+type InstanceMetric struct {
+	ServiceID             string         `json:"service_id"`
+	Timestamp             time.Time      `json:"timestamp"`
+	InstanceID            string         `json:"instance_id"`
+	NodeID                sql.NullString `json:"node_id"`
+	Status                sql.NullString `json:"status"`
+	Cpu                   sql.NullString `json:"cpu"`
+	Memory                sql.NullInt64  `json:"memory"`
+	NetworkBytesIn        sql.NullInt64  `json:"network_bytes_in"`
+	NetworkBytesOut       sql.NullInt64  `json:"network_bytes_out"`
+	NetworkPacketsIn      sql.NullInt64  `json:"network_packets_in"`
+	NetworkPacketsOut     sql.NullInt64  `json:"network_packets_out"`
+	NetworkConnectionsIn  sql.NullInt32  `json:"network_connections_in"`
+	NetworkConnectionsOut sql.NullInt32  `json:"network_connections_out"`
+	NetworkErrorsIn       sql.NullInt64  `json:"network_errors_in"`
+	NetworkErrorsOut      sql.NullInt64  `json:"network_errors_out"`
+	StartTime             sql.NullTime   `json:"start_time"`
+	LastSeen              sql.NullTime   `json:"last_seen"`
+	HealthStatus          sql.NullString `json:"health_status"`
+	HealthLastCheck       sql.NullTime   `json:"health_last_check"`
+	HealthCheckCount      sql.NullInt32  `json:"health_check_count"`
+	HealthFailureCount    sql.NullInt32  `json:"health_failure_count"`
+	CreatedAt             sql.NullTime   `json:"created_at"`
+}
+
 type NodeAgent struct {
 	ID            string                `json:"id"`
 	Name          string                `json:"name"`
@@ -179,6 +204,38 @@ type NodeAgent struct {
 	Schedulable   bool                  `json:"schedulable"`
 	Tags          json.RawMessage       `json:"tags"`
 	DefaultDomain string                `json:"default_domain"`
+}
+
+type NodeMetric struct {
+	NodeID                string         `json:"node_id"`
+	Timestamp             time.Time      `json:"timestamp"`
+	CpuUsage              sql.NullString `json:"cpu_usage"`
+	CpuCores              sql.NullString `json:"cpu_cores"`
+	LoadAvg1              sql.NullString `json:"load_avg_1"`
+	LoadAvg5              sql.NullString `json:"load_avg_5"`
+	LoadAvg15             sql.NullString `json:"load_avg_15"`
+	MemoryTotal           sql.NullInt64  `json:"memory_total"`
+	MemoryUsed            sql.NullInt64  `json:"memory_used"`
+	MemoryAvailable       sql.NullInt64  `json:"memory_available"`
+	MemoryUsagePercent    sql.NullString `json:"memory_usage_percent"`
+	StorageTotal          sql.NullInt64  `json:"storage_total"`
+	StorageUsed           sql.NullInt64  `json:"storage_used"`
+	StorageAvailable      sql.NullInt64  `json:"storage_available"`
+	StorageUsagePercent   sql.NullString `json:"storage_usage_percent"`
+	NetworkBytesIn        sql.NullInt64  `json:"network_bytes_in"`
+	NetworkBytesOut       sql.NullInt64  `json:"network_bytes_out"`
+	NetworkPacketsIn      sql.NullInt64  `json:"network_packets_in"`
+	NetworkPacketsOut     sql.NullInt64  `json:"network_packets_out"`
+	NetworkConnectionsIn  sql.NullInt32  `json:"network_connections_in"`
+	NetworkConnectionsOut sql.NullInt32  `json:"network_connections_out"`
+	NetworkErrorsIn       sql.NullInt64  `json:"network_errors_in"`
+	NetworkErrorsOut      sql.NullInt64  `json:"network_errors_out"`
+	Uptime                sql.NullInt64  `json:"uptime"`
+	Processes             sql.NullInt32  `json:"processes"`
+	Os                    sql.NullString `json:"os"`
+	Kernel                sql.NullString `json:"kernel"`
+	Architecture          sql.NullString `json:"architecture"`
+	CreatedAt             sql.NullTime   `json:"created_at"`
 }
 
 type Notification struct {
@@ -303,6 +360,33 @@ type ServiceDomain struct {
 	CertStatus    string       `json:"cert_status"`
 	LastCheckedAt sql.NullTime `json:"last_checked_at"`
 	CreatedAt     time.Time    `json:"created_at"`
+}
+
+type ServiceMetric struct {
+	ServiceID               string         `json:"service_id"`
+	ServiceName             string         `json:"service_name"`
+	ProjectID               string         `json:"project_id"`
+	Timestamp               time.Time      `json:"timestamp"`
+	RequestsTotal           sql.NullInt64  `json:"requests_total"`
+	RequestsSuccess         sql.NullInt64  `json:"requests_success"`
+	RequestsErrors          sql.NullInt64  `json:"requests_errors"`
+	RequestsAvgLatency      sql.NullString `json:"requests_avg_latency"`
+	RequestsP95Latency      sql.NullString `json:"requests_p95_latency"`
+	RequestsP99Latency      sql.NullString `json:"requests_p99_latency"`
+	RequestsThroughput      sql.NullString `json:"requests_throughput"`
+	ErrorsTotal             sql.NullInt64  `json:"errors_total"`
+	ErrorsRate              sql.NullString `json:"errors_rate"`
+	PerformanceResponseTime sql.NullString `json:"performance_response_time"`
+	PerformanceThroughput   sql.NullString `json:"performance_throughput"`
+	PerformanceConcurrency  sql.NullInt64  `json:"performance_concurrency"`
+	PerformanceSaturation   sql.NullString `json:"performance_saturation"`
+	PerformanceUtilization  sql.NullString `json:"performance_utilization"`
+	ResourceCpuUsage        sql.NullString `json:"resource_cpu_usage"`
+	ResourceMemoryUsage     sql.NullInt64  `json:"resource_memory_usage"`
+	ResourceStorageUsage    sql.NullInt64  `json:"resource_storage_usage"`
+	ResourceNetworkUsage    sql.NullInt64  `json:"resource_network_usage"`
+	ResourceScore           sql.NullString `json:"resource_score"`
+	CreatedAt               sql.NullTime   `json:"created_at"`
 }
 
 type ServiceTemplate struct {
