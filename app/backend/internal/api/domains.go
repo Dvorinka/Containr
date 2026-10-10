@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"regexp"
@@ -210,7 +211,7 @@ func basicAuthUsernames(encoded string) []string {
 // serviceWriteAccess mirrors the service update handler's access check.
 func serviceWriteAccess(c *gin.Context, db *database.DB, serviceID uuid.UUID) bool {
 	userID, _ := c.Get("user_id")
-	uid, _ := userID.(uuid.UUID)
+	uid, _ := uuid.Parse(fmt.Sprint(userID))
 	ok, err := sqlcdb.New(db.DB).ServiceWriteAccess(context.Background(), sqlcdb.ServiceWriteAccessParams{
 		ID:      serviceID,
 		OwnerID: uid,

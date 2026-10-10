@@ -18,12 +18,16 @@ type Querier interface {
 	AggregateNodeMetrics(ctx context.Context, arg AggregateNodeMetricsParams) ([]AggregateNodeMetricsRow, error)
 	ClearServiceDomainDefault(ctx context.Context, serviceID uuid.UUID) error
 	ClearServiceNodePins(ctx context.Context, nodeID sql.NullString) (int64, error)
+	CloneServiceDomains(ctx context.Context, arg CloneServiceDomainsParams) error
+	CloneServiceRow(ctx context.Context, arg CloneServiceRowParams) error
+	CloneServiceVariables(ctx context.Context, arg CloneServiceVariablesParams) error
 	CompleteCommand(ctx context.Context, arg CompleteCommandParams) (AgentCommand, error)
 	CountDatabaseServicesByUserAndName(ctx context.Context, arg CountDatabaseServicesByUserAndNameParams) (int64, error)
 	CountDatabasesUsingBackupTarget(ctx context.Context, targetID sql.NullString) (int64, error)
 	CountEnvironmentServices(ctx context.Context, environmentID uuid.UUID) (int64, error)
 	CountProjectsByUser(ctx context.Context, arg CountProjectsByUserParams) (int64, error)
 	CountServiceDomains(ctx context.Context, serviceID uuid.UUID) (int64, error)
+	CountServicesByName(ctx context.Context, arg CountServicesByNameParams) (int64, error)
 	CountServicesByProjectAndName(ctx context.Context, arg CountServicesByProjectAndNameParams) (int64, error)
 	CountUnreadNotificationsByUser(ctx context.Context, userID uuid.UUID) (int64, error)
 	CreateAgent(ctx context.Context, arg CreateAgentParams) (NodeAgent, error)
@@ -54,6 +58,7 @@ type Querier interface {
 	DeleteOutboundWebhookByIDAndUser(ctx context.Context, arg DeleteOutboundWebhookByIDAndUserParams) error
 	DeleteProjectByID(ctx context.Context, projectID uuid.UUID) (int64, error)
 	DeleteProjectEnvironment(ctx context.Context, arg DeleteProjectEnvironmentParams) error
+	DeleteServiceByID(ctx context.Context, id uuid.UUID) error
 	DeleteServiceContainersOnAgent(ctx context.Context, arg DeleteServiceContainersOnAgentParams) error
 	DeleteServiceDomain(ctx context.Context, arg DeleteServiceDomainParams) (int64, error)
 	DeleteUserInvite(ctx context.Context, id uuid.UUID) error
@@ -76,12 +81,14 @@ type Querier interface {
 	GetOutboundWebhookByIDAndUser(ctx context.Context, arg GetOutboundWebhookByIDAndUserParams) (OutboundWebhook, error)
 	GetProjectByIDForUser(ctx context.Context, arg GetProjectByIDForUserParams) (Project, error)
 	GetProjectEnvironmentByName(ctx context.Context, arg GetProjectEnvironmentByNameParams) (Environment, error)
+	GetProjectOwner(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	GetProjectOwnerByID(ctx context.Context, projectID uuid.UUID) (uuid.UUID, error)
 	GetProjectOwnerID(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	GetProjectRoleForUser(ctx context.Context, arg GetProjectRoleForUserParams) (string, error)
 	GetServiceAccess(ctx context.Context, id uuid.UUID) (GetServiceAccessRow, error)
 	GetServiceDomainDefault(ctx context.Context, serviceID uuid.UUID) (string, error)
 	GetServiceDomainFirst(ctx context.Context, serviceID uuid.UUID) (string, error)
+	GetServiceEnvironment(ctx context.Context, id uuid.UUID) (string, error)
 	GetServicePlacementBrief(ctx context.Context, id uuid.UUID) (GetServicePlacementBriefRow, error)
 	GetServiceTemplateByID(ctx context.Context, id string) (ServiceTemplate, error)
 	GetUserInviteByTokenHash(ctx context.Context, tokenHash string) (UserInvite, error)
@@ -135,6 +142,7 @@ type Querier interface {
 	MarkAllNotificationsReadByUser(ctx context.Context, arg MarkAllNotificationsReadByUserParams) error
 	MarkNotificationReadByIDAndUser(ctx context.Context, arg MarkNotificationReadByIDAndUserParams) error
 	MarkUserInviteUsed(ctx context.Context, arg MarkUserInviteUsedParams) error
+	MoveServiceProject(ctx context.Context, arg MoveServiceProjectParams) (int64, error)
 	// Resource-aware: lowest memory utilisation first, then cpu, then container
 	// count. Agents without telemetry sort last (NULL → worst score).
 	PickLeastLoadedAgent(ctx context.Context) (string, error)

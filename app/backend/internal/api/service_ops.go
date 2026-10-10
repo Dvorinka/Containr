@@ -1,11 +1,14 @@
 package api
 
 import (
+	"context"
+	"database/sql"
 	"net/http"
 	"strings"
 	"time"
 
 	"containr/internal/database"
+	"containr/internal/database/sqlcdb"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -53,11 +56,8 @@ func handleCloneService(c *gin.Context) {
 	if name == "" {
 		name = source.Name + "-copy"
 	}
-	var count int
-	_ = db.(*database.DB).QueryRow(
-		`SELECT COUNT(*) FROM services WHERE project_id = $1 AND name = $2`,
-		targetProjectID, name,
-	).Scan(&count)
+	count, _ := sqlcdb.New(db.(*database.DB).DB).CountServicesByName(
+		c.Request.Context(), sqlcdb.CountServicesByNameParams{ProjectID: targetProjectID, Name: name})
 	if count > 0 {
 		c.JSON(http.StatusConflict, gin.H{"error": "Service name already exists in target project", "code": "CONFLICT"})
 		return
@@ -84,8 +84,11 @@ func handleCloneService(c *gin.Context) {
 // inherits the source's. Used by the clone endpoint and preview
 // environments, which additionally override git_branch and domains.
 func cloneServiceRow(db *database.DB, sourceID uuid.UUID, targetProjectID uuid.UUID, name, environment string) (uuid.UUID, error) {
-	var sourceEnv string
-	if err := db.QueryRow(`SELECT COALESCE(environment, '') FROM services WHERE id = $1`, sourceID).Scan(&sourceEnv); err != nil {
+	ctx := context.Background()
+	q := sqlcdb.New(db.DB)
+
+	sourceEnv, err := q.GetServiceEnvironment(ctx, sourceID)
+	if err != nil {
 		return uuid.Nil, err
 	}
 	if environment == "" {
@@ -102,46 +105,31 @@ func cloneServiceRow(db *database.DB, sourceID uuid.UUID, targetProjectID uuid.U
 	maintenance, basicAuth := serviceAccess(db, sourceID)
 	newID := uuid.New()
 	now := time.Now()
-	// string() so pq sends text — []byte would go as bytea and fail ::jsonb.
-	volumesJSON := string(loadServiceVolumesJSON(db, sourceID))
 
-	_, err = db.Exec(
-		`INSERT INTO services
-			(id, project_id, name, environment_id, service_type, source_type, source_url, image_name,
-				 build_command, start_command, type, status, image, command, environment,
-				 git_repo, git_branch, build_path, cpu, memory, replicas, port, domain,
-				 healthcheck_path, restart_policy, volumes, maintenance_mode, basic_auth_users,
-				 builder, cpu_reserve, memory_reserve, static_build_cmd, static_dir,
-				 created_at, updated_at)
-			SELECT $1, $2, $3, $4, service_type, source_type, source_url, image_name,
-				 build_command, start_command, type, 'stopped', image, command, $5,
-				 git_repo, git_branch, build_path, cpu, memory, replicas, port, domain,
-				 healthcheck_path, restart_policy, $6::jsonb, $7, $8,
-				 builder, cpu_reserve, memory_reserve, static_build_cmd, static_dir,
-				 $9, $9
-			FROM services WHERE id = $10`,
-		newID, targetProjectID, name, environmentID, environment, volumesJSON,
-		maintenance, basicAuth, now, sourceID,
-	)
+	err = q.CloneServiceRow(ctx, sqlcdb.CloneServiceRowParams{
+		ID:              newID,
+		ProjectID:       targetProjectID,
+		Name:            name,
+		EnvironmentID:   environmentID,
+		Environment:     sql.NullString{String: environment, Valid: true},
+		MaintenanceMode: maintenance,
+		BasicAuthUsers:  basicAuth,
+		CreatedAt:       sql.NullTime{Time: now, Valid: true},
+		ID_2:            sourceID,
+	})
 	if err != nil {
 		return uuid.Nil, err
 	}
 
-	if _, err := db.Exec(
-		`INSERT INTO service_domains (service_id, domain, is_default, cert_type)
-		 SELECT $1, domain, is_default, cert_type FROM service_domains WHERE service_id = $2`,
-		newID, sourceID,
-	); err != nil {
-		_, _ = db.Exec(`DELETE FROM services WHERE id = $1`, newID)
+	if err := q.CloneServiceDomains(ctx, sqlcdb.CloneServiceDomainsParams{
+		ServiceID: newID, ServiceID_2: sourceID}); err != nil {
+		_ = q.DeleteServiceByID(ctx, newID)
 		return uuid.Nil, err
 	}
 	// Variable values are copied as stored — ciphertext stays ciphertext.
-	if _, err := db.Exec(
-		`INSERT INTO environment_variables (id, service_id, key, value, is_secret)
-		 SELECT gen_random_uuid(), $1, key, value, is_secret FROM environment_variables WHERE service_id = $2`,
-		newID, sourceID,
-	); err != nil {
-		_, _ = db.Exec(`DELETE FROM services WHERE id = $1`, newID)
+	if err := q.CloneServiceVariables(ctx, sqlcdb.CloneServiceVariablesParams{
+		ServiceID: newID, ServiceID_2: sourceID}); err != nil {
+		_ = q.DeleteServiceByID(ctx, newID)
 		return uuid.Nil, err
 	}
 	return newID, nil
@@ -187,11 +175,8 @@ func handleMoveService(c *gin.Context) {
 		return
 	}
 
-	var count int
-	_ = db.(*database.DB).QueryRow(
-		`SELECT COUNT(*) FROM services WHERE project_id = $1 AND name = $2`,
-		req.ProjectID, service.Name,
-	).Scan(&count)
+	count, _ := sqlcdb.New(db.(*database.DB).DB).CountServicesByName(
+		c.Request.Context(), sqlcdb.CountServicesByNameParams{ProjectID: req.ProjectID, Name: service.Name})
 	if count > 0 {
 		c.JSON(http.StatusConflict, gin.H{"error": "A service with this name already exists in the target project", "code": "CONFLICT"})
 		return
@@ -207,15 +192,18 @@ func handleMoveService(c *gin.Context) {
 		return
 	}
 
-	res, err := db.(*database.DB).Exec(
-		`UPDATE services SET project_id = $1, environment_id = $2, updated_at = $3 WHERE id = $4`,
-		req.ProjectID, environmentID, time.Now(), serviceID,
-	)
+	n, err := sqlcdb.New(db.(*database.DB).DB).MoveServiceProject(
+		c.Request.Context(), sqlcdb.MoveServiceProjectParams{
+			ProjectID:     req.ProjectID,
+			EnvironmentID: environmentID,
+			UpdatedAt:     sql.NullTime{Time: time.Now(), Valid: true},
+			ID:            serviceID,
+		})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to move service"})
 		return
 	}
-	if n, _ := res.RowsAffected(); n == 0 {
+	if n == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Service not found", "code": "NOT_FOUND"})
 		return
 	}
@@ -229,16 +217,10 @@ func ownsProject(db *database.DB, projectID uuid.UUID, userID string, isAdmin bo
 	if isAdmin {
 		return true
 	}
-	var owner string
-	err := db.QueryRow(`SELECT owner_id FROM projects WHERE id = $1`, projectID).Scan(&owner)
-	return err == nil && owner == userID
-}
-
-// loadServiceVolumesJSON returns the raw stored mounts for a verbatim copy.
-func loadServiceVolumesJSON(db *database.DB, serviceID uuid.UUID) []byte {
-	var raw []byte
-	if err := db.QueryRow(`SELECT volumes FROM services WHERE id = $1`, serviceID).Scan(&raw); err != nil || len(raw) == 0 {
-		return []byte("[]")
+	uid, err := uuid.Parse(userID)
+	if err != nil {
+		return false
 	}
-	return raw
+	owner, err := sqlcdb.New(db.DB).GetProjectOwner(context.Background(), projectID)
+	return err == nil && owner == uid
 }
