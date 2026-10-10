@@ -17,9 +17,11 @@ import (
 	"time"
 
 	"containr/internal/database"
+	"containr/internal/database/sqlcdb"
 	"containr/internal/gateway"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -107,21 +109,26 @@ func extractGatewayKey(c *gin.Context) string {
 
 // lookupGatewayService resolves the slug to an enabled service row.
 func lookupGatewayService(ctx context.Context, db *database.DB, slug string) (*gatewayService, error) {
-	var s gatewayService
-	var enabled int
-	err := db.QueryRowContext(ctx, `
-		SELECT id, upstream_url, route_prefix, upstream_auth_header,
-		       upstream_auth_value, enabled, rpm_limit, monthly_quota,
-		       request_timeout_ms
-		FROM api_services WHERE slug = $1
-	`, slug).Scan(&s.ID, &s.UpstreamURL, &s.RoutePrefix,
-		&s.UpstreamAuthHeader, &s.UpstreamAuthValue, &enabled,
-		&s.RPMLimit, &s.MonthlyQuota, &s.RequestTimeoutMS)
+	r, err := sqlcdb.New(db.DB).GetAPServiceBySlug(ctx, slug)
 	if err != nil {
 		return nil, err
 	}
-	s.Enabled = enabled != 0
+	s := gatewayService{
+		ID:                 r.ID.String(),
+		UpstreamURL:        r.UpstreamUrl,
+		RoutePrefix:        r.RoutePrefix,
+		UpstreamAuthHeader: r.UpstreamAuthHeader,
+		UpstreamAuthValue:  r.UpstreamAuthValue,
+		Enabled:            r.Enabled != 0,
+		RPMLimit:           nullInt32To64(r.RpmLimit),
+		MonthlyQuota:       nullInt32To64(r.MonthlyQuota),
+		RequestTimeoutMS:   int(r.RequestTimeoutMs.Int32),
+	}
 	return &s, nil
+}
+
+func nullInt32To64(v sql.NullInt32) sql.NullInt64 {
+	return sql.NullInt64{Int64: int64(v.Int32), Valid: v.Valid}
 }
 
 // authenticateGatewayKey resolves a presented key by its indexed prefix and
@@ -131,26 +138,24 @@ func authenticateGatewayKey(ctx context.Context, db *database.DB, presented stri
 	if len(prefix) > 8 {
 		prefix = prefix[:8]
 	}
-	rows, err := db.QueryContext(ctx, `
-		SELECT id, key_hash, enabled, rpm_limit, monthly_quota, allowed_service_ids
-		FROM api_keys WHERE key_prefix = $1
-	`, prefix)
+	rows, err := sqlcdb.New(db.DB).ListAPKeysByPrefix(ctx, prefix)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var k gatewayKey
-		var enabled int
-		if err := rows.Scan(&k.ID, &k.Hash, &enabled, &k.RPMLimit, &k.MonthlyQuota, &k.AllowedServiceIDs); err != nil {
-			return nil, err
+	for _, r := range rows {
+		k := gatewayKey{
+			ID:                r.ID.String(),
+			Hash:              r.KeyHash,
+			Enabled:           r.Enabled != 0,
+			RPMLimit:          nullInt32To64(r.RpmLimit),
+			MonthlyQuota:      nullInt32To64(r.MonthlyQuota),
+			AllowedServiceIDs: r.AllowedServiceIds,
 		}
-		k.Enabled = enabled != 0
 		if bcrypt.CompareHashAndPassword([]byte(k.Hash), []byte(presented)) == nil {
 			return &k, nil
 		}
 	}
-	return nil, rows.Err()
+	return nil, nil
 }
 
 // keyAllowsService applies the allowed_service_ids JSON allowlist. An empty
@@ -168,48 +173,56 @@ func keyAllowsService(k *gatewayKey, serviceID string) bool {
 	return false
 }
 
-// monthlyUsage sums a counter dimension for the current calendar month.
-func monthlyUsage(ctx context.Context, db *database.DB, column, id, period string) (int, error) {
-	var total int
-	err := db.QueryRowContext(ctx, `
-		SELECT COALESCE(SUM(request_count), 0) FROM usage_counters
-		WHERE `+column+` = $1 AND period_month = $2
-	`, id, period).Scan(&total)
-	return total, err
+// monthlyKeyUsage / monthlyServiceUsage sum a counter dimension for the
+// current calendar month.
+func monthlyKeyUsage(ctx context.Context, db *database.DB, id, period string) (int64, error) {
+	keyUUID, _ := uuid.Parse(id)
+	return sqlcdb.New(db.DB).SumUsageByKey(ctx, sqlcdb.SumUsageByKeyParams{
+		ApiKeyID: keyUUID, PeriodMonth: period,
+	})
+}
+
+func monthlyServiceUsage(ctx context.Context, db *database.DB, id, period string) (int64, error) {
+	svcUUID, _ := uuid.Parse(id)
+	return sqlcdb.New(db.DB).SumUsageByService(ctx, sqlcdb.SumUsageByServiceParams{
+		ServiceID: svcUUID, PeriodMonth: period,
+	})
 }
 
 // recordGatewayRequest persists usage, metrics, and failure incidents for a
 // proxied call. Runs in the request path but is three small writes.
 func recordGatewayRequest(ctx context.Context, db *database.DB, svc *gatewayService, k *gatewayKey, status int, period string) {
-	_, _ = db.ExecContext(ctx, `
-		INSERT INTO usage_counters (api_key_id, service_id, period_month, request_count, updated_at)
-		VALUES ($1, $2, $3, 1, NOW())
-		ON CONFLICT (api_key_id, service_id, period_month)
-		DO UPDATE SET request_count = usage_counters.request_count + 1, updated_at = NOW()
-	`, k.ID, svc.ID, period)
-	_, _ = db.ExecContext(ctx, `
-		UPDATE api_keys SET last_used_at = NOW() WHERE id = $1
-	`, k.ID)
+	q := sqlcdb.New(db.DB)
+	keyUUID, _ := uuid.Parse(k.ID)
+	svcUUID, _ := uuid.Parse(svc.ID)
+	_ = q.UpsertUsageCounter(ctx, sqlcdb.UpsertUsageCounterParams{
+		ApiKeyID: keyUUID, ServiceID: svcUUID, PeriodMonth: period,
+	})
+	_ = q.TouchAPKeyLastUsed(ctx, keyUUID)
 	labels, _ := json.Marshal(map[string]interface{}{
 		"service_id": svc.ID,
 		"key_id":     k.ID,
 		"status":     status,
 	})
-	_, _ = db.ExecContext(ctx, `
-		INSERT INTO metrics_timeseries (metric, value, labels_json, occurred_at)
-		VALUES ('gateway_request', 1, $1, NOW())
-	`, string(labels))
+	_ = q.InsertMetricPoint(ctx, sql.NullString{String: string(labels), Valid: true})
 }
 
 func recordGatewayIncident(ctx context.Context, db *database.DB, svcID string, keyID *string, code, msg, severity string, status int) {
-	var kid interface{}
+	var kid uuid.NullUUID
 	if keyID != nil {
-		kid = *keyID
+		if u, err := uuid.Parse(*keyID); err == nil {
+			kid = uuid.NullUUID{UUID: u, Valid: true}
+		}
 	}
-	_, _ = db.ExecContext(ctx, `
-		INSERT INTO incident_events (service_id, api_key_id, code, message, severity, http_status, occurred_at)
-		VALUES ($1, $2, $3, $4, $5, $6, NOW())
-	`, svcID, kid, code, msg, severity, status)
+	svcUUID, _ := uuid.Parse(svcID)
+	_ = sqlcdb.New(db.DB).InsertGatewayIncident(ctx, sqlcdb.InsertGatewayIncidentParams{
+		ServiceID:  uuid.NullUUID{UUID: svcUUID, Valid: svcUUID != uuid.Nil},
+		ApiKeyID:   kid,
+		Code:       code,
+		Message:    msg,
+		Severity:   severity,
+		HttpStatus: sql.NullInt32{Int32: int32(status), Valid: true},
+	})
 }
 
 // handleGatewayProxy is mounted at /g/:slug and /g/:slug/*path on the root
@@ -267,13 +280,13 @@ func handleGatewayProxy(c *gin.Context) {
 
 	period := now.Format("2006-01")
 	if key.MonthlyQuota.Valid && key.MonthlyQuota.Int64 > 0 {
-		if used, err := monthlyUsage(ctx, db, "api_key_id", key.ID, period); err == nil && int64(used) >= key.MonthlyQuota.Int64 {
+		if used, err := monthlyKeyUsage(ctx, db, key.ID, period); err == nil && used >= key.MonthlyQuota.Int64 {
 			respondError(c, http.StatusTooManyRequests, "QUOTA_EXCEEDED", "Monthly request quota exceeded")
 			return
 		}
 	}
 	if svc.MonthlyQuota.Valid && svc.MonthlyQuota.Int64 > 0 {
-		if used, err := monthlyUsage(ctx, db, "service_id", svc.ID, period); err == nil && int64(used) >= svc.MonthlyQuota.Int64 {
+		if used, err := monthlyServiceUsage(ctx, db, svc.ID, period); err == nil && used >= svc.MonthlyQuota.Int64 {
 			respondError(c, http.StatusTooManyRequests, "QUOTA_EXCEEDED", "Service monthly quota exceeded")
 			return
 		}

@@ -26,6 +26,8 @@ type Querier interface {
 	CompleteCommand(ctx context.Context, arg CompleteCommandParams) (AgentCommand, error)
 	CompleteDeployment(ctx context.Context, arg CompleteDeploymentParams) error
 	ComplianceFrameworkExists(ctx context.Context, id uuid.UUID) (bool, error)
+	CountAPKeys(ctx context.Context) (int64, error)
+	CountAPServices(ctx context.Context) (int64, error)
 	CountAccessibleDeployments(ctx context.Context, arg CountAccessibleDeploymentsParams) (int64, error)
 	CountActivePreviewsForBranch(ctx context.Context, arg CountActivePreviewsForBranchParams) (int64, error)
 	CountDatabaseServicesByUserAndName(ctx context.Context, arg CountDatabaseServicesByUserAndNameParams) (int64, error)
@@ -87,6 +89,8 @@ type Querier interface {
 	FailDeployment(ctx context.Context, arg FailDeploymentParams) error
 	FailInterruptedDeployments(ctx context.Context) error
 	FinishCronExecution(ctx context.Context, arg FinishCronExecutionParams) error
+	GetAPServiceBySlug(ctx context.Context, slug string) (GetAPServiceBySlugRow, error)
+	GetAPServiceForValidate(ctx context.Context, id uuid.UUID) (GetAPServiceForValidateRow, error)
 	GetActiveAgentAuthTokenByHash(ctx context.Context, tokenHash string) (AgentAuthToken, error)
 	GetAdminUserInfo(ctx context.Context, id uuid.UUID) (GetAdminUserInfoRow, error)
 	GetAgent(ctx context.Context, id string) (NodeAgent, error)
@@ -179,6 +183,8 @@ type Querier interface {
 	GetUserTokenByHash(ctx context.Context, tokenHash string) (UserToken, error)
 	GetVulnerabilityMetrics(ctx context.Context, projectID uuid.UUID) (GetVulnerabilityMetricsRow, error)
 	GetVulnerabilityProjectID(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
+	InsertAPKey(ctx context.Context, arg InsertAPKeyParams) (uuid.UUID, error)
+	InsertAPService(ctx context.Context, arg InsertAPServiceParams) (uuid.UUID, error)
 	InsertAgentHeartbeat(ctx context.Context, arg InsertAgentHeartbeatParams) error
 	InsertAuditLog(ctx context.Context, arg InsertAuditLogParams) error
 	InsertAuditLogWithRequest(ctx context.Context, arg InsertAuditLogWithRequestParams) error
@@ -186,14 +192,20 @@ type Querier interface {
 	InsertCronJob(ctx context.Context, arg InsertCronJobParams) error
 	InsertDeployment(ctx context.Context, arg InsertDeploymentParams) error
 	InsertEnvVar(ctx context.Context, arg InsertEnvVarParams) error
+	InsertGatewayIncident(ctx context.Context, arg InsertGatewayIncidentParams) error
 	InsertGitProvider(ctx context.Context, arg InsertGitProviderParams) error
 	InsertGitRepository(ctx context.Context, arg InsertGitRepositoryParams) (InsertGitRepositoryRow, error)
+	InsertMetricPoint(ctx context.Context, labelsJson sql.NullString) error
 	InsertNotificationChannel(ctx context.Context, arg InsertNotificationChannelParams) (NotificationChannel, error)
 	InsertPendingDeployment(ctx context.Context, arg InsertPendingDeploymentParams) error
 	InsertProjectEnvironment(ctx context.Context, arg InsertProjectEnvironmentParams) error
 	InsertProjectVariable(ctx context.Context, arg InsertProjectVariableParams) error
+	InsertServiceIncident(ctx context.Context, arg InsertServiceIncidentParams) error
 	InsertUser(ctx context.Context, arg InsertUserParams) (InsertUserRow, error)
 	InsertUserAdmin(ctx context.Context, arg InsertUserAdminParams) (InsertUserAdminRow, error)
+	ListAPKeys(ctx context.Context) ([]ListAPKeysRow, error)
+	ListAPKeysByPrefix(ctx context.Context, keyPrefix string) ([]ListAPKeysByPrefixRow, error)
+	ListAPServices(ctx context.Context) ([]ListAPServicesRow, error)
 	ListActiveBanners(ctx context.Context) ([]Banner, error)
 	ListActiveOperationDeployments(ctx context.Context, arg ListActiveOperationDeploymentsParams) ([]ListActiveOperationDeploymentsRow, error)
 	ListAdminUserIDs(ctx context.Context) ([]uuid.UUID, error)
@@ -207,6 +219,7 @@ type Querier interface {
 	ListAuditBackfillBatch(ctx context.Context, dollar_1 uuid.UUID) ([]ListAuditBackfillBatchRow, error)
 	ListBackupTargetsByUser(ctx context.Context, userID string) ([]BackupTarget, error)
 	ListBanners(ctx context.Context) ([]Banner, error)
+	ListClientEventPaths(ctx context.Context) ([]ListClientEventPathsRow, error)
 	ListCommandsForAgent(ctx context.Context, nodeAgentID string) ([]AgentCommand, error)
 	ListComplianceFrameworks(ctx context.Context) ([]ListComplianceFrameworksRow, error)
 	ListConnectedRepositories(ctx context.Context, arg ListConnectedRepositoriesParams) ([]ListConnectedRepositoriesRow, error)
@@ -222,6 +235,7 @@ type Querier interface {
 	ListExpiredPreviewsForUser(ctx context.Context, arg ListExpiredPreviewsForUserParams) ([]ListExpiredPreviewsForUserRow, error)
 	ListGitProviders(ctx context.Context, userID uuid.UUID) ([]ListGitProvidersRow, error)
 	ListGitRepositories(ctx context.Context, arg ListGitRepositoriesParams) ([]ListGitRepositoriesRow, error)
+	ListIncidentStatusCodes(ctx context.Context) ([]ListIncidentStatusCodesRow, error)
 	ListInstanceMetrics(ctx context.Context, arg ListInstanceMetricsParams) ([]ListInstanceMetricsRow, error)
 	ListNodeAgentsForService(ctx context.Context, serviceID string) ([]string, error)
 	ListNodeMetrics(ctx context.Context, arg ListNodeMetricsParams) ([]ListNodeMetricsRow, error)
@@ -241,6 +255,7 @@ type Querier interface {
 	ListRecentCronRuns(ctx context.Context, arg ListRecentCronRunsParams) ([]ListRecentCronRunsRow, error)
 	ListRecentFailedDeployments(ctx context.Context, arg ListRecentFailedDeploymentsParams) ([]ListRecentFailedDeploymentsRow, error)
 	ListRecentOperationBackups(ctx context.Context, arg ListRecentOperationBackupsParams) ([]ListRecentOperationBackupsRow, error)
+	ListRequestsByDay(ctx context.Context) ([]ListRequestsByDayRow, error)
 	ListResourceAuditLogs(ctx context.Context, arg ListResourceAuditLogsParams) ([]ListResourceAuditLogsRow, error)
 	// Base domains of every online, schedulable agent carrying the required
 	// placement tags — auto-domain candidates for spread services.
@@ -261,6 +276,7 @@ type Querier interface {
 	ListServicesForPush(ctx context.Context, arg ListServicesForPushParams) ([]ListServicesForPushRow, error)
 	ListSleepCandidates(ctx context.Context) ([]ListSleepCandidatesRow, error)
 	ListSweepablePreviews(ctx context.Context) ([]ListSweepablePreviewsRow, error)
+	ListTopAPServices(ctx context.Context) ([]ListTopAPServicesRow, error)
 	ListUserInvites(ctx context.Context) ([]UserInvite, error)
 	ListUserTokens(ctx context.Context, userID uuid.UUID) ([]UserToken, error)
 	ListVulnerabilities(ctx context.Context, projectID uuid.UUID) ([]ListVulnerabilitiesRow, error)
@@ -283,6 +299,9 @@ type Querier interface {
 	ScrubCommandPayload(ctx context.Context, arg ScrubCommandPayloadParams) error
 	ServiceExistsInProject(ctx context.Context, arg ServiceExistsInProjectParams) (bool, error)
 	ServiceWriteAccess(ctx context.Context, arg ServiceWriteAccessParams) (bool, error)
+	SetAPKeyEnabled(ctx context.Context, arg SetAPKeyEnabledParams) error
+	SetAPServiceEnabled(ctx context.Context, arg SetAPServiceEnabledParams) error
+	SetAPServiceValidation(ctx context.Context, arg SetAPServiceValidationParams) error
 	SetAgentDefaultDomain(ctx context.Context, arg SetAgentDefaultDomainParams) error
 	SetAgentSchedulable(ctx context.Context, arg SetAgentSchedulableParams) error
 	SetAgentStatus(ctx context.Context, arg SetAgentStatusParams) error
@@ -305,8 +324,13 @@ type Querier interface {
 	SetServiceReplicas(ctx context.Context, arg SetServiceReplicasParams) error
 	SetServiceStatus(ctx context.Context, arg SetServiceStatusParams) error
 	SetUserAdmin(ctx context.Context, arg SetUserAdminParams) (int64, error)
+	SumRequestMetricSince(ctx context.Context, dollar_1 string) (int32, error)
+	SumUsageByKey(ctx context.Context, arg SumUsageByKeyParams) (int64, error)
+	SumUsageByService(ctx context.Context, arg SumUsageByServiceParams) (int64, error)
+	SumUsageCounters(ctx context.Context) (interface{}, error)
 	SyncDeploymentProgress(ctx context.Context, arg SyncDeploymentProgressParams) error
 	SyncPreviewStatuses(ctx context.Context) error
+	TouchAPKeyLastUsed(ctx context.Context, id uuid.UUID) error
 	TouchAgentAuthToken(ctx context.Context, tokenHash string) error
 	TouchServiceDomainChecked(ctx context.Context, id uuid.UUID) error
 	TouchUserToken(ctx context.Context, id uuid.UUID) error
@@ -352,6 +376,7 @@ type Querier interface {
 	UpsertServiceContainer(ctx context.Context, arg UpsertServiceContainerParams) error
 	UpsertServiceMetrics(ctx context.Context, arg UpsertServiceMetricsParams) error
 	UpsertServiceTemplate(ctx context.Context, arg UpsertServiceTemplateParams) error
+	UpsertUsageCounter(ctx context.Context, arg UpsertUsageCounterParams) error
 }
 
 var _ Querier = (*Queries)(nil)

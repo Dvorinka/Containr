@@ -643,3 +643,70 @@ CREATE TABLE builds (
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
+
+-- APwhy API gateway (api_services/api_keys + usage/metrics/incident planes)
+CREATE TABLE api_services (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    slug TEXT NOT NULL UNIQUE,
+    upstream_url TEXT NOT NULL,
+    route_prefix TEXT NOT NULL UNIQUE,
+    health_path TEXT NOT NULL DEFAULT '/health',
+    upstream_auth_header TEXT,
+    upstream_auth_value TEXT,
+    internal_token TEXT,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    rpm_limit INTEGER,
+    monthly_quota INTEGER,
+    request_timeout_ms INTEGER DEFAULT 8000,
+    last_validation_at TIMESTAMP WITHOUT TIME ZONE,
+    last_validation_status TEXT,
+    last_validation_message TEXT,
+    created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT now(),
+    updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT now()
+);
+
+CREATE TABLE api_keys (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    key_hash TEXT NOT NULL,
+    key_prefix TEXT NOT NULL,
+    plan TEXT NOT NULL DEFAULT 'free',
+    allowed_service_ids TEXT NOT NULL DEFAULT '[]',
+    enabled INTEGER NOT NULL DEFAULT 1,
+    rpm_limit INTEGER DEFAULT 60,
+    monthly_quota INTEGER DEFAULT 1000,
+    created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT now(),
+    updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT now(),
+    last_used_at TIMESTAMP WITHOUT TIME ZONE
+);
+
+CREATE TABLE usage_counters (
+    id INTEGER PRIMARY KEY,
+    api_key_id UUID NOT NULL REFERENCES api_keys(id) ON DELETE CASCADE,
+    service_id UUID NOT NULL REFERENCES api_services(id) ON DELETE CASCADE,
+    period_month TEXT NOT NULL,
+    request_count INTEGER NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT now(),
+    UNIQUE (api_key_id, service_id, period_month)
+);
+
+CREATE TABLE metrics_timeseries (
+    id INTEGER PRIMARY KEY,
+    metric TEXT NOT NULL,
+    value REAL NOT NULL,
+    labels_json TEXT,
+    occurred_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT now()
+);
+
+CREATE TABLE incident_events (
+    id INTEGER PRIMARY KEY,
+    service_id UUID REFERENCES api_services(id) ON DELETE SET NULL,
+    api_key_id UUID,
+    code TEXT NOT NULL,
+    message TEXT NOT NULL,
+    severity TEXT NOT NULL DEFAULT 'medium',
+    http_status INTEGER,
+    count INTEGER NOT NULL DEFAULT 1,
+    occurred_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT now()
+);
