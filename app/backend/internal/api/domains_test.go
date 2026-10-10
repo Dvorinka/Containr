@@ -444,3 +444,133 @@ func TestDeploymentsLiveInvariants(t *testing.T) {
 		t.Fatalf("post-fail row: %+v", r)
 	}
 }
+
+// TestRuntimeLiveInvariants exercises the runtime.sql queries: the
+// legacy-column COALESCE chain in GetServiceRuntimeWithOwner, the
+// deployed-image concat, and the conditional published-port update.
+func TestRuntimeLiveInvariants(t *testing.T) {
+	dsn := testDSNString(t)
+	db, err := database.NewConnection(dsn)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+	q := sqlcdb.New(db.DB)
+
+	userID := uuid.New()
+	projectID := uuid.New()
+	envID := uuid.New()
+	serviceID := uuid.New()
+	suffix := strings.ReplaceAll(serviceID.String()[:8], "-", "")
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatalf("setup: %v", err)
+		}
+	}
+	_, err = db.Exec(`INSERT INTO users (id, email, password_hash, name) VALUES ($1, $2, 'x', 'test')`,
+		userID, "rt-"+suffix+"@test.local")
+	must(err)
+	_, err = db.Exec(`INSERT INTO projects (id, name, owner_id, is_approved) VALUES ($1, $2, $3, true)`,
+		projectID, "rt-"+suffix, userID)
+	must(err)
+	_, err = db.Exec(`INSERT INTO environments (id, name, project_id) VALUES ($1, 'production', $2)`,
+		envID, projectID)
+	must(err)
+	// Only legacy columns populated — the COALESCE chain must surface them.
+	_, err = db.Exec(`INSERT INTO services (id, name, project_id, environment_id, service_type, source_type,
+		source_url, image_name, start_command, port) VALUES ($1, $2, $3, $4, 'worker', 'git', $5, $6, 'run.sh', 8080)`,
+		serviceID, "rt-"+suffix, projectID, envID, "https://git.example/x.git", "repo/img:latest")
+	must(err)
+	defer func() { _, _ = db.Exec(`DELETE FROM users WHERE id = $1`, userID) }()
+
+	row, err := q.GetServiceRuntimeWithOwner(ctx, serviceID)
+	if err != nil {
+		t.Fatalf("runtime row: %v", err)
+	}
+	if row.Type != "worker" || row.Image != "repo/img:latest" || row.Command != "run.sh" ||
+		row.GitRepo != "https://git.example/x.git" || row.OwnerID != userID {
+		t.Fatalf("COALESCE chain lost legacy columns: %+v", row)
+	}
+	svc := serviceFromRuntimeRow(row)
+	if svc.Type != "worker" || svc.Image != "repo/img:latest" || svc.Port != 8080 {
+		t.Fatalf("mapped service wrong: %+v", svc)
+	}
+
+	// Sibling refs + port lookup.
+	refs, err := q.ListProjectServiceRefs(ctx, projectID)
+	if err != nil || len(refs) != 1 || refs[0].Name != "rt-"+suffix {
+		t.Fatalf("refs: %v %+v", err, refs)
+	}
+	port, err := q.GetServicePort(ctx, serviceID)
+	if err != nil || port != 8080 {
+		t.Fatalf("port: %v %d", err, port)
+	}
+
+	// Variables round-trip.
+	_, err = db.Exec(`INSERT INTO environment_variables (id, service_id, key, value, is_secret)
+		VALUES (gen_random_uuid(), $1, 'API_KEY', 'shh', true), (gen_random_uuid(), $1, 'PLAIN', 'p', false)`,
+		serviceID)
+	must(err)
+	vars, err := q.ListServiceVariablesWithSecret(ctx, serviceID)
+	if err != nil || len(vars) != 2 {
+		t.Fatalf("vars: %v %+v", err, vars)
+	}
+	vals, err := q.ListServiceVariableValues(ctx, serviceID)
+	if err != nil || len(vals) != 2 {
+		t.Fatalf("vals: %v %+v", err, vals)
+	}
+	got, err := q.GetServiceVariableValue(ctx, sqlcdb.GetServiceVariableValueParams{ServiceID: serviceID, Key: "API_KEY"})
+	if err != nil || got != "shh" {
+		t.Fatalf("var value: %v %q", err, got)
+	}
+
+	// Node agent listing through container_instances.
+	_, err = db.Exec(`INSERT INTO node_agents (id, name, hostname, ip_address, port) VALUES ($1, $2, 'h', '127.0.0.1', 9999)`,
+		"agent-"+suffix, "agent-"+suffix)
+	must(err)
+	_, err = db.Exec(`INSERT INTO container_instances (id, name, image, project_id, service_id, node_agent_id)
+		VALUES ($1, 'c', 'img', $2, $3, $4)`,
+		"ci-"+suffix, projectID.String(), serviceID.String(), "agent-"+suffix)
+	must(err)
+	agents, err := q.ListNodeAgentsForService(ctx, serviceID.String())
+	if err != nil || len(agents) != 1 || agents[0] != "agent-"+suffix {
+		t.Fatalf("agents: %v %+v", err, agents)
+	}
+
+	// Last deployed image: only 'deployed' rows, latest first.
+	d1, d2 := uuid.New(), uuid.New()
+	must(q.InsertDeployment(ctx, sqlcdb.InsertDeploymentParams{
+		ID: d1, ServiceID: serviceID, Version: "v1",
+		Status: sql.NullString{String: "failed", Valid: true},
+	}))
+	must(q.InsertDeployment(ctx, sqlcdb.InsertDeploymentParams{
+		ID: d2, ServiceID: serviceID, Version: "v2",
+		Status: sql.NullString{String: "deployed", Valid: true},
+	}))
+	must(q.SyncDeploymentProgress(ctx, sqlcdb.SyncDeploymentProgressParams{
+		Status:    sql.NullString{String: "deployed", Valid: true},
+		ImageName: sql.NullString{String: "app", Valid: true},
+		ImageTag:  sql.NullString{String: "v2", Valid: true},
+		UpdatedAt: sql.NullTime{Time: time.Now(), Valid: true},
+		ID:        d2,
+	}))
+	img, err := q.GetLastDeployedImage(ctx, serviceID)
+	if err != nil || img != "app:v2" {
+		t.Fatalf("last image: %v %q", err, img)
+	}
+
+	// Conditional published-port update: writes once, no-ops on repeat.
+	must(q.SetServicePublishedPort(ctx, sqlcdb.SetServicePublishedPortParams{PublishedPort: 30001, ID: serviceID}))
+	p, err := q.GetServicePublishedPort(ctx, serviceID)
+	if err != nil || p != 30001 {
+		t.Fatalf("published port: %v %d", err, p)
+	}
+	must(q.SetServiceReplicas(ctx, sqlcdb.SetServiceReplicasParams{
+		Replicas: 3, UpdatedAt: sql.NullTime{Time: time.Now(), Valid: true}, ID: serviceID}))
+	row, _ = q.GetServiceRuntimeWithOwner(ctx, serviceID)
+	if row.Replicas != 3 {
+		t.Fatalf("replicas: %+v", row)
+	}
+}

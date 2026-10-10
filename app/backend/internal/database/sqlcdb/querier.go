@@ -89,6 +89,7 @@ type Querier interface {
 	GetDeploymentForRollback(ctx context.Context, id uuid.UUID) (GetDeploymentForRollbackRow, error)
 	GetDeploymentWithProject(ctx context.Context, id uuid.UUID) (GetDeploymentWithProjectRow, error)
 	GetLastAgentCommandByType(ctx context.Context, arg GetLastAgentCommandByTypeParams) (AgentCommand, error)
+	GetLastDeployedImage(ctx context.Context, serviceID uuid.UUID) (string, error)
 	GetOutboundWebhookByID(ctx context.Context, id uuid.UUID) (OutboundWebhook, error)
 	GetOutboundWebhookByIDAndUser(ctx context.Context, arg GetOutboundWebhookByIDAndUserParams) (OutboundWebhook, error)
 	GetPreviewEnvironment(ctx context.Context, arg GetPreviewEnvironmentParams) (GetPreviewEnvironmentRow, error)
@@ -110,9 +111,12 @@ type Querier interface {
 	GetServiceForDeploy(ctx context.Context, id uuid.UUID) (GetServiceForDeployRow, error)
 	GetServiceForDeployWithOwner(ctx context.Context, id uuid.UUID) (GetServiceForDeployWithOwnerRow, error)
 	GetServicePlacementBrief(ctx context.Context, id uuid.UUID) (GetServicePlacementBriefRow, error)
+	GetServicePort(ctx context.Context, id uuid.UUID) (int32, error)
 	GetServicePublishedPort(ctx context.Context, id uuid.UUID) (int32, error)
+	GetServiceRuntimeWithOwner(ctx context.Context, id uuid.UUID) (GetServiceRuntimeWithOwnerRow, error)
 	GetServiceTemplateByID(ctx context.Context, id string) (ServiceTemplate, error)
 	GetServiceTypeBrief(ctx context.Context, arg GetServiceTypeBriefParams) (GetServiceTypeBriefRow, error)
+	GetServiceVariableValue(ctx context.Context, arg GetServiceVariableValueParams) (string, error)
 	GetUserInviteByTokenHash(ctx context.Context, tokenHash string) (UserInvite, error)
 	GetUserTokenByHash(ctx context.Context, tokenHash string) (UserToken, error)
 	InsertAgentHeartbeat(ctx context.Context, arg InsertAgentHeartbeatParams) error
@@ -138,6 +142,7 @@ type Querier interface {
 	ListEnabledOutboundWebhooks(ctx context.Context) ([]OutboundWebhook, error)
 	ListExpiredPreviewsForUser(ctx context.Context, arg ListExpiredPreviewsForUserParams) ([]ListExpiredPreviewsForUserRow, error)
 	ListInstanceMetrics(ctx context.Context, arg ListInstanceMetricsParams) ([]ListInstanceMetricsRow, error)
+	ListNodeAgentsForService(ctx context.Context, serviceID string) ([]string, error)
 	ListNodeMetrics(ctx context.Context, arg ListNodeMetricsParams) ([]ListNodeMetricsRow, error)
 	ListNotificationChannelsByUser(ctx context.Context, userID uuid.UUID) ([]NotificationChannel, error)
 	ListNotificationsByUser(ctx context.Context, arg ListNotificationsByUserParams) ([]Notification, error)
@@ -146,6 +151,7 @@ type Querier interface {
 	ListPendingProjects(ctx context.Context) ([]Project, error)
 	ListPreviewEnvironmentsForProject(ctx context.Context, projectID uuid.UUID) ([]ListPreviewEnvironmentsForProjectRow, error)
 	ListProjectEnvironments(ctx context.Context, projectID uuid.UUID) ([]ListProjectEnvironmentsRow, error)
+	ListProjectServiceRefs(ctx context.Context, projectID uuid.UUID) ([]ListProjectServiceRefsRow, error)
 	// Visibility model: a project is readable when it is approved for public
 	// display, when the caller owns or is a member of it, or when the caller is a
 	// platform admin. Anonymous callers pass user_id = uuid.Nil, is_admin = false.
@@ -164,6 +170,8 @@ type Querier interface {
 	ListServiceMetrics(ctx context.Context, arg ListServiceMetricsParams) ([]ListServiceMetricsRow, error)
 	ListServiceTemplatesByCategoryForUser(ctx context.Context, arg ListServiceTemplatesByCategoryForUserParams) ([]ServiceTemplate, error)
 	ListServiceTemplatesForUser(ctx context.Context, ownerID uuid.NullUUID) ([]ServiceTemplate, error)
+	ListServiceVariableValues(ctx context.Context, serviceID uuid.UUID) ([]ListServiceVariableValuesRow, error)
+	ListServiceVariablesWithSecret(ctx context.Context, serviceID uuid.UUID) ([]ListServiceVariablesWithSecretRow, error)
 	ListSweepablePreviews(ctx context.Context) ([]ListSweepablePreviewsRow, error)
 	ListUserInvites(ctx context.Context) ([]UserInvite, error)
 	ListUserTokens(ctx context.Context, userID uuid.UUID) ([]UserToken, error)
@@ -199,6 +207,8 @@ type Querier interface {
 	SetProjectApproved(ctx context.Context, arg SetProjectApprovedParams) (int64, error)
 	SetServiceDomainDefault(ctx context.Context, arg SetServiceDomainDefaultParams) (int64, error)
 	SetServiceLegacyDomain(ctx context.Context, arg SetServiceLegacyDomainParams) error
+	SetServicePublishedPort(ctx context.Context, arg SetServicePublishedPortParams) error
+	SetServiceReplicas(ctx context.Context, arg SetServiceReplicasParams) error
 	SetServiceStatus(ctx context.Context, arg SetServiceStatusParams) error
 	SyncDeploymentProgress(ctx context.Context, arg SyncDeploymentProgressParams) error
 	SyncPreviewStatuses(ctx context.Context) error

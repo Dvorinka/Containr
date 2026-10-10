@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"containr/internal/database"
+	"containr/internal/database/sqlcdb"
 	"containr/internal/deployment"
 	"containr/internal/deployqueue"
 	"containr/internal/secrets"
@@ -22,22 +24,17 @@ import (
 // service — covers pinned placements, spread replicas, and leftovers from a
 // since-cleared pin.
 func remoteAgentsForService(ctx context.Context, db *database.DB, serviceID uuid.UUID) []string {
-	rows, err := db.Query(
-		`SELECT DISTINCT node_agent_id FROM container_instances WHERE service_id = $1`,
-		serviceID,
-	)
+	ids, err := sqlcdb.New(db.DB).ListNodeAgentsForService(ctx, serviceID.String())
 	if err != nil {
 		return nil
 	}
-	defer rows.Close()
-	var ids []string
-	for rows.Next() {
-		var id string
-		if rows.Scan(&id) == nil && id != "" {
-			ids = append(ids, id)
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if id != "" {
+			out = append(out, id)
 		}
 	}
-	return ids
+	return out
 }
 
 // serviceLifecycle routes a start/stop/restart action to every agent holding
@@ -99,7 +96,9 @@ func serviceRuntimeSpec(db *database.DB, service Service) (deployment.RuntimeSpe
 	// Best effort: reuse the host port from the last live deployment so the
 	// public URL survives restarts. Column exists post-migration; older DBs
 	// silently get ephemeral ports.
-	_ = db.QueryRow(`SELECT published_port FROM services WHERE id = $1`, service.ID).Scan(&spec.PublishedPort)
+	if p, err := sqlcdb.New(db.DB).GetServicePublishedPort(context.Background(), service.ID); err == nil {
+		spec.PublishedPort = p
+	}
 	if cmd := strings.TrimSpace(service.Command); cmd != "" {
 		spec.Command = strings.Fields(cmd)
 	}
@@ -137,42 +136,23 @@ var refVarPattern = regexp.MustCompile(`\$\{\{\s*([A-Za-z0-9_-]+)\.([A-Za-z_][A-
 // secrets) and expands ${{service.KEY}} references. KEY may be a variable on
 // the referenced service, or the builtins HOST (service name alias) and PORT.
 func resolveServiceEnv(db *database.DB, service Service) (map[string]string, error) {
-	rows, err := db.Query(
-		`SELECT key, value FROM environment_variables WHERE service_id = $1`,
-		service.ID,
-	)
+	q := sqlcdb.New(db.DB)
+	vars, err := q.ListServiceVariableValues(context.Background(), service.ID)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
 	env := map[string]string{}
-	for rows.Next() {
-		var k, v string
-		if err := rows.Scan(&k, &v); err != nil {
-			return nil, err
-		}
-		env[k] = secrets.Decrypt(v)
+	for _, v := range vars {
+		env[v.Key] = secrets.Decrypt(v.Value)
 	}
 
-	var refServices []struct{ ID, Name string }
-	svcRows, err := db.Query(
-		`SELECT id, name FROM services WHERE project_id = $1`,
-		service.ProjectID,
-	)
+	refServices, err := q.ListProjectServiceRefs(context.Background(), service.ProjectID)
 	if err != nil {
 		return nil, err
 	}
-	defer svcRows.Close()
-	for svcRows.Next() {
-		var s struct{ ID, Name string }
-		if err := svcRows.Scan(&s.ID, &s.Name); err != nil {
-			return nil, err
-		}
-		refServices = append(refServices, s)
-	}
 
-	byName := map[string]string{}
+	byName := map[string]uuid.UUID{}
 	for _, s := range refServices {
 		byName[strings.ToLower(s.Name)] = s.ID
 	}
@@ -189,17 +169,15 @@ func resolveServiceEnv(db *database.DB, service Service) (map[string]string, err
 		case "HOST":
 			return serviceName, true
 		case "PORT":
-			var port int
-			if err := db.QueryRow(`SELECT COALESCE(port, 0) FROM services WHERE id = $1`, id).Scan(&port); err == nil && port > 0 {
-				return strconv.Itoa(port), true
+			if port, err := q.GetServicePort(context.Background(), id); err == nil && port > 0 {
+				return strconv.Itoa(int(port)), true
 			}
 			return "", false
 		}
-		var value string
-		err := db.QueryRow(
-			`SELECT value FROM environment_variables WHERE service_id = $1 AND key = $2`,
-			id, key,
-		).Scan(&value)
+		value, err := q.GetServiceVariableValue(context.Background(), sqlcdb.GetServiceVariableValueParams{
+			ServiceID: id,
+			Key:       key,
+		})
 		if err != nil {
 			return "", false
 		}
@@ -272,6 +250,15 @@ func parseMemoryLimit(mem string) int64 {
 	return 0
 }
 
+// setServiceStatusNow writes the stored status with a fresh updated_at.
+func setServiceStatusNow(db *database.DB, id uuid.UUID, status string) {
+	_ = sqlcdb.New(db.DB).SetServiceStatus(context.Background(), sqlcdb.SetServiceStatusParams{
+		Status:    sql.NullString{String: status, Valid: true},
+		UpdatedAt: sql.NullTime{Time: time.Now(), Valid: true},
+		ID:        id,
+	})
+}
+
 func getRuntimeEngine(c *gin.Context) (*deployment.DeploymentEngine, *database.DB, bool) {
 	dbValue, exists := c.Get("db")
 	if !exists {
@@ -286,6 +273,22 @@ func getRuntimeEngine(c *gin.Context) (*deployment.DeploymentEngine, *database.D
 	return engineValue.(*deployment.DeploymentEngine), dbValue.(*database.DB), true
 }
 
+// serviceFromRuntimeRow maps the sqlc runtime row (with legacy-column
+// fallbacks applied in SQL) onto the API Service model.
+func serviceFromRuntimeRow(r sqlcdb.GetServiceRuntimeWithOwnerRow) Service {
+	return Service{
+		ID: r.ID, ProjectID: r.ProjectID, Name: r.Name, Type: r.Type,
+		Status: r.Status, Image: r.Image, Command: r.Command,
+		Environment: r.Environment, GitRepo: r.GitRepo, GitBranch: r.GitBranch,
+		BuildPath: r.BuildPath, CPU: r.Cpu, Memory: r.Memory,
+		Replicas: int(r.Replicas), Port: int(r.Port), Domain: r.Domain,
+		HealthCheckPath: r.HealthcheckPath, RestartPolicy: r.RestartPolicy,
+		Builder: r.Builder, CPUReserve: r.CpuReserve,
+		MemoryReserve: r.MemoryReserve, StaticBuildCmd: r.StaticBuildCmd,
+		StaticDir: r.StaticDir, CreatedAt: r.CreatedAt.Time, UpdatedAt: r.UpdatedAt.Time,
+	}
+}
+
 func loadOwnedService(c *gin.Context, db *database.DB) (Service, bool) {
 	serviceID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -298,43 +301,16 @@ func loadOwnedService(c *gin.Context, db *database.DB) (Service, bool) {
 		return Service{}, false
 	}
 
-	var service Service
-	var owner string
-	err = db.QueryRow(
-		`SELECT s.id, s.project_id, s.name,
-		        COALESCE(s.type, s.service_type, ''), COALESCE(s.status, ''),
-		        COALESCE(s.image, s.image_name, ''), COALESCE(s.command, s.start_command, ''),
-		        COALESCE(s.environment, ''), COALESCE(s.git_repo, s.source_url, ''),
-		        COALESCE(s.git_branch, ''), COALESCE(s.build_path, ''),
-		        COALESCE(s.cpu, ''), COALESCE(s.memory, ''),
-		        COALESCE(s.replicas, 1), COALESCE(s.port, 0),
-		        COALESCE(s.domain, ''), COALESCE(s.healthcheck_path, ''),
-		        COALESCE(s.restart_policy, 'unless-stopped'),
-		        COALESCE(s.builder, 'auto'), COALESCE(s.cpu_reserve, ''),
-		        COALESCE(s.memory_reserve, ''), COALESCE(s.static_build_cmd, ''),
-		        COALESCE(s.static_dir, ''),
-		        s.created_at, s.updated_at, p.owner_id
-		 FROM services s JOIN projects p ON s.project_id = p.id
-		 WHERE s.id = $1`,
-		serviceID,
-	).Scan(
-		&service.ID, &service.ProjectID, &service.Name, &service.Type, &service.Status,
-		&service.Image, &service.Command, &service.Environment, &service.GitRepo,
-		&service.GitBranch, &service.BuildPath, &service.CPU, &service.Memory,
-		&service.Replicas, &service.Port, &service.Domain, &service.HealthCheckPath,
-		&service.RestartPolicy, &service.Builder, &service.CPUReserve,
-		&service.MemoryReserve, &service.StaticBuildCmd, &service.StaticDir,
-		&service.CreatedAt, &service.UpdatedAt, &owner,
-	)
+	row, err := sqlcdb.New(db.DB).GetServiceRuntimeWithOwner(context.Background(), serviceID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Service not found"})
 		return Service{}, false
 	}
-	if owner != userID.(string) && !isAdminUser(db, userID.(string)) {
+	if row.OwnerID.String() != userID.(string) && !isAdminUser(db, userID.(string)) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 		return Service{}, false
 	}
-	return service, true
+	return serviceFromRuntimeRow(row), true
 }
 
 // loadReadableService loads a service when the caller may read its project:
@@ -346,39 +322,13 @@ func loadReadableService(c *gin.Context, db *database.DB) (Service, bool) {
 		return Service{}, false
 	}
 
-	var service Service
-	var projectID uuid.UUID
-	err = db.QueryRow(
-		`SELECT s.id, s.project_id, s.name,
-		        COALESCE(s.type, s.service_type, ''), COALESCE(s.status, ''),
-		        COALESCE(s.image, s.image_name, ''), COALESCE(s.command, s.start_command, ''),
-		        COALESCE(s.environment, ''), COALESCE(s.git_repo, s.source_url, ''),
-		        COALESCE(s.git_branch, ''), COALESCE(s.build_path, ''),
-		        COALESCE(s.cpu, ''), COALESCE(s.memory, ''),
-		        COALESCE(s.replicas, 1), COALESCE(s.port, 0),
-		        COALESCE(s.domain, ''), COALESCE(s.healthcheck_path, ''),
-		        COALESCE(s.restart_policy, 'unless-stopped'),
-		        COALESCE(s.builder, 'auto'), COALESCE(s.cpu_reserve, ''),
-		        COALESCE(s.memory_reserve, ''), COALESCE(s.static_build_cmd, ''),
-		        COALESCE(s.static_dir, ''),
-		        s.created_at, s.updated_at, s.project_id
-		 FROM services s
-		 WHERE s.id = $1`,
-		serviceID,
-	).Scan(
-		&service.ID, &service.ProjectID, &service.Name, &service.Type, &service.Status,
-		&service.Image, &service.Command, &service.Environment, &service.GitRepo,
-		&service.GitBranch, &service.BuildPath, &service.CPU, &service.Memory,
-		&service.Replicas, &service.Port, &service.Domain, &service.HealthCheckPath,
-		&service.RestartPolicy, &service.Builder, &service.CPUReserve,
-		&service.MemoryReserve, &service.StaticBuildCmd, &service.StaticDir,
-		&service.CreatedAt, &service.UpdatedAt, &projectID,
-	)
+	row, err := sqlcdb.New(db.DB).GetServiceRuntimeWithOwner(context.Background(), serviceID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Service not found"})
 		return Service{}, false
 	}
-	if _, allowed := projectReadAccess(c, db, projectID); !allowed {
+	service := serviceFromRuntimeRow(row)
+	if _, allowed := projectReadAccess(c, db, service.ProjectID); !allowed {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Service not found"})
 		return Service{}, false
 	}
@@ -429,7 +379,7 @@ func reconcileNow(c *gin.Context, engine *deployment.DeploymentEngine, db *datab
 		status = state.Status
 		persistPublishedPort(db, service.ID, state.Ports)
 	}
-	_, _ = db.Exec(`UPDATE services SET status = $1, updated_at = $2 WHERE id = $3`, status, time.Now(), service.ID)
+	setServiceStatusNow(db, service.ID, status)
 	c.JSON(http.StatusOK, gin.H{"runtime": state})
 	return true
 }
@@ -448,7 +398,7 @@ func handleServiceStart(c *gin.Context) {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
 	}
-	_, _ = db.Exec(`UPDATE services SET status = 'running', updated_at = $1 WHERE id = $2`, time.Now(), service.ID)
+	setServiceStatusNow(db, service.ID, "running")
 	c.JSON(http.StatusOK, gin.H{"status": "running"})
 }
 
@@ -466,7 +416,7 @@ func handleServiceStop(c *gin.Context) {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
 	}
-	_, _ = db.Exec(`UPDATE services SET status = 'stopped', updated_at = $1 WHERE id = $2`, time.Now(), service.ID)
+	setServiceStatusNow(db, service.ID, "stopped")
 	c.JSON(http.StatusOK, gin.H{"status": "stopped"})
 }
 
@@ -485,7 +435,7 @@ func handleServiceRestart(c *gin.Context) {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
 	}
-	_, _ = db.Exec(`UPDATE services SET status = 'running', updated_at = $1 WHERE id = $2`, time.Now(), service.ID)
+	setServiceStatusNow(db, service.ID, "running")
 	c.JSON(http.StatusOK, gin.H{"status": "running"})
 }
 
@@ -505,12 +455,8 @@ func handleServiceRedeploy(c *gin.Context) {
 	image := service.Image
 	if image == "" {
 		// Git-sourced service: reuse the last successful deployment image.
-		err := db.QueryRow(
-			`SELECT image_name || ':' || image_tag FROM deployments
-			 WHERE service_id = $1 AND status = 'deployed' AND image_name <> ''
-			 ORDER BY created_at DESC LIMIT 1`,
-			service.ID,
-		).Scan(&image)
+		var err error
+		image, err = sqlcdb.New(db.DB).GetLastDeployedImage(context.Background(), service.ID)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "No deployable image yet — run a deployment first"})
 			return
@@ -556,7 +502,7 @@ func reconcileServiceJob(ctx context.Context, db *database.DB, engine *deploymen
 		if state.Status != "" {
 			status = state.Status
 		}
-		_, _ = db.Exec(`UPDATE services SET status = $1, updated_at = $2 WHERE id = $3`, status, time.Now(), service.ID)
+		setServiceStatusNow(db, service.ID, status)
 	}
 	return state, nil
 }
@@ -575,12 +521,9 @@ func enqueueServiceRedeploy(c *gin.Context, db *database.DB, service Service) bo
 	}
 	image := service.Image
 	if image == "" {
-		if err := db.QueryRow(
-			`SELECT image_name || ':' || image_tag FROM deployments
-			 WHERE service_id = $1 AND status = 'deployed' AND image_name <> ''
-			 ORDER BY created_at DESC LIMIT 1`,
-			service.ID,
-		).Scan(&image); err != nil {
+		var err error
+		image, err = sqlcdb.New(db.DB).GetLastDeployedImage(context.Background(), service.ID)
+		if err != nil {
 			return false
 		}
 	}
@@ -628,10 +571,10 @@ func persistPublishedPort(db *database.DB, serviceID uuid.UUID, ports []uint16) 
 	if len(ports) == 0 {
 		return
 	}
-	_, _ = db.Exec(
-		`UPDATE services SET published_port = $1 WHERE id = $2 AND published_port <> $1`,
-		int(ports[0]), serviceID,
-	)
+	_ = sqlcdb.New(db.DB).SetServicePublishedPort(context.Background(), sqlcdb.SetServicePublishedPortParams{
+		PublishedPort: int32(ports[0]),
+		ID:            serviceID,
+	})
 }
 
 // liveServiceStatus reconciles the stored status with real container state.
@@ -654,7 +597,7 @@ func liveServiceStatus(c *gin.Context, db *database.DB, service *Service) {
 	}
 	if state.Status != service.Status {
 		service.Status = state.Status
-		_, _ = db.Exec(`UPDATE services SET status = $1, updated_at = $2 WHERE id = $3`, state.Status, time.Now(), service.ID)
+		setServiceStatusNow(db, service.ID, state.Status)
 	}
 	persistPublishedPort(db, service.ID, state.Ports)
 	if service.Domain != "" {
@@ -676,44 +619,22 @@ func runtimeScaleService(c *gin.Context, serviceID string, replicas int) error {
 		return fmt.Errorf("runtime unavailable")
 	}
 
-	var service Service
-	var owner string
-	err := db.QueryRow(
-		`SELECT s.id, s.project_id, s.name,
-		        COALESCE(s.type, s.service_type, ''), COALESCE(s.status, ''),
-		        COALESCE(s.image, s.image_name, ''), COALESCE(s.command, s.start_command, ''),
-		        COALESCE(s.environment, ''), COALESCE(s.git_repo, s.source_url, ''),
-		        COALESCE(s.git_branch, ''), COALESCE(s.build_path, ''),
-		        COALESCE(s.cpu, ''), COALESCE(s.memory, ''),
-		        COALESCE(s.replicas, 1), COALESCE(s.port, 0),
-		        COALESCE(s.domain, ''), COALESCE(s.healthcheck_path, ''),
-		        COALESCE(s.restart_policy, 'unless-stopped'),
-		        COALESCE(s.builder, 'auto'), COALESCE(s.cpu_reserve, ''),
-		        COALESCE(s.memory_reserve, ''), COALESCE(s.static_build_cmd, ''),
-		        COALESCE(s.static_dir, ''),
-		        s.created_at, s.updated_at, p.owner_id
-		 FROM services s JOIN projects p ON s.project_id = p.id
-		 WHERE s.id = $1`, serviceID,
-	).Scan(
-		&service.ID, &service.ProjectID, &service.Name, &service.Type, &service.Status,
-		&service.Image, &service.Command, &service.Environment, &service.GitRepo,
-		&service.GitBranch, &service.BuildPath, &service.CPU, &service.Memory,
-		&service.Replicas, &service.Port, &service.Domain, &service.HealthCheckPath,
-		&service.RestartPolicy, &service.Builder, &service.CPUReserve,
-		&service.MemoryReserve, &service.StaticBuildCmd, &service.StaticDir,
-		&service.CreatedAt, &service.UpdatedAt, &owner,
-	)
+	q := sqlcdb.New(db.DB)
+	sid, err := uuid.Parse(serviceID)
 	if err != nil {
 		return err
 	}
+	row, err := q.GetServiceRuntimeWithOwner(context.Background(), sid)
+	if err != nil {
+		return err
+	}
+	service := serviceFromRuntimeRow(row)
 	if service.Image == "" {
-		if err := db.QueryRow(
-			`SELECT image_name || ':' || image_tag FROM deployments
-			 WHERE service_id = $1 AND status = 'deployed' AND image_name <> ''
-			 ORDER BY created_at DESC LIMIT 1`, service.ID,
-		).Scan(&service.Image); err != nil {
+		image, err := q.GetLastDeployedImage(context.Background(), service.ID)
+		if err != nil {
 			return fmt.Errorf("no deployed image to scale")
 		}
+		service.Image = image
 	}
 
 	spec, err := serviceRuntimeSpec(db, service)
@@ -731,7 +652,11 @@ func runtimeScaleService(c *gin.Context, serviceID string, replicas int) error {
 	if state != nil {
 		persistPublishedPort(db, service.ID, state.Ports)
 	}
-	_, _ = db.Exec(`UPDATE services SET replicas = $1, updated_at = $2 WHERE id = $3`, replicas, time.Now(), service.ID)
+	_ = q.SetServiceReplicas(context.Background(), sqlcdb.SetServiceReplicasParams{
+		Replicas:  int32(replicas),
+		UpdatedAt: sql.NullTime{Time: time.Now(), Valid: true},
+		ID:        service.ID,
+	})
 	return nil
 }
 
@@ -750,47 +675,34 @@ func handleServiceEnvCheck(c *gin.Context) {
 		return
 	}
 
-	rows, err := db.Query(
-		`SELECT key, value, COALESCE(is_secret, false) FROM environment_variables WHERE service_id = $1`,
-		service.ID,
-	)
+	q := sqlcdb.New(db.DB)
+	vars, err := q.ListServiceVariablesWithSecret(context.Background(), service.ID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	defer rows.Close()
 
 	var unresolved, empty, unreadable []string
 	var raw []struct{ key, val string }
-	for rows.Next() {
-		var k, v string
-		var secret bool
-		if err := rows.Scan(&k, &v, &secret); err != nil {
-			continue
-		}
-		decrypted := secrets.Decrypt(v)
-		if secret && secrets.IsEncrypted(v) && decrypted == v {
+	for _, v := range vars {
+		decrypted := secrets.Decrypt(v.Value)
+		if v.IsSecret && secrets.IsEncrypted(v.Value) && decrypted == v.Value {
 			// Ciphertext failed to decrypt — Decrypt returns the input.
-			unreadable = append(unreadable, k)
+			unreadable = append(unreadable, v.Key)
 			continue
 		}
 		if strings.TrimSpace(decrypted) == "" {
-			empty = append(empty, k)
+			empty = append(empty, v.Key)
 		}
-		raw = append(raw, struct{ key, val string }{k, decrypted})
+		raw = append(raw, struct{ key, val string }{v.Key, decrypted})
 	}
 
 	// Project siblings for ${{name.KEY}} resolution.
-	siblingIDs := map[string]string{}
-	svcRows, err := db.Query(`SELECT id, name FROM services WHERE project_id = $1`, service.ProjectID)
-	if err == nil {
-		for svcRows.Next() {
-			var id, name string
-			if err := svcRows.Scan(&id, &name); err == nil {
-				siblingIDs[strings.ToLower(name)] = id
-			}
+	siblingIDs := map[string]uuid.UUID{}
+	if refs, err := q.ListProjectServiceRefs(context.Background(), service.ProjectID); err == nil {
+		for _, s := range refs {
+			siblingIDs[strings.ToLower(s.Name)] = s.ID
 		}
-		svcRows.Close()
 	}
 
 	resolvable := func(serviceName, key string) bool {
@@ -802,20 +714,14 @@ func handleServiceEnvCheck(c *gin.Context) {
 			return true
 		}
 		if strings.EqualFold(key, "PORT") {
-			var port int
-			if err := db.QueryRow(`SELECT COALESCE(port, 0) FROM services WHERE id = $1`, id).Scan(&port); err == nil {
-				return port > 0
-			}
-			return false
+			port, err := q.GetServicePort(context.Background(), id)
+			return err == nil && port > 0
 		}
-		var n int
-		if err := db.QueryRow(
-			`SELECT COUNT(*) FROM environment_variables WHERE service_id = $1 AND key = $2`,
-			id, key,
-		).Scan(&n); err == nil {
-			return n > 0
-		}
-		return false
+		_, err := q.GetServiceVariableValue(context.Background(), sqlcdb.GetServiceVariableValueParams{
+			ServiceID: id,
+			Key:       key,
+		})
+		return err == nil
 	}
 
 	for _, kv := range raw {
