@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { lazy, Suspense, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -41,6 +41,10 @@ import {
   FileCode,
   Network,
 } from 'lucide-react';
+
+const TemplateBuilder = lazy(() =>
+  import('@/features/templates/builder/TemplateBuilder').then((m) => ({ default: m.TemplateBuilder })),
+);
 
 function toServiceName(value: string): string {
   const normalized = value
@@ -127,6 +131,7 @@ export function TemplatesPage() {
   const isAdmin = Boolean(profileQuery.data?.isAdmin);
 
   const [editorOpen, setEditorOpen] = useState(false);
+  const [editorMode, setEditorMode] = useState<'json' | 'visual'>('json');
   const [editorJson, setEditorJson] = useState(EMPTY_TEMPLATE_JSON);
   const [editingTemplate, setEditingTemplate] = useState<TemplateEntity | null>(null);
   const [editorIsPublic, setEditorIsPublic] = useState(false);
@@ -1022,17 +1027,50 @@ export function TemplatesPage() {
       {/* Template editor — JSON only */}
       {editorOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-          <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--bg-base)] shadow-2xl">
+          <div className={`flex max-h-[92vh] w-full flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--bg-base)] shadow-2xl ${editorMode === 'visual' ? 'max-w-6xl' : 'max-w-2xl'}`}>
             <div className="flex items-center justify-between border-b border-[var(--border-subtle)] px-5 py-4">
               <div>
                 <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">
                   {editingTemplate ? `Edit ${editingTemplate.name}` : 'New template'}
                 </h2>
                 <p className="text-xs text-[var(--text-tertiary)]">
-                  JSON definition — name, category, config and variables.
+                  {editorMode === 'visual'
+                    ? 'Visual builder — drop service nodes, wire depends_on edges, apply back to JSON.'
+                    : 'JSON definition — name, category, config and variables.'}
                 </p>
               </div>
               <div className="flex items-center gap-2">
+                <div className="mr-1 inline-flex overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-default)]">
+                  {(['json', 'visual'] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => {
+                        if (mode === 'visual' && editorMode === 'json') {
+                          try {
+                            const parsed = JSON.parse(editorJson);
+                            if (!parsed || typeof parsed.config !== 'object') {
+                              setEditorError('Visual mode needs a valid JSON body with a "config" object first.');
+                              return;
+                            }
+                          } catch {
+                            setEditorError('Fix the JSON before switching to visual mode.');
+                            return;
+                          }
+                          setEditorError(null);
+                        }
+                        setEditorMode(mode);
+                      }}
+                      className={`px-3 py-1.5 text-[11px] font-medium capitalize ${
+                        editorMode === mode
+                          ? 'bg-[var(--surface-muted)] text-[var(--text-primary)]'
+                          : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'
+                      }`}
+                    >
+                      {mode}
+                    </button>
+                  ))}
+                </div>
                 <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--border-default)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
                   <Upload size={12} /> Upload .json
                   <input
@@ -1055,12 +1093,49 @@ export function TemplatesPage() {
                 </button>
               </div>
             </div>
-            <textarea
-              value={editorJson}
-              onChange={(e) => setEditorJson(e.target.value)}
-              spellCheck={false}
-              className="mono min-h-[380px] flex-1 resize-none bg-[var(--bg-void)] p-4 text-[12.5px] leading-relaxed text-[var(--text-secondary)] outline-none"
-            />
+            {editorMode === 'visual' ? (
+              <div className="flex min-h-[520px] flex-1 flex-col">
+                <Suspense
+                  fallback={
+                    <div className="flex flex-1 items-center justify-center text-[var(--text-tertiary)]">
+                      <Loader2 size={20} className="animate-spin" />
+                    </div>
+                  }
+                >
+                  {(() => {
+                    let cfg: Record<string, unknown> = {};
+                    try {
+                      const parsed = JSON.parse(editorJson) as { config?: Record<string, unknown> };
+                      cfg = parsed?.config ?? {};
+                    } catch {
+                      cfg = {};
+                    }
+                    return (
+                      <TemplateBuilder
+                        config={cfg}
+                        onCancel={() => setEditorMode('json')}
+                        onApply={(newConfig) => {
+                          try {
+                            const parsed = JSON.parse(editorJson) as Record<string, unknown>;
+                            setEditorJson(JSON.stringify({ ...parsed, config: newConfig }, null, 2));
+                          } catch {
+                            setEditorJson(JSON.stringify({ config: newConfig }, null, 2));
+                          }
+                          setEditorMode('json');
+                        }}
+                      />
+                    );
+                  })()}
+                </Suspense>
+              </div>
+            ) : (
+              <textarea
+                value={editorJson}
+                onChange={(e) => setEditorJson(e.target.value)}
+                spellCheck={false}
+                className="mono min-h-[380px] flex-1 resize-none bg-[var(--bg-void)] p-4 text-[12.5px] leading-relaxed text-[var(--text-secondary)] outline-none"
+              />
+            )}
             {composeWarnings.length > 0 ? (
               <div className="border-t border-[var(--border-subtle)] bg-[var(--warning-soft)]/60 px-5 py-2.5 text-xs text-[var(--warning)]">
                 <p className="font-medium mb-1">Compose import notes</p>
@@ -1074,7 +1149,7 @@ export function TemplatesPage() {
                 {editorError}
               </div>
             ) : null}
-            <div className="flex items-center justify-between border-t border-[var(--border-subtle)] px-5 py-3.5">
+            <div className={`flex items-center justify-between border-t border-[var(--border-subtle)] px-5 py-3.5 ${editorMode === 'visual' ? 'hidden' : ''}`}>
               <label className="inline-flex cursor-pointer items-center gap-2 text-[11px] text-[var(--text-secondary)]">
                 <input
                   type="checkbox"

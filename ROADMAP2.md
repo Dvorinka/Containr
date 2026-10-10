@@ -252,9 +252,12 @@ goroutines; this fixes correctness *and* unlocks the ops surface.
 - [x] **Graph deploy pipeline** — creates services in dependency order,
   resolves vars/secrets, triggers builds. `deployTemplateGraph`,
   `POST /templates/deploy` (inline), `POST /projects/:id/import-compose`.
-- [ ] **Visual template builder** — canvas mode: drop git/image/db
-  nodes, wire refs, set order, save/publish. Reuses existing canvas
-  primitives (dflow's `templates/compose` is exactly this).
+- [x] **Visual template builder** — canvas mode in the template editor:
+  web/worker/cron/database nodes, handles wire `depends_on`, inspector
+  edits image/repo/engine/port/env/volumes, live validation, applies
+  back to the version-2 graph JSON. Positions persist under
+  `config.canvas`; flat legacy configs open as a single node.
+  `builder-model.ts` + `TemplateBuilder.tsx`.
 - [x] **Catalog growth** — seeded graph stacks for n8n, Gitea,
   Nextcloud, Vaultwarden, Umami, Immich (Plausible already shipped).
   `TestSeedTemplatesResolveCleanly` keeps every seed parseable,
@@ -543,7 +546,12 @@ and wired refs, one click or one CLI call.
   optional Cloudflare tunnel token → done. Shell redirects signed-in
   users to `/setup` while `needs_setup`; installs with existing projects
   auto-complete so nobody gets nagged retroactively.
-- [ ] **Self-upgrade loop verification**, docs freshness, v1.0.0 release.
+- [x] **Self-upgrade loop verification** — live-verified: admin
+  `POST /agents/:id/upgrade` → `self_upgrade` command → agent downloads
+  `/api/agents/download/linux-amd64` → sha256 verify → `--version`
+  sanity → atomic rename → result posts → `syscall.Exec` re-exec. Agent
+  ran `v0.0.1-old`, came back `v9.9.9-test`, command row `completed`.
+- [ ] **Docs freshness, v1.0.0 release.**
 
 ## 11. Deliberately not imported from dflow
 
