@@ -35,3 +35,23 @@ FROM users WHERE id = $1;
 UPDATE users
 SET name = COALESCE($1::varchar, name), avatar_url = COALESCE($2::varchar, avatar_url)
 WHERE id = $3;
+
+-- name: UpsertAdminUser :one
+INSERT INTO users (email, password_hash, name, is_admin)
+VALUES ($1, $2, $3, true)
+ON CONFLICT (email) DO UPDATE
+SET is_admin = true, updated_at = NOW()
+RETURNING id;
+
+-- name: ListAdminUsers :many
+SELECT id, email, name, COALESCE(avatar_url, '') AS avatar_url, is_admin,
+       COALESCE(to_char(created_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), '')::text AS created_at
+FROM users
+ORDER BY created_at ASC;
+
+-- name: SetUserAdmin :execrows
+UPDATE users SET is_admin = $1, updated_at = NOW() WHERE id = $2;
+
+-- name: GetAdminUserInfo :one
+SELECT email, COALESCE(name, '') AS name, is_admin
+FROM users WHERE id = $1;

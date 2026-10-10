@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"containr/internal/database"
+	"containr/internal/database/sqlcdb"
 	"containr/internal/docker"
 
 	containertypes "github.com/docker/docker/api/types/container"
@@ -60,17 +61,12 @@ func handleGetServiceMetrics(c *gin.Context) {
 		return
 	}
 
-	var projectID uuid.UUID
-	var status string
-	err = db.QueryRow(
-		`SELECT s.project_id, COALESCE(s.status, '')
-		 FROM services s WHERE s.id = $1`,
-		serviceID,
-	).Scan(&projectID, &status)
+	svc, err := sqlcdb.New(db.DB).GetServiceProjectAndStatus(context.Background(), serviceID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Service not found"})
 		return
 	}
+	projectID := svc.ProjectID
 	if _, allowed := projectReadAccess(c, db, projectID); !allowed {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Service not found"})
 		return

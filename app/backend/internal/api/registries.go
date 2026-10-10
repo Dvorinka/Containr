@@ -1,11 +1,13 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"time"
 
 	"containr/internal/database"
+	"containr/internal/database/sqlcdb"
 	"containr/internal/secrets"
 
 	"github.com/docker/docker/api/types/registry"
@@ -177,17 +179,17 @@ func handleDeleteRegistry(c *gin.Context) {
 // bare image names (nginx:latest).
 func registryAuthFor(db *database.DB, ownerID, imageRef string) registry.AuthConfig {
 	host := registryHost(imageRef)
-	var username, password string
-	err := db.QueryRow(
-		`SELECT username, password FROM registries WHERE owner_id = $1 AND host = $2`,
-		ownerID, host,
-	).Scan(&username, &password)
+	ownerUUID, _ := uuid.Parse(ownerID)
+	row, err := sqlcdb.New(db.DB).GetRegistryAuth(context.Background(), sqlcdb.GetRegistryAuthParams{
+		OwnerID: ownerUUID,
+		Host:    host,
+	})
 	if err != nil {
 		return registry.AuthConfig{}
 	}
 	return registry.AuthConfig{
-		Username:      username,
-		Password:      secrets.Decrypt(password),
+		Username:      row.Username,
+		Password:      secrets.Decrypt(row.Password),
 		ServerAddress: host,
 	}
 }

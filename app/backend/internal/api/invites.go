@@ -193,8 +193,8 @@ func handleAcceptInvite(c *gin.Context) {
 		return
 	}
 
-	var existing int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM users WHERE email = $1`, req.Email).Scan(&existing); err != nil {
+	existing, err := q.CountUsersByEmail(c.Request.Context(), req.Email)
+	if err != nil {
 		respondError(c, http.StatusInternalServerError, "INTERNAL", "database error")
 		return
 	}
@@ -214,16 +214,22 @@ func handleAcceptInvite(c *gin.Context) {
 		return
 	}
 
-	var user User
-	err = db.QueryRow(`
-		INSERT INTO users (email, password_hash, name)
-		VALUES ($1, $2, $3)
-		RETURNING id, email, name, COALESCE(avatar_url, ''), is_admin, created_at
-	`, req.Email, string(hashedPassword), strings.TrimSpace(req.Name)).
-		Scan(&user.ID, &user.Email, &user.Name, &user.AvatarURL, &user.IsAdmin, &user.CreatedAt)
+	row, err := q.InsertUser(c.Request.Context(), sqlcdb.InsertUserParams{
+		Email:        req.Email,
+		PasswordHash: string(hashedPassword),
+		Name:         strings.TrimSpace(req.Name),
+	})
 	if err != nil {
 		respondError(c, http.StatusConflict, "CONFLICT", "user already exists")
 		return
+	}
+	user := User{
+		ID:        row.ID.String(),
+		Email:     row.Email,
+		Name:      row.Name,
+		AvatarURL: row.AvatarUrl,
+		IsAdmin:   row.IsAdmin,
+		CreatedAt: row.CreatedAt.Time.String(),
 	}
 
 	userUUID, _ := uuid.Parse(user.ID)

@@ -315,10 +315,9 @@ func (r *agentNodeRunner) replicaPayload(spec deployment.RuntimeSpec, agentID st
 // pullCredentials resolves the project owner's registry auth for the image
 // host so private images pull on remote nodes. Empty map → anonymous pull.
 func (r *agentNodeRunner) pullCredentials(projectID, imageRef string) map[string]interface{} {
-	var ownerID string
-	if err := r.db.QueryRow(
-		`SELECT owner_id FROM projects WHERE id = $1`, projectID,
-	).Scan(&ownerID); err != nil {
+	pid, _ := uuid.Parse(projectID)
+	ownerID, err := sqlcdb.New(r.db.DB).GetProjectOwnerText(context.Background(), pid)
+	if err != nil {
 		return map[string]interface{}{}
 	}
 	auth := registryAuthFor(r.db, ownerID, imageRef)

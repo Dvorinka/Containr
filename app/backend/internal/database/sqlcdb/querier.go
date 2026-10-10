@@ -16,6 +16,7 @@ type Querier interface {
 	// Portable bucket bucketing (no TimescaleDB): floor epoch seconds into
 	// bucket-sized buckets, then back to timestamptz.
 	AggregateNodeMetrics(ctx context.Context, arg AggregateNodeMetricsParams) ([]AggregateNodeMetricsRow, error)
+	CancelBuild(ctx context.Context, arg CancelBuildParams) (int64, error)
 	CheckSecurityProjectAccess(ctx context.Context, arg CheckSecurityProjectAccessParams) (bool, error)
 	ClearServiceDomainDefault(ctx context.Context, serviceID uuid.UUID) error
 	ClearServiceNodePins(ctx context.Context, nodeID sql.NullString) (int64, error)
@@ -25,6 +26,8 @@ type Querier interface {
 	CompleteCommand(ctx context.Context, arg CompleteCommandParams) (AgentCommand, error)
 	CompleteDeployment(ctx context.Context, arg CompleteDeploymentParams) error
 	ComplianceFrameworkExists(ctx context.Context, id uuid.UUID) (bool, error)
+	CountAPKeys(ctx context.Context) (int64, error)
+	CountAPServices(ctx context.Context) (int64, error)
 	CountAccessibleDeployments(ctx context.Context, arg CountAccessibleDeploymentsParams) (int64, error)
 	CountActivePreviewsForBranch(ctx context.Context, arg CountActivePreviewsForBranchParams) (int64, error)
 	CountDatabaseServicesByUserAndName(ctx context.Context, arg CountDatabaseServicesByUserAndNameParams) (int64, error)
@@ -32,6 +35,7 @@ type Querier interface {
 	CountDeploymentsForService(ctx context.Context, serviceID uuid.UUID) (int64, error)
 	CountEnvironmentServices(ctx context.Context, environmentID uuid.UUID) (int64, error)
 	CountGitRepositories(ctx context.Context, arg CountGitRepositoriesParams) (int64, error)
+	CountProjects(ctx context.Context) (int64, error)
 	CountProjectsByUser(ctx context.Context, arg CountProjectsByUserParams) (int64, error)
 	CountServiceDomains(ctx context.Context, serviceID uuid.UUID) (int64, error)
 	CountServicesByName(ctx context.Context, arg CountServicesByNameParams) (int64, error)
@@ -63,30 +67,39 @@ type Querier interface {
 	DatabaseServiceExistsByIDAndUser(ctx context.Context, arg DatabaseServiceExistsByIDAndUserParams) (bool, error)
 	DeleteAgent(ctx context.Context, id string) error
 	DeleteAllServiceDomains(ctx context.Context, serviceID uuid.UUID) error
+	DeleteAppSetting(ctx context.Context, key string) error
 	DeleteBackupTargetByIDAndUser(ctx context.Context, arg DeleteBackupTargetByIDAndUserParams) error
 	DeleteBanner(ctx context.Context, id uuid.UUID) error
 	DeleteCronJob(ctx context.Context, id uuid.UUID) error
 	DeleteDatabaseServiceByID(ctx context.Context, id string) error
 	DeleteDatabaseServiceByIDAndUser(ctx context.Context, arg DeleteDatabaseServiceByIDAndUserParams) error
+	DeleteEnvVarsForService(ctx context.Context, serviceID uuid.UUID) error
 	DeleteGitProvider(ctx context.Context, arg DeleteGitProviderParams) (int64, error)
 	DeleteNotificationChannel(ctx context.Context, arg DeleteNotificationChannelParams) (int64, error)
 	DeleteOutboundWebhookByIDAndUser(ctx context.Context, arg DeleteOutboundWebhookByIDAndUserParams) error
 	DeletePreviewEnvironment(ctx context.Context, id uuid.UUID) error
 	DeleteProjectByID(ctx context.Context, projectID uuid.UUID) (int64, error)
 	DeleteProjectEnvironment(ctx context.Context, arg DeleteProjectEnvironmentParams) error
+	DeleteProjectVariables(ctx context.Context, projectID uuid.UUID) error
 	DeleteServiceByID(ctx context.Context, id uuid.UUID) error
 	DeleteServiceContainersOnAgent(ctx context.Context, arg DeleteServiceContainersOnAgentParams) error
 	DeleteServiceDomain(ctx context.Context, arg DeleteServiceDomainParams) (int64, error)
 	DeleteUserInvite(ctx context.Context, id uuid.UUID) error
 	DeleteUserTemplate(ctx context.Context, arg DeleteUserTemplateParams) (int64, error)
 	FailDeployment(ctx context.Context, arg FailDeploymentParams) error
+	FailInterruptedDeployments(ctx context.Context) error
 	FinishCronExecution(ctx context.Context, arg FinishCronExecutionParams) error
+	GetAPServiceBySlug(ctx context.Context, slug string) (GetAPServiceBySlugRow, error)
+	GetAPServiceForValidate(ctx context.Context, id uuid.UUID) (GetAPServiceForValidateRow, error)
 	GetActiveAgentAuthTokenByHash(ctx context.Context, tokenHash string) (AgentAuthToken, error)
+	GetAdminUserInfo(ctx context.Context, id uuid.UUID) (GetAdminUserInfoRow, error)
 	GetAgent(ctx context.Context, id string) (NodeAgent, error)
 	GetAgentByHostAndIP(ctx context.Context, arg GetAgentByHostAndIPParams) (NodeAgent, error)
+	GetAppSetting(ctx context.Context, key string) (string, error)
 	GetBackupTargetByID(ctx context.Context, id string) (BackupTarget, error)
 	GetBackupTargetByIDAndUser(ctx context.Context, arg GetBackupTargetByIDAndUserParams) (BackupTarget, error)
 	GetBannerByID(ctx context.Context, id uuid.UUID) (Banner, error)
+	GetBuild(ctx context.Context, id string) (GetBuildRow, error)
 	GetCommandForAgent(ctx context.Context, arg GetCommandForAgentParams) (AgentCommand, error)
 	GetComplianceReportProjectID(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	GetContainer(ctx context.Context, id string) (ContainerInstance, error)
@@ -103,12 +116,15 @@ type Querier interface {
 	GetDeploymentAccess(ctx context.Context, id uuid.UUID) (GetDeploymentAccessRow, error)
 	GetDeploymentForRollback(ctx context.Context, id uuid.UUID) (GetDeploymentForRollbackRow, error)
 	GetDeploymentWithProject(ctx context.Context, id uuid.UUID) (GetDeploymentWithProjectRow, error)
+	GetEnvironmentProjectID(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	GetGitProviderForFetch(ctx context.Context, arg GetGitProviderForFetchParams) (GetGitProviderForFetchRow, error)
 	GetGitProviderForRepos(ctx context.Context, arg GetGitProviderForReposParams) (GetGitProviderForReposRow, error)
 	GetGitProviderName(ctx context.Context, arg GetGitProviderNameParams) (string, error)
 	GetGitProviderNameByID(ctx context.Context, id uuid.UUID) (string, error)
 	GetGitProviderTimestamps(ctx context.Context, id uuid.UUID) (GetGitProviderTimestampsRow, error)
+	GetGitRepoCloneByFullName(ctx context.Context, arg GetGitRepoCloneByFullNameParams) (GetGitRepoCloneByFullNameRow, error)
 	GetGitRepoForPush(ctx context.Context, id uuid.UUID) (GetGitRepoForPushRow, error)
+	GetGitRepoProviderByCloneURL(ctx context.Context, arg GetGitRepoProviderByCloneURLParams) (uuid.UUID, error)
 	GetGitRepositoryByFullName(ctx context.Context, arg GetGitRepositoryByFullNameParams) (GetGitRepositoryByFullNameRow, error)
 	GetGitRepositoryProviderID(ctx context.Context, arg GetGitRepositoryProviderIDParams) (uuid.UUID, error)
 	GetGitWebhookForPush(ctx context.Context, id uuid.UUID) (GetGitWebhookForPushRow, error)
@@ -116,6 +132,7 @@ type Querier interface {
 	GetLastDeployedImage(ctx context.Context, serviceID uuid.UUID) (string, error)
 	GetLatestComplianceReport(ctx context.Context, projectID uuid.UUID) (GetLatestComplianceReportRow, error)
 	GetLatestSecurityScan(ctx context.Context, projectID uuid.UUID) (GetLatestSecurityScanRow, error)
+	GetNodeAgentName(ctx context.Context, id string) (string, error)
 	GetOutboundWebhookByID(ctx context.Context, id uuid.UUID) (OutboundWebhook, error)
 	GetOutboundWebhookByIDAndUser(ctx context.Context, arg GetOutboundWebhookByIDAndUserParams) (OutboundWebhook, error)
 	GetPreviewEnvironment(ctx context.Context, arg GetPreviewEnvironmentParams) (GetPreviewEnvironmentRow, error)
@@ -130,7 +147,10 @@ type Querier interface {
 	GetProjectOwnerByID(ctx context.Context, projectID uuid.UUID) (uuid.UUID, error)
 	GetProjectOwnerID(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	GetProjectOwnerText(ctx context.Context, id uuid.UUID) (string, error)
+	GetProjectReadAccess(ctx context.Context, id uuid.UUID) (GetProjectReadAccessRow, error)
 	GetProjectRoleForUser(ctx context.Context, arg GetProjectRoleForUserParams) (string, error)
+	GetProjectVariableValue(ctx context.Context, arg GetProjectVariableValueParams) (string, error)
+	GetRegistryAuth(ctx context.Context, arg GetRegistryAuthParams) (GetRegistryAuthRow, error)
 	GetSecurityScanProjectID(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	GetServiceAccess(ctx context.Context, id uuid.UUID) (GetServiceAccessRow, error)
 	GetServiceDomainDefault(ctx context.Context, serviceID uuid.UUID) (string, error)
@@ -139,39 +159,67 @@ type Querier interface {
 	GetServiceEnvironment(ctx context.Context, id uuid.UUID) (string, error)
 	GetServiceForDeploy(ctx context.Context, id uuid.UUID) (GetServiceForDeployRow, error)
 	GetServiceForDeployWithOwner(ctx context.Context, id uuid.UUID) (GetServiceForDeployWithOwnerRow, error)
+	GetServiceNameProjectPort(ctx context.Context, id uuid.UUID) (GetServiceNameProjectPortRow, error)
+	GetServiceNodeID(ctx context.Context, id uuid.UUID) (sql.NullString, error)
 	GetServicePlacementBrief(ctx context.Context, id uuid.UUID) (GetServicePlacementBriefRow, error)
+	GetServicePlacementTags(ctx context.Context, id uuid.UUID) (json.RawMessage, error)
 	GetServicePort(ctx context.Context, id uuid.UUID) (int32, error)
+	GetServiceProjectAndStatus(ctx context.Context, id uuid.UUID) (GetServiceProjectAndStatusRow, error)
+	GetServiceProjectID(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	GetServicePublishedPort(ctx context.Context, id uuid.UUID) (int32, error)
 	GetServiceRuntimeWithOwner(ctx context.Context, id uuid.UUID) (GetServiceRuntimeWithOwnerRow, error)
+	GetServiceSleep(ctx context.Context, id uuid.UUID) (GetServiceSleepRow, error)
+	GetServiceSpread(ctx context.Context, id uuid.UUID) (bool, error)
 	GetServiceStatusText(ctx context.Context, id uuid.UUID) (string, error)
 	GetServiceTemplateByID(ctx context.Context, id string) (ServiceTemplate, error)
+	GetServiceTraefikLabels(ctx context.Context, id uuid.UUID) (json.RawMessage, error)
 	GetServiceTypeBrief(ctx context.Context, arg GetServiceTypeBriefParams) (GetServiceTypeBriefRow, error)
 	GetServiceVariableValue(ctx context.Context, arg GetServiceVariableValueParams) (string, error)
+	GetServiceVolumes(ctx context.Context, id uuid.UUID) (json.RawMessage, error)
 	GetUserByEmailForAuth(ctx context.Context, email string) (GetUserByEmailForAuthRow, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (GetUserByIDRow, error)
 	GetUserInviteByTokenHash(ctx context.Context, tokenHash string) (UserInvite, error)
+	GetUserIsAdmin(ctx context.Context, id uuid.UUID) (bool, error)
 	GetUserTokenByHash(ctx context.Context, tokenHash string) (UserToken, error)
 	GetVulnerabilityMetrics(ctx context.Context, projectID uuid.UUID) (GetVulnerabilityMetricsRow, error)
 	GetVulnerabilityProjectID(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
+	InsertAPKey(ctx context.Context, arg InsertAPKeyParams) (uuid.UUID, error)
+	InsertAPService(ctx context.Context, arg InsertAPServiceParams) (uuid.UUID, error)
 	InsertAgentHeartbeat(ctx context.Context, arg InsertAgentHeartbeatParams) error
+	InsertAuditLog(ctx context.Context, arg InsertAuditLogParams) error
+	InsertAuditLogWithRequest(ctx context.Context, arg InsertAuditLogWithRequestParams) error
 	InsertCronExecution(ctx context.Context, arg InsertCronExecutionParams) error
 	InsertCronJob(ctx context.Context, arg InsertCronJobParams) error
 	InsertDeployment(ctx context.Context, arg InsertDeploymentParams) error
+	InsertEnvVar(ctx context.Context, arg InsertEnvVarParams) error
+	InsertGatewayIncident(ctx context.Context, arg InsertGatewayIncidentParams) error
 	InsertGitProvider(ctx context.Context, arg InsertGitProviderParams) error
 	InsertGitRepository(ctx context.Context, arg InsertGitRepositoryParams) (InsertGitRepositoryRow, error)
+	InsertMetricPoint(ctx context.Context, labelsJson sql.NullString) error
 	InsertNotificationChannel(ctx context.Context, arg InsertNotificationChannelParams) (NotificationChannel, error)
 	InsertPendingDeployment(ctx context.Context, arg InsertPendingDeploymentParams) error
 	InsertProjectEnvironment(ctx context.Context, arg InsertProjectEnvironmentParams) error
+	InsertProjectVariable(ctx context.Context, arg InsertProjectVariableParams) error
+	InsertServiceIncident(ctx context.Context, arg InsertServiceIncidentParams) error
 	InsertUser(ctx context.Context, arg InsertUserParams) (InsertUserRow, error)
 	InsertUserAdmin(ctx context.Context, arg InsertUserAdminParams) (InsertUserAdminRow, error)
+	ListAPKeys(ctx context.Context) ([]ListAPKeysRow, error)
+	ListAPKeysByPrefix(ctx context.Context, keyPrefix string) ([]ListAPKeysByPrefixRow, error)
+	ListAPServices(ctx context.Context) ([]ListAPServicesRow, error)
 	ListActiveBanners(ctx context.Context) ([]Banner, error)
+	ListActiveOperationDeployments(ctx context.Context, arg ListActiveOperationDeploymentsParams) ([]ListActiveOperationDeploymentsRow, error)
+	ListAdminUserIDs(ctx context.Context) ([]uuid.UUID, error)
+	ListAdminUsers(ctx context.Context) ([]ListAdminUsersRow, error)
 	ListAgentAuthTokens(ctx context.Context) ([]AgentAuthToken, error)
+	ListAgentHealthRows(ctx context.Context, lastHeartbeat sql.NullTime) ([]ListAgentHealthRowsRow, error)
 	ListAgentHeartbeatsSince(ctx context.Context, arg ListAgentHeartbeatsSinceParams) ([]AgentHeartbeat, error)
 	ListAgents(ctx context.Context) ([]NodeAgent, error)
 	ListAllDatabaseServices(ctx context.Context) ([]DatabaseService, error)
 	ListAllNotificationChannelsByUser(ctx context.Context, userID uuid.UUID) ([]NotificationChannel, error)
+	ListAuditBackfillBatch(ctx context.Context, dollar_1 uuid.UUID) ([]ListAuditBackfillBatchRow, error)
 	ListBackupTargetsByUser(ctx context.Context, userID string) ([]BackupTarget, error)
 	ListBanners(ctx context.Context) ([]Banner, error)
+	ListClientEventPaths(ctx context.Context) ([]ListClientEventPathsRow, error)
 	ListCommandsForAgent(ctx context.Context, nodeAgentID string) ([]AgentCommand, error)
 	ListComplianceFrameworks(ctx context.Context) ([]ListComplianceFrameworksRow, error)
 	ListConnectedRepositories(ctx context.Context, arg ListConnectedRepositoriesParams) ([]ListConnectedRepositoriesRow, error)
@@ -187,6 +235,7 @@ type Querier interface {
 	ListExpiredPreviewsForUser(ctx context.Context, arg ListExpiredPreviewsForUserParams) ([]ListExpiredPreviewsForUserRow, error)
 	ListGitProviders(ctx context.Context, userID uuid.UUID) ([]ListGitProvidersRow, error)
 	ListGitRepositories(ctx context.Context, arg ListGitRepositoriesParams) ([]ListGitRepositoriesRow, error)
+	ListIncidentStatusCodes(ctx context.Context) ([]ListIncidentStatusCodesRow, error)
 	ListInstanceMetrics(ctx context.Context, arg ListInstanceMetricsParams) ([]ListInstanceMetricsRow, error)
 	ListNodeAgentsForService(ctx context.Context, serviceID string) ([]string, error)
 	ListNodeMetrics(ctx context.Context, arg ListNodeMetricsParams) ([]ListNodeMetricsRow, error)
@@ -203,12 +252,18 @@ type Querier interface {
 	// platform admin. Anonymous callers pass user_id = uuid.Nil, is_admin = false.
 	ListProjectsWithStatsByUser(ctx context.Context, arg ListProjectsWithStatsByUserParams) ([]ListProjectsWithStatsByUserRow, error)
 	ListRecentAccessibleDeployments(ctx context.Context, arg ListRecentAccessibleDeploymentsParams) ([]ListRecentAccessibleDeploymentsRow, error)
+	ListRecentCronRuns(ctx context.Context, arg ListRecentCronRunsParams) ([]ListRecentCronRunsRow, error)
+	ListRecentFailedDeployments(ctx context.Context, arg ListRecentFailedDeploymentsParams) ([]ListRecentFailedDeploymentsRow, error)
+	ListRecentOperationBackups(ctx context.Context, arg ListRecentOperationBackupsParams) ([]ListRecentOperationBackupsRow, error)
+	ListRequestsByDay(ctx context.Context) ([]ListRequestsByDayRow, error)
+	ListResourceAuditLogs(ctx context.Context, arg ListResourceAuditLogsParams) ([]ListResourceAuditLogsRow, error)
 	// Base domains of every online, schedulable agent carrying the required
 	// placement tags — auto-domain candidates for spread services.
 	ListSchedulableAgentDomains(ctx context.Context, dollar_1 json.RawMessage) ([]string, error)
 	ListSchedulableAgents(ctx context.Context) ([]ListSchedulableAgentsRow, error)
 	// Only agents carrying every required placement tag (jsonb array containment).
 	ListSchedulableAgentsMatching(ctx context.Context, dollar_1 json.RawMessage) ([]ListSchedulableAgentsMatchingRow, error)
+	ListSecretEnvVars(ctx context.Context) ([]ListSecretEnvVarsRow, error)
 	// Distinct agents holding inventory rows for a service.
 	ListServiceAgents(ctx context.Context, serviceID string) ([]string, error)
 	ListServiceContainers(ctx context.Context, serviceID string) ([]ListServiceContainersRow, error)
@@ -221,6 +276,7 @@ type Querier interface {
 	ListServicesForPush(ctx context.Context, arg ListServicesForPushParams) ([]ListServicesForPushRow, error)
 	ListSleepCandidates(ctx context.Context) ([]ListSleepCandidatesRow, error)
 	ListSweepablePreviews(ctx context.Context) ([]ListSweepablePreviewsRow, error)
+	ListTopAPServices(ctx context.Context) ([]ListTopAPServicesRow, error)
 	ListUserInvites(ctx context.Context) ([]UserInvite, error)
 	ListUserTokens(ctx context.Context, userID uuid.UUID) ([]UserToken, error)
 	ListVulnerabilities(ctx context.Context, projectID uuid.UUID) ([]ListVulnerabilitiesRow, error)
@@ -236,14 +292,21 @@ type Querier interface {
 	// Same resource-aware ordering as PickLeastLoadedAgent, restricted to agents
 	// carrying every required placement tag.
 	PickLeastLoadedAgentMatching(ctx context.Context, dollar_1 json.RawMessage) (string, error)
+	ProjectMemberExists(ctx context.Context, arg ProjectMemberExistsParams) (bool, error)
+	PruneAuditLogs(ctx context.Context, dollar_1 int32) (int64, error)
 	RevokeAgentAuthToken(ctx context.Context, id uuid.UUID) (AgentAuthToken, error)
 	RevokeUserToken(ctx context.Context, arg RevokeUserTokenParams) (int64, error)
 	ScrubCommandPayload(ctx context.Context, arg ScrubCommandPayloadParams) error
 	ServiceExistsInProject(ctx context.Context, arg ServiceExistsInProjectParams) (bool, error)
 	ServiceWriteAccess(ctx context.Context, arg ServiceWriteAccessParams) (bool, error)
+	SetAPKeyEnabled(ctx context.Context, arg SetAPKeyEnabledParams) error
+	SetAPServiceEnabled(ctx context.Context, arg SetAPServiceEnabledParams) error
+	SetAPServiceValidation(ctx context.Context, arg SetAPServiceValidationParams) error
 	SetAgentDefaultDomain(ctx context.Context, arg SetAgentDefaultDomainParams) error
 	SetAgentSchedulable(ctx context.Context, arg SetAgentSchedulableParams) error
+	SetAgentStatus(ctx context.Context, arg SetAgentStatusParams) error
 	SetAgentTags(ctx context.Context, arg SetAgentTagsParams) error
+	SetAuditLogMetadata(ctx context.Context, arg SetAuditLogMetadataParams) error
 	SetDatabaseBackupRemoteKeyByID(ctx context.Context, arg SetDatabaseBackupRemoteKeyByIDParams) error
 	SetDatabaseBackupScheduleByIDAndUser(ctx context.Context, arg SetDatabaseBackupScheduleByIDAndUserParams) error
 	SetDatabaseBackupStatusByID(ctx context.Context, arg SetDatabaseBackupStatusByIDParams) error
@@ -260,8 +323,14 @@ type Querier interface {
 	SetServicePublishedPort(ctx context.Context, arg SetServicePublishedPortParams) error
 	SetServiceReplicas(ctx context.Context, arg SetServiceReplicasParams) error
 	SetServiceStatus(ctx context.Context, arg SetServiceStatusParams) error
+	SetUserAdmin(ctx context.Context, arg SetUserAdminParams) (int64, error)
+	SumRequestMetricSince(ctx context.Context, dollar_1 string) (int32, error)
+	SumUsageByKey(ctx context.Context, arg SumUsageByKeyParams) (int64, error)
+	SumUsageByService(ctx context.Context, arg SumUsageByServiceParams) (int64, error)
+	SumUsageCounters(ctx context.Context) (interface{}, error)
 	SyncDeploymentProgress(ctx context.Context, arg SyncDeploymentProgressParams) error
 	SyncPreviewStatuses(ctx context.Context) error
+	TouchAPKeyLastUsed(ctx context.Context, id uuid.UUID) error
 	TouchAgentAuthToken(ctx context.Context, tokenHash string) error
 	TouchServiceDomainChecked(ctx context.Context, id uuid.UUID) error
 	TouchUserToken(ctx context.Context, id uuid.UUID) error
@@ -282,14 +351,21 @@ type Querier interface {
 	UpdateDatabaseServiceNameAndPlanByIDAndUser(ctx context.Context, arg UpdateDatabaseServiceNameAndPlanByIDAndUserParams) error
 	UpdateDatabaseServiceNameByIDAndUser(ctx context.Context, arg UpdateDatabaseServiceNameByIDAndUserParams) error
 	UpdateDatabaseServicePlanByIDAndUser(ctx context.Context, arg UpdateDatabaseServicePlanByIDAndUserParams) error
+	UpdateEnvVarValue(ctx context.Context, arg UpdateEnvVarValueParams) error
 	UpdateOutboundWebhook(ctx context.Context, arg UpdateOutboundWebhookParams) error
 	UpdatePreviewEnvironment(ctx context.Context, arg UpdatePreviewEnvironmentParams) error
 	UpdateProjectByID(ctx context.Context, arg UpdateProjectByIDParams) (int64, error)
+	UpdateServiceDeployMeta(ctx context.Context, arg UpdateServiceDeployMetaParams) error
 	UpdateServicePreviewBranch(ctx context.Context, arg UpdateServicePreviewBranchParams) error
+	UpdateServiceRuntimeMeta(ctx context.Context, arg UpdateServiceRuntimeMetaParams) error
 	UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) error
 	UpdateUserTemplate(ctx context.Context, arg UpdateUserTemplateParams) (int64, error)
 	UpdateVulnerabilityStatus(ctx context.Context, arg UpdateVulnerabilityStatusParams) error
 	UpdateWebhookDeliveryResult(ctx context.Context, arg UpdateWebhookDeliveryResultParams) error
+	UpsertAdminUser(ctx context.Context, arg UpsertAdminUserParams) (uuid.UUID, error)
+	UpsertAppSetting(ctx context.Context, arg UpsertAppSettingParams) error
+	UpsertAppSettingValue(ctx context.Context, arg UpsertAppSettingValueParams) error
+	UpsertBuild(ctx context.Context, arg UpsertBuildParams) error
 	UpsertEnvironmentVariable(ctx context.Context, arg UpsertEnvironmentVariableParams) error
 	UpsertGitHubAppProvider(ctx context.Context, arg UpsertGitHubAppProviderParams) (UpsertGitHubAppProviderRow, error)
 	UpsertGitRepository(ctx context.Context, arg UpsertGitRepositoryParams) error
@@ -300,6 +376,7 @@ type Querier interface {
 	UpsertServiceContainer(ctx context.Context, arg UpsertServiceContainerParams) error
 	UpsertServiceMetrics(ctx context.Context, arg UpsertServiceMetricsParams) error
 	UpsertServiceTemplate(ctx context.Context, arg UpsertServiceTemplateParams) error
+	UpsertUsageCounter(ctx context.Context, arg UpsertUsageCounterParams) error
 }
 
 var _ Querier = (*Queries)(nil)

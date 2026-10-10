@@ -34,6 +34,24 @@ func (q *Queries) CountUsersByEmail(ctx context.Context, email string) (int64, e
 	return count, err
 }
 
+const getAdminUserInfo = `-- name: GetAdminUserInfo :one
+SELECT email, COALESCE(name, '') AS name, is_admin
+FROM users WHERE id = $1
+`
+
+type GetAdminUserInfoRow struct {
+	Email   string `json:"email"`
+	Name    string `json:"name"`
+	IsAdmin bool   `json:"is_admin"`
+}
+
+func (q *Queries) GetAdminUserInfo(ctx context.Context, id uuid.UUID) (GetAdminUserInfoRow, error) {
+	row := q.db.QueryRowContext(ctx, getAdminUserInfo, id)
+	var i GetAdminUserInfoRow
+	err := row.Scan(&i.Email, &i.Name, &i.IsAdmin)
+	return i, err
+}
+
 const getUserByEmailForAuth = `-- name: GetUserByEmailForAuth :one
 SELECT id, email, password_hash, name, COALESCE(avatar_url, '') AS avatar_url, is_admin, created_at
 FROM users WHERE email = $1
@@ -168,6 +186,69 @@ func (q *Queries) InsertUserAdmin(ctx context.Context, arg InsertUserAdminParams
 	return i, err
 }
 
+const listAdminUsers = `-- name: ListAdminUsers :many
+SELECT id, email, name, COALESCE(avatar_url, '') AS avatar_url, is_admin,
+       COALESCE(to_char(created_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), '')::text AS created_at
+FROM users
+ORDER BY created_at ASC
+`
+
+type ListAdminUsersRow struct {
+	ID        uuid.UUID `json:"id"`
+	Email     string    `json:"email"`
+	Name      string    `json:"name"`
+	AvatarUrl string    `json:"avatar_url"`
+	IsAdmin   bool      `json:"is_admin"`
+	CreatedAt string    `json:"created_at"`
+}
+
+func (q *Queries) ListAdminUsers(ctx context.Context) ([]ListAdminUsersRow, error) {
+	rows, err := q.db.QueryContext(ctx, listAdminUsers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAdminUsersRow{}
+	for rows.Next() {
+		var i ListAdminUsersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Email,
+			&i.Name,
+			&i.AvatarUrl,
+			&i.IsAdmin,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const setUserAdmin = `-- name: SetUserAdmin :execrows
+UPDATE users SET is_admin = $1, updated_at = NOW() WHERE id = $2
+`
+
+type SetUserAdminParams struct {
+	IsAdmin bool      `json:"is_admin"`
+	ID      uuid.UUID `json:"id"`
+}
+
+func (q *Queries) SetUserAdmin(ctx context.Context, arg SetUserAdminParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setUserAdmin, arg.IsAdmin, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const updateUserProfile = `-- name: UpdateUserProfile :exec
 UPDATE users
 SET name = COALESCE($1::varchar, name), avatar_url = COALESCE($2::varchar, avatar_url)
@@ -183,6 +264,27 @@ type UpdateUserProfileParams struct {
 func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) error {
 	_, err := q.db.ExecContext(ctx, updateUserProfile, arg.Column1, arg.Column2, arg.ID)
 	return err
+}
+
+const upsertAdminUser = `-- name: UpsertAdminUser :one
+INSERT INTO users (email, password_hash, name, is_admin)
+VALUES ($1, $2, $3, true)
+ON CONFLICT (email) DO UPDATE
+SET is_admin = true, updated_at = NOW()
+RETURNING id
+`
+
+type UpsertAdminUserParams struct {
+	Email        string `json:"email"`
+	PasswordHash string `json:"password_hash"`
+	Name         string `json:"name"`
+}
+
+func (q *Queries) UpsertAdminUser(ctx context.Context, arg UpsertAdminUserParams) (uuid.UUID, error) {
+	row := q.db.QueryRowContext(ctx, upsertAdminUser, arg.Email, arg.PasswordHash, arg.Name)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
 }
 
 const upsertLocalUser = `-- name: UpsertLocalUser :one

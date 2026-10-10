@@ -2,6 +2,7 @@ package api
 
 import (
 	"containr/internal/database"
+	"containr/internal/database/sqlcdb"
 	"context"
 	"crypto/rand"
 	"database/sql"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
+	"github.com/google/uuid"
 	"github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -160,21 +162,22 @@ func handleAPwhyServiceValidate(c *gin.Context) {
 	db := c.MustGet("db").(*database.DB)
 	ctx := c.Request.Context()
 
-	var upstreamURL, healthPath string
-	var authHeader, authValue sql.NullString
-	var timeoutMs sql.NullInt64
-	err := db.QueryRowContext(ctx, `
-		SELECT upstream_url, health_path, upstream_auth_header, upstream_auth_value, request_timeout_ms
-		FROM api_services WHERE id = $1
-	`, serviceID).Scan(&upstreamURL, &healthPath, &authHeader, &authValue, &timeoutMs)
-	if err != nil {
+	svcUUID, parseErr := uuid.Parse(serviceID)
+	var svc sqlcdb.GetAPServiceForValidateRow
+	var err error
+	if parseErr == nil {
+		svc, err = sqlcdb.New(db.DB).GetAPServiceForValidate(ctx, svcUUID)
+	}
+	if parseErr != nil || err != nil {
 		sendErrorResponse(c, http.StatusNotFound, "SERVICE_NOT_FOUND", "Service not found", nil)
 		return
 	}
+	upstreamURL, healthPath := svc.UpstreamUrl, svc.HealthPath
+	authHeader, authValue := svc.UpstreamAuthHeader, svc.UpstreamAuthValue
 
 	timeout := 8000
-	if timeoutMs.Valid && timeoutMs.Int64 > 0 {
-		timeout = int(timeoutMs.Int64)
+	if svc.RequestTimeoutMs.Valid && svc.RequestTimeoutMs.Int32 > 0 {
+		timeout = int(svc.RequestTimeoutMs.Int32)
 	}
 	target := strings.TrimRight(upstreamURL, "/") + "/" + strings.TrimLeft(healthPath, "/")
 
@@ -203,17 +206,19 @@ func handleAPwhyServiceValidate(c *gin.Context) {
 		validationStatus = "healthy"
 	}
 
-	_, _ = db.ExecContext(ctx, `
-		UPDATE api_services
-		SET last_validation_at = NOW(), last_validation_status = $1, last_validation_message = $2, updated_at = NOW()
-		WHERE id = $3
-	`, validationStatus, message, serviceID)
+	q := sqlcdb.New(db.DB)
+	_ = q.SetAPServiceValidation(ctx, sqlcdb.SetAPServiceValidationParams{
+		LastValidationStatus:  sql.NullString{String: validationStatus, Valid: true},
+		LastValidationMessage: sql.NullString{String: message, Valid: true},
+		ID:                    svcUUID,
+	})
 
 	if !ok {
-		_, _ = db.ExecContext(ctx, `
-			INSERT INTO incident_events (service_id, code, message, severity, http_status, occurred_at)
-			VALUES ($1, 'SERVICE_VALIDATION_FAILED', $2, 'medium', $3, NOW())
-		`, serviceID, message, status)
+		_ = q.InsertServiceIncident(ctx, sqlcdb.InsertServiceIncidentParams{
+			ServiceID:  uuid.NullUUID{UUID: svcUUID, Valid: true},
+			Message:    message,
+			HttpStatus: sql.NullInt32{Int32: int32(status), Valid: true},
+		})
 	}
 
 	sendSuccessResponse(c, http.StatusOK, map[string]interface{}{
@@ -231,36 +236,24 @@ func handleAPwhyServicesList(c *gin.Context) {
 	ctx := context.Background()
 
 	// Query services from database
-	rows, err := db.QueryContext(ctx, `
-		SELECT id, name, slug, upstream_url, route_prefix, enabled, created_at, updated_at
-		FROM api_services
-		ORDER BY created_at DESC
-	`)
+	rows, err := sqlcdb.New(db.DB).ListAPServices(ctx)
 	if err != nil {
 		sendErrorResponse(c, http.StatusInternalServerError, "DATABASE_ERROR",
 			"Failed to query services", err.Error())
 		return
 	}
-	defer rows.Close()
 
-	services := make([]map[string]interface{}, 0)
-	for rows.Next() {
-		var id, name, slug, upstreamURL, routePrefix, createdAt, updatedAt string
-		var enabled int
-		err := rows.Scan(&id, &name, &slug, &upstreamURL, &routePrefix, &enabled, &createdAt, &updatedAt)
-		if err != nil {
-			continue // Skip malformed rows
-		}
-
+	services := make([]map[string]interface{}, 0, len(rows))
+	for _, r := range rows {
 		services = append(services, map[string]interface{}{
-			"id":          id,
-			"name":        name,
-			"slug":        slug,
-			"upstreamUrl": upstreamURL,
-			"routePrefix": routePrefix,
-			"enabled":     enabled != 0,
-			"createdAt":   createdAt,
-			"updatedAt":   updatedAt,
+			"id":          r.ID.String(),
+			"name":        r.Name,
+			"slug":        r.Slug,
+			"upstreamUrl": r.UpstreamUrl,
+			"routePrefix": r.RoutePrefix,
+			"enabled":     r.Enabled != 0,
+			"createdAt":   r.CreatedAt,
+			"updatedAt":   r.UpdatedAt,
 		})
 	}
 
@@ -299,14 +292,14 @@ func handleAPwhyServicesCreate(c *gin.Context) {
 	}
 
 	// id defaults to gen_random_uuid(); enabled defaults to 1.
-	var id string
-	err := db.QueryRowContext(ctx, `
-		INSERT INTO api_services (
-			name, slug, upstream_url, route_prefix, health_path,
-			rpm_limit, monthly_quota, created_at, updated_at
-		) VALUES ($1, $2, $3, $4, '/health', $5, $6, NOW(), NOW())
-		RETURNING id
-	`, req.Name, slug, req.UpstreamURL, req.RoutePrefix, rpmLimit, monthlyQuota).Scan(&id)
+	svcID, err := sqlcdb.New(db.DB).InsertAPService(ctx, sqlcdb.InsertAPServiceParams{
+		Name:         req.Name,
+		Slug:         slug,
+		UpstreamUrl:  req.UpstreamURL,
+		RoutePrefix:  req.RoutePrefix,
+		RpmLimit:     sql.NullInt32{Int32: int32(rpmLimit), Valid: true},
+		MonthlyQuota: sql.NullInt32{Int32: int32(monthlyQuota), Valid: true},
+	})
 
 	if err != nil {
 		if isUniqueViolation(err) {
@@ -320,7 +313,7 @@ func handleAPwhyServicesCreate(c *gin.Context) {
 	}
 
 	serviceData := map[string]interface{}{
-		"id":           id,
+		"id":           svcID.String(),
 		"name":         req.Name,
 		"slug":         slug,
 		"upstreamUrl":  req.UpstreamURL,
@@ -356,13 +349,15 @@ func handleAPwhyServicesPatch(c *gin.Context) {
 	db := c.MustGet("db").(*database.DB)
 
 	if input.Enabled != nil {
-		enabled := 0
+		enabled := int32(0)
 		if *input.Enabled {
 			enabled = 1
 		}
-		_, err := db.ExecContext(context.Background(),
-			"UPDATE api_services SET enabled = $1, updated_at = NOW() WHERE id = $2",
-			enabled, serviceID)
+		svcUUID, _ := uuid.Parse(serviceID)
+		err := sqlcdb.New(db.DB).SetAPServiceEnabled(context.Background(), sqlcdb.SetAPServiceEnabledParams{
+			Enabled: enabled,
+			ID:      svcUUID,
+		})
 
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
@@ -383,11 +378,7 @@ func handleAPwhyServicesPatch(c *gin.Context) {
 func handleAPwhyKeysList(c *gin.Context) {
 	db := c.MustGet("db").(*database.DB)
 
-	rows, err := db.QueryContext(context.Background(), `
-		SELECT id, name, key_prefix, plan, enabled, rpm_limit, monthly_quota, created_at, updated_at
-		FROM api_keys 
-		ORDER BY created_at DESC
-	`)
+	rows, err := sqlcdb.New(db.DB).ListAPKeys(context.Background())
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"ok":   true,
@@ -395,34 +386,24 @@ func handleAPwhyKeysList(c *gin.Context) {
 		})
 		return
 	}
-	defer rows.Close()
 
-	keys := make([]map[string]interface{}, 0)
-	for rows.Next() {
-		var id, name, keyPrefix, plan, createdAt, updatedAt string
-		var enabled int
-		var rpmLimit, monthlyQuota sql.NullInt64
-
-		err := rows.Scan(&id, &name, &keyPrefix, &plan, &enabled, &rpmLimit, &monthlyQuota, &createdAt, &updatedAt)
-		if err != nil {
-			continue
-		}
-
+	keys := make([]map[string]interface{}, 0, len(rows))
+	for _, r := range rows {
 		key := map[string]interface{}{
-			"id":        id,
-			"name":      name,
-			"keyPrefix": keyPrefix,
-			"plan":      plan,
-			"enabled":   enabled != 0,
-			"createdAt": createdAt,
-			"updatedAt": updatedAt,
+			"id":        r.ID.String(),
+			"name":      r.Name,
+			"keyPrefix": r.KeyPrefix,
+			"plan":      r.Plan,
+			"enabled":   r.Enabled != 0,
+			"createdAt": r.CreatedAt,
+			"updatedAt": r.UpdatedAt,
 		}
 
-		if rpmLimit.Valid {
-			key["rpmLimit"] = rpmLimit.Int64
+		if r.RpmLimit.Valid {
+			key["rpmLimit"] = int64(r.RpmLimit.Int32)
 		}
-		if monthlyQuota.Valid {
-			key["monthlyQuota"] = monthlyQuota.Int64
+		if r.MonthlyQuota.Valid {
+			key["monthlyQuota"] = int64(r.MonthlyQuota.Int32)
 		}
 
 		keys = append(keys, key)
@@ -481,14 +462,14 @@ func handleAPwhyKeysCreate(c *gin.Context) {
 	}
 
 	// id defaults to gen_random_uuid(); enabled defaults to 1.
-	var id string
-	err = db.QueryRowContext(context.Background(), `
-		INSERT INTO api_keys (
-			name, key_hash, key_prefix, plan, allowed_service_ids,
-			rpm_limit, monthly_quota, created_at, updated_at
-		) VALUES ($1, $2, $3, $4, '[]', $5, $6, NOW(), NOW())
-		RETURNING id
-	`, input.Name, keyHash, keyPrefix, plan, rpmLimit, monthlyQuota).Scan(&id)
+	keyID, err := sqlcdb.New(db.DB).InsertAPKey(context.Background(), sqlcdb.InsertAPKeyParams{
+		Name:         input.Name,
+		KeyHash:      keyHash,
+		KeyPrefix:    keyPrefix,
+		Plan:         plan,
+		RpmLimit:     sql.NullInt32{Int32: int32(rpmLimit), Valid: true},
+		MonthlyQuota: sql.NullInt32{Int32: int32(monthlyQuota), Valid: true},
+	})
 
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -501,7 +482,7 @@ func handleAPwhyKeysCreate(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{
 		"ok": true,
 		"data": gin.H{
-			"id":           id,
+			"id":           keyID.String(),
 			"name":         input.Name,
 			"plan":         plan,
 			"key":          apiKey, // Only return the actual key once
@@ -532,13 +513,15 @@ func handleAPwhyKeysPatch(c *gin.Context) {
 	db := c.MustGet("db").(*database.DB)
 
 	if input.Enabled != nil {
-		enabled := 0
+		enabled := int32(0)
 		if *input.Enabled {
 			enabled = 1
 		}
-		_, err := db.ExecContext(context.Background(),
-			"UPDATE api_keys SET enabled = $1, updated_at = NOW() WHERE id = $2",
-			enabled, keyID)
+		keyUUID, _ := uuid.Parse(keyID)
+		err := sqlcdb.New(db.DB).SetAPKeyEnabled(context.Background(), sqlcdb.SetAPKeyEnabledParams{
+			Enabled: enabled,
+			ID:      keyUUID,
+		})
 
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
@@ -560,23 +543,27 @@ func handleAPwhyAnalyticsOps(c *gin.Context) {
 	db := c.MustGet("db").(*database.DB)
 
 	// Get counts from database
-	var totalServices, totalKeys, totalUsers int
+	q := sqlcdb.New(db.DB)
+	ctx := context.Background()
 
-	if err := db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM api_services").Scan(&totalServices); err != nil {
+	totalServices, err := q.CountAPServices(ctx)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"ok":    false,
 			"error": "Failed to count services: " + err.Error(),
 		})
 		return
 	}
-	if err := db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM api_keys").Scan(&totalKeys); err != nil {
+	totalKeys, err := q.CountAPKeys(ctx)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"ok":    false,
 			"error": "Failed to count api keys: " + err.Error(),
 		})
 		return
 	}
-	if err := db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM users").Scan(&totalUsers); err != nil {
+	totalUsers, err := q.CountUsers(ctx)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"ok":    false,
 			"error": "Failed to count users: " + err.Error(),
@@ -584,8 +571,8 @@ func handleAPwhyAnalyticsOps(c *gin.Context) {
 		return
 	}
 
-	var totalRequests int
-	if err := db.QueryRowContext(context.Background(), "SELECT COALESCE(SUM(request_count), 0) FROM usage_counters").Scan(&totalRequests); err != nil {
+	totalRequests, err := q.SumUsageCounters(ctx)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"ok":    false,
 			"error": "Failed to aggregate request counters: " + err.Error(),
@@ -593,12 +580,8 @@ func handleAPwhyAnalyticsOps(c *gin.Context) {
 		return
 	}
 
-	var requestsToday int
-	if err := db.QueryRowContext(context.Background(), `
-		SELECT COALESCE(SUM(value), 0)::int
-		FROM metrics_timeseries
-		WHERE metric = 'request_total' AND occurred_at >= DATE_TRUNC('day', NOW())
-	`).Scan(&requestsToday); err != nil {
+	requestsToday, err := q.SumRequestMetricSince(ctx, "day")
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"ok":    false,
 			"error": "Failed to aggregate today's requests: " + err.Error(),
@@ -606,12 +589,8 @@ func handleAPwhyAnalyticsOps(c *gin.Context) {
 		return
 	}
 
-	var requestsThisMonth int
-	if err := db.QueryRowContext(context.Background(), `
-		SELECT COALESCE(SUM(value), 0)::int
-		FROM metrics_timeseries
-		WHERE metric = 'request_total' AND occurred_at >= DATE_TRUNC('month', NOW())
-	`).Scan(&requestsThisMonth); err != nil {
+	requestsThisMonth, err := q.SumRequestMetricSince(ctx, "month")
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"ok":    false,
 			"error": "Failed to aggregate monthly requests: " + err.Error(),
@@ -636,94 +615,47 @@ func handleAPwhyAnalyticsOps(c *gin.Context) {
 func handleAPwhyAnalyticsTraffic(c *gin.Context) {
 	db := c.MustGet("db").(*database.DB)
 
+	q := sqlcdb.New(db.DB)
+	ctx := context.Background()
+
 	topServices := make([]map[string]interface{}, 0)
-	serviceRows, err := db.QueryContext(context.Background(), `
-		SELECT s.id, s.name, COALESCE(SUM(u.request_count), 0) AS total_requests
-		FROM api_services s
-		LEFT JOIN usage_counters u ON u.service_id = s.id
-		GROUP BY s.id, s.name
-		ORDER BY total_requests DESC, s.name ASC
-		LIMIT 10
-	`)
-	if err == nil {
-		defer serviceRows.Close()
-		for serviceRows.Next() {
-			var serviceID, serviceName string
-			var totalRequests int
-			if scanErr := serviceRows.Scan(&serviceID, &serviceName, &totalRequests); scanErr == nil {
-				topServices = append(topServices, map[string]interface{}{
-					"service_id": serviceID,
-					"name":       serviceName,
-					"requests":   totalRequests,
-				})
-			}
+	if serviceRows, err := q.ListTopAPServices(ctx); err == nil {
+		for _, r := range serviceRows {
+			topServices = append(topServices, map[string]interface{}{
+				"service_id": r.ID.String(),
+				"name":       r.Name,
+				"requests":   r.TotalRequests,
+			})
 		}
 	}
 
 	requestsByDay := make([]map[string]interface{}, 0)
-	trafficRows, err := db.QueryContext(context.Background(), `
-		SELECT TO_CHAR(DATE_TRUNC('day', occurred_at), 'YYYY-MM-DD') AS day_bucket, COUNT(*) AS total
-		FROM metrics_timeseries
-		WHERE metric = 'request_total' AND occurred_at >= NOW() - INTERVAL '7 days'
-		GROUP BY DATE_TRUNC('day', occurred_at)
-		ORDER BY DATE_TRUNC('day', occurred_at) ASC
-	`)
-	if err == nil {
-		defer trafficRows.Close()
-		for trafficRows.Next() {
-			var day string
-			var count int
-			if scanErr := trafficRows.Scan(&day, &count); scanErr == nil {
-				requestsByDay = append(requestsByDay, map[string]interface{}{
-					"day":      day,
-					"requests": count,
-				})
-			}
+	if trafficRows, err := q.ListRequestsByDay(ctx); err == nil {
+		for _, r := range trafficRows {
+			requestsByDay = append(requestsByDay, map[string]interface{}{
+				"day":      r.DayBucket,
+				"requests": r.Total,
+			})
 		}
 	}
 
 	statusCodes := make([]map[string]interface{}, 0)
-	statusRows, err := db.QueryContext(context.Background(), `
-		SELECT COALESCE(http_status, 0) AS status_code, COALESCE(SUM(count), 0) AS total
-		FROM incident_events
-		WHERE occurred_at >= NOW() - INTERVAL '7 days'
-		GROUP BY COALESCE(http_status, 0)
-		ORDER BY total DESC, status_code ASC
-	`)
-	if err == nil {
-		defer statusRows.Close()
-		for statusRows.Next() {
-			var code int
-			var total int
-			if scanErr := statusRows.Scan(&code, &total); scanErr == nil {
-				statusCodes = append(statusCodes, map[string]interface{}{
-					"status_code": code,
-					"count":       total,
-				})
-			}
+	if statusRows, err := q.ListIncidentStatusCodes(ctx); err == nil {
+		for _, r := range statusRows {
+			statusCodes = append(statusCodes, map[string]interface{}{
+				"status_code": r.StatusCode,
+				"count":       r.Total,
+			})
 		}
 	}
 
 	clientEvents := make([]map[string]interface{}, 0)
-	eventRows, err := db.QueryContext(context.Background(), `
-		SELECT COALESCE((labels_json::jsonb ->> 'path'), 'unknown') AS path, COUNT(*) AS total
-		FROM metrics_timeseries
-		WHERE metric = 'client_event' AND occurred_at >= NOW() - INTERVAL '7 days'
-		GROUP BY COALESCE((labels_json::jsonb ->> 'path'), 'unknown')
-		ORDER BY total DESC, path ASC
-		LIMIT 20
-	`)
-	if err == nil {
-		defer eventRows.Close()
-		for eventRows.Next() {
-			var path string
-			var total int
-			if scanErr := eventRows.Scan(&path, &total); scanErr == nil {
-				clientEvents = append(clientEvents, map[string]interface{}{
-					"path":  path,
-					"count": total,
-				})
-			}
+	if eventRows, err := q.ListClientEventPaths(ctx); err == nil {
+		for _, r := range eventRows {
+			clientEvents = append(clientEvents, map[string]interface{}{
+				"path":  r.Path,
+				"count": r.Total,
+			})
 		}
 	}
 

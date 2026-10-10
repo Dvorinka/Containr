@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"containr/internal/database"
+	"containr/internal/database/sqlcdb"
 	"containr/internal/deployment"
 
 	"github.com/gin-gonic/gin"
@@ -88,8 +89,8 @@ func handleAdminGitHubAppManifest(c *gin.Context) {
 
 	callbackURL := base + "/git/github-app/callback"
 	manifest, err := json.Marshal(map[string]interface{}{
-		"name":  name,
-		"url":   base,
+		"name": name,
+		"url":  base,
 		"hook_attributes": map[string]interface{}{
 			"url":    base + "/api/git/github-app/webhook",
 			"active": true,
@@ -206,9 +207,8 @@ func handleAdminGitHubAppConvert(c *gin.Context) {
 // GET /admin/git/github-app — provisioning status for the settings UI.
 func handleAdminGetGitHubApp(c *gin.Context) {
 	db := c.MustGet("db").(*database.DB)
-	var stored string
 	source := "none"
-	if err := db.QueryRow(`SELECT value FROM app_settings WHERE key = $1`, settingGitHubAppID).Scan(&stored); err == nil && strings.TrimSpace(stored) != "" {
+	if v, err := sqlcdb.New(db.DB).GetAppSetting(c.Request.Context(), settingGitHubAppID); err == nil && strings.TrimSpace(v) != "" {
 		source = "settings"
 	} else if strings.TrimSpace(os.Getenv("GITHUB_APP_ID")) != "" {
 		source = "env"

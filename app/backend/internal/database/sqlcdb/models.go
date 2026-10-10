@@ -49,6 +49,66 @@ type AgentHeartbeat struct {
 	CreatedAt      time.Time       `json:"created_at"`
 }
 
+type ApiKey struct {
+	ID                uuid.UUID     `json:"id"`
+	Name              string        `json:"name"`
+	KeyHash           string        `json:"key_hash"`
+	KeyPrefix         string        `json:"key_prefix"`
+	Plan              string        `json:"plan"`
+	AllowedServiceIds string        `json:"allowed_service_ids"`
+	Enabled           int32         `json:"enabled"`
+	RpmLimit          sql.NullInt32 `json:"rpm_limit"`
+	MonthlyQuota      sql.NullInt32 `json:"monthly_quota"`
+	CreatedAt         time.Time     `json:"created_at"`
+	UpdatedAt         time.Time     `json:"updated_at"`
+	LastUsedAt        sql.NullTime  `json:"last_used_at"`
+}
+
+type ApiService struct {
+	ID                    uuid.UUID      `json:"id"`
+	Name                  string         `json:"name"`
+	Slug                  string         `json:"slug"`
+	UpstreamUrl           string         `json:"upstream_url"`
+	RoutePrefix           string         `json:"route_prefix"`
+	HealthPath            string         `json:"health_path"`
+	UpstreamAuthHeader    sql.NullString `json:"upstream_auth_header"`
+	UpstreamAuthValue     sql.NullString `json:"upstream_auth_value"`
+	InternalToken         sql.NullString `json:"internal_token"`
+	Enabled               int32          `json:"enabled"`
+	RpmLimit              sql.NullInt32  `json:"rpm_limit"`
+	MonthlyQuota          sql.NullInt32  `json:"monthly_quota"`
+	RequestTimeoutMs      sql.NullInt32  `json:"request_timeout_ms"`
+	LastValidationAt      sql.NullTime   `json:"last_validation_at"`
+	LastValidationStatus  sql.NullString `json:"last_validation_status"`
+	LastValidationMessage sql.NullString `json:"last_validation_message"`
+	CreatedAt             time.Time      `json:"created_at"`
+	UpdatedAt             time.Time      `json:"updated_at"`
+}
+
+type AppSetting struct {
+	Key       string    `json:"key"`
+	Value     string    `json:"value"`
+	IsSecret  bool      `json:"is_secret"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type AuditLog struct {
+	ID         uuid.UUID             `json:"id"`
+	Timestamp  time.Time             `json:"timestamp"`
+	UserID     uuid.NullUUID         `json:"user_id"`
+	Action     string                `json:"action"`
+	Resource   string                `json:"resource"`
+	ResourceID uuid.NullUUID         `json:"resource_id"`
+	Details    pqtype.NullRawMessage `json:"details"`
+	IpAddress  pqtype.Inet           `json:"ip_address"`
+	UserAgent  sql.NullString        `json:"user_agent"`
+	Success    bool                  `json:"success"`
+	CreatedAt  time.Time             `json:"created_at"`
+	Severity   string                `json:"severity"`
+	Category   string                `json:"category"`
+	Label      string                `json:"label"`
+}
+
 type BackupTarget struct {
 	ID        string       `json:"id"`
 	UserID    string       `json:"user_id"`
@@ -76,6 +136,24 @@ type Banner struct {
 	EndsAt      sql.NullTime  `json:"ends_at"`
 	CreatedAt   sql.NullTime  `json:"created_at"`
 	UpdatedAt   sql.NullTime  `json:"updated_at"`
+}
+
+type Build struct {
+	ID          string          `json:"id"`
+	ProjectID   sql.NullString  `json:"project_id"`
+	ServiceID   sql.NullString  `json:"service_id"`
+	Status      string          `json:"status"`
+	Progress    int32           `json:"progress"`
+	StartedAt   time.Time       `json:"started_at"`
+	CompletedAt sql.NullTime    `json:"completed_at"`
+	ImageName   string          `json:"image_name"`
+	ImageTag    string          `json:"image_tag"`
+	Size        int64           `json:"size"`
+	Error       sql.NullString  `json:"error"`
+	Log         string          `json:"log"`
+	Metadata    json.RawMessage `json:"metadata"`
+	CreatedAt   time.Time       `json:"created_at"`
+	UpdatedAt   time.Time       `json:"updated_at"`
 }
 
 type ComplianceFramework struct {
@@ -262,6 +340,18 @@ type GitWebhook struct {
 	UpdatedAt       sql.NullTime   `json:"updated_at"`
 }
 
+type IncidentEvent struct {
+	ID         int32         `json:"id"`
+	ServiceID  uuid.NullUUID `json:"service_id"`
+	ApiKeyID   uuid.NullUUID `json:"api_key_id"`
+	Code       string        `json:"code"`
+	Message    string        `json:"message"`
+	Severity   string        `json:"severity"`
+	HttpStatus sql.NullInt32 `json:"http_status"`
+	Count      int32         `json:"count"`
+	OccurredAt time.Time     `json:"occurred_at"`
+}
+
 type InstanceMetric struct {
 	ServiceID             string         `json:"service_id"`
 	Timestamp             time.Time      `json:"timestamp"`
@@ -285,6 +375,14 @@ type InstanceMetric struct {
 	HealthCheckCount      sql.NullInt32  `json:"health_check_count"`
 	HealthFailureCount    sql.NullInt32  `json:"health_failure_count"`
 	CreatedAt             sql.NullTime   `json:"created_at"`
+}
+
+type MetricsTimeseries struct {
+	ID         int32          `json:"id"`
+	Metric     string         `json:"metric"`
+	Value      float32        `json:"value"`
+	LabelsJson sql.NullString `json:"labels_json"`
+	OccurredAt time.Time      `json:"occurred_at"`
 }
 
 type NodeAgent struct {
@@ -406,6 +504,16 @@ type ProjectMember struct {
 	UserID    uuid.UUID    `json:"user_id"`
 	Role      string       `json:"role"`
 	CreatedAt sql.NullTime `json:"created_at"`
+}
+
+type ProjectVariable struct {
+	ID        uuid.UUID `json:"id"`
+	ProjectID uuid.UUID `json:"project_id"`
+	Key       string    `json:"key"`
+	Value     string    `json:"value"`
+	IsSecret  bool      `json:"is_secret"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type Registry struct {
@@ -533,6 +641,15 @@ type ServiceTemplate struct {
 	IsPublic    bool                  `json:"is_public"`
 	CreatedAt   sql.NullTime          `json:"created_at"`
 	UpdatedAt   sql.NullTime          `json:"updated_at"`
+}
+
+type UsageCounter struct {
+	ID           int32     `json:"id"`
+	ApiKeyID     uuid.UUID `json:"api_key_id"`
+	ServiceID    uuid.UUID `json:"service_id"`
+	PeriodMonth  string    `json:"period_month"`
+	RequestCount int32     `json:"request_count"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 type User struct {
