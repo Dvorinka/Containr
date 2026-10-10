@@ -86,20 +86,17 @@ type sleepCandidate struct {
 }
 
 func sweepSleeping(ctx context.Context, db *database.DB, dc *docker.Client, engine *deployment.DeploymentEngine, apiPort int) {
-	rows, err := db.QueryContext(ctx,
-		`SELECT id, project_id, name, COALESCE(status,''), COALESCE(sleep_idle_minutes,15)
-		 FROM services WHERE sleep_enabled AND COALESCE(status,'') IN ('running','deployed','degraded','starting')`)
+	sweepRows, err := sqlcdb.New(db.DB).ListSleepCandidates(ctx)
 	if err != nil {
 		return
 	}
 	var candidates []sleepCandidate
-	for rows.Next() {
-		var s sleepCandidate
-		if err := rows.Scan(&s.ID, &s.ProjectID, &s.Name, &s.Status, &s.IdleMinutes); err == nil {
-			candidates = append(candidates, s)
-		}
+	for _, r := range sweepRows {
+		candidates = append(candidates, sleepCandidate{
+			ID: r.ID, ProjectID: r.ProjectID, Name: r.Name,
+			Status: r.Status, IdleMinutes: int(r.SleepIdleMinutes),
+		})
 	}
-	rows.Close()
 
 	q := sqlcdb.New(db.DB)
 	for _, svc := range candidates {
@@ -187,11 +184,10 @@ func putToSleepRemote(ctx context.Context, db *database.DB, q *sqlcdb.Queries, s
 	tracker.mu.Lock()
 	delete(tracker.activity, svc.ID)
 	tracker.mu.Unlock()
-	_, _ = db.Exec(`UPDATE services SET status = 'sleeping', updated_at = $1 WHERE id = $2`, time.Now(), svc.ID)
+	setServiceStatusNow(db, svc.ID, "sleeping")
 	log.Printf("sleep: %s (%s) remote replicas removed after idle timeout", svc.Name, svc.ID)
 
-	var domain string
-	_ = db.QueryRow(`SELECT COALESCE(domain,'') FROM services WHERE id = $1`, svc.ID).Scan(&domain)
+	domain, _ := q.GetServiceDomainText(ctx, svc.ID)
 	domains := serviceDomainNames(db, svc.ID, domain)
 	if len(domains) > 0 {
 		writeWakeIngress(svc.ID.String(), domains, apiPort)
@@ -250,11 +246,10 @@ func putToSleep(ctx context.Context, db *database.DB, dc *docker.Client, engine 
 	tracker.mu.Lock()
 	delete(tracker.activity, svc.ID)
 	tracker.mu.Unlock()
-	_, _ = db.Exec(`UPDATE services SET status = 'sleeping', updated_at = $1 WHERE id = $2`, time.Now(), svc.ID)
+	setServiceStatusNow(db, svc.ID, "sleeping")
 	log.Printf("sleep: %s (%s) scaled to zero after idle timeout", svc.Name, svc.ID)
 
-	var domain string
-	_ = db.QueryRow(`SELECT COALESCE(domain,'') FROM services WHERE id = $1`, svc.ID).Scan(&domain)
+	domain, _ := sqlcdb.New(db.DB).GetServiceDomainText(ctx, svc.ID)
 	domains := serviceDomainNames(db, svc.ID, domain)
 	if len(domains) == 0 {
 		return
@@ -444,7 +439,9 @@ func pruneWakeContainers(ctx context.Context, db *database.DB, dc *docker.Client
 			}
 		}
 		var status string
-		_ = db.QueryRow(`SELECT COALESCE(status,'') FROM services WHERE id = $1`, svcID).Scan(&status)
+		if sid, err := uuid.Parse(svcID); err == nil {
+			status, _ = sqlcdb.New(db.DB).GetServiceStatusText(ctx, sid)
+		}
 		if live > 0 || status == "stopped" || status == "" {
 			_ = dc.RemoveContainer(ctx, c.ID, true)
 		}
@@ -491,34 +488,11 @@ func triggerServiceWake(c *gin.Context) (int, gin.H) {
 	if err != nil {
 		return http.StatusBadRequest, gin.H{"error": "invalid service id"}
 	}
-	var service Service
-	err = db.QueryRow(
-		`SELECT s.id, s.project_id, s.name,
-		        COALESCE(s.type, s.service_type, ''), COALESCE(s.status, ''),
-		        COALESCE(s.image, s.image_name, ''), COALESCE(s.command, s.start_command, ''),
-		        COALESCE(s.environment, ''), COALESCE(s.git_repo, s.source_url, ''),
-		        COALESCE(s.git_branch, ''), COALESCE(s.build_path, ''),
-		        COALESCE(s.cpu, ''), COALESCE(s.memory, ''),
-		        COALESCE(s.replicas, 1), COALESCE(s.port, 0),
-		        COALESCE(s.domain, ''), COALESCE(s.healthcheck_path, ''),
-		        COALESCE(s.restart_policy, 'unless-stopped'),
-		        COALESCE(s.builder, 'auto'), COALESCE(s.cpu_reserve, ''),
-		        COALESCE(s.memory_reserve, ''), COALESCE(s.static_build_cmd, ''),
-		        COALESCE(s.static_dir, ''),
-		        s.created_at, s.updated_at
-		 FROM services s WHERE s.id = $1`, id,
-	).Scan(
-		&service.ID, &service.ProjectID, &service.Name, &service.Type, &service.Status,
-		&service.Image, &service.Command, &service.Environment, &service.GitRepo,
-		&service.GitBranch, &service.BuildPath, &service.CPU, &service.Memory,
-		&service.Replicas, &service.Port, &service.Domain, &service.HealthCheckPath,
-		&service.RestartPolicy, &service.Builder, &service.CPUReserve,
-		&service.MemoryReserve, &service.StaticBuildCmd, &service.StaticDir,
-		&service.CreatedAt, &service.UpdatedAt,
-	)
+	row, err := sqlcdb.New(db.DB).GetServiceRuntimeWithOwner(context.Background(), id)
 	if err != nil {
 		return http.StatusNotFound, gin.H{"error": "service not found"}
 	}
+	service := serviceFromRuntimeRow(row)
 	if service.Status == "running" || service.Status == "deployed" {
 		return http.StatusOK, gin.H{"status": service.Status}
 	}
@@ -528,13 +502,13 @@ func triggerServiceWake(c *gin.Context) (int, gin.H) {
 		spec, err := serviceRuntimeSpec(db, service)
 		if err != nil {
 			log.Printf("wake: runtime spec for %s failed: %v", service.ID, err)
-			_, _ = db.Exec(`UPDATE services SET status = 'failed', updated_at = $1 WHERE id = $2`, time.Now(), service.ID)
+			setServiceStatusNow(db, service.ID, "failed")
 			return
 		}
 		state, err := engine.ReconcileService(ctx, spec)
 		if err != nil {
 			log.Printf("wake: reconcile for %s failed: %v", service.ID, err)
-			_, _ = db.Exec(`UPDATE services SET status = 'failed', updated_at = $1 WHERE id = $2`, time.Now(), service.ID)
+			setServiceStatusNow(db, service.ID, "failed")
 			return
 		}
 		status := "running"
@@ -542,7 +516,7 @@ func triggerServiceWake(c *gin.Context) (int, gin.H) {
 			status = state.Status
 			persistPublishedPort(db, service.ID, state.Ports)
 		}
-		_, _ = db.Exec(`UPDATE services SET status = $1, updated_at = $2 WHERE id = $3`, status, time.Now(), service.ID)
+		setServiceStatusNow(db, service.ID, status)
 	}()
 	return http.StatusAccepted, gin.H{"status": "waking"}
 }
@@ -563,8 +537,6 @@ func handleServiceSleep(c *gin.Context) {
 	if !ok {
 		return
 	}
-	var port int
-	_ = db.QueryRow(`SELECT COALESCE(port,0) FROM services WHERE id = $1`, service.ID).Scan(&port)
 	svc := sleepCandidate{
 		ID:        service.ID,
 		ProjectID: service.ProjectID,

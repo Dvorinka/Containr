@@ -69,6 +69,8 @@ CREATE TABLE services (
     static_dir VARCHAR(255) NOT NULL DEFAULT '',
     node_id VARCHAR(255),
     spread BOOLEAN NOT NULL DEFAULT false,
+    sleep_enabled BOOLEAN NOT NULL DEFAULT false,
+    sleep_idle_minutes INTEGER NOT NULL DEFAULT 15,
     placement_tags JSONB NOT NULL DEFAULT '[]',
     traefik_labels JSONB NOT NULL DEFAULT '{}'
 );

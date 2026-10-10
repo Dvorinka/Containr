@@ -573,4 +573,29 @@ func TestRuntimeLiveInvariants(t *testing.T) {
 	if row.Replicas != 3 {
 		t.Fatalf("replicas: %+v", row)
 	}
+
+	// Sleeper reads: candidate sweep + domain/status text lookups.
+	_, err = db.Exec(`UPDATE services SET sleep_enabled = true, domain = 'rt.example.com', status = 'running' WHERE id = $1`, serviceID)
+	must(err)
+	cands, err := q.ListSleepCandidates(ctx)
+	if err != nil {
+		t.Fatalf("sleep candidates: %v", err)
+	}
+	var mine *sqlcdb.ListSleepCandidatesRow
+	for i := range cands {
+		if cands[i].ID == serviceID {
+			mine = &cands[i]
+		}
+	}
+	if mine == nil || mine.SleepIdleMinutes != 15 {
+		t.Fatalf("candidate missing/idle wrong: %+v", mine)
+	}
+	dom, err := q.GetServiceDomainText(ctx, serviceID)
+	if err != nil || dom != "rt.example.com" {
+		t.Fatalf("domain text: %v %q", err, dom)
+	}
+	st, err := q.GetServiceStatusText(ctx, serviceID)
+	if err != nil || st != "running" {
+		t.Fatalf("status text: %v %q", err, st)
+	}
 }

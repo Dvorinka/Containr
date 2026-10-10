@@ -45,3 +45,15 @@ UPDATE services SET published_port = $1 WHERE id = $2 AND published_port <> $1;
 
 -- name: SetServiceReplicas :exec
 UPDATE services SET replicas = $1, updated_at = $2 WHERE id = $3;
+
+-- name: ListSleepCandidates :many
+SELECT id, project_id, name, COALESCE(status,'') AS status,
+       COALESCE(sleep_idle_minutes, 15) AS sleep_idle_minutes
+FROM services
+WHERE sleep_enabled AND COALESCE(status,'') IN ('running','deployed','degraded','starting');
+
+-- name: GetServiceDomainText :one
+SELECT COALESCE(domain,'') AS domain FROM services WHERE id = $1;
+
+-- name: GetServiceStatusText :one
+SELECT COALESCE(status,'') AS status FROM services WHERE id = $1;
