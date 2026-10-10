@@ -200,6 +200,46 @@ type EnvironmentVariable struct {
 	UpdatedAt sql.NullTime `json:"updated_at"`
 }
 
+type GitProvider struct {
+	ID          uuid.UUID    `json:"id"`
+	Name        string       `json:"name"`
+	DisplayName string       `json:"display_name"`
+	ApiUrl      string       `json:"api_url"`
+	WebhookUrl  string       `json:"webhook_url"`
+	AccessToken string       `json:"access_token"`
+	UserID      uuid.UUID    `json:"user_id"`
+	CreatedAt   sql.NullTime `json:"created_at"`
+	UpdatedAt   sql.NullTime `json:"updated_at"`
+}
+
+type GitRepository struct {
+	ID            uuid.UUID      `json:"id"`
+	ProviderID    uuid.UUID      `json:"provider_id"`
+	Name          string         `json:"name"`
+	FullName      string         `json:"full_name"`
+	Description   sql.NullString `json:"description"`
+	CloneUrl      string         `json:"clone_url"`
+	WebhookUrl    sql.NullString `json:"webhook_url"`
+	DefaultBranch sql.NullString `json:"default_branch"`
+	IsPrivate     sql.NullBool   `json:"is_private"`
+	UserID        uuid.UUID      `json:"user_id"`
+	CreatedAt     sql.NullTime   `json:"created_at"`
+	UpdatedAt     sql.NullTime   `json:"updated_at"`
+}
+
+type GitWebhook struct {
+	ID              uuid.UUID      `json:"id"`
+	RepoID          uuid.UUID      `json:"repo_id"`
+	ProviderID      uuid.UUID      `json:"provider_id"`
+	Events          string         `json:"events"`
+	WebhookSecret   string         `json:"webhook_secret"`
+	RemoteWebhookID sql.NullString `json:"remote_webhook_id"`
+	Active          sql.NullBool   `json:"active"`
+	BranchFilter    sql.NullString `json:"branch_filter"`
+	CreatedAt       sql.NullTime   `json:"created_at"`
+	UpdatedAt       sql.NullTime   `json:"updated_at"`
+}
+
 type InstanceMetric struct {
 	ServiceID             string         `json:"service_id"`
 	Timestamp             time.Time      `json:"timestamp"`

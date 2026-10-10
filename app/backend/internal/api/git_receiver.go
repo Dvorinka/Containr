@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/subtle"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"containr/internal/database"
+	"containr/internal/database/sqlcdb"
 	"containr/internal/deployment"
 	"containr/internal/deployqueue"
 
@@ -38,22 +40,15 @@ func handleGitWebhookPush(c *gin.Context) {
 		return
 	}
 
-	var (
-		secret       string
-		repoID       string
-		providerID   string
-		branchFilter string
-		active       bool
-	)
-	err := db.QueryRow(`
-		SELECT webhook_secret, repo_id, provider_id, COALESCE(branch_filter, ''), active
-		FROM git_webhooks WHERE id = $1`, webhookID).
-		Scan(&secret, &repoID, &providerID, &branchFilter, &active)
+	q := sqlcdb.New(db.DB)
+	hook, err := q.GetGitWebhookForPush(context.Background(), uuid.MustParse(webhookID))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Webhook not found"})
 		return
 	}
-	if !active {
+	secret := hook.WebhookSecret
+	branchFilter := hook.BranchFilter
+	if !hook.Active.Bool {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Webhook is disabled"})
 		return
 	}
@@ -64,8 +59,7 @@ func handleGitWebhookPush(c *gin.Context) {
 		return
 	}
 
-	var providerName string
-	_ = db.QueryRow(`SELECT name FROM git_providers WHERE id = $1`, providerID).Scan(&providerName)
+	providerName, _ := q.GetGitProviderNameByID(context.Background(), hook.ProviderID)
 
 	if !verifyGitWebhookSignature(providerName, secret, c.Request, body) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid signature"})
@@ -118,14 +112,12 @@ func handleGitWebhookPush(c *gin.Context) {
 		commit = payload.After
 	}
 
-	var cloneURL, fullName, repoUserID string
-	err = db.QueryRow(
-		`SELECT clone_url, full_name, user_id FROM git_repositories WHERE id = $1`, repoID,
-	).Scan(&cloneURL, &fullName, &repoUserID)
+	repo, err := q.GetGitRepoForPush(context.Background(), hook.RepoID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Repository not found"})
 		return
 	}
+	cloneURL, fullName, repoUserID := repo.CloneUrl, repo.FullName, repo.UserID.String()
 
 	engineValue, _ := c.Get("deployment_engine")
 	engine, _ := engineValue.(*deployment.DeploymentEngine)
@@ -147,34 +139,37 @@ func handleGitWebhookPush(c *gin.Context) {
 // the pushed repo+branch. Shared by the per-repo webhook receiver and the
 // GitHub App webhook endpoint.
 func dispatchPushToServices(c *gin.Context, db *database.DB, engine *deployment.DeploymentEngine, cloneURL, fullName, branch, commit, repoUserID string) (int, error) {
-	// Sync-style events may carry no branch — match services on repo only.
-	branchClause := "s.git_branch = $1"
-	if branch == "" {
-		branchClause = "TRUE"
-	}
-	rows, err := db.Query(fmt.Sprintf(`
-		SELECT s.id, s.project_id, s.name, s.type, s.status, s.image, s.command,
-		       s.environment, s.git_repo, s.git_branch, s.build_path, s.cpu, s.memory,
-		       s.created_at, s.updated_at
-		FROM services s
-		WHERE %s AND (s.git_repo = $2 OR s.git_repo = $3)`, branchClause),
-		branch, cloneURL, fullName)
+	q := sqlcdb.New(db.DB)
+	ctx := context.Background()
+	// Sync-style events may carry no branch — empty branch matches all.
+	rows, err := q.ListServicesForPush(ctx, sqlcdb.ListServicesForPushParams{
+		GitBranch: sql.NullString{String: branch, Valid: true},
+		GitRepo:   sql.NullString{String: cloneURL, Valid: true},
+		GitRepo_2: sql.NullString{String: fullName, Valid: true},
+	})
 	if err != nil {
 		return 0, err
 	}
-	defer rows.Close()
 
 	var services []Service
-	for rows.Next() {
-		var s Service
-		if err := rows.Scan(
-			&s.ID, &s.ProjectID, &s.Name, &s.Type, &s.Status, &s.Image, &s.Command,
-			&s.Environment, &s.GitRepo, &s.GitBranch, &s.BuildPath, &s.CPU, &s.Memory,
-			&s.CreatedAt, &s.UpdatedAt,
-		); err != nil {
-			return 0, err
-		}
-		services = append(services, s)
+	for _, row := range rows {
+		services = append(services, Service{
+			ID:          row.ID,
+			ProjectID:   row.ProjectID,
+			Name:        row.Name,
+			Type:        row.Type,
+			Status:      row.Status,
+			Image:       row.Image,
+			Command:     row.Command,
+			Environment: row.Environment,
+			GitRepo:     row.GitRepo,
+			GitBranch:   row.GitBranch,
+			BuildPath:   row.BuildPath,
+			CPU:         row.Cpu,
+			Memory:      row.Memory,
+			CreatedAt:   row.CreatedAt.Time,
+			UpdatedAt:   row.UpdatedAt.Time,
+		})
 	}
 
 	enqueued := 0
@@ -192,27 +187,34 @@ func dispatchPushToServices(c *gin.Context, db *database.DB, engine *deployment.
 			CreatedAt:  now,
 			UpdatedAt:  now,
 		}
-		if _, err := db.Exec(
-			`INSERT INTO deployments
-			 (id, service_id, version, commit_hash, status, image_name, image_tag, created_at, updated_at)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-			d.ID, d.ServiceID, fmt.Sprintf("v%d", now.Unix()), d.CommitHash, d.Status, d.ImageName, d.ImageTag, d.CreatedAt, d.UpdatedAt,
-		); err != nil {
+		if err := q.InsertDeployment(ctx, sqlcdb.InsertDeploymentParams{
+			ID:         d.ID,
+			ServiceID:  d.ServiceID,
+			Version:    fmt.Sprintf("v%d", now.Unix()),
+			CommitHash: sql.NullString{String: ptrStr(d.CommitHash), Valid: d.CommitHash != nil},
+			Status:     sql.NullString{String: d.Status, Valid: true},
+			ImageName:  sql.NullString{String: d.ImageName, Valid: true},
+			ImageTag:   sql.NullString{String: d.ImageTag, Valid: true},
+			CreatedAt:  sql.NullTime{Time: d.CreatedAt, Valid: true},
+			UpdatedAt:  sql.NullTime{Time: d.UpdatedAt, Valid: true},
+		}); err != nil {
 			continue
 		}
 		if engine == nil {
-			failedAt := time.Now()
 			failure := "Deployment engine unavailable. Docker may not be configured on this server."
-			_, _ = db.Exec(
-				`UPDATE deployments SET status = 'failed', error = $1, completed_at = $2, updated_at = $2 WHERE id = $3`,
-				failure, failedAt, d.ID,
-			)
+			failedAt := time.Now()
+			_ = q.FailDeployment(ctx, sqlcdb.FailDeploymentParams{
+				Error:       sql.NullString{String: failure, Valid: true},
+				CompletedAt: sql.NullTime{Time: failedAt, Valid: true},
+				ID:          d.ID,
+			})
 			continue
 		}
-		_, _ = db.Exec(
-			`UPDATE services SET status = 'building', updated_at = $1 WHERE id = $2`,
-			time.Now(), service.ID,
-		)
+		_ = q.SetServiceStatus(ctx, sqlcdb.SetServiceStatusParams{
+			Status:    sql.NullString{String: "building", Valid: true},
+			UpdatedAt: sql.NullTime{Time: time.Now(), Valid: true},
+			ID:        service.ID,
+		})
 		// Webhook pushes default to a clean build — stale layers are the
 		// classic silent-rollback failure (dflow convention).
 		branchForBuild := branch
@@ -226,14 +228,17 @@ func dispatchPushToServices(c *gin.Context, db *database.DB, engine *deployment.
 				runDeploymentAndSync(jctx, db, engine, &d, service, webhookReq, repoUserID)
 			},
 		}); pos > 0 {
-			_, _ = db.Exec(
-				`UPDATE deployments SET status = 'queued', updated_at = $1 WHERE id = $2`,
-				time.Now(), d.ID,
-			)
-			_, _ = db.Exec(
-				`UPDATE services SET status = 'queued', updated_at = $1 WHERE id = $2`,
-				time.Now(), service.ID,
-			)
+			now := sql.NullTime{Time: time.Now(), Valid: true}
+			_ = q.SetDeploymentStatus(ctx, sqlcdb.SetDeploymentStatusParams{
+				Status:    sql.NullString{String: "queued", Valid: true},
+				UpdatedAt: now,
+				ID:        d.ID,
+			})
+			_ = q.SetServiceStatus(ctx, sqlcdb.SetServiceStatusParams{
+				Status:    sql.NullString{String: "queued", Valid: true},
+				UpdatedAt: now,
+				ID:        service.ID,
+			})
 		}
 		enqueued++
 	}

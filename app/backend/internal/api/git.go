@@ -2,6 +2,8 @@ package api
 
 import (
 	"containr/internal/database"
+	"containr/internal/database/sqlcdb"
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -92,41 +94,73 @@ type CreateWebhookRequest struct {
 	Branch string   `json:"branch"`
 }
 
+func gitRepoFrom(r sqlcdb.ListGitRepositoriesRow) GitRepository {
+	return GitRepository{
+		ID:            r.ID.String(),
+		ProviderID:    r.ProviderID.String(),
+		Name:          r.Name,
+		FullName:      r.FullName,
+		Description:   r.Description,
+		CloneURL:      r.CloneUrl,
+		WebhookURL:    r.WebhookUrl,
+		DefaultBranch: r.DefaultBranch.String,
+		IsPrivate:     r.IsPrivate.Bool,
+		UserID:        r.UserID.String(),
+		CreatedAt:     r.CreatedAt.Time,
+		UpdatedAt:     r.UpdatedAt.Time,
+	}
+}
+
+func gitRepoFromFullNameRow(r sqlcdb.GetGitRepositoryByFullNameRow) GitRepository {
+	return GitRepository{
+		ID:            r.ID.String(),
+		ProviderID:    r.ProviderID.String(),
+		Name:          r.Name,
+		FullName:      r.FullName,
+		Description:   r.Description,
+		CloneURL:      r.CloneUrl,
+		WebhookURL:    r.WebhookUrl,
+		DefaultBranch: r.DefaultBranch.String,
+		IsPrivate:     r.IsPrivate.Bool,
+		UserID:        r.UserID.String(),
+		CreatedAt:     r.CreatedAt.Time,
+		UpdatedAt:     r.UpdatedAt.Time,
+	}
+}
+
+func gitProviderFrom(p sqlcdb.ListGitProvidersRow) GitProvider {
+	return GitProvider{
+		ID:          p.ID.String(),
+		Name:        p.Name,
+		DisplayName: p.DisplayName,
+		APIUrl:      p.ApiUrl,
+		WebhookUrl:  p.WebhookUrl,
+		UserID:      p.UserID.String(),
+		CreatedAt:   p.CreatedAt.Time,
+		UpdatedAt:   p.UpdatedAt.Time,
+	}
+}
+
 func handleGetGitProviders(c *gin.Context) {
 	ctx, ok := requireGitRequestContext(c)
 	if !ok {
 		return
 	}
 
-	rows, err := ctx.db.Query(`
-		SELECT id, name, display_name, api_url, webhook_url, user_id, created_at, updated_at
-		FROM git_providers
-		WHERE user_id = $1
-		ORDER BY created_at DESC
-	`, ctx.userID)
+	userID, err := uuid.Parse(ctx.userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
 	}
-	defer rows.Close()
+	rows, err := sqlcdb.New(ctx.db.DB).ListGitProviders(context.Background(), userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		return
+	}
 
-	providers := make([]GitProvider, 0)
-	for rows.Next() {
-		var provider GitProvider
-		if err := rows.Scan(
-			&provider.ID,
-			&provider.Name,
-			&provider.DisplayName,
-			&provider.APIUrl,
-			&provider.WebhookUrl,
-			&provider.UserID,
-			&provider.CreatedAt,
-			&provider.UpdatedAt,
-		); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
-			return
-		}
-		providers = append(providers, provider)
+	providers := make([]GitProvider, 0, len(rows))
+	for _, p := range rows {
+		providers = append(providers, gitProviderFrom(p))
 	}
 
 	c.JSON(http.StatusOK, gin.H{"providers": providers})
@@ -173,21 +207,22 @@ func handleConnectGitHubApp(c *gin.Context) {
 		UserID:      ctx.userID,
 	}
 
-	if err := ctx.db.QueryRow(`
-		INSERT INTO git_providers (id, name, display_name, api_url, webhook_url, access_token, user_id, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
-		ON CONFLICT (name, user_id)
-		DO UPDATE SET
-			display_name = EXCLUDED.display_name,
-			api_url = EXCLUDED.api_url,
-			webhook_url = EXCLUDED.webhook_url,
-			access_token = EXCLUDED.access_token,
-			updated_at = NOW()
-		RETURNING id, created_at, updated_at
-	`, provider.ID, provider.Name, provider.DisplayName, provider.APIUrl, provider.WebhookUrl, provider.AccessToken, provider.UserID).Scan(&provider.ID, &provider.CreatedAt, &provider.UpdatedAt); err != nil {
+	prow, err := sqlcdb.New(ctx.db.DB).UpsertGitHubAppProvider(context.Background(), sqlcdb.UpsertGitHubAppProviderParams{
+		ID:          uuid.MustParse(provider.ID),
+		Name:        provider.Name,
+		DisplayName: provider.DisplayName,
+		ApiUrl:      provider.APIUrl,
+		WebhookUrl:  provider.WebhookUrl,
+		AccessToken: provider.AccessToken,
+		UserID:      uuid.MustParse(provider.UserID),
+	})
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to connect GitHub App installation"})
 		return
 	}
+	provider.ID = prow.ID.String()
+	provider.CreatedAt = prow.CreatedAt.Time
+	provider.UpdatedAt = prow.UpdatedAt.Time
 
 	provider.AccessToken = ""
 	c.JSON(http.StatusOK, gin.H{
@@ -259,10 +294,16 @@ func handleCreateGitProvider(c *gin.Context) {
 		return
 	}
 
-	if _, err := ctx.db.Exec(`
-		INSERT INTO git_providers (id, name, display_name, api_url, webhook_url, access_token, user_id, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
-	`, provider.ID, provider.Name, provider.DisplayName, provider.APIUrl, provider.WebhookUrl, provider.AccessToken, provider.UserID); err != nil {
+	q := sqlcdb.New(ctx.db.DB)
+	if err := q.InsertGitProvider(context.Background(), sqlcdb.InsertGitProviderParams{
+		ID:          uuid.MustParse(provider.ID),
+		Name:        provider.Name,
+		DisplayName: provider.DisplayName,
+		ApiUrl:      provider.APIUrl,
+		WebhookUrl:  provider.WebhookUrl,
+		AccessToken: provider.AccessToken,
+		UserID:      uuid.MustParse(provider.UserID),
+	}); err != nil {
 		if isUniqueConstraintError(err) {
 			c.JSON(http.StatusConflict, gin.H{"error": "Provider already connected for this account"})
 			return
@@ -271,13 +312,12 @@ func handleCreateGitProvider(c *gin.Context) {
 		return
 	}
 
-	if err := ctx.db.QueryRow(`
-		SELECT created_at, updated_at
-		FROM git_providers
-		WHERE id = $1
-	`, provider.ID).Scan(&provider.CreatedAt, &provider.UpdatedAt); err != nil {
+	if ts, err := q.GetGitProviderTimestamps(context.Background(), uuid.MustParse(provider.ID)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read created provider"})
 		return
+	} else {
+		provider.CreatedAt = ts.CreatedAt.Time
+		provider.UpdatedAt = ts.UpdatedAt.Time
 	}
 
 	provider.AccessToken = ""
@@ -296,12 +336,11 @@ func handleGetGitRepositories(c *gin.Context) {
 		return
 	}
 
-	var providerName, providerDisplayName, providerAccessToken, providerAPIURL string
-	err := ctx.db.QueryRow(`
-		SELECT name, display_name, access_token, api_url
-		FROM git_providers
-		WHERE id = $1 AND user_id = $2
-	`, providerID, ctx.userID).Scan(&providerName, &providerDisplayName, &providerAccessToken, &providerAPIURL)
+	q := sqlcdb.New(ctx.db.DB)
+	provRow, err := q.GetGitProviderForRepos(context.Background(), sqlcdb.GetGitProviderForReposParams{
+		ID:     uuid.MustParse(providerID),
+		UserID: uuid.MustParse(ctx.userID),
+	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Provider not found"})
@@ -310,6 +349,10 @@ func handleGetGitRepositories(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
 	}
+	providerName := provRow.Name
+	providerDisplayName := provRow.DisplayName
+	providerAccessToken := provRow.AccessToken
+	providerAPIURL := provRow.ApiUrl
 
 	if c.DefaultQuery("sync", "1") != "0" {
 		if syncErr := syncProviderRepositories(ctx.db, providerID, ctx.userID, providerName, providerAPIURL, providerAccessToken); syncErr != nil {
@@ -324,53 +367,30 @@ func handleGetGitRepositories(c *gin.Context) {
 	}
 	offset := (page - 1) * limit
 	search := strings.TrimSpace(c.Query("search"))
-	searchNullable := sql.NullString{String: search, Valid: search != ""}
 
-	rows, err := ctx.db.Query(`
-		SELECT id, provider_id, name, full_name, COALESCE(description, ''), clone_url, COALESCE(webhook_url, ''),
-			   default_branch, is_private, user_id, created_at, updated_at
-		FROM git_repositories
-		WHERE provider_id = $1 AND user_id = $2
-		  AND ($3::text IS NULL OR full_name ILIKE ('%' || $3::text || '%') OR name ILIKE ('%' || $3::text || '%'))
-		ORDER BY updated_at DESC
-		LIMIT $4 OFFSET $5
-	`, providerID, ctx.userID, searchNullable, limit, offset)
+	repoRows, err := q.ListGitRepositories(context.Background(), sqlcdb.ListGitRepositoriesParams{
+		ProviderID: uuid.MustParse(providerID),
+		UserID:     uuid.MustParse(ctx.userID),
+		Column3:    search,
+		Limit:      int32(limit),
+		Offset:     int32(offset),
+	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
 	}
-	defer rows.Close()
 
-	repositories := make([]GitRepository, 0)
-	for rows.Next() {
-		var repo GitRepository
-		if err := rows.Scan(
-			&repo.ID,
-			&repo.ProviderID,
-			&repo.Name,
-			&repo.FullName,
-			&repo.Description,
-			&repo.CloneURL,
-			&repo.WebhookURL,
-			&repo.DefaultBranch,
-			&repo.IsPrivate,
-			&repo.UserID,
-			&repo.CreatedAt,
-			&repo.UpdatedAt,
-		); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
-			return
-		}
-		repositories = append(repositories, repo)
+	repositories := make([]GitRepository, 0, len(repoRows))
+	for _, r := range repoRows {
+		repositories = append(repositories, gitRepoFrom(r))
 	}
 
-	var total int
-	if err := ctx.db.QueryRow(`
-		SELECT COUNT(*)
-		FROM git_repositories
-		WHERE provider_id = $1 AND user_id = $2
-		  AND ($3::text IS NULL OR full_name ILIKE ('%' || $3::text || '%') OR name ILIKE ('%' || $3::text || '%'))
-	`, providerID, ctx.userID, searchNullable).Scan(&total); err != nil {
+	total, err := q.CountGitRepositories(context.Background(), sqlcdb.CountGitRepositoriesParams{
+		ProviderID: uuid.MustParse(providerID),
+		UserID:     uuid.MustParse(ctx.userID),
+		Column3:    search,
+	})
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
 	}
@@ -408,12 +428,11 @@ func handleConnectGitRepository(c *gin.Context) {
 		return
 	}
 
-	var providerName string
-	err := ctx.db.QueryRow(`
-		SELECT name
-		FROM git_providers
-		WHERE id = $1 AND user_id = $2
-	`, providerID, ctx.userID).Scan(&providerName)
+	q := sqlcdb.New(ctx.db.DB)
+	providerName, err := q.GetGitProviderName(context.Background(), sqlcdb.GetGitProviderNameParams{
+		ID:     uuid.MustParse(providerID),
+		UserID: uuid.MustParse(ctx.userID),
+	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Provider not found"})
@@ -429,31 +448,16 @@ func handleConnectGitRepository(c *gin.Context) {
 		return
 	}
 
-	var existing GitRepository
-	err = ctx.db.QueryRow(`
-		SELECT id, provider_id, name, full_name, COALESCE(description, ''), clone_url, COALESCE(webhook_url, ''),
-			   default_branch, is_private, user_id, created_at, updated_at
-		FROM git_repositories
-		WHERE provider_id = $1 AND full_name = $2 AND user_id = $3
-	`, providerID, fullName, ctx.userID).Scan(
-		&existing.ID,
-		&existing.ProviderID,
-		&existing.Name,
-		&existing.FullName,
-		&existing.Description,
-		&existing.CloneURL,
-		&existing.WebhookURL,
-		&existing.DefaultBranch,
-		&existing.IsPrivate,
-		&existing.UserID,
-		&existing.CreatedAt,
-		&existing.UpdatedAt,
-	)
+	existingRow, err := q.GetGitRepositoryByFullName(context.Background(), sqlcdb.GetGitRepositoryByFullNameParams{
+		ProviderID: uuid.MustParse(providerID),
+		FullName:   fullName,
+		UserID:     uuid.MustParse(ctx.userID),
+	})
 	switch {
 	case err == nil:
 		c.JSON(http.StatusOK, gin.H{
 			"message":    "Repository already connected",
-			"repository": existing,
+			"repository": gitRepoFromFullNameRow(existingRow),
 		})
 		return
 	case !errors.Is(err, sql.ErrNoRows):
@@ -473,13 +477,18 @@ func handleConnectGitRepository(c *gin.Context) {
 		UserID:        ctx.userID,
 	}
 
-	if err := ctx.db.QueryRow(`
-		INSERT INTO git_repositories (
-			id, provider_id, name, full_name, description, clone_url, default_branch, is_private, user_id, created_at, updated_at
-		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
-		RETURNING created_at, updated_at
-	`, repo.ID, repo.ProviderID, repo.Name, repo.FullName, repo.Description, repo.CloneURL, repo.DefaultBranch, repo.IsPrivate, repo.UserID).Scan(&repo.CreatedAt, &repo.UpdatedAt); err != nil {
+	ins, err := q.InsertGitRepository(context.Background(), sqlcdb.InsertGitRepositoryParams{
+		ID:            uuid.MustParse(repo.ID),
+		ProviderID:    uuid.MustParse(repo.ProviderID),
+		Name:          repo.Name,
+		FullName:      repo.FullName,
+		Description:   sql.NullString{String: repo.Description, Valid: true},
+		CloneUrl:      repo.CloneURL,
+		DefaultBranch: sql.NullString{String: repo.DefaultBranch, Valid: true},
+		IsPrivate:     sql.NullBool{Bool: repo.IsPrivate, Valid: true},
+		UserID:        uuid.MustParse(repo.UserID),
+	})
+	if err != nil {
 		if isUniqueConstraintError(err) {
 			c.JSON(http.StatusConflict, gin.H{"error": "Repository is already connected"})
 			return
@@ -487,6 +496,8 @@ func handleConnectGitRepository(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to connect repository"})
 		return
 	}
+	repo.CreatedAt = ins.CreatedAt.Time
+	repo.UpdatedAt = ins.UpdatedAt.Time
 
 	c.JSON(http.StatusCreated, gin.H{
 		"message":    "Repository connected successfully",
@@ -516,12 +527,10 @@ func handleCreateWebhook(c *gin.Context) {
 		return
 	}
 
-	var providerID string
-	err := ctx.db.QueryRow(`
-		SELECT provider_id
-		FROM git_repositories
-		WHERE id = $1 AND user_id = $2
-	`, repoID, ctx.userID).Scan(&providerID)
+	providerUUID, err := sqlcdb.New(ctx.db.DB).GetGitRepositoryProviderID(context.Background(), sqlcdb.GetGitRepositoryProviderIDParams{
+		ID:     uuid.MustParse(repoID),
+		UserID: uuid.MustParse(ctx.userID),
+	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Repository not found"})
@@ -530,6 +539,7 @@ func handleCreateWebhook(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
 	}
+	providerID := providerUUID.String()
 
 	eventsJSON, err := json.Marshal(req.Events)
 	if err != nil {
@@ -552,23 +562,22 @@ func handleCreateWebhook(c *gin.Context) {
 		Active:     true,
 	}
 
-	if err := ctx.db.QueryRow(`
-		INSERT INTO git_webhooks (
-			id, repo_id, provider_id, events, webhook_secret, active, branch_filter, created_at, updated_at
-		)
-		VALUES ($1, $2, $3, $4, $5, TRUE, $6, NOW(), NOW())
-		ON CONFLICT (repo_id, provider_id)
-		DO UPDATE SET
-			events = EXCLUDED.events,
-			webhook_secret = EXCLUDED.webhook_secret,
-			active = TRUE,
-			branch_filter = EXCLUDED.branch_filter,
-			updated_at = NOW()
-		RETURNING id, active, created_at, updated_at
-	`, webhook.ID, webhook.RepoID, webhook.ProviderID, webhook.Events, webhook.Secret, strings.TrimSpace(req.Branch)).Scan(&webhook.ID, &webhook.Active, &webhook.CreatedAt, &webhook.UpdatedAt); err != nil {
+	wrow, err := sqlcdb.New(ctx.db.DB).UpsertGitWebhook(context.Background(), sqlcdb.UpsertGitWebhookParams{
+		ID:            uuid.MustParse(webhook.ID),
+		RepoID:        uuid.MustParse(webhook.RepoID),
+		ProviderID:    uuid.MustParse(webhook.ProviderID),
+		Events:        webhook.Events,
+		WebhookSecret: webhook.Secret,
+		BranchFilter:  sql.NullString{String: strings.TrimSpace(req.Branch), Valid: true},
+	})
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to configure webhook"})
 		return
 	}
+	webhook.ID = wrow.ID.String()
+	webhook.Active = wrow.Active.Bool
+	webhook.CreatedAt = wrow.CreatedAt.Time
+	webhook.UpdatedAt = wrow.UpdatedAt.Time
 
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "Webhook configured successfully",
@@ -598,69 +607,39 @@ func handleGetConnectedRepositories(c *gin.Context) {
 	}
 	offset := (page - 1) * limit
 
-	rows, err := ctx.db.Query(`
-		SELECT r.id, r.provider_id, r.name, r.full_name, COALESCE(r.description, ''), r.clone_url,
-			   r.default_branch, r.is_private, r.user_id, r.created_at, r.updated_at,
-			   p.name as provider_name, p.display_name
-		FROM git_repositories r
-		JOIN git_providers p ON r.provider_id = p.id
-		WHERE r.user_id = $1
-		ORDER BY r.updated_at DESC
-		LIMIT $2 OFFSET $3
-	`, ctx.userID, limit, offset)
+	q := sqlcdb.New(ctx.db.DB)
+	repoRows, err := q.ListConnectedRepositories(context.Background(), sqlcdb.ListConnectedRepositoriesParams{
+		UserID: uuid.MustParse(ctx.userID),
+		Limit:  int32(limit),
+		Offset: int32(offset),
+	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
 	}
-	defer rows.Close()
 
-	repositories := make([]map[string]interface{}, 0)
-	for rows.Next() {
-		var repo GitRepository
-		var providerName, providerDisplayName string
-		if err := rows.Scan(
-			&repo.ID,
-			&repo.ProviderID,
-			&repo.Name,
-			&repo.FullName,
-			&repo.Description,
-			&repo.CloneURL,
-			&repo.DefaultBranch,
-			&repo.IsPrivate,
-			&repo.UserID,
-			&repo.CreatedAt,
-			&repo.UpdatedAt,
-			&providerName,
-			&providerDisplayName,
-		); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
-			return
-		}
-
+	repositories := make([]map[string]interface{}, 0, len(repoRows))
+	for _, r := range repoRows {
 		repositories = append(repositories, map[string]interface{}{
-			"id":             repo.ID,
-			"provider_id":    repo.ProviderID,
-			"name":           repo.Name,
-			"full_name":      repo.FullName,
-			"description":    repo.Description,
-			"clone_url":      repo.CloneURL,
-			"default_branch": repo.DefaultBranch,
-			"is_private":     repo.IsPrivate,
-			"created_at":     repo.CreatedAt,
-			"updated_at":     repo.UpdatedAt,
+			"id":             r.ID.String(),
+			"provider_id":    r.ProviderID.String(),
+			"name":           r.Name,
+			"full_name":      r.FullName,
+			"description":    r.Description,
+			"clone_url":      r.CloneUrl,
+			"default_branch": r.DefaultBranch.String,
+			"is_private":     r.IsPrivate.Bool,
+			"created_at":     r.CreatedAt.Time,
+			"updated_at":     r.UpdatedAt.Time,
 			"provider": map[string]string{
-				"name":         providerName,
-				"display_name": providerDisplayName,
+				"name":         r.ProviderName,
+				"display_name": r.DisplayName,
 			},
 		})
 	}
 
-	var total int
-	if err := ctx.db.QueryRow(`
-		SELECT COUNT(*)
-		FROM git_repositories
-		WHERE user_id = $1
-	`, ctx.userID).Scan(&total); err != nil {
+	total, err := q.CountUserRepositories(context.Background(), uuid.MustParse(ctx.userID))
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
 	}
@@ -705,20 +684,17 @@ func syncProviderRepositories(db *database.DB, providerID, userID, providerName,
 			defaultBranch = "main"
 		}
 
-		_, err := db.Exec(`
-			INSERT INTO git_repositories (
-				id, provider_id, name, full_name, description, clone_url, default_branch, is_private, user_id, created_at, updated_at
-			)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
-			ON CONFLICT (provider_id, full_name)
-			DO UPDATE SET
-				name = EXCLUDED.name,
-				description = EXCLUDED.description,
-				clone_url = EXCLUDED.clone_url,
-				default_branch = EXCLUDED.default_branch,
-				is_private = EXCLUDED.is_private,
-				updated_at = NOW()
-		`, uuid.NewString(), providerID, repository.Name, repository.FullName, repository.Description, cloneURL, defaultBranch, repository.IsPrivate, userID)
+		err := sqlcdb.New(db.DB).UpsertGitRepository(context.Background(), sqlcdb.UpsertGitRepositoryParams{
+			ID:            uuid.New(),
+			ProviderID:    uuid.MustParse(providerID),
+			Name:          repository.Name,
+			FullName:      repository.FullName,
+			Description:   sql.NullString{String: repository.Description, Valid: true},
+			CloneUrl:      cloneURL,
+			DefaultBranch: sql.NullString{String: defaultBranch, Valid: true},
+			IsPrivate:     sql.NullBool{Bool: repository.IsPrivate, Valid: true},
+			UserID:        uuid.MustParse(userID),
+		})
 		if err != nil {
 			return err
 		}
@@ -1323,16 +1299,15 @@ func handleDeleteGitProvider(c *gin.Context) {
 		return
 	}
 
-	result, err := ctx.db.Exec(
-		"DELETE FROM git_providers WHERE id = $1 AND user_id = $2",
-		providerID, ctx.userID,
-	)
+	affected, err := sqlcdb.New(ctx.db.DB).DeleteGitProvider(context.Background(), sqlcdb.DeleteGitProviderParams{
+		ID:     uuid.MustParse(providerID),
+		UserID: uuid.MustParse(ctx.userID),
+	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete provider"})
 		return
 	}
 
-	affected, _ := result.RowsAffected()
 	if affected == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Provider not found"})
 		return
@@ -1362,12 +1337,10 @@ func handleGetGitRepositoryBranches(c *gin.Context) {
 		return
 	}
 
-	var providerName, providerAPIURL, providerAccessToken string
-	err := ctx.db.QueryRow(`
-		SELECT name, api_url, access_token
-		FROM git_providers
-		WHERE id = $1 AND user_id = $2
-	`, providerID, ctx.userID).Scan(&providerName, &providerAPIURL, &providerAccessToken)
+	pf, err := sqlcdb.New(ctx.db.DB).GetGitProviderForFetch(context.Background(), sqlcdb.GetGitProviderForFetchParams{
+		ID:     uuid.MustParse(providerID),
+		UserID: uuid.MustParse(ctx.userID),
+	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Provider not found"})
@@ -1376,6 +1349,9 @@ func handleGetGitRepositoryBranches(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
 	}
+	providerName := pf.Name
+	providerAPIURL := pf.ApiUrl
+	providerAccessToken := pf.AccessToken
 
 	branches, err := fetchRepositoryBranches(providerName, providerAPIURL, providerAccessToken, owner, repo)
 	if err != nil {
