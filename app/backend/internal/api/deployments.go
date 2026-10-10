@@ -2,12 +2,14 @@ package api
 
 import (
 	"containr/internal/database"
+	"containr/internal/database/sqlcdb"
 	"containr/internal/deployment"
 	"containr/internal/deployqueue"
 	"containr/internal/docker"
 	"containr/internal/source"
 	"containr/internal/types"
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -35,6 +37,72 @@ type DeploymentModel struct {
 	CompletedAt *time.Time `json:"completed_at" db:"completed_at"`
 	CreatedAt   time.Time  `json:"created_at" db:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at" db:"updated_at"`
+}
+
+// deploymentRowShape carries the deployment columns shared by the
+// generated list/detail/rollback row types.
+type deploymentRowShape struct {
+	ID          uuid.UUID
+	ServiceID   uuid.UUID
+	CommitHash  sql.NullString
+	Status      sql.NullString
+	ImageName   sql.NullString
+	ImageTag    sql.NullString
+	BuildLog    sql.NullString
+	RuntimeLog  sql.NullString
+	Error       sql.NullString
+	StartedAt   sql.NullTime
+	CompletedAt sql.NullTime
+	CreatedAt   sql.NullTime
+	UpdatedAt   sql.NullTime
+}
+
+func strPtrNS(v sql.NullString) *string {
+	if !v.Valid {
+		return nil
+	}
+	s := v.String
+	return &s
+}
+
+func ptrStr(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+func timePtrNT(v sql.NullTime) *time.Time {
+	if !v.Valid {
+		return nil
+	}
+	t := v.Time
+	return &t
+}
+
+func ntPtr(t *time.Time) sql.NullTime {
+	if t == nil {
+		return sql.NullTime{}
+	}
+	return sql.NullTime{Time: *t, Valid: true}
+}
+
+func deploymentModelFrom(r deploymentRowShape) DeploymentModel {
+	return DeploymentModel{
+		ID:          r.ID,
+		ServiceID:   r.ServiceID,
+		CommitHash:  strPtrNS(r.CommitHash),
+		Status:      r.Status.String,
+		ImageName:   r.ImageName.String,
+		ImageTag:    r.ImageTag.String,
+		BuildLog:    r.BuildLog.String,
+		RuntimeLog:  r.RuntimeLog.String,
+		Error:       strPtrNS(r.Error),
+		StartedAt:   timePtrNT(r.StartedAt),
+		CompletedAt: timePtrNT(r.CompletedAt),
+		CreatedAt:   r.CreatedAt.Time,
+		UpdatedAt:   r.UpdatedAt.Time,
+	}
 }
 
 type CreateDeploymentRequest struct {
@@ -84,44 +152,29 @@ func handleGetDeployments(c *gin.Context) {
 
 	offset, limit := pageWindow(c, 50, 100)
 
-	var total int
-	_ = db.(*database.DB).QueryRow(
-		`SELECT COUNT(*) FROM deployments WHERE service_id = $1`, serviceID,
-	).Scan(&total)
+	q := sqlcdb.New(db.(*database.DB).DB)
+	total, _ := q.CountDeploymentsForService(c.Request.Context(), serviceID)
 
-	rows, err := db.(*database.DB).Query(
-		`SELECT id, service_id, commit_hash, status, image_name, image_tag,
-		        build_log, runtime_log, error, started_at, completed_at, created_at, updated_at
-		 FROM deployments
-		 WHERE service_id = $1
-		 ORDER BY created_at DESC
-		 LIMIT $2 OFFSET $3`,
-		serviceID, limit, offset,
-	)
+	rows, err := q.ListDeploymentsForService(c.Request.Context(), sqlcdb.ListDeploymentsForServiceParams{
+		ServiceID: serviceID, Limit: int32(limit), Offset: int32(offset)})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve deployments"})
 		return
 	}
-	defer rows.Close()
 
-	var deployments []DeploymentModel
-	for rows.Next() {
-		var d DeploymentModel
-		err := rows.Scan(
-			&d.ID, &d.ServiceID, &d.CommitHash, &d.Status, &d.ImageName, &d.ImageTag,
-			&d.BuildLog, &d.RuntimeLog, &d.Error, &d.StartedAt, &d.CompletedAt,
-			&d.CreatedAt, &d.UpdatedAt,
-		)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to scan deployment"})
-			return
-		}
-		deployments = append(deployments, d)
+	deployments := make([]DeploymentModel, 0, len(rows))
+	for _, r := range rows {
+		deployments = append(deployments, deploymentModelFrom(deploymentRowShape{
+			ID: r.ID, ServiceID: r.ServiceID, CommitHash: r.CommitHash, Status: r.Status,
+			ImageName: r.ImageName, ImageTag: r.ImageTag, BuildLog: r.BuildLog,
+			RuntimeLog: r.RuntimeLog, Error: r.Error, StartedAt: r.StartedAt,
+			CompletedAt: r.CompletedAt, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		}))
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"deployments": deployments,
-		"pagination":  paginationMeta(offset, limit, total),
+		"pagination":  paginationMeta(offset, limit, int(total)),
 	})
 }
 
@@ -152,51 +205,33 @@ func handleGetRecentDeployments(c *gin.Context) {
 
 	offset, limit := pageWindow(c, 10, 50)
 
-	var total int
-	if err := db.(*database.DB).QueryRow(
-		`SELECT COUNT(*)
-		 FROM deployments d
-		 JOIN services s ON s.id = d.service_id
-		 JOIN projects p ON p.id = s.project_id
-		 WHERE p.is_approved OR p.owner_id = $1 OR $2::bool
-		    OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = p.id AND pm.user_id = $1)`,
-		userID, isAdmin,
-	).Scan(&total); err != nil {
+	q := sqlcdb.New(db.(*database.DB).DB)
+	total, err := q.CountAccessibleDeployments(c.Request.Context(), sqlcdb.CountAccessibleDeploymentsParams{
+		OwnerID: userID, Column2: isAdmin})
+	if err != nil {
 		total = 0
 	}
 
-	rows, err := db.(*database.DB).Query(
-		`SELECT d.id, d.service_id, s.name, p.name, d.status,
-		        COALESCE(d.image_name, ''), d.started_at, d.completed_at, d.created_at
-		 FROM deployments d
-		 JOIN services s ON s.id = d.service_id
-		 JOIN projects p ON p.id = s.project_id
-		 WHERE p.is_approved OR p.owner_id = $1 OR $2::bool
-		    OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = p.id AND pm.user_id = $1)
-		 ORDER BY d.created_at DESC
-		 LIMIT $3 OFFSET $4`,
-		userID, isAdmin, limit, offset,
-	)
+	rows, err := q.ListRecentAccessibleDeployments(c.Request.Context(), sqlcdb.ListRecentAccessibleDeploymentsParams{
+		OwnerID: userID, Column2: isAdmin, Limit: int32(limit), Offset: int32(offset)})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve deployments"})
 		return
 	}
-	defer rows.Close()
 
-	deployments := []RecentDeployment{}
-	for rows.Next() {
-		var d RecentDeployment
-		if err := rows.Scan(&d.ID, &d.ServiceID, &d.ServiceName, &d.ProjectName,
-			&d.Status, &d.ImageName, &d.StartedAt, &d.CompletedAt, &d.CreatedAt); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to scan deployment"})
-			return
-		}
-		deployments = append(deployments, d)
+	deployments := make([]RecentDeployment, 0, len(rows))
+	for _, r := range rows {
+		deployments = append(deployments, RecentDeployment{
+			ID: r.ID, ServiceID: r.ServiceID, ServiceName: r.ServiceName,
+			ProjectName: r.ProjectName, Status: r.Status.String, ImageName: r.ImageName,
+			StartedAt: timePtrNT(r.StartedAt), CompletedAt: timePtrNT(r.CompletedAt),
+			CreatedAt: r.CreatedAt.Time,
+		})
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"deployments": deployments,
-		"pagination":  paginationMeta(offset, limit, total),
+		"pagination":  paginationMeta(offset, limit, int(total)),
 	})
 }
 
@@ -230,38 +265,27 @@ func handleCreateDeployment(c *gin.Context) {
 		return
 	}
 
-	var service Service
-	var projectOwner string
-	err = db.(*database.DB).QueryRow(
-		`SELECT s.id, s.project_id, s.name, s.type, s.status, s.image, s.command,
-		        s.environment, s.git_repo, s.git_branch, s.build_path, s.cpu, s.memory,
-		        COALESCE(s.replicas, 1), COALESCE(s.port, 0),
-		        COALESCE(s.domain, ''), COALESCE(s.healthcheck_path, ''),
-		        COALESCE(s.restart_policy, 'unless-stopped'),
-		        COALESCE(s.builder, 'auto'), COALESCE(s.cpu_reserve, ''),
-		        COALESCE(s.memory_reserve, ''), COALESCE(s.static_build_cmd, ''),
-		        COALESCE(s.static_dir, ''),
-		        s.created_at, s.updated_at, p.owner_id
-		 FROM services s
-		 JOIN projects p ON s.project_id = p.id
-		 WHERE s.id = $1`,
-		serviceID,
-	).Scan(
-		&service.ID, &service.ProjectID, &service.Name, &service.Type, &service.Status,
-		&service.Image, &service.Command, &service.Environment, &service.GitRepo,
-		&service.GitBranch, &service.BuildPath, &service.CPU, &service.Memory,
-		&service.Replicas, &service.Port, &service.Domain, &service.HealthCheckPath,
-		&service.RestartPolicy, &service.Builder, &service.CPUReserve,
-		&service.MemoryReserve, &service.StaticBuildCmd, &service.StaticDir,
-		&service.CreatedAt, &service.UpdatedAt, &projectOwner,
-	)
-
+	ctx := c.Request.Context()
+	q := sqlcdb.New(db.(*database.DB).DB)
+	sr, err := q.GetServiceForDeployWithOwner(ctx, serviceID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Service not found"})
 		return
 	}
+	service := serviceForDeployFromRow(sqlcdb.GetServiceForDeployRow{
+		ID: sr.ID, ProjectID: sr.ProjectID, Name: sr.Name, Type: sr.Type,
+		Status: sr.Status, Image: sr.Image, Command: sr.Command,
+		Environment: sr.Environment, GitRepo: sr.GitRepo, GitBranch: sr.GitBranch,
+		BuildPath: sr.BuildPath, Cpu: sr.Cpu, Memory: sr.Memory,
+		Replicas: sr.Replicas, Port: sr.Port, Domain: sr.Domain,
+		HealthcheckPath: sr.HealthcheckPath, RestartPolicy: sr.RestartPolicy,
+		Builder: sr.Builder, CpuReserve: sr.CpuReserve, MemoryReserve: sr.MemoryReserve,
+		StaticBuildCmd: sr.StaticBuildCmd, StaticDir: sr.StaticDir,
+		CreatedAt: sr.CreatedAt, UpdatedAt: sr.UpdatedAt,
+	})
+	projectOwner := sr.OwnerID
 
-	if projectOwner != userID.(string) {
+	if projectOwner.String() != userID.(string) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 		return
 	}
@@ -287,12 +311,17 @@ func handleCreateDeployment(c *gin.Context) {
 		UpdatedAt:  now,
 	}
 
-	_, err = db.(*database.DB).Exec(
-		`INSERT INTO deployments
-		 (id, service_id, version, commit_hash, status, image_name, image_tag, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-		d.ID, d.ServiceID, fmt.Sprintf("v%d", now.Unix()), d.CommitHash, d.Status, d.ImageName, d.ImageTag, d.CreatedAt, d.UpdatedAt,
-	)
+	err = q.InsertDeployment(ctx, sqlcdb.InsertDeploymentParams{
+		ID:         d.ID,
+		ServiceID:  d.ServiceID,
+		Version:    fmt.Sprintf("v%d", now.Unix()),
+		CommitHash: sql.NullString{String: ptrStr(d.CommitHash), Valid: d.CommitHash != nil},
+		Status:     sql.NullString{String: d.Status, Valid: true},
+		ImageName:  sql.NullString{String: d.ImageName, Valid: true},
+		ImageTag:   sql.NullString{String: d.ImageTag, Valid: true},
+		CreatedAt:  sql.NullTime{Time: d.CreatedAt, Valid: true},
+		UpdatedAt:  sql.NullTime{Time: d.UpdatedAt, Valid: true},
+	})
 
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create deployment"})
@@ -303,20 +332,20 @@ func handleCreateDeployment(c *gin.Context) {
 	if !exists || engine == nil {
 		unavailableErr := "Deployment engine unavailable. Docker may not be configured on this server."
 		completedAt := time.Now()
-		_, _ = db.(*database.DB).Exec(
-			`UPDATE deployments
-			 SET status = 'failed', error = $1, completed_at = $2, updated_at = $2
-			 WHERE id = $3`,
-			unavailableErr, completedAt, d.ID,
-		)
+		_ = q.FailDeployment(ctx, sqlcdb.FailDeploymentParams{
+			Error:       sql.NullString{String: unavailableErr, Valid: true},
+			CompletedAt: sql.NullTime{Time: completedAt, Valid: true},
+			ID:          d.ID,
+		})
 		d.Status = "failed"
 		d.Error = &unavailableErr
 		d.CompletedAt = &completedAt
 	} else {
-		_, err = db.(*database.DB).Exec(
-			`UPDATE services SET status = 'building', updated_at = $1 WHERE id = $2`,
-			time.Now(), serviceID,
-		)
+		err = q.SetServiceStatus(ctx, sqlcdb.SetServiceStatusParams{
+			Status:    sql.NullString{String: "building", Valid: true},
+			UpdatedAt: sql.NullTime{Time: time.Now(), Valid: true},
+			ID:        serviceID,
+		})
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update service status"})
 			return
@@ -331,14 +360,17 @@ func handleCreateDeployment(c *gin.Context) {
 		})
 		if pos > 0 {
 			d.Status = "queued"
-			_, _ = db.(*database.DB).Exec(
-				`UPDATE deployments SET status = 'queued', updated_at = $1 WHERE id = $2`,
-				time.Now(), d.ID,
-			)
-			_, _ = db.(*database.DB).Exec(
-				`UPDATE services SET status = 'queued', updated_at = $1 WHERE id = $2`,
-				time.Now(), serviceID,
-			)
+			now := time.Now()
+			_ = q.SetDeploymentStatus(ctx, sqlcdb.SetDeploymentStatusParams{
+				Status:    sql.NullString{String: "queued", Valid: true},
+				UpdatedAt: sql.NullTime{Time: now, Valid: true},
+				ID:        d.ID,
+			})
+			_ = q.SetServiceStatus(ctx, sqlcdb.SetServiceStatusParams{
+				Status:    sql.NullString{String: "queued", Valid: true},
+				UpdatedAt: sql.NullTime{Time: now, Valid: true},
+				ID:        serviceID,
+			})
 		}
 	}
 
@@ -380,6 +412,7 @@ func runDeploymentAndSyncWithImage(
 ) {
 	ctx, cancel := context.WithTimeout(parentCtx, 30*time.Minute)
 	defer cancel()
+	q := sqlcdb.New(db.DB)
 
 	// The checkout and any shipped artifacts die with this deployment.
 	var artifactIDs []string
@@ -392,10 +425,11 @@ func runDeploymentAndSyncWithImage(
 	}()
 	failDeploy := func(msg string) {
 		failedAt := time.Now()
-		_, _ = db.Exec(
-			`UPDATE deployments SET status = 'failed', error = $1, completed_at = $2, updated_at = $2 WHERE id = $3`,
-			msg, failedAt, dbDeployment.ID,
-		)
+		_ = q.FailDeployment(ctx, sqlcdb.FailDeploymentParams{
+			Error:       sql.NullString{String: msg, Valid: true},
+			CompletedAt: sql.NullTime{Time: failedAt, Valid: true},
+			ID:          dbDeployment.ID,
+		})
 	}
 
 	sourcePath := strings.TrimSpace(service.BuildPath)
@@ -423,11 +457,10 @@ func runDeploymentAndSyncWithImage(
 		replicas = 1
 	}
 
-	var publishedPort int32
 	// Best effort: reuse the host port from the last live deployment so public
 	// URLs survive redeploys. Column exists post-migration; older DBs get
 	// ephemeral ports.
-	_ = db.QueryRow(`SELECT published_port FROM services WHERE id = $1`, service.ID).Scan(&publishedPort)
+	publishedPort, _ := q.GetServicePublishedPort(ctx, service.ID)
 
 	publicPort := int32(service.Port)
 	if service.Builder == "static" && publicPort == 0 {
@@ -451,7 +484,9 @@ func runDeploymentAndSyncWithImage(
 	// remote builds package it into a context artifact the node builds.
 	if service.GitRepo != "" && imageOverride == "" {
 		var ownerID string
-		_ = db.QueryRow(`SELECT owner_id FROM projects WHERE id = $1`, service.ProjectID).Scan(&ownerID)
+		if o, err := q.GetProjectOwner(ctx, service.ProjectID); err == nil {
+			ownerID = o.String()
+		}
 		branch := req.Branch
 		if branch == "" {
 			branch = service.GitBranch
@@ -535,7 +570,9 @@ func runDeploymentAndSyncWithImage(
 			}
 		} else {
 			var ownerID string
-			_ = db.QueryRow(`SELECT owner_id FROM projects WHERE id = $1`, service.ProjectID).Scan(&ownerID)
+			if o, err := q.GetProjectOwner(ctx, service.ProjectID); err == nil {
+				ownerID = o.String()
+			}
 			auth := registryAuthFor(db, ownerID, image)
 			deployReq.BuildConfig = &deployment.BuildConfig{
 				BuildType:     "prebuilt",
@@ -605,10 +642,11 @@ func runDeploymentAndSyncWithImage(
 
 	if msg := capacityCheck(parentCtx, db, engine.DockerClient(), service, replicas); msg != "" {
 		failedAt := time.Now()
-		_, _ = db.Exec(
-			`UPDATE deployments SET status = 'failed', error = $1, completed_at = $2, updated_at = $2 WHERE id = $3`,
-			msg, failedAt, dbDeployment.ID,
-		)
+		_ = q.FailDeployment(ctx, sqlcdb.FailDeploymentParams{
+			Error:       sql.NullString{String: msg, Valid: true},
+			CompletedAt: sql.NullTime{Time: failedAt, Valid: true},
+			ID:          dbDeployment.ID,
+		})
 		return
 	}
 
@@ -616,16 +654,16 @@ func runDeploymentAndSyncWithImage(
 	if err != nil {
 		failedAt := time.Now()
 		failure := "Failed to start deployment engine: " + err.Error()
-		_, _ = db.Exec(
-			`UPDATE deployments
-			 SET status = 'failed', error = $1, completed_at = $2, updated_at = $2
-			 WHERE id = $3`,
-			failure, failedAt, dbDeployment.ID,
-		)
-		_, _ = db.Exec(
-			`UPDATE services SET status = 'failed', updated_at = $1 WHERE id = $2`,
-			failedAt, service.ID,
-		)
+		_ = q.FailDeployment(ctx, sqlcdb.FailDeploymentParams{
+			Error:       sql.NullString{String: failure, Valid: true},
+			CompletedAt: sql.NullTime{Time: failedAt, Valid: true},
+			ID:          dbDeployment.ID,
+		})
+		_ = q.SetServiceStatus(ctx, sqlcdb.SetServiceStatusParams{
+			Status:    sql.NullString{String: "failed", Valid: true},
+			UpdatedAt: sql.NullTime{Time: failedAt, Valid: true},
+			ID:        service.ID,
+		})
 		return
 	}
 
@@ -640,16 +678,17 @@ func runDeploymentAndSyncWithImage(
 			if errors.Is(ctx.Err(), context.Canceled) {
 				finalStatus, finalErr = "cancelled", "Deployment cancelled"
 			}
-			_, _ = db.Exec(
-				`UPDATE deployments
-				 SET status = $1, error = $2, completed_at = $3, updated_at = $3
-				 WHERE id = $4`,
-				finalStatus, finalErr, failedAt, dbDeployment.ID,
-			)
-			_, _ = db.Exec(
-				`UPDATE services SET status = $1, updated_at = $2 WHERE id = $3`,
-				finalStatus, failedAt, service.ID,
-			)
+			_ = q.CompleteDeployment(ctx, sqlcdb.CompleteDeploymentParams{
+				Status:      sql.NullString{String: finalStatus, Valid: true},
+				Error:       sql.NullString{String: finalErr, Valid: true},
+				CompletedAt: sql.NullTime{Time: failedAt, Valid: true},
+				ID:          dbDeployment.ID,
+			})
+			_ = q.SetServiceStatus(ctx, sqlcdb.SetServiceStatusParams{
+				Status:    sql.NullString{String: finalStatus, Valid: true},
+				UpdatedAt: sql.NullTime{Time: failedAt, Valid: true},
+				ID:        service.ID,
+			})
 			return
 		case <-syncTicker.C:
 			current, getErr := engine.GetDeployment(engineDeployment.ID)
@@ -660,49 +699,36 @@ func runDeploymentAndSyncWithImage(
 			dbStatus := mapEngineStatusToDBStatus(current.Status)
 			imageName, imageTag := splitImageReference(current.ImageName, dbDeployment.ImageTag)
 
-			var dbError interface{}
-			if current.Error != "" {
-				dbError = current.Error
-			}
-
-			_, _ = db.Exec(
-				`UPDATE deployments
-				 SET status = $1,
-				     image_name = $2,
-				     image_tag = $3,
-				     build_log = $4,
-				     runtime_log = $5,
-				     error = $6,
-				     started_at = $7,
-				     completed_at = $8,
-				     updated_at = $9
-				 WHERE id = $10`,
-				dbStatus,
-				imageName,
-				imageTag,
-				current.BuildLog,
-				current.DeployLog,
-				dbError,
-				current.StartedAt,
-				current.CompletedAt,
-				time.Now(),
-				dbDeployment.ID,
-			)
+			now := time.Now()
+			_ = q.SyncDeploymentProgress(ctx, sqlcdb.SyncDeploymentProgressParams{
+				Status:      sql.NullString{String: dbStatus, Valid: true},
+				ImageName:   sql.NullString{String: imageName, Valid: true},
+				ImageTag:    sql.NullString{String: imageTag, Valid: true},
+				BuildLog:    sql.NullString{String: current.BuildLog, Valid: true},
+				RuntimeLog:  sql.NullString{String: current.DeployLog, Valid: true},
+				Error:       sql.NullString{String: current.Error, Valid: current.Error != ""},
+				StartedAt:   ntPtr(current.StartedAt),
+				CompletedAt: ntPtr(current.CompletedAt),
+				UpdatedAt:   sql.NullTime{Time: now, Valid: true},
+				ID:          dbDeployment.ID,
+			})
 
 			switch dbStatus {
 			case "deployed":
-				_, _ = db.Exec(
-					`UPDATE services SET status = 'running', updated_at = $1 WHERE id = $2`,
-					time.Now(), service.ID,
-				)
+				_ = q.SetServiceStatus(ctx, sqlcdb.SetServiceStatusParams{
+					Status:    sql.NullString{String: "running", Valid: true},
+					UpdatedAt: sql.NullTime{Time: now, Valid: true},
+					ID:        service.ID,
+				})
 				insertUserNotification(db, userID, "deployment", "Deployment succeeded",
 					fmt.Sprintf("Service %s is now running.", service.Name), "service", service.ID.String())
 				return
 			case "failed":
-				_, _ = db.Exec(
-					`UPDATE services SET status = 'failed', updated_at = $1 WHERE id = $2`,
-					time.Now(), service.ID,
-				)
+				_ = q.SetServiceStatus(ctx, sqlcdb.SetServiceStatusParams{
+					Status:    sql.NullString{String: "failed", Valid: true},
+					UpdatedAt: sql.NullTime{Time: now, Valid: true},
+					ID:        service.ID,
+				})
 				body := fmt.Sprintf("Service %s failed to deploy.", service.Name)
 				if current.Error != "" {
 					body = fmt.Sprintf("Service %s failed to deploy: %s", service.Name, current.Error)
@@ -754,21 +780,16 @@ func handleCancelDeployment(c *gin.Context) {
 		return
 	}
 
-	var status, owner string
-	var serviceID uuid.UUID
-	err = db.(*database.DB).QueryRow(
-		`SELECT d.status, d.service_id, p.owner_id
-		 FROM deployments d
-		 JOIN services s ON d.service_id = s.id
-		 JOIN projects p ON s.project_id = p.id
-		 WHERE d.id = $1`,
-		deploymentID,
-	).Scan(&status, &serviceID, &owner)
+	ctx := c.Request.Context()
+	q := sqlcdb.New(db.(*database.DB).DB)
+	access, err := q.GetDeploymentAccess(ctx, deploymentID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Deployment not found", "code": "NOT_FOUND"})
 		return
 	}
-	if owner != userID.(string) && !contextIsAdmin(c) {
+	serviceID := access.ServiceID
+	status := access.Status.String
+	if access.OwnerID.String() != userID.(string) && !contextIsAdmin(c) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied", "code": "FORBIDDEN"})
 		return
 	}
@@ -782,14 +803,17 @@ func handleCancelDeployment(c *gin.Context) {
 	switch getDeployQueue(c).Cancel(serviceID, deploymentID) {
 	case deployqueue.WasQueued:
 		now := time.Now()
-		_, _ = db.(*database.DB).Exec(
-			`UPDATE deployments SET status = 'cancelled', error = 'Deployment cancelled', completed_at = $1, updated_at = $1 WHERE id = $2`,
-			now, deploymentID,
-		)
-		_, _ = db.(*database.DB).Exec(
-			`UPDATE services SET status = 'cancelled', updated_at = $1 WHERE id = $2`,
-			now, serviceID,
-		)
+		_ = q.CompleteDeployment(ctx, sqlcdb.CompleteDeploymentParams{
+			Status:      sql.NullString{String: "cancelled", Valid: true},
+			Error:       sql.NullString{String: "Deployment cancelled", Valid: true},
+			CompletedAt: sql.NullTime{Time: now, Valid: true},
+			ID:          deploymentID,
+		})
+		_ = q.SetServiceStatus(ctx, sqlcdb.SetServiceStatusParams{
+			Status:    sql.NullString{String: "cancelled", Valid: true},
+			UpdatedAt: sql.NullTime{Time: now, Valid: true},
+			ID:        serviceID,
+		})
 		c.JSON(http.StatusOK, gin.H{"status": "cancelled"})
 	case deployqueue.WasActive:
 		c.JSON(http.StatusAccepted, gin.H{"status": "cancelling"})
@@ -832,27 +856,18 @@ func handleGetDeployment(c *gin.Context) {
 		return
 	}
 
-	var d DeploymentModel
-	var projectID uuid.UUID
-	err = db.(*database.DB).QueryRow(
-		`SELECT d.id, d.service_id, d.commit_hash, d.status, d.image_name, d.image_tag,
-		        d.build_log, d.runtime_log, d.error, d.started_at, d.completed_at,
-		        d.created_at, d.updated_at, p.id
-		 FROM deployments d
-		 JOIN services s ON d.service_id = s.id
-		 JOIN projects p ON s.project_id = p.id
-		 WHERE d.id = $1`,
-		deploymentID,
-	).Scan(
-		&d.ID, &d.ServiceID, &d.CommitHash, &d.Status, &d.ImageName, &d.ImageTag,
-		&d.BuildLog, &d.RuntimeLog, &d.Error, &d.StartedAt, &d.CompletedAt,
-		&d.CreatedAt, &d.UpdatedAt, &projectID,
-	)
-
+	r, err := sqlcdb.New(db.(*database.DB).DB).GetDeploymentWithProject(c.Request.Context(), deploymentID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Deployment not found"})
 		return
 	}
+	projectID := r.ProjectID
+	d := deploymentModelFrom(deploymentRowShape{
+		ID: r.ID, ServiceID: r.ServiceID, CommitHash: r.CommitHash, Status: r.Status,
+		ImageName: r.ImageName, ImageTag: r.ImageTag, BuildLog: r.BuildLog,
+		RuntimeLog: r.RuntimeLog, Error: r.Error, StartedAt: r.StartedAt,
+		CompletedAt: r.CompletedAt, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+	})
 
 	if _, allowed := projectReadAccess(c, db.(*database.DB), projectID); !allowed {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Deployment not found"})
@@ -882,33 +897,23 @@ func handleRollbackDeployment(c *gin.Context) {
 		return
 	}
 
-	var targetDeployment DeploymentModel
-	var serviceID uuid.UUID
-	var ownerCheck string
-
-	err = db.(*database.DB).QueryRow(
-		`SELECT d.id, d.service_id, d.commit_hash, d.status, d.image_name, d.image_tag, 
-		        d.build_log, d.runtime_log, d.error, d.started_at, d.completed_at, 
-		        d.created_at, d.updated_at, p.owner_id
-		 FROM deployments d
-		 JOIN services s ON d.service_id = s.id
-		 JOIN projects p ON s.project_id = p.id
-		 WHERE d.id = $1`,
-		deploymentID,
-	).Scan(
-		&targetDeployment.ID, &serviceID, &targetDeployment.CommitHash, &targetDeployment.Status,
-		&targetDeployment.ImageName, &targetDeployment.ImageTag, &targetDeployment.BuildLog,
-		&targetDeployment.RuntimeLog, &targetDeployment.Error, &targetDeployment.StartedAt,
-		&targetDeployment.CompletedAt, &targetDeployment.CreatedAt, &targetDeployment.UpdatedAt,
-		&ownerCheck,
-	)
-
+	ctx := c.Request.Context()
+	q := sqlcdb.New(db.(*database.DB).DB)
+	r, err := q.GetDeploymentForRollback(ctx, deploymentID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Deployment not found"})
 		return
 	}
+	serviceID := r.ServiceID
+	targetDeployment := deploymentModelFrom(deploymentRowShape{
+		ID: r.ID, ServiceID: r.ServiceID, CommitHash: r.CommitHash, Status: r.Status,
+		ImageName: r.ImageName, ImageTag: r.ImageTag, BuildLog: r.BuildLog,
+		RuntimeLog: r.RuntimeLog, Error: r.Error, StartedAt: r.StartedAt,
+		CompletedAt: r.CompletedAt, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+	})
+	ownerCheck := r.OwnerID
 
-	if ownerCheck != userID.(string) && !contextIsAdmin(c) {
+	if ownerCheck.String() != userID.(string) && !contextIsAdmin(c) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 		return
 	}
@@ -931,23 +936,28 @@ func handleRollbackDeployment(c *gin.Context) {
 		UpdatedAt:  now,
 	}
 
-	_, err = db.(*database.DB).Exec(
-		`INSERT INTO deployments
-		 (id, service_id, version, commit_hash, status, image_name, image_tag, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-		rollback.ID, rollback.ServiceID, fmt.Sprintf("rollback-%d", now.Unix()), rollback.CommitHash, rollback.Status,
-		rollback.ImageName, rollback.ImageTag, rollback.CreatedAt, rollback.UpdatedAt,
-	)
+	err = q.InsertDeployment(ctx, sqlcdb.InsertDeploymentParams{
+		ID:         rollback.ID,
+		ServiceID:  rollback.ServiceID,
+		Version:    fmt.Sprintf("rollback-%d", now.Unix()),
+		CommitHash: sql.NullString{String: ptrStr(rollback.CommitHash), Valid: rollback.CommitHash != nil},
+		Status:     sql.NullString{String: rollback.Status, Valid: true},
+		ImageName:  sql.NullString{String: rollback.ImageName, Valid: true},
+		ImageTag:   sql.NullString{String: rollback.ImageTag, Valid: true},
+		CreatedAt:  sql.NullTime{Time: rollback.CreatedAt, Valid: true},
+		UpdatedAt:  sql.NullTime{Time: rollback.UpdatedAt, Valid: true},
+	})
 
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create rollback deployment"})
 		return
 	}
 
-	_, err = db.(*database.DB).Exec(
-		`UPDATE services SET status = 'building', updated_at = $1 WHERE id = $2`,
-		time.Now(), serviceID,
-	)
+	err = q.SetServiceStatus(ctx, sqlcdb.SetServiceStatusParams{
+		Status:    sql.NullString{String: "building", Valid: true},
+		UpdatedAt: sql.NullTime{Time: time.Now(), Valid: true},
+		ID:        serviceID,
+	})
 
 	// Real rollback: redeploy the target deployment's image.
 	engineValue, _ := c.Get("deployment_engine")
@@ -963,36 +973,18 @@ func handleRollbackDeployment(c *gin.Context) {
 		if engine == nil {
 			reason = "Deployment engine unavailable. Docker may not be configured on this server."
 		}
-		_, _ = db.(*database.DB).Exec(
-			`UPDATE deployments SET status = 'failed', error = $1, completed_at = $2, updated_at = $2 WHERE id = $3`,
-			reason, completedAt, rollbackID,
-		)
-		_, _ = db.(*database.DB).Exec(
-			`UPDATE services SET status = 'failed', updated_at = $1 WHERE id = $2`,
-			completedAt, serviceID,
-		)
+		_ = q.FailDeployment(ctx, sqlcdb.FailDeploymentParams{
+			Error:       sql.NullString{String: reason, Valid: true},
+			CompletedAt: sql.NullTime{Time: completedAt, Valid: true},
+			ID:          rollbackID,
+		})
+		_ = q.SetServiceStatus(ctx, sqlcdb.SetServiceStatusParams{
+			Status:    sql.NullString{String: "failed", Valid: true},
+			UpdatedAt: sql.NullTime{Time: completedAt, Valid: true},
+			ID:        serviceID,
+		})
 	} else {
-		var service Service
-		_ = db.(*database.DB).QueryRow(
-			`SELECT s.id, s.project_id, s.name, s.type, s.status, s.image, s.command,
-			        s.environment, s.git_repo, s.git_branch, s.build_path, s.cpu, s.memory,
-			        COALESCE(s.replicas, 1), COALESCE(s.port, 0),
-			        COALESCE(s.domain, ''), COALESCE(s.healthcheck_path, ''),
-			        COALESCE(s.restart_policy, 'unless-stopped'),
-			        COALESCE(s.builder, 'auto'), COALESCE(s.cpu_reserve, ''),
-			        COALESCE(s.memory_reserve, ''), COALESCE(s.static_build_cmd, ''),
-			        COALESCE(s.static_dir, ''),
-			        s.created_at, s.updated_at
-			 FROM services s WHERE s.id = $1`, serviceID,
-		).Scan(
-			&service.ID, &service.ProjectID, &service.Name, &service.Type, &service.Status,
-			&service.Image, &service.Command, &service.Environment, &service.GitRepo,
-			&service.GitBranch, &service.BuildPath, &service.CPU, &service.Memory,
-			&service.Replicas, &service.Port, &service.Domain, &service.HealthCheckPath,
-			&service.RestartPolicy, &service.Builder, &service.CPUReserve,
-			&service.MemoryReserve, &service.StaticBuildCmd, &service.StaticDir,
-			&service.CreatedAt, &service.UpdatedAt,
-		)
+		service, _ := loadServiceForDeploy(db.(*database.DB), serviceID)
 
 		rollbackReq := CreateDeploymentRequest{
 			CommitHash: func() string {

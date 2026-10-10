@@ -22,9 +22,12 @@ type Querier interface {
 	CloneServiceRow(ctx context.Context, arg CloneServiceRowParams) error
 	CloneServiceVariables(ctx context.Context, arg CloneServiceVariablesParams) error
 	CompleteCommand(ctx context.Context, arg CompleteCommandParams) (AgentCommand, error)
+	CompleteDeployment(ctx context.Context, arg CompleteDeploymentParams) error
+	CountAccessibleDeployments(ctx context.Context, arg CountAccessibleDeploymentsParams) (int64, error)
 	CountActivePreviewsForBranch(ctx context.Context, arg CountActivePreviewsForBranchParams) (int64, error)
 	CountDatabaseServicesByUserAndName(ctx context.Context, arg CountDatabaseServicesByUserAndNameParams) (int64, error)
 	CountDatabasesUsingBackupTarget(ctx context.Context, targetID sql.NullString) (int64, error)
+	CountDeploymentsForService(ctx context.Context, serviceID uuid.UUID) (int64, error)
 	CountEnvironmentServices(ctx context.Context, environmentID uuid.UUID) (int64, error)
 	CountProjectsByUser(ctx context.Context, arg CountProjectsByUserParams) (int64, error)
 	CountServiceDomains(ctx context.Context, serviceID uuid.UUID) (int64, error)
@@ -68,6 +71,7 @@ type Querier interface {
 	DeleteServiceDomain(ctx context.Context, arg DeleteServiceDomainParams) (int64, error)
 	DeleteUserInvite(ctx context.Context, id uuid.UUID) error
 	DeleteUserTemplate(ctx context.Context, arg DeleteUserTemplateParams) (int64, error)
+	FailDeployment(ctx context.Context, arg FailDeploymentParams) error
 	GetActiveAgentAuthTokenByHash(ctx context.Context, tokenHash string) (AgentAuthToken, error)
 	GetAgent(ctx context.Context, id string) (NodeAgent, error)
 	GetAgentByHostAndIP(ctx context.Context, arg GetAgentByHostAndIPParams) (NodeAgent, error)
@@ -81,6 +85,9 @@ type Querier interface {
 	GetDatabaseServiceByID(ctx context.Context, id string) (DatabaseService, error)
 	GetDatabaseServiceByIDAndUser(ctx context.Context, arg GetDatabaseServiceByIDAndUserParams) (DatabaseService, error)
 	GetDatabaseServiceOwnerID(ctx context.Context, id string) (string, error)
+	GetDeploymentAccess(ctx context.Context, id uuid.UUID) (GetDeploymentAccessRow, error)
+	GetDeploymentForRollback(ctx context.Context, id uuid.UUID) (GetDeploymentForRollbackRow, error)
+	GetDeploymentWithProject(ctx context.Context, id uuid.UUID) (GetDeploymentWithProjectRow, error)
 	GetLastAgentCommandByType(ctx context.Context, arg GetLastAgentCommandByTypeParams) (AgentCommand, error)
 	GetOutboundWebhookByID(ctx context.Context, id uuid.UUID) (OutboundWebhook, error)
 	GetOutboundWebhookByIDAndUser(ctx context.Context, arg GetOutboundWebhookByIDAndUserParams) (OutboundWebhook, error)
@@ -101,12 +108,15 @@ type Querier interface {
 	GetServiceDomainFirst(ctx context.Context, serviceID uuid.UUID) (string, error)
 	GetServiceEnvironment(ctx context.Context, id uuid.UUID) (string, error)
 	GetServiceForDeploy(ctx context.Context, id uuid.UUID) (GetServiceForDeployRow, error)
+	GetServiceForDeployWithOwner(ctx context.Context, id uuid.UUID) (GetServiceForDeployWithOwnerRow, error)
 	GetServicePlacementBrief(ctx context.Context, id uuid.UUID) (GetServicePlacementBriefRow, error)
+	GetServicePublishedPort(ctx context.Context, id uuid.UUID) (int32, error)
 	GetServiceTemplateByID(ctx context.Context, id string) (ServiceTemplate, error)
 	GetServiceTypeBrief(ctx context.Context, arg GetServiceTypeBriefParams) (GetServiceTypeBriefRow, error)
 	GetUserInviteByTokenHash(ctx context.Context, tokenHash string) (UserInvite, error)
 	GetUserTokenByHash(ctx context.Context, tokenHash string) (UserToken, error)
 	InsertAgentHeartbeat(ctx context.Context, arg InsertAgentHeartbeatParams) error
+	InsertDeployment(ctx context.Context, arg InsertDeploymentParams) error
 	InsertNotificationChannel(ctx context.Context, arg InsertNotificationChannelParams) (NotificationChannel, error)
 	InsertPendingDeployment(ctx context.Context, arg InsertPendingDeploymentParams) error
 	InsertProjectEnvironment(ctx context.Context, arg InsertProjectEnvironmentParams) error
@@ -123,6 +133,7 @@ type Querier interface {
 	ListDatabaseBackupsByDatabaseAndUser(ctx context.Context, arg ListDatabaseBackupsByDatabaseAndUserParams) ([]DatabaseBackup, error)
 	ListDatabaseServicesByProject(ctx context.Context, projectID uuid.NullUUID) ([]DatabaseService, error)
 	ListDatabaseServicesByUser(ctx context.Context, userID string) ([]DatabaseService, error)
+	ListDeploymentsForService(ctx context.Context, arg ListDeploymentsForServiceParams) ([]ListDeploymentsForServiceRow, error)
 	ListDueDatabaseBackups(ctx context.Context) ([]ListDueDatabaseBackupsRow, error)
 	ListEnabledOutboundWebhooks(ctx context.Context) ([]OutboundWebhook, error)
 	ListExpiredPreviewsForUser(ctx context.Context, arg ListExpiredPreviewsForUserParams) ([]ListExpiredPreviewsForUserRow, error)
@@ -139,6 +150,7 @@ type Querier interface {
 	// display, when the caller owns or is a member of it, or when the caller is a
 	// platform admin. Anonymous callers pass user_id = uuid.Nil, is_admin = false.
 	ListProjectsWithStatsByUser(ctx context.Context, arg ListProjectsWithStatsByUserParams) ([]ListProjectsWithStatsByUserRow, error)
+	ListRecentAccessibleDeployments(ctx context.Context, arg ListRecentAccessibleDeploymentsParams) ([]ListRecentAccessibleDeploymentsRow, error)
 	// Base domains of every online, schedulable agent carrying the required
 	// placement tags — auto-domain candidates for spread services.
 	ListSchedulableAgentDomains(ctx context.Context, dollar_1 json.RawMessage) ([]string, error)
@@ -183,9 +195,12 @@ type Querier interface {
 	SetDatabaseServiceStatusAndConnectionByID(ctx context.Context, arg SetDatabaseServiceStatusAndConnectionByIDParams) error
 	SetDatabaseServiceStatusByID(ctx context.Context, arg SetDatabaseServiceStatusByIDParams) error
 	SetDatabaseServiceStatusByIDAndUser(ctx context.Context, arg SetDatabaseServiceStatusByIDAndUserParams) error
+	SetDeploymentStatus(ctx context.Context, arg SetDeploymentStatusParams) error
 	SetProjectApproved(ctx context.Context, arg SetProjectApprovedParams) (int64, error)
 	SetServiceDomainDefault(ctx context.Context, arg SetServiceDomainDefaultParams) (int64, error)
 	SetServiceLegacyDomain(ctx context.Context, arg SetServiceLegacyDomainParams) error
+	SetServiceStatus(ctx context.Context, arg SetServiceStatusParams) error
+	SyncDeploymentProgress(ctx context.Context, arg SyncDeploymentProgressParams) error
 	SyncPreviewStatuses(ctx context.Context) error
 	TouchAgentAuthToken(ctx context.Context, tokenHash string) error
 	TouchServiceDomainChecked(ctx context.Context, id uuid.UUID) error
