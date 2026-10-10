@@ -31,3 +31,33 @@ func TestWebhookEventMatches(t *testing.T) {
 		}
 	}
 }
+
+func TestValidWebhookURL(t *testing.T) {
+	cases := []struct {
+		name    string
+		url     string
+		wantErr bool
+	}{
+		{"https", "https://hooks.example.com/wh/abc", false},
+		{"http", "http://internal.lan:8080/notify", false},
+		{"whitespace trimmed", "  https://example.com/hook  ", false},
+		{"with query", "https://example.com/hook?token=x", false},
+		{"ftp rejected", "ftp://files.example.com/x", true},
+		{"no scheme", "example.com/hook", true},
+		{"bare scheme", "https://", true},
+		{"empty", "", true},
+		{"javascript rejected", "javascript:alert(1)", true},
+		{"host empty", "http:///path-only", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validWebhookURL(tc.url)
+			if tc.wantErr && err == nil {
+				t.Errorf("validWebhookURL(%q) = nil, want error", tc.url)
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("validWebhookURL(%q) = %v, want nil", tc.url, err)
+			}
+		})
+	}
+}
