@@ -15,6 +15,18 @@ import { FilterBar } from '@/shared/components';
 import { demoBuilds } from '@/lib/demo-data';
 import { formatRelative } from '@/lib/time';
 import {
+  SCard,
+  SPageHead,
+  SPill,
+  SStat,
+  STable,
+  IconBtn,
+  QuietBtn,
+  Ticks,
+  type SCol,
+} from '@/shared/components/sentry';
+import { statusTone } from '@/shared/components/sentry-utils';
+import {
   Check,
   X,
   Loader2,
@@ -24,8 +36,6 @@ import {
   Box,
   Sparkles,
   Filter,
-  Circle,
-  HardDrive,
 } from 'lucide-react';
 
 const statusOptions: Array<{ value: '' | BuildStatus; label: string }> = [
@@ -50,26 +60,11 @@ const BUILD_SCHEMA: FilterConfig<BuildEntity>[] = [
   },
 ];
 
-function StatusBadge({ status }: { status: BuildStatus }) {
-  const config = {
-    success: { color: 'var(--success)', bg: 'var(--success-soft)', Icon: Check, animate: false },
-    failed: { color: 'var(--error)', bg: 'var(--error-soft)', Icon: X, animate: false },
-    running: { color: 'var(--warning)', bg: 'var(--warning-soft)', Icon: Loader2, animate: true },
-    pending: { color: 'var(--text-tertiary)', bg: 'var(--surface-muted)', Icon: Clock, animate: false },
-    cancelled: { color: 'var(--text-tertiary)', bg: 'var(--surface-muted)', Icon: X, animate: false },
-  }[status] || { color: 'var(--text-tertiary)', bg: 'var(--surface-muted)', Icon: Circle, animate: false };
-
-  const { Icon } = config;
-
-  return (
-    <div 
-      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium"
-      style={{ background: config.bg, color: config.color }}
-    >
-      <Icon size={12} className={config.animate ? 'animate-spin' : ''} />
-      {status}
-    </div>
-  );
+function BuildIcon({ status }: { status: BuildStatus }) {
+  if (status === 'success') return <Check size={14} className="text-[var(--success)]" />;
+  if (status === 'failed') return <X size={14} className="text-[var(--error)]" />;
+  if (status === 'running') return <Loader2 size={14} className="text-[var(--warning)] animate-spin" />;
+  return <Clock size={14} className="text-[var(--text-tertiary)]" />;
 }
 
 function bytesToHumanReadable(bytes: number): string {
@@ -149,109 +144,113 @@ export function BuildsPage() {
     return { running, success, failed, total: builds.length };
   }, [builds]);
 
+  const buildCols: SCol<BuildEntity>[] = [
+    {
+      key: 'build', label: 'Build', width: 'minmax(220px,1.4fr)',
+      sortValue: (b) => b.id,
+      render: (b) => (
+        <span className="flex items-center gap-2.5 min-w-0">
+          <span className="s-ibox"><BuildIcon status={b.status} /></span>
+          <span className="min-w-0">
+            <span className="block v-mono text-[12px] font-medium text-[var(--text-primary)] truncate">{b.id}</span>
+            <span className="block v-mono text-[10.5px] text-[var(--text-tertiary)] truncate">
+              {b.imageName || '—'}{b.imageTag ? `:${b.imageTag}` : ''}
+            </span>
+          </span>
+        </span>
+      ),
+    },
+    {
+      key: 'status', label: 'Status', width: '110px',
+      sortValue: (b) => b.status,
+      render: (b) => <SPill tone={statusTone(b.status)}>{b.status}</SPill>,
+    },
+    {
+      key: 'progress', label: 'Progress', width: '1fr',
+      sortValue: (b) => b.progress,
+      render: (b) =>
+        b.status === 'running' || b.status === 'pending' ? (
+          <span className="flex items-center gap-2.5">
+            <Ticks pct={b.progress} count={40} />
+            <span className="v-mono text-[10.5px] text-[var(--text-tertiary)]">{b.progress}%</span>
+          </span>
+        ) : (
+          <span className="v-mono text-[10.5px] text-[var(--text-muted)]">—</span>
+        ),
+    },
+    {
+      key: 'size', label: 'Size', width: '90px',
+      sortValue: (b) => b.size,
+      render: (b) => <span className="v-mono text-[11.5px] text-[var(--text-secondary)]">{bytesToHumanReadable(b.size)}</span>,
+    },
+    {
+      key: 'service', label: 'Service', width: '1fr',
+      sortValue: (b) => b.serviceId ?? '',
+      render: (b) => <span className="v-mono text-[11px] text-[var(--text-tertiary)] truncate">{b.serviceId || '—'}</span>,
+    },
+    {
+      key: 'when', label: 'Started', width: '90px',
+      sortValue: (b) => b.startedAt ?? '',
+      render: (b) => <span className="v-mono text-[11px] text-[var(--text-tertiary)]">{b.startedAt ? formatRelative(b.startedAt) : '—'}</span>,
+    },
+  ];
+
   return (
     <div className="min-h-screen">
-      {/* Header */}
-      <div className="border-b border-[var(--border-subtle)] bg-[var(--bg-base)]/50 backdrop-blur-sm">
-        <div className="w-full px-8 py-4">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <h1 className="v-title">Build Pipeline<span className="v-cursor">_</span></h1>
-              <p className="text-sm text-[var(--text-secondary)]">Monitor build progress and manage jobs</p>
-            </div>
-
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 text-sm">
-                <div className={`w-2 h-2 rounded-full ${liveStatus === 'live' ? 'bg-[var(--success)] animate-pulse' : 'bg-[var(--text-muted)]'}`} />
+      <div className="w-full px-4 pt-6 sm:px-8">
+        <SPageHead
+          title="Build Pipeline"
+          titleAccent="_"
+          sub="Monitor build progress and manage jobs"
+          actions={
+            <>
+              <div className="flex items-center gap-2 text-[11px] v-mono">
+                <div className={`w-1.5 h-1.5 rounded-full ${liveStatus === 'live' ? 'bg-[var(--success)] animate-pulse' : 'bg-[var(--text-muted)]'}`} />
                 <span className={liveStatus === 'live' ? 'text-[var(--success)]' : 'text-[var(--text-muted)]'}>
-                  {liveStatus === 'live' ? 'Live' : liveStatus === 'offline' ? 'Reconnecting...' : 'Polling'}
+                  {liveStatus === 'live' ? 'live' : liveStatus === 'offline' ? 'reconnecting' : 'polling'}
                 </span>
               </div>
-              <button
-                onClick={() => queryClient.invalidateQueries({ queryKey: ['builds-page'] })}
-                className="flex items-center gap-2 h-9 px-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-sm font-medium hover:border-[var(--border-default)] transition-colors"
-              >
+              <IconBtn onClick={() => queryClient.invalidateQueries({ queryKey: ['builds-page'] })} title="Refresh builds">
                 <RefreshCw size={14} />
-                Refresh
-              </button>
-            </div>
-          </div>
-        </div>
+              </IconBtn>
+            </>
+          }
+        />
       </div>
 
       {/* Demo Mode Banner */}
       {isDemoMode && (
         <div className="w-full px-8 py-4">
-          <div className="px-4 py-3 rounded-[var(--radius-md)] border border-[var(--warning-soft)] bg-[var(--warning-soft)]/50">
-            <div className="flex items-center gap-2 text-sm text-[var(--warning)]">
-              <Sparkles size={16} />
-              <span>Demo mode active — using sample data</span>
-            </div>
+          <div className="s-inset flex items-center gap-2 text-xs text-[var(--warning)]">
+            <Sparkles size={13} />
+            Demo mode active — using sample data
           </div>
         </div>
       )}
 
-      {/* Stats Overview */}
-      <div className="w-full px-4 py-6 sm:px-8">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="panel p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="w-8 h-8 rounded-[var(--radius-sm)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
-                <Box size={16} className="text-[var(--accent-primary)]" />
-              </div>
-            </div>
-            <p className="text-2xl font-semibold text-[var(--text-primary)]">{stats.total}</p>
-            <p className="text-xs text-[var(--text-muted)] mt-1">Total Builds</p>
-          </div>
-          <div className="panel p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="w-8 h-8 rounded-[var(--radius-sm)] bg-[var(--warning-soft)] flex items-center justify-center">
-                <Loader2 size={16} className="text-[var(--warning)]" />
-              </div>
-            </div>
-            <p className="text-2xl font-semibold text-[var(--warning)]">{stats.running}</p>
-            <p className="text-xs text-[var(--text-muted)] mt-1">In Progress</p>
-          </div>
-          <div className="panel p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="w-8 h-8 rounded-[var(--radius-sm)] bg-[var(--success-soft)] flex items-center justify-center">
-                <Check size={16} className="text-[var(--success)]" />
-              </div>
-            </div>
-            <p className="text-2xl font-semibold text-[var(--success)]">{stats.success}</p>
-            <p className="text-xs text-[var(--text-muted)] mt-1">Successful</p>
-          </div>
-          <div className="panel p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="w-8 h-8 rounded-[var(--radius-sm)] bg-[var(--error-soft)] flex items-center justify-center">
-                <X size={16} className="text-[var(--error)]" />
-              </div>
-            </div>
-            <p className="text-2xl font-semibold text-[var(--error)]">{stats.failed}</p>
-            <p className="text-xs text-[var(--text-muted)] mt-1">Failed</p>
-          </div>
+      <div className="w-full px-4 py-6 sm:px-8 space-y-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+          <SStat icon={<Box />} label="Total Builds" value={stats.total} foot="all jobs" />
+          <SStat icon={<Loader2 />} label="In Progress" value={stats.running} foot="building now" />
+          <SStat icon={<Check />} label="Successful" value={stats.success} foot="completed ok" />
+          <SStat icon={<X />} label="Failed" value={stats.failed} foot="need attention" />
         </div>
-      </div>
 
-      {/* Filters */}
-      <div className="w-full px-8">
-        <div className="panel p-4">
-          <div className="flex items-center gap-2">
-            <Filter size={16} className="text-[var(--text-tertiary)]" />
-            <span className="text-sm font-medium text-[var(--text-secondary)]">Filters</span>
-          </div>
-          <div className="flex flex-wrap items-end gap-3 mt-3">
-            <div className="flex-1">
+        <SCard icon={<Filter />} title="Filters"
+          trail={<span className="v-mono text-[10.5px] text-[var(--text-muted)]">{builds.length} jobs shown</span>}
+        >
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex-1 min-w-[280px]">
               <FilterBar {...filter} />
             </div>
             <div>
-              <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)] mb-2">
+              <label className="block text-[10.5px] font-medium uppercase tracking-wider text-[var(--text-muted)] mb-1.5">
                 Page Size
               </label>
               <select
                 value={String(limit)}
                 onChange={(e) => setLimit(Number(e.target.value))}
-                className="w-full h-10 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm focus:border-[var(--accent-primary)] transition-colors"
+                className="s-chip !cursor-pointer appearance-none pr-6"
               >
                 <option value="20">20</option>
                 <option value="50">50</option>
@@ -259,127 +258,41 @@ export function BuildsPage() {
               </select>
             </div>
           </div>
-        </div>
-      </div>
+        </SCard>
 
-      {/* Build Table */}
-      <div className="w-full px-4 py-6 sm:px-8">
-        <div className="panel overflow-hidden">
+        <SCard icon={<Box />} title="Build Queue" accent={`${builds.length} jobs`} pad={false}
+          trail={
+            <IconBtn onClick={() => queryClient.invalidateQueries({ queryKey: ['builds-page'] })} title="Refresh">
+              <RefreshCw size={13} />
+            </IconBtn>
+          }
+        >
           {!isDemoMode && buildsQuery.isLoading ? (
             <div className="p-12 text-center">
               <Loader2 size={24} className="animate-spin mx-auto text-[var(--text-tertiary)]" />
               <p className="mt-3 text-sm text-[var(--text-muted)]">Loading builds...</p>
             </div>
-          ) : null}
-
-          {!isDemoMode && buildsQuery.isError ? (
-            <div className="p-8 text-center">
-              <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-[var(--error-soft)] flex items-center justify-center">
-                <X size={24} className="text-[var(--error)]" />
-              </div>
+          ) : !isDemoMode && buildsQuery.isError ? (
+            <div className="p-10 text-center">
               <p className="text-sm text-[var(--error)]">Failed to load builds</p>
               <p className="text-xs text-[var(--text-muted)] mt-1">{buildsQuery.error instanceof Error ? buildsQuery.error.message : 'Unknown error'}</p>
             </div>
-          ) : null}
-
-          {builds.length === 0 && !buildsQuery.isLoading ? (
+          ) : builds.length === 0 ? (
             <div className="p-12 text-center">
-              <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-[var(--surface-muted)] flex items-center justify-center">
-                <Box size={24} className="text-[var(--text-tertiary)]" />
-              </div>
+              <div className="s-ibox mx-auto mb-3 !w-10 !h-10"><Box /></div>
               <p className="text-sm text-[var(--text-muted)]">No builds match current filters</p>
             </div>
-          ) : null}
-
-          {builds.length > 0 ? (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 p-4">
-              {builds.map((build) => (
-                <div 
-                  key={build.id} 
-                  className="panel p-4 group hover:border-[var(--accent-primary)]/30 transition-all duration-300 card-lift cursor-pointer"
-                  onClick={() => setSelectedBuild(build)}
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                        build.status === 'success' 
-                          ? 'bg-[var(--success-soft)]' 
-                          : build.status === 'failed'
-                          ? 'bg-[var(--error-soft)]'
-                          : build.status === 'running'
-                          ? 'bg-[var(--warning-soft)]'
-                          : 'bg-[var(--surface-muted)]'
-                      }`}>
-                        {build.status === 'success' && <Check size={18} className="text-[var(--success)]" />}
-                        {build.status === 'failed' && <X size={18} className="text-[var(--error)]" />}
-                        {build.status === 'running' && <Loader2 size={18} className="text-[var(--warning)] animate-spin" />}
-                        {build.status === 'pending' && <Clock size={18} className="text-[var(--text-tertiary)]" />}
-                        {build.status === 'cancelled' && <X size={18} className="text-[var(--text-tertiary)]" />}
-                      </div>
-                      <div>
-                        <p className="mono text-sm font-medium text-[var(--text-primary)]">{build.id}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <StatusBadge status={build.status} />
-                          <span className="text-xs text-[var(--text-tertiary)]">
-                            {build.startedAt ? formatRelative(build.startedAt) : '—'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button className="p-2 rounded-lg hover:bg-[var(--surface-muted)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-all">
-                        <FileText size={14} />
-                      </button>
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-3">
-                    {/* Image info */}
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-[var(--text-tertiary)]">Image</span>
-                      <span className="mono text-[var(--text-secondary)]">
-                        {build.imageName || '—'}:{build.imageTag || 'latest'}
-                      </span>
-                    </div>
-                    
-                    {/* Progress bar */}
-                    {(build.status === 'running' || build.status === 'pending') && (
-                      <div className="space-y-1.5">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-[var(--text-tertiary)]">Progress</span>
-                          <span className="text-[var(--text-secondary)] font-medium">{build.progress}%</span>
-                        </div>
-                        <div className="h-2 rounded-full bg-[var(--surface-muted)] overflow-hidden">
-                          <div
-                            className="h-full rounded-full transition-all duration-300"
-                            style={{ width: `${Math.max(0, Math.min(100, build.progress))}%`, background: 'var(--accent-primary)' }}
-                          />
-                        </div>
-                      </div>
-                    )}
-                    
-                    {/* Size and service */}
-                    <div className="flex items-center justify-between text-xs pt-2 border-t border-[var(--border-subtle)]">
-                      <div className="flex items-center gap-1.5 text-[var(--text-tertiary)]">
-                        <HardDrive size={10} />
-                        <span>{bytesToHumanReadable(build.size)}</span>
-                      </div>
-                      <span className="mono text-[var(--text-tertiary)]">{build.serviceId || '—'}</span>
-                    </div>
-                  </div>
-                  
-                  {/* Error message if present */}
-                  {build.error && (
-                    <div className="mt-3 p-2 rounded-lg bg-[var(--error-soft)]/50 border border-[var(--error)]/20">
-                      <p className="text-xs text-[var(--error)] line-clamp-2">{build.error}</p>
-                    </div>
-                  )}
-                </div>
-              ))}
+          ) : (
+            <div className="px-4">
+              <STable
+                cols={buildCols}
+                rows={builds}
+                rowKey={(b) => b.id}
+                onRowClick={(b) => setSelectedBuild(b)}
+              />
             </div>
-          ) : null}
-        </div>
+          )}
+        </SCard>
       </div>
 
       {/* Error Toast */}
@@ -393,27 +306,21 @@ export function BuildsPage() {
       {selectedBuild && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-[var(--bg-void)]/80 backdrop-blur-sm" onClick={() => setSelectedBuild(null)} />
-          <div className="relative w-full max-w-3xl panel p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
-                  <FileText size={20} className="text-[var(--accent-primary)]" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-semibold text-[var(--text-primary)]">Build Logs</h2>
-                  <p className="mono text-xs text-[var(--text-tertiary)]">{selectedBuild.id}</p>
-                </div>
+          <div className="relative w-full max-w-3xl s-card">
+            <div className="s-cardhead">
+              <span className="s-ibox"><FileText /></span>
+              <div>
+                <div className="s-t">Build Logs</div>
+                <div className="v-mono mt-0.5 text-[11px] text-[var(--text-tertiary)]">{selectedBuild.id}</div>
               </div>
-              <button
-                onClick={() => setSelectedBuild(null)}
-                className="px-4 py-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-sm font-medium hover:border-[var(--border-default)] transition-colors"
-              >
-                Close
-              </button>
+              <div className="s-trail">
+                <QuietBtn onClick={() => setSelectedBuild(null)}>Close</QuietBtn>
+              </div>
             </div>
+            <div className="px-4 pb-4">
 
             <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-void)] p-4 max-h-[400px] overflow-auto">
-              <pre className="mono text-xs text-[var(--text-secondary)] whitespace-pre-wrap break-all">
+              <pre className="v-mono text-xs text-[var(--text-secondary)] whitespace-pre-wrap break-all">
                 {isDemoMode
                   ? selectedBuild.log || '[demo] No logs available.'
                   : logsQuery.isLoading
@@ -422,6 +329,7 @@ export function BuildsPage() {
                   ? 'Failed to load logs.'
                   : logsQuery.data || '(empty logs)'}
               </pre>
+            </div>
             </div>
           </div>
         </div>

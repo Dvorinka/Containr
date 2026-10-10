@@ -19,8 +19,10 @@ import { useAuthSession } from '@/lib/use-auth-session';
 import { useDemoMode } from '@/lib/demo-mode';
 import { formatBytes, formatRelative } from '@/lib/time';
 import { DemoRestricted } from '@/shared/components';
+import { GhostBtn, QuietBtn, SPill } from '@/shared/components/sentry';
 import {
   ArrowLeft, CheckCircle2, ChevronRight, Loader2, Pencil, XCircle,
+  Activity, Cpu, ListOrdered, Server,
 } from 'lucide-react';
 
 const TIME_RANGES = [
@@ -129,8 +131,7 @@ export function NodeDetailPage() {
 
   return (
     <div className="min-h-screen">
-      <div className="border-b border-[var(--border-subtle)]">
-        <div className="w-full px-8 py-5">
+      <div className="w-full px-4 pt-6 sm:px-8">
           <div className="flex items-center gap-2 v-mono text-[11px] text-[var(--text-tertiary)] mb-2">
             <Link to="/usage" className="hover:text-[var(--text-primary)] flex items-center gap-1">
               <ArrowLeft size={12} /> usage
@@ -140,7 +141,7 @@ export function NodeDetailPage() {
           </div>
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div>
-              <h1 className="v-title">
+              <h1 className="v-title font-headline">
                 {rename === null ? agent.name : rename}
                 {isAdmin && rename === null && (
                   <button
@@ -163,7 +164,7 @@ export function NodeDetailPage() {
                       if (e.key === 'Escape') setRename(null);
                     }}
                     autoFocus
-                    className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-tertiary)] px-2 py-1 text-sm text-[var(--text-primary)]"
+                    className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-1 text-sm text-[var(--text-primary)]"
                   />
                   <button onClick={() => updateMutation.mutate({ name: rename })} className="v-mono text-[11px] text-[var(--accent-primary)] hover:underline">save</button>
                   <button onClick={() => setRename(null)} className="v-mono text-[11px] text-[var(--text-muted)] hover:underline">cancel</button>
@@ -209,7 +210,7 @@ export function NodeDetailPage() {
                       }}
                       autoFocus
                       placeholder="eu-west, gpu"
-                      className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-tertiary)] px-2 py-0.5 text-[11px] text-[var(--text-primary)] w-52"
+                      className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-0.5 text-[11px] text-[var(--text-primary)] w-52"
                     />
                     <button
                       onClick={() => updateMutation.mutate({ tags: tagDraft.split(',').map((t) => t.trim()).filter(Boolean) })}
@@ -247,7 +248,7 @@ export function NodeDetailPage() {
                       }}
                       autoFocus
                       placeholder="apps.node1.example.com — empty clears"
-                      className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-tertiary)] px-2 py-0.5 text-[11px] text-[var(--text-primary)] w-64"
+                      className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-0.5 text-[11px] text-[var(--text-primary)] w-64"
                     />
                     <button
                       onClick={() => updateMutation.mutate({ default_domain: domainDraft.trim().toLowerCase() })}
@@ -258,17 +259,9 @@ export function NodeDetailPage() {
                 )}
               </p>
             </div>
-            <div className="flex items-center gap-3">
-              <span className={`v-mono text-[11px] px-2 py-1 rounded-md border ${online
-                ? 'border-[var(--success)]/40 text-[var(--success)]'
-                : 'border-[var(--error)]/40 text-[var(--error)]'}`}>
-                {agent.status}
-              </span>
-              {!agent.schedulable && (
-                <span className="v-mono text-[11px] px-2 py-1 rounded-md border border-[var(--warning)]/40 text-[var(--warning)]">
-                  cordoned
-                </span>
-              )}
+            <div className="flex items-center gap-2 flex-wrap">
+              <SPill tone={online ? 'ok' : 'err'}>{agent.status}</SPill>
+              {!agent.schedulable && <SPill tone="warn">cordoned</SPill>}
               {isAdmin && (
                 <>
                   <label className="flex items-center gap-1.5 v-mono text-[11px] text-[var(--text-tertiary)] cursor-pointer" title="Daily automatic docker prune">
@@ -280,81 +273,79 @@ export function NodeDetailPage() {
                     />
                     auto-prune
                   </label>
-                  <button
+                  <QuietBtn
                     onClick={() => cordonMutation.mutate(agent.schedulable)}
                     disabled={cordonMutation.isPending}
                     title={agent.schedulable
                       ? 'Block new placements — running replicas stay'
                       : 'Re-open for placement'}
-                    className="v-mono text-[11px] px-3 py-1.5 rounded-md border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-50"
                   >
                     {agent.schedulable ? 'cordon' : 'uncordon'}
-                  </button>
-                  <button
+                  </QuietBtn>
+                  <QuietBtn
                     onClick={() => setConfirmDrain(true)}
                     disabled={drainMutation.isPending || !online}
                     title={online
                       ? 'Cordon + remove all service containers + unpin services (they redeploy locally)'
                       : 'Node must be online to drain'}
-                    className="v-mono text-[11px] px-3 py-1.5 rounded-md border border-[var(--warning)]/40 text-[var(--warning)] hover:bg-[var(--warning)]/10 disabled:opacity-50"
+                    className="!text-[var(--warning)] hover:!border-[var(--warning)]/60"
                   >
                     drain
-                  </button>
-                  <button
+                  </QuietBtn>
+                  <GhostBtn
                     onClick={() => upgradeMutation.mutate()}
                     disabled={upgradeMutation.isPending || !online}
                     title={online
                       ? `Upgrade agent to the server's bundled binary (server ${upgradeMutation.data?.version ?? 'build'}) — the agent restarts itself`
                       : 'Node must be online to upgrade'}
-                    className="v-mono text-[11px] px-3 py-1.5 rounded-md border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-50"
                   >
                     {upgradeMutation.isPending ? 'upgrading…' : 'upgrade agent'}
-                  </button>
-                  <button
+                  </GhostBtn>
+                  <QuietBtn
                     onClick={() => setConfirmVolumes(true)}
                     disabled={pruneMutation.isPending}
-                    className="v-mono text-[11px] px-3 py-1.5 rounded-md border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-50"
                   >
                     prune now
-                  </button>
-                  <button
+                  </QuietBtn>
+                  <QuietBtn
                     onClick={() => setConfirmDelete(true)}
-                    className="v-mono text-[11px] px-3 py-1.5 rounded-md border border-[var(--error)]/40 text-[var(--error)] hover:bg-[var(--error)]/10"
+                    className="!text-[var(--error)] hover:!border-[var(--error)]/60"
                   >
                     remove
-                  </button>
+                  </QuietBtn>
                 </>
               )}
             </div>
           </div>
         </div>
-      </div>
 
       <div className="px-4 py-6 sm:px-8 space-y-6">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Stat label="cpu" value={latest ? `${latest.cpu.usage_percent.toFixed(0)}%` : '—'} sub={latest ? `${latest.cpu.cores} cores` : ''} />
-          <Stat label="memory" value={latest ? `${latest.memory.usage_percent.toFixed(0)}%` : '—'} sub={latest ? `${formatBytes(latest.memory.available)} free of ${formatBytes(latest.memory.limit)}` : ''} />
-          <Stat label="load 1m" value={latest ? latest.system_load.load_1m.toFixed(2) : '—'} sub={latest ? `5m ${latest.system_load.load_5m.toFixed(2)} · 15m ${latest.system_load.load_15m.toFixed(2)}` : ''} />
-          <Stat label="containers" value={latest ? String(latest.container_count) : String(containers.length)} sub="reported by agent" />
+          <Stat label="cpu" icon={<Cpu />} value={latest ? `${latest.cpu.usage_percent.toFixed(0)}%` : '—'} sub={latest ? `${latest.cpu.cores} cores` : ''} />
+          <Stat label="memory" icon={<Server />} value={latest ? `${latest.memory.usage_percent.toFixed(0)}%` : '—'} sub={latest ? `${formatBytes(latest.memory.available)} free of ${formatBytes(latest.memory.limit)}` : ''} />
+          <Stat label="load 1m" icon={<Activity />} value={latest ? latest.system_load.load_1m.toFixed(2) : '—'} sub={latest ? `5m ${latest.system_load.load_5m.toFixed(2)} · 15m ${latest.system_load.load_15m.toFixed(2)}` : ''} />
+          <Stat label="containers" icon={<ListOrdered />} value={latest ? String(latest.container_count) : String(containers.length)} sub="reported by agent" />
         </div>
 
-        <section className="panel p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="v-mono text-[11px] uppercase tracking-wider text-[var(--text-tertiary)]">telemetry</h2>
-            <div className="flex gap-1">
-              {TIME_RANGES.map((r) => (
-                <button
-                  key={r.value}
-                  onClick={() => setTimeRange(r.value)}
-                  className={`v-mono text-[11px] px-2.5 py-1 rounded-md border ${timeRange === r.value
-                    ? 'border-[var(--accent-primary)]/50 text-[var(--accent-primary)]'
-                    : 'border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
-                >
-                  {r.label}
-                </button>
-              ))}
-            </div>
+        <section className="s-card !p-0">
+          <div className="s-cardhead border-b border-[var(--border-subtle)]">
+            <span className="s-ibox"><Activity /></span>
+            <h2 className="s-t">Telemetry</h2>
+            <span className="s-trail">
+              <span className="flex gap-1">
+                {TIME_RANGES.map((r) => (
+                  <button
+                    key={r.value}
+                    onClick={() => setTimeRange(r.value)}
+                    className={`s-chip v-mono ${timeRange === r.value ? 'on' : ''}`}
+                  >
+                    {r.label}
+                  </button>
+                ))}
+              </span>
+            </span>
           </div>
+          <div className="p-4">
           {metricsQuery.isLoading ? (
             <p className="text-xs text-[var(--text-muted)]">Loading metrics…</p>
           ) : metrics.length < 2 ? (
@@ -365,12 +356,17 @@ export function NodeDetailPage() {
               <Sparkline label="memory %" points={metrics} value={(m) => m.memory.usage_percent} />
             </div>
           )}
+          </div>
         </section>
 
         <div className="grid gap-6 lg:grid-cols-2">
-          <section className="panel p-0">
-            <h2 className="v-mono text-[11px] uppercase tracking-wider text-[var(--text-tertiary)] px-5 pt-4 pb-3">containers</h2>
-            <div className="divide-y divide-[var(--border-subtle)] border-t border-[var(--border-subtle)]">
+          <section className="s-card !p-0">
+            <div className="s-cardhead border-b border-[var(--border-subtle)]">
+              <span className="s-ibox"><Server /></span>
+              <h2 className="s-t">Containers</h2>
+              <span className="s-trail"><span className="s-chip" style={{ cursor: 'default' }}>{containers.length}</span></span>
+            </div>
+            <div className="divide-y divide-[var(--border-subtle)]">
               {containers.length === 0 && (
                 <p className="px-5 py-6 text-xs text-[var(--text-muted)]">No containers reported on this node.</p>
               )}
@@ -386,9 +382,13 @@ export function NodeDetailPage() {
             </div>
           </section>
 
-          <section className="panel p-0">
-            <h2 className="v-mono text-[11px] uppercase tracking-wider text-[var(--text-tertiary)] px-5 pt-4 pb-3">command history</h2>
-            <div className="divide-y divide-[var(--border-subtle)] border-t border-[var(--border-subtle)]">
+          <section className="s-card !p-0">
+            <div className="s-cardhead border-b border-[var(--border-subtle)]">
+              <span className="s-ibox"><ListOrdered /></span>
+              <h2 className="s-t">Command History</h2>
+              <span className="s-trail"><span className="s-chip" style={{ cursor: 'default' }}>{commands.length}</span></span>
+            </div>
+            <div className="divide-y divide-[var(--border-subtle)]">
               {commands.length === 0 && (
                 <p className="px-5 py-6 text-xs text-[var(--text-muted)]">No commands sent to this node yet.</p>
               )}
@@ -466,12 +466,19 @@ function meshAddresses(agent: { metadata: Record<string, unknown> }): [string, s
     .filter((entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1] !== '');
 }
 
-function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function Stat({ label, icon, value, sub }: { label: string; icon: React.ReactNode; value: string; sub?: string }) {
   return (
-    <div className="panel p-4">
-      <p className="v-mono text-[10px] uppercase tracking-wider text-[var(--text-tertiary)]">{label}</p>
-      <p className="mt-1 text-xl font-semibold text-[var(--text-primary)]">{value}</p>
-      {sub && <p className="mt-0.5 v-mono text-[11px] text-[var(--text-muted)]">{sub}</p>}
+    <div className="s-stat">
+      <div className="px-4 pb-1 pt-4">
+        <div className="flex items-center gap-2.5">
+          <span className="s-ibox">{icon}</span>
+          <span className="text-[11.5px] font-medium text-[var(--text-secondary)]">{label}</span>
+        </div>
+        <p className="mt-3 font-headline text-[24px] font-bold leading-none tabular-nums text-[var(--text-primary)]">{value}</p>
+      </div>
+      <div className="s-stat-foot mt-3">
+        <span>{sub ?? '—'}</span>
+      </div>
     </div>
   );
 }
@@ -510,24 +517,20 @@ function ConfirmModal({ title, body, confirmLabel, danger, extra, onCancel, onCo
   pending: boolean;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onCancel}>
-      <div className="panel w-full max-w-sm p-5" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-sm font-semibold text-[var(--text-primary)]">{title}</h3>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onCancel}>
+      <div className="s-card w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+        <h3 className="s-t">{title}</h3>
         <p className="mt-2 text-xs text-[var(--text-secondary)]">{body}</p>
         {extra && <div className="mt-3">{extra}</div>}
         <div className="mt-5 flex justify-end gap-2">
-          <button onClick={onCancel} className="v-mono text-[11px] px-3 py-1.5 rounded-md border border-[var(--border-subtle)] text-[var(--text-secondary)]">
-            cancel
-          </button>
-          <button
+          <QuietBtn onClick={onCancel}>cancel</QuietBtn>
+          <GhostBtn
             onClick={onConfirm}
             disabled={pending}
-            className={`v-mono text-[11px] px-3 py-1.5 rounded-md border disabled:opacity-50 ${danger
-              ? 'border-[var(--error)]/50 text-[var(--error)] hover:bg-[var(--error)]/10'
-              : 'border-[var(--accent-primary)]/50 text-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/10'}`}
+            className={danger ? '!text-[var(--error)] !border-[var(--error)]/40 !bg-[var(--error)]/10' : undefined}
           >
             {pending ? 'working…' : confirmLabel}
-          </button>
+          </GhostBtn>
         </div>
       </div>
     </div>

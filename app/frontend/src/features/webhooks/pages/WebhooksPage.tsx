@@ -8,11 +8,12 @@ import {
   testWebhook,
   updateWebhook,
   type OutboundWebhook,
-  type WebhookDelivery,
 } from '@/lib/api-client';
 import { useDemoMode } from '@/lib/demo-mode';
 import { formatRelative } from '@/lib/time';
 import { DemoRestricted, useToast } from '@/shared/components';
+import { GhostBtn, QuietBtn, SPageHead, SPill } from '@/shared/components/sentry';
+import { statusTone } from '@/shared/components/sentry-utils';
 import {
   Webhook,
   Plus,
@@ -29,17 +30,6 @@ const inputClass =
   'h-10 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all';
 
 const eventSuggestions = ['*', 'service.*', 'project.*', 'database.*', 'deployment.*', 'template.*'];
-
-function statusClass(status: WebhookDelivery['status']): string {
-  switch (status) {
-    case 'success':
-      return 'text-[var(--success)]';
-    case 'failed':
-      return 'text-[var(--error)]';
-    default:
-      return 'text-[var(--warning)]';
-  }
-}
 
 function WebhookRow({
   webhook,
@@ -63,59 +53,50 @@ function WebhookRow({
   });
 
   return (
-    <div className="panel p-4">
-      <div className="flex items-center gap-3">
-        <button onClick={() => setExpanded((v) => !v)} className="text-[var(--text-tertiary)]">
-          {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-        </button>
+    <div className="s-card !p-0">
+      <div className="flex items-center gap-3 px-4 py-3">
+        <span className="s-ibox shrink-0"><Webhook /></span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold text-[var(--text-primary)]">{webhook.name}</span>
-            {!webhook.enabled && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--surface-muted)] text-[var(--text-muted)]">
-                disabled
-              </span>
-            )}
+            {!webhook.enabled && <SPill tone="off">disabled</SPill>}
           </div>
-          <p className="text-xs text-[var(--text-muted)] mono truncate">{webhook.url}</p>
+          <p className="v-mono text-[10.5px] text-[var(--text-muted)] truncate">{webhook.url}</p>
         </div>
-        <div className="hidden md:flex gap-1">
+        <div className="hidden md:flex gap-1.5">
           {webhook.events.map((ev) => (
-            <span
-              key={ev}
-              className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--accent-primary-soft)] text-[var(--accent-primary)] mono"
-            >
-              {ev}
-            </span>
+            <span key={ev} className="s-chip">{ev}</span>
           ))}
         </div>
         <div className="flex items-center gap-1 shrink-0">
           <button
+            onClick={() => setExpanded((v) => !v)}
+            className="s-icon-btn"
+            title={expanded ? 'Collapse' : 'Deliveries'}
+          >
+            {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+          </button>
+          <button
             onClick={onTest}
             disabled={testing || !webhook.enabled}
-            className="p-2 rounded-[var(--radius-md)] text-[var(--text-tertiary)] hover:text-[var(--accent-primary)] disabled:opacity-40 transition-colors"
+            className="s-icon-btn disabled:opacity-40"
             title="Send test ping"
           >
-            {testing ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+            {testing ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
           </button>
-          <button
-            onClick={onToggle}
-            className="p-2 rounded-[var(--radius-md)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors text-xs"
-          >
-            {webhook.enabled ? 'Disable' : 'Enable'}
-          </button>
+          <QuietBtn onClick={onToggle}>{webhook.enabled ? 'Disable' : 'Enable'}</QuietBtn>
           <button
             onClick={onDelete}
-            className="p-2 rounded-[var(--radius-md)] text-[var(--text-tertiary)] hover:text-[var(--error)] transition-colors"
+            className="s-icon-btn !text-[var(--text-tertiary)] hover:!text-[var(--error)]"
             title="Delete webhook"
           >
-            <Trash2 size={15} />
+            <Trash2 size={13} />
           </button>
         </div>
       </div>
       {expanded && (
-        <div className="mt-3 border-t border-[var(--border-subtle)] pt-3">
-          <p className="text-[11px] uppercase tracking-wider text-[var(--text-muted)] mb-2">
+        <div className="border-t border-[var(--border-subtle)] bg-[var(--surface-muted)]/40 px-4 py-3">
+          <p className="v-mono text-[10px] uppercase tracking-[0.12em] text-[var(--text-muted)] mb-2">
             Recent deliveries
           </p>
           {deliveriesQuery.isLoading ? (
@@ -123,10 +104,10 @@ function WebhookRow({
           ) : (deliveriesQuery.data ?? []).length === 0 ? (
             <p className="text-xs text-[var(--text-muted)]">No deliveries yet.</p>
           ) : (
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               {(deliveriesQuery.data ?? []).slice(0, 20).map((d) => (
-                <div key={d.id} className="flex items-center gap-3 text-xs mono">
-                  <span className={statusClass(d.status)}>{d.status}</span>
+                <div key={d.id} className="flex items-center gap-3 text-[11px] v-mono">
+                  <SPill tone={statusTone(d.status)}>{d.status}</SPill>
                   <span className="text-[var(--text-secondary)]">{d.event}</span>
                   {d.response_status != null && (
                     <span className="text-[var(--text-muted)]">HTTP {d.response_status}</span>
@@ -207,46 +188,41 @@ export function WebhooksPage() {
 
   return (
     <div className="min-h-screen">
-      <div className="border-b border-[var(--border-subtle)]">
-        <div className="w-full px-8 py-5 flex items-center justify-between">
-          <div>
-            <h1 className="v-title">Webhooks<span className="v-cursor">_</span></h1>
-            <p className="v-mono mt-1.5 text-[11px] text-[var(--text-tertiary)]">
-              Signed HTTP delivery for every platform event — deploys, restarts, deletes
-            </p>
-          </div>
-          <button
-            onClick={() => setCreating(true)}
-            className="flex items-center gap-1.5 h-9 px-4 rounded-[var(--radius-md)] text-sm font-semibold text-[var(--accent-on)]"
-            style={{ background: 'var(--accent-primary)' }}
-          >
-            <Plus size={15} />
-            New webhook
-          </button>
-        </div>
+      <div className="w-full px-4 pt-6 sm:px-8">
+        <SPageHead
+          title="Webhooks"
+          titleAccent="_"
+          sub="Signed HTTP delivery for every platform event — deploys, restarts, deletes"
+          trail={
+            <GhostBtn onClick={() => setCreating(true)}>
+              <Plus size={13} /> New webhook
+            </GhostBtn>
+          }
+        />
       </div>
 
-      <div className="w-full px-4 py-6 sm:px-8 space-y-4 max-w-4xl">
+      <div className="w-full px-4 sm:px-8 space-y-4 max-w-4xl">
         {secret && (
-          <div className="panel-soft p-4 flex items-center gap-3">
+          <div className="s-inset p-4 flex items-center gap-3">
+            <span className="s-ibox shrink-0"><Webhook /></span>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-[var(--text-primary)]">Signing secret — shown once</p>
-              <p className="text-xs text-[var(--text-muted)]">
-                Verify deliveries with <span className="mono">X-Containr-Signature</span>
+              <p className="v-mono text-[11px] text-[var(--text-muted)]">
+                Verify deliveries with <span className="v-mono">X-Containr-Signature</span>
               </p>
-              <code className="block mt-2 text-xs mono text-[var(--accent-primary)] break-all">{secret}</code>
+              <code className="block mt-2 v-mono text-xs text-[var(--accent-primary)] break-all">{secret}</code>
             </div>
             <button
               onClick={() => {
                 navigator.clipboard?.writeText(secret);
                 toast.showToast('Secret copied', 'success');
               }}
-              className="p-2 text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
+              className="s-icon-btn"
             >
-              <Copy size={15} />
+              <Copy size={13} />
             </button>
-            <button onClick={() => setSecret(null)} className="p-2 text-[var(--text-tertiary)]">
-              <X size={15} />
+            <button onClick={() => setSecret(null)} className="s-icon-btn">
+              <X size={13} />
             </button>
           </div>
         )}
@@ -254,12 +230,12 @@ export function WebhooksPage() {
         {webhooksQuery.isLoading ? (
           <Loader2 size={18} className="animate-spin text-[var(--text-muted)]" />
         ) : (webhooksQuery.data ?? []).length === 0 ? (
-          <div className="panel p-8 text-center">
-            <Webhook size={28} className="mx-auto text-[var(--text-muted)] mb-3" />
+          <div className="s-card py-10 text-center">
+            <div className="s-ibox mx-auto mb-3"><Webhook /></div>
             <p className="text-sm text-[var(--text-secondary)]">No webhooks yet.</p>
-            <p className="text-xs text-[var(--text-muted)] mt-1">
-              Subscribe an HTTP endpoint to platform events like <span className="mono">service.*</span> or{' '}
-              <span className="mono">deployment.fail</span>.
+            <p className="v-mono text-[11px] text-[var(--text-muted)] mt-1">
+              Subscribe an HTTP endpoint to platform events like <span className="v-mono">service.*</span> or{' '}
+              <span className="v-mono">deployment.fail</span>.
             </p>
           </div>
         ) : (
@@ -283,8 +259,11 @@ export function WebhooksPage() {
       {creating && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-[var(--bg-void)]/80 backdrop-blur-sm" onClick={() => setCreating(false)} />
-          <div className="relative w-full max-w-md panel p-6">
-            <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">New webhook</h3>
+          <div className="relative w-full max-w-md s-card">
+            <div className="s-cardhead mb-4">
+              <span className="s-ibox"><Webhook /></span>
+              <h3 className="s-t">New Webhook</h3>
+            </div>
             <div className="space-y-4">
               <div>
                 <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-tertiary)] mb-2">
@@ -304,7 +283,7 @@ export function WebhooksPage() {
                 <input
                   value={form.url}
                   onChange={(e) => setForm((f) => ({ ...f, url: e.target.value }))}
-                  className={`${inputClass} w-full mono`}
+                  className={`${inputClass} w-full v-mono`}
                   placeholder="https://example.com/hooks/containr"
                 />
               </div>
@@ -317,30 +296,21 @@ export function WebhooksPage() {
                     <button
                       key={ev}
                       onClick={() => toggleEvent(ev)}
-                      className={`px-2.5 py-1 rounded-[var(--radius-md)] border text-xs mono transition-colors ${
-                        form.events.includes(ev)
-                          ? 'border-[var(--accent-primary)] bg-[var(--accent-primary-soft)] text-[var(--accent-primary)]'
-                          : 'border-[var(--border-subtle)] bg-[var(--surface-muted)] text-[var(--text-tertiary)]'
-                      }`}
+                      className={`s-chip v-mono ${form.events.includes(ev) ? 'on' : ''}`}
                     >
                       {ev}
                     </button>
                   ))}
                 </div>
-                <p className="mt-2 text-[11px] text-[var(--text-muted)]">
-                  Events are <span className="mono">resource.action</span> — wildcards like{' '}
-                  <span className="mono">service.*</span> match the whole resource.
+                <p className="mt-2 v-mono text-[10.5px] text-[var(--text-muted)]">
+                  Events are <span className="v-mono">resource.action</span> — wildcards like{' '}
+                  <span className="v-mono">service.*</span> match the whole resource.
                 </p>
               </div>
             </div>
             <div className="mt-6 flex justify-end gap-2">
-              <button
-                onClick={() => setCreating(false)}
-                className="h-10 px-4 rounded-[var(--radius-md)] text-sm text-[var(--text-secondary)]"
-              >
-                Cancel
-              </button>
-              <button
+              <QuietBtn onClick={() => setCreating(false)}>Cancel</QuietBtn>
+              <GhostBtn
                 onClick={() => createMutation.mutate()}
                 disabled={
                   createMutation.isPending ||
@@ -348,12 +318,10 @@ export function WebhooksPage() {
                   !form.url.trim() ||
                   form.events.length === 0
                 }
-                className="h-10 px-5 rounded-[var(--radius-md)] text-sm font-semibold text-[var(--accent-on)] disabled:opacity-50 flex items-center gap-2"
-                style={{ background: 'var(--accent-primary)' }}
               >
-                {createMutation.isPending && <Loader2 size={14} className="animate-spin" />}
+                {createMutation.isPending && <Loader2 size={13} className="animate-spin" />}
                 Create
-              </button>
+              </GhostBtn>
             </div>
           </div>
         </div>

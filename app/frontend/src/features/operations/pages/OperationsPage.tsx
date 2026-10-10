@@ -4,27 +4,9 @@ import { getOperations, type OperationsView } from '@/lib/api-client';
 import { useDemoMode } from '@/lib/demo-mode';
 import { formatRelative } from '@/lib/time';
 import { DemoRestricted } from '@/shared/components';
+import { SPageHead, SPill, SStat, Ticks } from '@/shared/components/sentry';
+import { statusTone } from '@/shared/components/sentry-utils';
 import { Activity, AlertTriangle, Clock, Database, Loader2, Timer } from 'lucide-react';
-
-function statusClass(status: string): string {
-  switch (status) {
-    case 'deployed':
-    case 'completed':
-    case 'success':
-      return 'text-[var(--success)]';
-    case 'failed':
-    case 'cancelled':
-    case 'rolled_back':
-      return 'text-[var(--error)]';
-    case 'building':
-    case 'deploying':
-    case 'in_progress':
-    case 'running':
-      return 'text-[var(--accent-primary)]';
-    default:
-      return 'text-[var(--warning)]';
-  }
-}
 
 function Section({ title, icon: Icon, count, children }: {
   title: string;
@@ -33,13 +15,15 @@ function Section({ title, icon: Icon, count, children }: {
   children: React.ReactNode;
 }) {
   return (
-    <section className="panel p-5">
-      <div className="flex items-center gap-2 mb-4">
-        <Icon size={16} className="text-[var(--accent-primary)]" />
-        <h2 className="text-sm font-semibold text-[var(--text-primary)]">{title}</h2>
-        <span className="text-xs text-[var(--text-muted)] mono">({count})</span>
+    <section className="s-card overflow-hidden">
+      <div className="s-cardhead border-b border-[var(--border-subtle)]">
+        <span className="s-ibox"><Icon /></span>
+        <h2 className="s-t">{title}</h2>
+        <span className="s-trail">
+          <span className="s-chip" style={{ cursor: 'default' }}>{count}</span>
+        </span>
       </div>
-      {children}
+      <div className="p-3">{children}</div>
     </section>
   );
 }
@@ -74,13 +58,8 @@ export function OperationsPage() {
 
   return (
     <div className="min-h-screen">
-      <div className="border-b border-[var(--border-subtle)]">
-        <div className="w-full px-8 py-5">
-          <h1 className="v-title">Operations<span className="v-cursor">_</span></h1>
-          <p className="v-mono mt-1.5 text-[11px] text-[var(--text-tertiary)]">
-            Live view of deploys, queues, cron runs, and backups
-          </p>
-        </div>
+      <div className="w-full px-4 pt-6 sm:px-8">
+        <SPageHead title="Operations" titleAccent="_" sub="Live view of deploys, queues, cron runs, and backups" />
       </div>
 
       {opsQuery.isLoading ? (
@@ -89,23 +68,11 @@ export function OperationsPage() {
         </div>
       ) : (
         <div className="w-full px-4 py-6 sm:px-8 space-y-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="panel-soft p-4">
-              <p className="text-xs uppercase tracking-wider text-[var(--text-muted)]">In flight</p>
-              <p className="mt-1 text-2xl font-semibold text-[var(--accent-primary)]">{active.length}</p>
-            </div>
-            <div className="panel-soft p-4">
-              <p className="text-xs uppercase tracking-wider text-[var(--text-muted)]">Queued</p>
-              <p className="mt-1 text-2xl font-semibold text-[var(--warning)]">{queuedTotal}</p>
-            </div>
-            <div className="panel-soft p-4">
-              <p className="text-xs uppercase tracking-wider text-[var(--text-muted)]">Failed 24h</p>
-              <p className="mt-1 text-2xl font-semibold text-[var(--error)]">{failed.length}</p>
-            </div>
-            <div className="panel-soft p-4">
-              <p className="text-xs uppercase tracking-wider text-[var(--text-muted)]">Backups 24h</p>
-              <p className="mt-1 text-2xl font-semibold text-[var(--text-secondary)]">{backups.length}</p>
-            </div>
+          <div className="grid grid-cols-2 gap-3.5 md:grid-cols-4">
+            <SStat icon={<Activity />} label="In Flight" value={active.length} foot="deploying now" />
+            <SStat icon={<Clock />} label="Queued" value={queuedTotal} foot="waiting in queue" />
+            <SStat icon={<AlertTriangle />} label="Failed 24h" value={failed.length} foot="need attention" />
+            <SStat icon={<Database />} label="Backups 24h" value={backups.length} foot="completed runs" />
           </div>
 
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
@@ -125,7 +92,7 @@ export function OperationsPage() {
                         <span className="text-sm text-[var(--text-primary)]">{d.service_name}</span>
                         <span className="text-xs text-[var(--text-muted)]"> · {d.project_name}</span>
                       </div>
-                      <span className={`text-xs mono ${statusClass(d.status)}`}>{d.status}</span>
+                      <SPill tone={statusTone(d.status)}>{d.status}</SPill>
                       <span className="text-xs text-[var(--text-muted)]">{formatRelative(d.created_at)}</span>
                     </button>
                   ))}
@@ -152,7 +119,7 @@ export function OperationsPage() {
                           <p className="text-[11px] text-[var(--error)]/80 truncate">{d.error}</p>
                         )}
                       </div>
-                      <span className={`text-xs mono ${statusClass(d.status)}`}>{d.status}</span>
+                      <SPill tone={statusTone(d.status)}>{d.status}</SPill>
                       <span className="text-xs text-[var(--text-muted)]">{formatRelative(d.created_at)}</span>
                     </button>
                   ))}
@@ -167,9 +134,9 @@ export function OperationsPage() {
                 <div className="space-y-1.5">
                   {cron.map((r) => (
                     <div key={r.id} className="flex items-center gap-3 px-3 py-1.5 text-xs">
-                      <span className={`mono ${statusClass(r.status)}`}>{r.status}</span>
+                      <SPill tone={statusTone(r.status)}>{r.status}</SPill>
                       <span className="text-[var(--text-primary)]">{r.job_name}</span>
-                      <span className="mono text-[var(--text-muted)]">{r.schedule}</span>
+                      <span className="v-mono text-[var(--text-muted)]">{r.schedule}</span>
                       {r.error && <span className="text-[var(--error)]/80 truncate">{r.error}</span>}
                       <span className="ml-auto text-[var(--text-muted)]">{formatRelative(r.started_at)}</span>
                     </div>
@@ -185,7 +152,7 @@ export function OperationsPage() {
                 <div className="space-y-1.5">
                   {backups.map((b) => (
                     <div key={b.id} className="flex items-center gap-3 px-3 py-1.5 text-xs">
-                      <span className={`mono ${statusClass(b.status)}`}>{b.status}</span>
+                      <SPill tone={statusTone(b.status)}>{b.status}</SPill>
                       <span className="text-[var(--text-primary)]">{b.database_name}</span>
                       <span className="text-[var(--text-muted)]">{b.size}</span>
                       <span className="ml-auto text-[var(--text-muted)]">{formatRelative(b.created_at)}</span>
@@ -198,14 +165,15 @@ export function OperationsPage() {
 
           {queue.length > 0 && (
             <Section title="Deploy queue depth" icon={Clock} count={queue.length}>
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 {queue.map((q) => (
-                  <div key={q.service_id} className="flex items-center gap-3 px-3 py-1.5 text-xs mono">
-                    <span className="text-[var(--text-secondary)]">{q.service_id.slice(0, 8)}</span>
-                    <span className={q.running ? 'text-[var(--accent-primary)]' : 'text-[var(--text-muted)]'}>
-                      {q.running ? 'running' : 'idle'}
+                  <div key={q.service_id} className="flex items-center gap-3 px-3 py-1.5 text-xs">
+                    <span className="v-mono text-[var(--text-secondary)]">{q.service_id.slice(0, 8)}</span>
+                    <SPill tone={q.running ? 'info' : 'off'}>{q.running ? 'running' : 'idle'}</SPill>
+                    <span className="flex-1 max-w-[220px]">
+                      <Ticks pct={Math.min(100, q.queued * 25)} count={32} warn={!q.running} />
                     </span>
-                    <span className="text-[var(--warning)]">{q.queued} queued</span>
+                    <span className="v-mono text-[var(--warning)]">{q.queued} queued</span>
                   </div>
                 ))}
               </div>

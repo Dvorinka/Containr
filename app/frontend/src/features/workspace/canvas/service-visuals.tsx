@@ -18,15 +18,15 @@ export function serviceTypeIcon(type: string, size = 18) {
 export function serviceTypeColor(type: string): string {
   switch (type) {
     case 'web':
-      return '#7ab8ff';
+      return 'var(--info)';
     case 'database':
-      return '#b4e34a';
+      return '#38bdf8';
     case 'worker':
-      return '#f2c94c';
+      return 'var(--warning)';
     case 'cron':
-      return '#f2994a';
+      return 'var(--accent-secondary)';
     default:
-      return '#9295a4';
+      return 'var(--text-tertiary)';
   }
 }
 

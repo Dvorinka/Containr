@@ -1,10 +1,11 @@
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import type { ServiceEntity } from '@/lib/api-client';
-import { serviceStatusClass } from '@/lib/api-client';
 import { Box, ExternalLink, Copy, Layers, Loader2 } from 'lucide-react';
 import { useState } from 'react';
 import { serviceIcon, serviceAccent } from './service-visuals';
 import { ServiceIcon } from './ServiceIcon';
+import { SPill } from '@/shared/components/sentry';
+import { statusTone } from '@/shared/components/sentry-utils';
 
 export type ServiceNodeData = {
   service: ServiceEntity;
@@ -65,10 +66,10 @@ export function ServiceNode({ data }: NodeProps<ServiceNodeType>) {
 
   return (
     <div
-      className={`w-full rounded-[var(--radius-lg)] border transition-[border-color,box-shadow,transform] duration-150 group relative overflow-hidden ${
+      className={`w-full rounded-[10px] border transition-[border-color,box-shadow] duration-150 group relative overflow-hidden ${
         selected
-          ? 'border-[var(--accent-primary)] bg-[var(--accent-primary-soft)] shadow-[0_0_0_1px_var(--accent-primary),0_12px_36px_rgba(0,0,0,0.5)]'
-          : 'border-[var(--border-subtle)] bg-[var(--surface-card)] hover:border-[var(--border-default)] hover:shadow-[0_12px_32px_rgba(0,0,0,0.45)] hover:-translate-y-px'
+          ? 'border-[var(--accent-primary)] bg-[var(--surface-card)] shadow-[0_0_0_1px_var(--accent-primary),0_12px_36px_rgba(0,0,0,0.5)]'
+          : 'border-[var(--border-subtle)] bg-[var(--surface-card)] hover:border-[var(--border-default)]'
       }`}
     >
       <div
@@ -86,39 +87,39 @@ export function ServiceNode({ data }: NodeProps<ServiceNodeType>) {
         style={{ background: stateColor }}
       />
 
-      <div className="relative px-3.5 pt-3.5 pb-3">
-        <div className="flex items-center gap-3 mb-2.5">
+      <div className="relative">
+        <div className="flex items-center gap-2.5 px-3.5 pt-3 pb-2.5">
           <div
-            className="w-9 h-9 rounded-[var(--radius-md)] flex items-center justify-center flex-shrink-0 transition-all duration-200"
+            className="w-8 h-8 rounded-[7px] border border-[var(--border-subtle)] flex items-center justify-center flex-shrink-0 transition-all duration-200"
             style={{
-              background: selected && !brand ? typeColor : `${typeColor}1c`,
+              background: selected && !brand ? typeColor : `${typeColor}14`,
               color: selected && !brand ? 'var(--bg-void)' : typeColor,
             }}
           >
             {isTransient ? (
-              <Loader2 size={16} className="animate-spin" />
+              <Loader2 size={14} className="animate-spin" />
             ) : (
-              <ServiceIcon service={service} size={17} />
+              <ServiceIcon service={service} size={15} />
             )}
           </div>
           <div className="min-w-0 flex-1">
-            <h4 className="font-semibold text-[13px] leading-tight text-[var(--text-primary)] truncate tracking-tight">
+            <h4 className="font-semibold text-[12.5px] leading-tight text-[var(--text-primary)] truncate tracking-tight">
               {service.name}
             </h4>
-            <p className="text-[10.5px] text-[var(--text-tertiary)] truncate mt-0.5">
+            <p className="v-mono text-[10px] text-[var(--text-tertiary)] truncate mt-0.5">
               {service.type}
               {service.environment && service.environment !== 'production' ? ` · ${service.environment}` : ''}
             </p>
           </div>
           {replicas > 1 && (
-            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-[var(--surface-muted)] text-[10px] font-semibold text-[var(--text-secondary)]">
+            <span className="s-chip">
               <Layers size={9} />
               {replicas}
             </span>
           )}
         </div>
 
-        <div className="flex items-center gap-2 mb-2.5 px-2.5 py-1.5 rounded-[var(--radius-sm)] bg-[var(--surface-muted)]/60 border border-[var(--border-subtle)]/60 group/addr">
+        <div className="mx-3 mb-2.5 s-inset !rounded-[6px] flex items-center gap-2 px-2.5 py-1.5 group/addr">
           <ExternalLink size={10} className="text-[var(--text-tertiary)] flex-shrink-0" />
           {publicUrl ? (
             <a
@@ -126,12 +127,12 @@ export function ServiceNode({ data }: NodeProps<ServiceNodeType>) {
               target="_blank"
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
-              className="text-[10.5px] text-[var(--accent-primary)] truncate mono hover:underline"
+              className="v-mono text-[10.5px] text-[var(--accent-primary)] truncate hover:underline"
             >
               {publicUrl.replace(/^https?:\/\//, '')}
             </a>
           ) : (
-            <span className="text-[10.5px] text-[var(--text-secondary)] truncate mono" title="Internal network address">
+            <span className="v-mono text-[10.5px] text-[var(--text-secondary)] truncate" title="Internal network address">
               {internalAddr}
             </span>
           )}
@@ -148,15 +149,10 @@ export function ServiceNode({ data }: NodeProps<ServiceNodeType>) {
           </button>
         </div>
 
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <span className={`status-dot ${serviceStatusClass(service.status)}`} />
-            <span className="text-[10px] font-semibold tracking-[0.08em] uppercase" style={{ color: stateColor }}>
-              {statusLabel(service.status)}
-            </span>
-          </div>
+        <div className="flex items-center justify-between px-3.5 py-2 border-t border-[var(--border-subtle)]">
+          <SPill tone={statusTone(service.status)}>{statusLabel(service.status)}</SPill>
           {service.image && (
-            <span className="text-[9.5px] text-[var(--text-muted)] truncate mono max-w-[110px]" title={service.image}>
+            <span className="v-mono text-[9.5px] text-[var(--text-muted)] truncate max-w-[110px]" title={service.image}>
               {service.image}
             </span>
           )}
@@ -191,25 +187,25 @@ export function GroupNode({ id, data }: NodeProps<GroupNodeType>) {
 
   return (
     <div
-      className="h-full w-full rounded-[var(--radius-xl)] border-2 border-dashed transition-all duration-200 relative"
+      className="h-full w-full rounded-[12px] border border-dashed transition-all duration-200 relative"
       style={{
         borderColor: isHovered ? 'var(--border-strong)' : 'var(--border-default)',
-        background: isHovered ? 'var(--accent-primary-soft)' : 'rgba(255,255,255,0.02)',
+        background: isHovered ? 'var(--accent-primary-soft)' : 'var(--tint-03)',
       }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
       <div className="relative p-4">
         <div className="flex items-center gap-2.5">
-          <div
-            className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors duration-200"
+          <span
+            className="s-ibox !h-7 !w-7 transition-colors duration-200"
             style={{
-              background: isHovered ? 'var(--accent-primary-soft)' : 'var(--surface-card)',
-              color: isHovered ? 'var(--accent-primary)' : 'var(--text-tertiary)',
+              background: isHovered ? 'var(--accent-primary-soft)' : undefined,
+              color: isHovered ? 'var(--accent-primary)' : undefined,
             }}
           >
-            <Box size={14} />
-          </div>
+            <Box />
+          </span>
           {editing ? (
             <input
               autoFocus
@@ -227,7 +223,7 @@ export function GroupNode({ id, data }: NodeProps<GroupNodeType>) {
             />
           ) : (
             <h3
-              className="text-sm font-semibold text-[var(--text-primary)] tracking-tight"
+              className="font-headline text-sm font-semibold text-[var(--text-primary)] tracking-tight"
               onDoubleClick={(e) => {
                 e.stopPropagation();
                 setDraft(data.title);
@@ -241,7 +237,7 @@ export function GroupNode({ id, data }: NodeProps<GroupNodeType>) {
         </div>
 
         <p
-          className="text-[10px] text-[var(--text-tertiary)] mt-2 transition-opacity duration-200"
+          className="v-mono text-[10px] uppercase tracking-[0.12em] text-[var(--text-tertiary)] mt-2 transition-opacity duration-200"
           style={{ opacity: isHovered ? 1 : 0 }}
         >
           Drag services here to group them

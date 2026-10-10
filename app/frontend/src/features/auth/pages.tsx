@@ -13,6 +13,7 @@ import {
 } from '@/lib/auth-client';
 import { acceptInvite, getInvite } from '@/lib/api-client';
 import { useAuthSession } from '@/lib/use-auth-session';
+import { GhostBtn, QuietBtn } from '@/shared/components/sentry';
 
 function sanitizeRedirect(raw: string | null): string {
   if (!raw) {
@@ -54,9 +55,11 @@ function AuthCard({
 }) {
   return (
     <div className="w-full max-w-[400px]">
-      <div className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--surface-card)]/95 p-8 shadow-2xl shadow-black/50 backdrop-blur-xl">
-        <h2 className="font-headline text-xl font-semibold text-[var(--text-primary)]">{title}</h2>
-        <p className="mb-6 mt-1.5 text-sm text-[var(--text-secondary)]">{subtitle}</p>
+      <div className="s-card shadow-2xl shadow-black/50">
+        <div className="s-cardhead mb-1">
+          <h2 className="font-headline text-[17px] font-semibold text-[var(--text-primary)]">{title}</h2>
+        </div>
+        <p className="mb-6 v-mono text-[11.5px] text-[var(--text-tertiary)]">{subtitle}</p>
         {children}
       </div>
     </div>
@@ -67,19 +70,14 @@ function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="relative min-h-screen overflow-hidden bg-[var(--bg-void)]">
       <div className="subtle-grid absolute inset-0" />
-      <div className="ambient-glow" />
-      <div
-        className="absolute left-1/2 top-0 h-[420px] w-[720px] -translate-x-1/2 -translate-y-1/2 rounded-full"
-        style={{ background: 'radial-gradient(ellipse at center, rgba(180,227,74,0.10) 0%, transparent 65%)' }}
-      />
       <div className="relative flex min-h-screen flex-col items-center justify-center px-5 py-10">
         <div className="mb-8 flex flex-col items-center">
           <img src="/containr.svg" alt="Containr" className="h-14 w-14" />
           <span className="mt-4 font-headline text-2xl font-bold tracking-tight text-[var(--text-primary)]">Containr</span>
-          <span className="mt-1 text-xs text-[var(--text-muted)]">Self-hosted container platform</span>
+          <span className="mt-1 v-mono text-[11px] uppercase tracking-[0.14em] text-[var(--text-muted)]">Self-hosted container platform</span>
         </div>
         {children}
-        <p className="mt-8 text-center text-[11px] text-[var(--text-muted)]">
+        <p className="mt-8 text-center v-mono text-[10.5px] text-[var(--text-muted)]">
           Sessions are cookie-based · first account becomes platform owner
         </p>
       </div>
@@ -89,8 +87,8 @@ function AuthLayout({ children }: { children: React.ReactNode }) {
 
 function AuthErrorNotice({ message }: { message: string }) {
   return (
-    <div className="mb-4 flex items-start gap-2 rounded-[var(--radius-md)] border border-[var(--error-soft)] bg-[var(--error-soft)] px-3 py-2.5 text-sm text-[var(--error)]">
-      <AlertCircle size={16} className="mt-0.5 shrink-0" />
+    <div className="mb-4 s-inset flex items-start gap-2 !border-[var(--error)]/30 px-3 py-2.5 text-[12.5px] text-[var(--error)]">
+      <AlertCircle size={15} className="mt-0.5 shrink-0" />
       <span>{message}</span>
     </div>
   );
@@ -98,7 +96,7 @@ function AuthErrorNotice({ message }: { message: string }) {
 
 function AuthInfoNotice({ message }: { message: string }) {
   return (
-    <div className="mb-4 rounded-[var(--radius-md)] border border-[var(--success-soft)] bg-[var(--success-soft)] px-3 py-2.5 text-sm text-[var(--success)]">
+    <div className="mb-4 s-inset !border-[var(--success)]/30 px-3 py-2.5 text-[12.5px] text-[var(--success)]">
       {message}
     </div>
   );
@@ -206,15 +204,10 @@ export function SignInPage() {
             />
           </label>
 
-          <button
-            type="submit"
-            disabled={isSubmitting || sessionQuery.isPending}
-            className="mt-1 inline-flex h-10 w-full items-center justify-center gap-2 rounded-[var(--radius-md)] text-sm font-semibold text-[var(--accent-on)] shadow-lg transition-all disabled:cursor-not-allowed disabled:opacity-60"
-            style={{ background: 'var(--accent-primary)' }}
-          >
+          <GhostBtn type="submit" disabled={isSubmitting || sessionQuery.isPending} className="!h-10 w-full justify-center">
             {isSubmitting ? <Loader2 size={15} className="animate-spin" /> : <Mail size={15} />}
             Continue
-          </button>
+          </GhostBtn>
         </form>
 
         {providers.length > 0 ? (
@@ -227,24 +220,22 @@ export function SignInPage() {
 
             <div className="grid gap-2 sm:grid-cols-2">
               {providers.includes('github') ? (
-                <button
-                  type="button"
+                <QuietBtn
                   onClick={() => void signInWithGitHubProvider()}
-                  className="inline-flex h-10 items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--border-default)]"
+                  className="!h-10 justify-center text-sm"
                 >
                   <Github size={15} />
                   GitHub
-                </button>
+                </QuietBtn>
               ) : null}
               {providers.includes('google') ? (
-                <button
-                  type="button"
+                <QuietBtn
                   onClick={() => void signInWithGoogleProvider()}
-                  className="inline-flex h-10 items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--border-default)]"
+                  className="!h-10 justify-center text-sm"
                 >
                   <GoogleMark />
                   Google
-                </button>
+                </QuietBtn>
               ) : null}
             </div>
           </>
@@ -369,15 +360,10 @@ export function AcceptInvitePage() {
               />
             </label>
 
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="mt-1 inline-flex h-10 w-full items-center justify-center gap-2 rounded-[var(--radius-md)] text-sm font-semibold text-[var(--accent-on)] shadow-lg transition-all disabled:cursor-not-allowed disabled:opacity-60"
-              style={{ background: 'var(--accent-primary)' }}
-            >
+            <GhostBtn type="submit" disabled={isSubmitting} className="!h-10 w-full justify-center">
               {isSubmitting ? <Loader2 size={15} className="animate-spin" /> : <User2 size={15} />}
               Accept invite
-            </button>
+            </GhostBtn>
           </form>
         ) : null}
 
@@ -487,15 +473,10 @@ export function SignUpPage() {
             />
           </label>
 
-          <button
-            type="submit"
-            disabled={isSubmitting || sessionQuery.isPending}
-            className="mt-1 inline-flex h-10 w-full items-center justify-center gap-2 rounded-[var(--radius-md)] text-sm font-semibold text-[var(--accent-on)] shadow-lg transition-all disabled:cursor-not-allowed disabled:opacity-60"
-            style={{ background: 'var(--accent-primary)' }}
-          >
+          <GhostBtn type="submit" disabled={isSubmitting || sessionQuery.isPending} className="!h-10 w-full justify-center">
             {isSubmitting ? <Loader2 size={15} className="animate-spin" /> : <User2 size={15} />}
             Create Account
-          </button>
+          </GhostBtn>
         </form>
 
         <div className="mt-5 flex items-center justify-between text-xs text-[var(--text-secondary)]">

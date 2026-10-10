@@ -14,6 +14,7 @@ import { OperationsPage } from '@/features/operations/pages/OperationsPage';
 import { ActivityPage } from '@/features/activity/pages/ActivityPage';
 import { AdminPage } from '@/features/admin/pages/AdminPage';
 import { LandingPage } from '@/features/landing/LandingPage';
+import { DashboardPage } from '@/features/dashboard/pages/DashboardPage';
 import { useBranding } from '@/lib/use-branding';
 import {
   DocsPage,
@@ -92,7 +93,7 @@ function AdminRequired() {
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-[var(--bg-void)] px-6 text-center">
         <ShieldCheck size={32} className="text-[var(--error)]" />
         <div>
-          <h1 className="text-lg font-semibold text-[var(--text-primary)]">Admin access required</h1>
+          <h1 className="font-headline text-lg font-semibold text-[var(--text-primary)]">Admin access required</h1>
           <p className="mt-1 max-w-sm text-sm text-[var(--text-secondary)]">
             This area is restricted to the platform administrator.
           </p>
@@ -115,7 +116,7 @@ function NotFoundPage() {
     <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 px-6 text-center">
       <Compass size={32} className="text-[var(--text-tertiary)]" />
       <div>
-        <h1 className="text-lg font-semibold text-[var(--text-primary)]">Page not found</h1>
+        <h1 className="font-headline text-lg font-semibold text-[var(--text-primary)]">Page not found</h1>
         <p className="mt-1 max-w-sm text-sm text-[var(--text-secondary)]">
           The page you are looking for does not exist or was moved.
         </p>
@@ -135,7 +136,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <Routes>
-        <Route path="/" element={<LandingPage />} />
+        <Route path="/landing" element={<LandingPage />} />
         <Route path="/auth/sign-in" element={<SignInPage />} />
         <Route path="/auth/sign-up" element={<SignUpPage />} />
         <Route path="/auth/accept-invite" element={<AcceptInvitePage />} />
@@ -147,6 +148,7 @@ export default function App() {
         <Route path="/projects/:projectId/services/:serviceId" element={<ServiceDetailPage />} />
 
         <Route element={<PlatformShell />}>
+          <Route path="/" element={<DashboardPage />} />
           <Route path="/projects" element={<ProjectsPage />} />
           <Route path="/templates" element={<TemplatesPage />} />
           <Route path="/databases" element={<DatabasesPage />} />

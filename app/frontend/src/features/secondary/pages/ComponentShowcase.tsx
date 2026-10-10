@@ -34,8 +34,7 @@ export function ComponentShowcase() {
   };
 
   return (
-    <div className="min-h-screen p-8" style={{ background: '#16171c' }}>
-      <div className="ambient-glow" />
+    <div className="min-h-screen p-8" style={{ background: 'var(--bg-void)' }}>
       
       <div className="w-full relative z-10">
         {/* Header */}
@@ -91,25 +90,25 @@ export function ComponentShowcase() {
                 Line Charts
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="panel p-6">
-                  <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-4">
+                <div className="s-card p-6">
+                  <h3 className="s-t mb-4">
                     Basic Line Chart (CPU Style)
                   </h3>
                   <LineChart 
                     data={sampleLineData} 
-                    color="#b4e34a" 
+                    color="#38bdf8" 
                     height={120}
                     showDots={true}
                     smooth={true}
                   />
                 </div>
-                <div className="panel p-6">
-                  <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-4">
+                <div className="s-card p-6">
+                  <h3 className="s-t mb-4">
                     Line Chart (No Dots)
                   </h3>
                   <LineChart 
                     data={sampleLineData} 
-                    color="#7ab8ff" 
+                    color="var(--accent-primary)" 
                     height={120}
                     showDots={false}
                     smooth={true}
@@ -123,8 +122,8 @@ export function ComponentShowcase() {
                 Area Charts
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="panel p-6">
-                  <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-4">
+                <div className="s-card p-6">
+                  <h3 className="s-t mb-4">
                     Area Chart (Active Users Style)
                   </h3>
                   <LineAreaChart 
@@ -134,8 +133,8 @@ export function ComponentShowcase() {
                     height={150}
                   />
                 </div>
-                <div className="panel p-6">
-                  <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-4">
+                <div className="s-card p-6">
+                  <h3 className="s-t mb-4">
                     Area Chart (Success Color)
                   </h3>
                   <LineAreaChart 
@@ -153,20 +152,20 @@ export function ComponentShowcase() {
                 Multi-Line & Bar Charts
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="panel p-6">
-                  <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-4">
+                <div className="s-card p-6">
+                  <h3 className="s-t mb-4">
                     Multi-Line Chart (Performance Style)
                   </h3>
                   <MultiLineChart 
                     datasets={[
-                      { data: sampleLineData.map(v => v + 10), color: '#7ab8ff', fillOpacity: 0.15 },
-                      { data: sampleLineData, color: '#f2c94c', fillOpacity: 0.15 }
+                      { data: sampleLineData.map(v => v + 10), color: 'var(--accent-primary)', fillOpacity: 0.15 },
+                      { data: sampleLineData, color: 'var(--warning)', fillOpacity: 0.15 }
                     ]}
                     height={120}
                   />
                 </div>
-                <div className="panel p-6">
-                  <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-4">
+                <div className="s-card p-6">
+                  <h3 className="s-t mb-4">
                     Bar Chart (Timeline Style)
                   </h3>
                   <BarChart 
@@ -184,23 +183,23 @@ export function ComponentShowcase() {
                 Donut Charts
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="panel p-6 flex flex-col items-center">
-                  <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-4">
+                <div className="s-card p-6 flex flex-col items-center">
+                  <h3 className="s-t mb-4">
                     RAM Usage (65%)
                   </h3>
-                  <DonutChart percentage={65} color="#f2c94c" size={160} />
+                  <DonutChart percentage={65} color="var(--warning)" size={160} />
                 </div>
-                <div className="panel p-6 flex flex-col items-center">
-                  <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-4">
+                <div className="s-card p-6 flex flex-col items-center">
+                  <h3 className="s-t mb-4">
                     Disk Usage (82%)
                   </h3>
-                  <DonutChart percentage={82} color="#b4e34a" size={160} />
+                  <DonutChart percentage={82} color="#38bdf8" size={160} />
                 </div>
-                <div className="panel p-6 flex flex-col items-center">
-                  <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-4">
+                <div className="s-card p-6 flex flex-col items-center">
+                  <h3 className="s-t mb-4">
                     Network (45%)
                   </h3>
-                  <DonutChart percentage={45} color="#7ab8ff" size={160} />
+                  <DonutChart percentage={45} color="var(--accent-primary)" size={160} />
                 </div>
               </div>
             </section>
@@ -222,7 +221,7 @@ export function ComponentShowcase() {
                   status="good"
                   statusText="Good"
                   icon={<Cpu size={16} />}
-                  chart={<LineChart data={sampleLineData} color="#b4e34a" height={76} />}
+                  chart={<LineChart data={sampleLineData} color="#38bdf8" height={76} />}
                   onClick={() => handleCardClick('CPU Usage')}
                   animationDelay={0.04}
                 />
@@ -233,7 +232,7 @@ export function ComponentShowcase() {
                   status="average"
                   statusText="Average"
                   icon={<MemoryStick size={16} />}
-                  chart={<LineChart data={sampleLineData.map(v => v + 20)} color="#f2c94c" height={76} />}
+                  chart={<LineChart data={sampleLineData.map(v => v + 20)} color="var(--warning)" height={76} />}
                   onClick={() => handleCardClick('Memory')}
                   animationDelay={0.09}
                 />
@@ -276,7 +275,7 @@ export function ComponentShowcase() {
                   value="12.5K"
                   subtitle="Queries per minute"
                   icon={<Database size={16} />}
-                  chart={<LineAreaChart data={sampleAreaData.map(v => v + 10)} color="#7ab8ff" height={130} />}
+                  chart={<LineAreaChart data={sampleAreaData.map(v => v + 10)} color="var(--accent-primary)" height={130} />}
                   details={
                     <div className="flex items-center gap-3 text-xs">
                       <div className="flex items-center gap-1.5">
@@ -313,8 +312,8 @@ export function ComponentShowcase() {
                   upSpeed={10.4}
                   downSpeed={5.2}
                   datasets={[
-                    { data: sampleLineData.map(v => v + 20), color: '#7ab8ff', fillOpacity: 0.15 },
-                    { data: sampleLineData.map(v => v + 10), color: '#f2c94c', fillOpacity: 0.15 }
+                    { data: sampleLineData.map(v => v + 20), color: 'var(--accent-primary)', fillOpacity: 0.15 },
+                    { data: sampleLineData.map(v => v + 10), color: 'var(--warning)', fillOpacity: 0.15 }
                   ]}
                   onClick={() => handleCardClick('Performance')}
                   animationDelay={0.09}
@@ -331,7 +330,7 @@ export function ComponentShowcase() {
               <h2 className="text-xl font-semibold text-[var(--text-primary)] mb-4">
                 Badges & Indicators
               </h2>
-              <div className="panel p-6 space-y-4">
+              <div className="s-card p-6 space-y-4">
                 <div className="flex items-center gap-4 flex-wrap">
                   <span className="badge-active">
                     <span className="live-dot" />
@@ -358,7 +357,7 @@ export function ComponentShowcase() {
               <h2 className="text-xl font-semibold text-[var(--text-primary)] mb-4">
                 Buttons
               </h2>
-              <div className="panel p-6 space-y-4">
+              <div className="s-card p-6 space-y-4">
                 <div className="flex items-center gap-4 flex-wrap">
                   <button className="btn-stop">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
@@ -387,7 +386,7 @@ export function ComponentShowcase() {
               <h2 className="text-xl font-semibold text-[var(--text-primary)] mb-4">
                 Pills & Tabs
               </h2>
-              <div className="panel p-6 space-y-6">
+              <div className="s-card p-6 space-y-6">
                 <div>
                   <p className="text-sm text-[var(--text-secondary)] mb-3">Pill Group</p>
                   <div className="pill-group">
@@ -420,9 +419,9 @@ export function ComponentShowcase() {
               <h2 className="text-xl font-semibold text-[var(--text-primary)] mb-4">
                 Search & Input
               </h2>
-              <div className="panel p-6 space-y-4">
+              <div className="s-card p-6 space-y-4">
                 <div className="search-box">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b6e7d" strokeWidth="2" strokeLinecap="round">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" strokeWidth="2" strokeLinecap="round">
                     <circle cx="11" cy="11" r="8"/>
                     <line x1="21" y1="21" x2="16.65" y2="16.65"/>
                   </svg>
@@ -435,7 +434,7 @@ export function ComponentShowcase() {
               <h2 className="text-xl font-semibold text-[var(--text-primary)] mb-4">
                 Toast Notifications
               </h2>
-              <div className="panel p-6">
+              <div className="s-card p-6">
                 <div className="flex gap-3 flex-wrap">
                   <button
                     onClick={() => showToast('Operation completed successfully!', 'success')}

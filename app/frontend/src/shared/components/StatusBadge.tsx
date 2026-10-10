@@ -1,4 +1,5 @@
 import { Check, X, Loader2, Box, HelpCircle, type LucideIcon } from 'lucide-react';
+import type { PillTone } from './sentry-utils';
 
 type ServiceStatus = 'running' | 'building' | 'failed' | 'stopped' | 'unknown';
 
@@ -12,43 +13,29 @@ interface StatusBadgeProps {
 
 const statusConfig: Record<
   ServiceStatus,
-  { color: string; bg: string; Icon: LucideIcon; label: string; animate?: boolean; glow?: string }
+  { tone: PillTone; Icon: LucideIcon; label: string; animate?: boolean }
 > = {
-  running: {
-    color: 'var(--success)',
-    bg: 'var(--success-soft)',
-    Icon: Check,
-    label: 'Active',
-    animate: true,
-    glow: 'rgba(61, 214, 140, 0.4)',
-  },
-  building: {
-    color: 'var(--warning)',
-    bg: 'var(--warning-soft)',
-    Icon: Loader2,
-    label: 'Building',
-    animate: true,
-    glow: 'rgba(255, 112, 67, 0.4)',
-  },
-  failed: {
-    color: 'var(--error)',
-    bg: 'var(--error-soft)',
-    Icon: X,
-    label: 'Failed',
-    glow: 'rgba(255, 107, 91, 0.4)',
-  },
-  stopped: {
-    color: 'var(--text-muted)',
-    bg: 'var(--surface-muted)',
-    Icon: Box,
-    label: 'Stopped',
-  },
-  unknown: {
-    color: 'var(--text-muted)',
-    bg: 'var(--surface-muted)',
-    Icon: HelpCircle,
-    label: 'Unknown',
-  },
+  running: { tone: 'ok', Icon: Check, label: 'Active' },
+  building: { tone: 'warn', Icon: Loader2, label: 'Building', animate: true },
+  failed: { tone: 'err', Icon: X, label: 'Failed' },
+  stopped: { tone: 'off', Icon: Box, label: 'Stopped' },
+  unknown: { tone: 'off', Icon: HelpCircle, label: 'Unknown' },
+};
+
+const TONE_CLS: Record<PillTone, string> = {
+  ok: 'text-[var(--success)] bg-[var(--success-soft)] border-[color-mix(in_srgb,var(--success)_16%,transparent)]',
+  warn: 'text-[var(--warning)] bg-[var(--warning-soft)] border-[color-mix(in_srgb,var(--warning)_16%,transparent)]',
+  err: 'text-[var(--error)] bg-[var(--error-soft)] border-[color-mix(in_srgb,var(--error)_16%,transparent)]',
+  info: 'text-[var(--info)] bg-[var(--info-soft)] border-[color-mix(in_srgb,var(--info)_16%,transparent)]',
+  off: 'text-[var(--text-tertiary)] bg-[var(--tint-06)] border-[var(--border-subtle)]',
+};
+
+const TONE_DOT: Record<PillTone, string> = {
+  ok: 'var(--success)',
+  warn: 'var(--warning)',
+  err: 'var(--error)',
+  info: 'var(--info)',
+  off: 'var(--text-tertiary)',
 };
 
 export function StatusBadge({
@@ -62,36 +49,26 @@ export function StatusBadge({
   const { Icon } = config;
 
   const sizeClasses = {
-    sm: 'px-2 py-0.5 text-[10px] gap-1.5',
-    md: 'px-2.5 py-1 text-xs gap-1.5',
-    lg: 'px-3 py-1.5 text-sm gap-2',
+    sm: 'px-2 py-[2px] text-[10px] gap-1.5',
+    md: 'px-2 py-[3.5px] text-[10.5px] gap-1.5',
+    lg: 'px-2.5 py-1 text-[11.5px] gap-1.5',
   };
 
-  const iconSizes = {
-    sm: 10,
-    md: 12,
-    lg: 14,
-  };
+  const iconSizes = { sm: 10, md: 11, lg: 12 };
 
   return (
     <div
-      className={`inline-flex items-center rounded-full font-bold uppercase tracking-wider ring-1 ring-inset transition-all duration-200 ${sizeClasses[size]} ${className}`}
-      style={{ 
-        background: config.bg, 
-        color: config.color, 
-        borderColor: `${config.color}20`,
-        boxShadow: status === 'running' && pulse ? `0 0 12px ${config.glow}` : 'none',
-      }}
+      className={`inline-flex items-center rounded-[5px] border font-medium transition-colors ${sizeClasses[size]} ${TONE_CLS[config.tone]} ${className}`}
     >
       {status === 'running' && pulse && (
         <span
           className="w-1.5 h-1.5 rounded-full live-pulse"
-          style={{ background: config.color, boxShadow: `0 0 6px ${config.color}` }}
+          style={{ background: TONE_DOT[config.tone] }}
         />
       )}
       <Icon
         size={iconSizes[size]}
-        className={config.animate && status === 'building' ? 'animate-spin' : ''}
+        className={config.animate ? 'animate-spin' : ''}
       />
       {showLabel && <span>{config.label}</span>}
     </div>
@@ -106,27 +83,19 @@ interface LiveIndicatorProps {
 
 export function LiveIndicator({ isLive, label, size = 'md' }: LiveIndicatorProps) {
   const sizeClasses = {
-    sm: 'px-2 py-0.5 text-[10px] gap-1.5',
-    md: 'px-2.5 py-1 text-xs gap-2',
-    lg: 'px-3 py-1.5 text-sm gap-2',
+    sm: 'px-2 py-[2px] text-[10px] gap-1.5',
+    md: 'px-2 py-[3.5px] text-[10.5px] gap-1.5',
+    lg: 'px-2.5 py-1 text-[11.5px] gap-1.5',
   };
+  const tone: PillTone = isLive ? 'ok' : 'off';
 
   return (
-    <div 
-      className={`inline-flex items-center rounded-full font-bold uppercase tracking-wider ring-1 ring-inset transition-all duration-300 ${sizeClasses[size]}`}
-      style={{
-        background: isLive ? 'var(--success-soft)' : 'var(--surface-muted)',
-        color: isLive ? 'var(--success)' : 'var(--text-muted)',
-        borderColor: isLive ? 'rgba(61, 214, 140, 0.2)' : 'rgba(255, 255, 255, 0.05)',
-        boxShadow: isLive ? '0 0 12px rgba(61, 214, 140, 0.3)' : 'none',
-      }}
+    <div
+      className={`inline-flex items-center rounded-[5px] border font-medium transition-colors ${sizeClasses[size]} ${TONE_CLS[tone]}`}
     >
       <span
         className={`w-1.5 h-1.5 rounded-full ${isLive ? 'live-pulse' : ''}`}
-        style={{ 
-          background: isLive ? 'var(--success)' : 'var(--text-muted)',
-          boxShadow: isLive ? '0 0 6px var(--success)' : 'none',
-        }}
+        style={{ background: TONE_DOT[tone] }}
       />
       {label || (isLive ? 'Active' : 'Stopped')}
     </div>

@@ -135,6 +135,17 @@ function CommandPaletteContent({
       },
     },
     {
+      id: 'goto-dashboard',
+      label: 'Go to Dashboard',
+      icon: LayoutGrid,
+      shortcut: 'H',
+      category: 'Navigate',
+      action: () => {
+        onNavigate?.('dashboard');
+        onClose();
+      },
+    },
+    {
       id: 'goto-canvas',
       label: 'Go to Canvas',
       icon: LayoutGrid,
@@ -205,7 +216,7 @@ function CommandPaletteContent({
       />
       <div className="absolute left-1/2 top-[20%] -translate-x-1/2 w-full max-w-xl">
         <Command
-          className="panel overflow-hidden"
+          className="s-card !p-0 overflow-hidden shadow-2xl shadow-black/50"
           loop
         >
           <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--border-subtle)]">
@@ -228,7 +239,7 @@ function CommandPaletteContent({
 
             {Object.entries(groupedCommands).map(([category, items]) => (
               <Command.Group key={category} heading={category} className="mb-2">
-                <div className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">
+                <div className="px-2 py-1.5 v-mono text-[10px] uppercase tracking-[0.14em] text-[var(--text-muted)]">
                   {category}
                 </div>
                 {items.map((item) => {
@@ -238,9 +249,9 @@ function CommandPaletteContent({
                       key={item.id}
                       value={item.label}
                       onSelect={item.action}
-                      className="flex items-center gap-3 px-3 py-2.5 rounded-[var(--radius-md)] cursor-pointer text-[var(--text-secondary)] hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)] aria-selected:bg-[var(--accent-primary-soft)] aria-selected:text-[var(--accent-primary)] transition-colors"
+                      className="flex items-center gap-3 px-3 py-2 rounded-[var(--radius-md)] cursor-pointer text-[var(--text-secondary)] hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)] aria-selected:bg-[var(--accent-primary-soft)] aria-selected:text-[var(--accent-primary)] transition-colors"
                     >
-                      <Icon size={18} className="text-[var(--text-muted)]" />
+                      <span className="s-ibox !h-7 !w-7"><Icon /></span>
                       <div className="flex-1">
                         <div className="text-sm font-medium">{item.label}</div>
                         {item.description && (

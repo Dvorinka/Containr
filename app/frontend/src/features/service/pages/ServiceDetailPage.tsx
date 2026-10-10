@@ -70,7 +70,6 @@ import {
   Trash2,
   ClipboardPaste,
   Save,
-  Check,
   X,
   Loader2,
   Clock,
@@ -82,13 +81,21 @@ import {
   Sparkles,
   RefreshCw,
   Box,
-  Ban,
   Play,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   GitPullRequest,
   ExternalLink,
+  Rocket,
   Terminal,
 } from 'lucide-react';
+import {
+  GhostBtn,
+  QuietBtn,
+  SPill,
+} from '@/shared/components/sentry';
+import { statusTone } from '@/shared/components/sentry-utils';
 
 type ServiceSection = 'metrics' | 'logs' | 'config' | 'variables' | 'cron' | 'previews' | 'scaling' | 'console' | 'settings';
 
@@ -115,28 +122,18 @@ function metricStatus(percent: number): 'good' | 'average' | 'warning' {
 const statusLabel = { good: 'Good', average: 'Average', warning: 'High' } as const;
 
 function StatusBadge({ status }: { status: string }) {
-  const config = {
-    running: { color: 'var(--success)', bg: 'var(--success-soft)', Icon: Check, animate: false },
-    deployed: { color: 'var(--success)', bg: 'var(--success-soft)', Icon: Check, animate: false },
-    failed: { color: 'var(--error)', bg: 'var(--error-soft)', Icon: X, animate: false },
-    building: { color: 'var(--warning)', bg: 'var(--warning-soft)', Icon: Loader2, animate: true },
-    pending: { color: 'var(--warning)', bg: 'var(--warning-soft)', Icon: Loader2, animate: true },
-    queued: { color: 'var(--warning)', bg: 'var(--warning-soft)', Icon: Clock, animate: false },
-    rolling_back: { color: 'var(--warning)', bg: 'var(--warning-soft)', Icon: RefreshCw, animate: true },
-    cancelled: { color: 'var(--text-tertiary)', bg: 'var(--surface-muted)', Icon: Ban, animate: false },
-    stopped: { color: 'var(--text-tertiary)', bg: 'var(--surface-muted)', Icon: Box, animate: false },
-  }[status] || { color: 'var(--text-tertiary)', bg: 'var(--surface-muted)', Icon: Box, animate: false };
-
-  const { Icon } = config;
-
+  const Icon = {
+    building: Loader2,
+    pending: Loader2,
+    rolling_back: RefreshCw,
+  }[status];
   return (
-    <div 
-      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium"
-      style={{ background: config.bg, color: config.color }}
-    >
-      <Icon size={12} className={config.animate ? 'animate-spin' : ''} />
-      {status.replace('_', ' ')}
-    </div>
+    <SPill tone={statusTone(status)}>
+      <span className="inline-flex items-center gap-1.5">
+        {Icon && <Icon size={11} className="animate-spin" />}
+        {status.replace('_', ' ')}
+      </span>
+    </SPill>
   );
 }
 
@@ -627,15 +624,15 @@ export function ServiceDetailPage() {
   if (!isDemoMode && serviceQuery.isError) {
     return (
       <div className="min-h-screen flex items-center justify-center p-8">
-        <div className="panel p-8 text-center max-w-md">
+        <div className="s-card p-8 text-center max-w-md">
           <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-[var(--error-soft)] flex items-center justify-center">
             <X size={24} className="text-[var(--error)]" />
           </div>
-          <p className="text-lg font-medium text-[var(--text-primary)]">Failed to load service</p>
+          <p className="font-headline text-lg font-medium text-[var(--text-primary)]">Failed to load service</p>
           <p className="mt-2 text-sm text-[var(--text-secondary)]">{(serviceQuery.error as Error).message}</p>
           <button
             onClick={() => serviceQuery.refetch()}
-            className="mt-6 px-4 py-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-sm font-medium hover:border-[var(--border-default)] transition-colors"
+            className="s-btn-quiet"
           >
             Retry
           </button>
@@ -647,132 +644,102 @@ export function ServiceDetailPage() {
   if (!service || !project) {
     return (
       <div className="min-h-screen flex items-center justify-center p-8">
-        <div className="panel p-8 text-center max-w-md">
+        <div className="s-card p-8 text-center max-w-md">
           <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-[var(--surface-muted)] flex items-center justify-center">
             <Box size={24} className="text-[var(--text-tertiary)]" />
           </div>
-          <p className="text-lg font-medium text-[var(--text-primary)]">Service not found</p>
+          <p className="font-headline text-lg font-medium text-[var(--text-primary)]">Service not found</p>
           <p className="mt-2 text-sm text-[var(--text-secondary)]">This service may have been deleted.</p>
         </div>
       </div>
     );
   }
 
+  const canOperate = service.status === 'running' || service.status === 'degraded';
+
   return (
     <div className="min-h-screen relative">
-      {/* Breadcrumb - self.html exact match */}
-      <div 
-        className="flex items-center"
-        style={{ 
-          gap: '6px', 
-          padding: '14px 24px 10px',
-          color: 'var(--text-tertiary)',
-          fontSize: '13px'
-        }}
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points="15 18 9 12 15 6"/>
-        </svg>
-        <button 
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-1.5 px-6 pt-4 pb-1.5 text-[12.5px] text-[var(--text-tertiary)]">
+        <ChevronLeft size={14} />
+        <button
           onClick={() => navigate(isDemoMode ? `/projects/${project.id}?demo=1` : `/projects/${project.id}`)}
-          style={{ color: 'var(--text-tertiary)', textDecoration: 'none' }}
           className="hover:text-[var(--text-secondary)] transition-colors"
         >
           Servers
         </button>
-        <span style={{ opacity: 0.4 }}>/</span>
-        <span style={{ color: 'var(--text-secondary)' }}>{service.name}</span>
+        <span className="opacity-40">/</span>
+        <span className="text-[var(--text-secondary)]">{service.name}</span>
       </div>
 
-      {/* Project Header - self.html exact match */}
-      <div className="flex items-center" style={{ padding: '0 24px 18px' }}>
+      {/* Service header */}
+      <div className="flex items-center px-6 pb-4.5 flex-wrap gap-y-3">
         <div
-          className="rounded-[13px] flex items-center justify-center flex-shrink-0"
-          style={{
-            width: '46px',
-            height: '46px',
-            background: `${serviceAccent(service)}1f`,
-            color: serviceAccent(service),
-            marginRight: '14px'
-          }}
+          className="flex h-[46px] w-[46px] flex-none items-center justify-center rounded-xl border border-[var(--border-default)] bg-[var(--bg-overlay)]"
+          style={{ color: serviceAccent(service) }}
         >
           <ServiceIcon service={service} size={22} />
         </div>
-        <div>
-          <div className="flex items-center" style={{ gap: '10px' }}>
-            <span style={{ fontSize: '20px', fontWeight: 800, letterSpacing: '-0.5px', color: 'var(--text-primary)' }}>{service.name}</span>
-            <span
-              className={`badge-${service.status === 'running' ? 'active' : service.status === 'degraded' ? 'degraded' : 'stopped'}`}
-            >
-              {service.status === 'running' && <span className="live-dot" />}
-              {service.status === 'running' ? 'Active' : service.status === 'degraded' ? 'Degraded' : service.status === 'sleeping' ? 'Sleeping' : 'Stopped'}
+        <div className="ml-3.5">
+          <div className="flex items-center gap-2.5">
+            <span className="font-headline text-[21px] font-bold tracking-[-0.02em] text-[var(--text-primary)]">
+              {service.name}
             </span>
+            <SPill tone={statusTone(service.status === 'running' ? 'active' : service.status)}>
+              {service.status === 'running' ? 'Active' : service.status === 'degraded' ? 'Degraded' : service.status === 'sleeping' ? 'Sleeping' : 'Stopped'}
+            </SPill>
           </div>
-          <div className="flex items-center" style={{ gap: '16px', marginTop: '4px' }}>
+          <div className="mt-1 flex items-center gap-4">
             {(service.publicUrl || service.domain) && (
               <a
                 href={service.publicUrl ?? `https://${service.domain}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center hover:text-[var(--text-secondary)] transition-colors"
-                style={{ color: 'var(--text-tertiary)', fontSize: '12.5px', textDecoration: 'none', gap: '4px' }}
+                className="v-mono flex items-center gap-1 text-[11.5px] text-[var(--text-tertiary)] no-underline transition-colors hover:text-[var(--text-secondary)]"
               >
                 {service.publicUrl ?? `https://${service.domain}`}
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-                  <polyline points="15 3 21 3 21 9"/>
-                  <line x1="10" y1="14" x2="21" y2="3"/>
-                </svg>
+                <ExternalLink size={10.5} />
               </a>
             )}
-            <button 
+            <button
               onClick={() => navigate(isDemoMode ? `/projects/${project.id}?demo=1` : `/projects/${project.id}`)}
-              className="flex items-center hover:text-[var(--text-secondary)] transition-colors"
-              style={{ color: 'var(--text-tertiary)', fontSize: '12.5px', textDecoration: 'none', gap: '4px' }}
+              className="flex items-center gap-1 text-[12px] text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-secondary)]"
             >
               Project Information
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                <polyline points="9 18 15 12 9 6"/>
-              </svg>
+              <ChevronRight size={11} />
             </button>
           </div>
         </div>
-        <div className="ml-auto flex" style={{ gap: '10px' }}>
+        <div className="ml-auto flex items-center gap-2.5">
           {!isDemoMode && signedIn && (
             <>
-              <button
+              <QuietBtn
                 onClick={() => stopMutation.mutate()}
-                disabled={stopMutation.isPending || (service.status !== 'running' && service.status !== 'degraded')}
-                className={`btn-stop ${service.status !== 'running' && service.status !== 'degraded' ? 'disabled' : ''}`}
+                disabled={stopMutation.isPending || !canOperate}
               >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-                  <circle cx="12" cy="12" r="10"/>
-                  <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/>
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none" />
                 </svg>
-                {stopMutation.isPending ? 'STOPPING…' : 'STOP'}
-              </button>
-              <button
+                {stopMutation.isPending ? 'Stopping…' : 'Stop'}
+              </QuietBtn>
+              <QuietBtn
                 onClick={() => restartMutation.mutate()}
-                disabled={restartMutation.isPending || (service.status !== 'running' && service.status !== 'degraded')}
-                className={`btn-restart ${service.status !== 'running' && service.status !== 'degraded' ? 'disabled' : ''}`}
+                disabled={restartMutation.isPending || !canOperate}
               >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-                  <polyline points="1 4 1 10 7 10"/>
-                  <path d="M3.51 15a9 9 0 1 0 .49-4.5"/>
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                  <polyline points="1 4 1 10 7 10" />
+                  <path d="M3.51 15a9 9 0 1 0 .49-4.5" />
                 </svg>
-                {restartMutation.isPending ? 'RESTARTING…' : 'RESTART'}
-              </button>
-              <button
+                {restartMutation.isPending ? 'Restarting…' : 'Restart'}
+              </QuietBtn>
+              <GhostBtn
                 onClick={() => deployMutation.mutate('manual')}
                 disabled={deployMutation.isPending}
-                className={`btn-restart ${deployMutation.isPending ? 'disabled' : ''}`}
               >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-                  <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/>
-                  <path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/>
-                </svg>
-                {deployMutation.isPending ? 'DEPLOYING…' : 'DEPLOY'}
-              </button>
+                <Rocket size={13} />
+                {deployMutation.isPending ? 'Deploying…' : 'Deploy'}
+              </GhostBtn>
             </>
           )}
         </div>
@@ -781,11 +748,9 @@ export function ServiceDetailPage() {
       {/* Demo Mode Banner */}
       {isDemoMode && (
         <div className="w-full px-8 py-4">
-          <div className="px-4 py-3 rounded-[var(--radius-md)] border border-[var(--warning-soft)] bg-[var(--warning-soft)]/50">
-            <div className="flex items-center gap-2 text-sm text-[var(--warning)]">
-              <Sparkles size={16} />
-              <span>Demo mode active — using sample data for preview</span>
-            </div>
+          <div className="s-inset flex items-center gap-2 text-xs text-[var(--warning)]">
+            <Sparkles size={13} />
+            Demo mode active — using sample data for preview
           </div>
         </div>
       )}
@@ -931,7 +896,7 @@ export function ServiceDetailPage() {
           <div className="space-y-6">
             {/* Metrics Grid with enhanced cards */}
             {!isDemoMode && !hasLiveTelemetry && (
-              <div className="panel p-8 text-center">
+              <div className="s-card p-8 text-center">
                 <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-[var(--surface-muted)] flex items-center justify-center">
                   <Activity size={22} className="text-[var(--text-tertiary)]" />
                 </div>
@@ -945,20 +910,14 @@ export function ServiceDetailPage() {
             )}
             {(isDemoMode || hasLiveTelemetry) && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="panel p-5 group hover:border-[var(--accent-primary)]/30 transition-all duration-300">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="card-icon">
-                      <Cpu size={18} />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-[var(--text-primary)]">CPU Timeline</p>
-                      <p className="text-xs text-[var(--text-tertiary)]">
-                        {isDemoMode ? 'Last 24 intervals' : 'Live samples · every 5s'}
-                      </p>
-                    </div>
-                  </div>
-                </div>
+              <div className="s-card p-5 group hover:border-[var(--accent-primary)]/30 transition-all duration-300">
+                <div className="s-cardhead !mb-4">
+  <span className="s-ibox"><Cpu /></span>
+  <div>
+    <span className="s-t">CPU Timeline</span>
+    <p className="v-mono text-[10.5px] text-[var(--text-tertiary)] mt-0.5">{isDemoMode ? 'Last 24 intervals' : 'Live samples · every 5s'}</p>
+  </div>
+</div>
                 <div className="flex h-32 items-end gap-1">
                   {isDemoMode
                     ? Array.from({ length: 24 }).map((_, i) => {
@@ -986,20 +945,14 @@ export function ServiceDetailPage() {
                 </div>
               </div>
 
-              <div className="panel p-5 group hover:border-[var(--success)]/30 transition-all duration-300">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="card-icon">
-                      <MemoryStick size={18} />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-[var(--text-primary)]">Memory Timeline</p>
-                      <p className="text-xs text-[var(--text-tertiary)]">
-                        {isDemoMode ? 'Last 24 intervals' : 'Live samples · every 5s'}
-                      </p>
-                    </div>
-                  </div>
-                </div>
+              <div className="s-card p-5 group hover:border-[var(--success)]/30 transition-all duration-300">
+                <div className="s-cardhead !mb-4">
+  <span className="s-ibox"><MemoryStick /></span>
+  <div>
+    <span className="s-t">Memory Timeline</span>
+    <p className="v-mono text-[10.5px] text-[var(--text-tertiary)] mt-0.5">{isDemoMode ? 'Last 24 intervals' : 'Live samples · every 5s'}</p>
+  </div>
+</div>
                 <div className="flex h-32 items-end gap-1">
                   {isDemoMode
                     ? Array.from({ length: 24 }).map((_, i) => {
@@ -1031,16 +984,14 @@ export function ServiceDetailPage() {
 
             {/* Instance list — real container states */}
             {!isDemoMode && hasLiveTelemetry && (
-              <div className="panel p-5">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="card-icon">
-                    <Layers size={18} />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-[var(--text-primary)]">Instances</p>
-                    <p className="text-xs text-[var(--text-tertiary)]">Containers backing this service</p>
-                  </div>
-                </div>
+              <div className="s-card p-5">
+                <div className="s-cardhead !mb-4">
+  <span className="s-ibox"><Layers /></span>
+  <div>
+    <span className="s-t">Instances</span>
+    <p className="v-mono text-[10.5px] text-[var(--text-tertiary)] mt-0.5">Containers backing this service</p>
+  </div>
+</div>
                 <div className="space-y-2">
                   {liveMetrics!.instances.map((instance) => (
                     <div
@@ -1049,11 +1000,11 @@ export function ServiceDetailPage() {
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <div className={`w-2 h-2 rounded-full flex-shrink-0 ${instance.state === 'running' ? 'bg-[var(--success)]' : 'bg-[var(--text-muted)]'}`} />
-                        <span className="mono text-xs text-[var(--text-primary)] truncate">{instance.name}</span>
+                        <span className="v-mono text-xs text-[var(--text-primary)] truncate">{instance.name}</span>
                       </div>
                       <div className="flex items-center gap-4 text-xs text-[var(--text-tertiary)] flex-shrink-0">
-                        <span className="mono">{instance.cpu_percent.toFixed(1)}% CPU</span>
-                        <span className="mono">{formatBytes(instance.memory_usage_bytes)}</span>
+                        <span className="v-mono">{instance.cpu_percent.toFixed(1)}% CPU</span>
+                        <span className="v-mono">{formatBytes(instance.memory_usage_bytes)}</span>
                         <span>{instance.started_at ? `up ${formatRelative(instance.started_at).replace(' ago', '')}` : instance.state}</span>
                       </div>
                     </div>
@@ -1064,20 +1015,18 @@ export function ServiceDetailPage() {
 
             {/* Domain & Networking Panel */}
             {service.status === 'running' && (
-              <div className="panel p-5">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
-                    <Zap size={18} className="text-[var(--accent-primary)]" />
-                  </div>
+              <div className="s-card p-5">
+                <div className="s-cardhead !mb-4">
+                  <span className="s-ibox"><Zap /></span>
                   <div>
-                    <p className="text-sm font-medium text-[var(--text-primary)]">Networking</p>
-                    <p className="text-xs text-[var(--text-tertiary)]">Public endpoints and ports</p>
+                    <span className="s-t">Networking</span>
+                    <p className="v-mono text-[10.5px] text-[var(--text-tertiary)] mt-0.5">Public endpoints and ports</p>
                   </div>
                   {runtimeQuery.data?.health === 'healthy' && (
-                    <span className="ml-auto v-st v-st-ok">HEALTHY</span>
+                    <span className="ml-auto"><SPill tone="ok">HEALTHY</SPill></span>
                   )}
                   {runtimeQuery.data?.health === 'unhealthy' && (
-                    <span className="ml-auto v-st v-st-fail">UNHEALTHY</span>
+                    <span className="ml-auto"><SPill tone="err">UNHEALTHY</SPill></span>
                   )}
                 </div>
 
@@ -1092,7 +1041,7 @@ export function ServiceDetailPage() {
                         href={`https://${service.domain}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="mono text-xs text-[var(--accent-primary)] hover:underline"
+                        className="v-mono text-xs text-[var(--accent-primary)] hover:underline"
                       >
                         {service.domain}
                       </a>
@@ -1108,7 +1057,7 @@ export function ServiceDetailPage() {
                         href={url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="mono text-xs text-[var(--accent-primary)] hover:underline"
+                        className="v-mono text-xs text-[var(--accent-primary)] hover:underline"
                       >
                         {url.replace(/^https?:\/\//, '')}
                       </a>
@@ -1119,7 +1068,7 @@ export function ServiceDetailPage() {
                       <div className="w-2 h-2 rounded-full bg-[var(--accent-secondary)]" />
                       <span className="text-xs text-[var(--text-secondary)]">Internal</span>
                     </div>
-                    <span className="mono text-xs text-[var(--text-primary)]">{service.name}{service.port ? `:${service.port}` : ''}</span>
+                    <span className="v-mono text-xs text-[var(--text-primary)]">{service.name}{service.port ? `:${service.port}` : ''}</span>
                   </div>
                 </div>
                 {!service.domain && (runtimeQuery.data?.urls ?? []).length === 0 && (
@@ -1133,43 +1082,39 @@ export function ServiceDetailPage() {
         )}
 
         {activeSection === 'logs' && (
-          <div className="panel p-6">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
-                  <FileText size={20} className="text-[var(--accent-primary)]" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-semibold text-[var(--text-primary)]">Service Logs</h2>
-                  <p className="text-sm text-[var(--text-secondary)]">Container stdout/stderr output</p>
-                </div>
+          <div className="s-card">
+            <div className="s-cardhead">
+              <span className="s-ibox"><FileText /></span>
+              <div>
+                <div className="s-t">Service Logs</div>
+                <div className="mt-0.5 text-[11px] text-[var(--text-tertiary)]">Container stdout/stderr output</div>
               </div>
               {!isDemoMode && (
-                <div className="flex items-center gap-3">
+                <div className="s-trail">
                   <select
                     value={logTail}
                     onChange={(e) => setLogTail(e.target.value)}
-                    className="h-9 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm"
+                    className="s-chip !cursor-pointer appearance-none"
                   >
                     <option value="50">50 lines</option>
                     <option value="100">100 lines</option>
                     <option value="250">250 lines</option>
                   </select>
-                  <button
+                  <QuietBtn
                     onClick={() => {
                       serviceLogsQuery.refetch();
                       if (logsDeployment?.id) deploymentLogsQuery.refetch();
                     }}
-                    className="flex items-center gap-2 h-9 px-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-sm font-medium hover:border-[var(--border-default)] transition-colors"
                   >
-                    <RefreshCw size={14} />
+                    <RefreshCw size={13} />
                     Refresh
-                  </button>
+                  </QuietBtn>
                 </div>
               )}
             </div>
+            <div className="px-4 pb-4">
 
-            <div className="mono rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-void)] p-4 text-xs text-[var(--text-secondary)] max-h-[500px] overflow-auto">
+            <div className="v-mono rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-void)] p-4 text-xs text-[var(--text-secondary)] max-h-[500px] overflow-auto">
               {isDemoMode ? (
                 <div className="space-y-1">
                   {Array.from({ length: 15 }).map((_, i) => (
@@ -1208,7 +1153,7 @@ export function ServiceDetailPage() {
             </div>
 
             {!isDemoMode && logsDeployment && (
-              <div className="mt-6 panel-soft p-4">
+              <div className="mt-6 s-inset">
                 <div className="flex items-center justify-between mb-3">
                   <p className="text-xs uppercase tracking-wider text-[var(--text-muted)]">
                     {logsDeployment.id === latestDeployment?.id ? 'Latest Deployment' : 'Deployment'}
@@ -1225,8 +1170,8 @@ export function ServiceDetailPage() {
                     <StatusBadge status={logsDeployment.status} />
                   </div>
                 </div>
-                <p className="text-xs text-[var(--text-tertiary)] mono">{logsDeployment.id}</p>
-                <pre className="mono mt-3 max-h-40 overflow-auto whitespace-pre-wrap break-all text-xs text-[var(--text-secondary)]">
+                <p className="text-xs text-[var(--text-tertiary)] v-mono">{logsDeployment.id}</p>
+                <pre className="v-mono mt-3 max-h-40 overflow-auto whitespace-pre-wrap break-all text-xs text-[var(--text-secondary)]">
                   {deploymentLogsQuery.isLoading
                     ? 'Loading...'
                     : deploymentLogsQuery.isError
@@ -1235,105 +1180,95 @@ export function ServiceDetailPage() {
                 </pre>
               </div>
             )}
+            </div>
           </div>
         )}
 
         {activeSection === 'config' && (
-          <div className="panel p-6">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
-                <Sliders size={20} className="text-[var(--accent-primary)]" />
-              </div>
+          <div className="s-card">
+            <div className="s-cardhead">
+              <span className="s-ibox"><Sliders /></span>
               <div>
-                <h2 className="text-lg font-semibold text-[var(--text-primary)]">Configuration</h2>
-                <p className="text-sm text-[var(--text-secondary)]">Runtime and deployment settings</p>
+                <div className="s-t">Configuration</div>
+                <div className="mt-0.5 text-[11px] text-[var(--text-tertiary)]">Runtime and deployment settings</div>
               </div>
             </div>
+            <div className="px-4 pb-4">
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="panel-soft p-4">
+              <div className="s-inset">
                 <p className="text-xs uppercase tracking-wider text-[var(--text-muted)]">Environment</p>
                 <p className="mt-2 text-sm text-[var(--text-primary)]">{service.environment ?? 'production'}</p>
               </div>
-              <div className="panel-soft p-4">
+              <div className="s-inset">
                 <p className="text-xs uppercase tracking-wider text-[var(--text-muted)]">Image</p>
-                <p className="mono mt-2 text-sm text-[var(--text-primary)] break-all">{service.image ?? 'not set'}</p>
+                <p className="v-mono mt-2 text-sm text-[var(--text-primary)] break-all">{service.image ?? 'not set'}</p>
               </div>
-              <div className="panel-soft p-4">
+              <div className="s-inset">
                 <p className="text-xs uppercase tracking-wider text-[var(--text-muted)]">Command</p>
-                <p className="mono mt-2 text-sm text-[var(--text-primary)] break-all">{service.command ?? 'default'}</p>
+                <p className="v-mono mt-2 text-sm text-[var(--text-primary)] break-all">{service.command ?? 'default'}</p>
               </div>
-              <div className="panel-soft p-4">
+              <div className="s-inset">
                 <p className="text-xs uppercase tracking-wider text-[var(--text-muted)]">Git Branch</p>
-                <p className="mono mt-2 text-sm text-[var(--text-primary)]">{service.gitBranch ?? 'not configured'}</p>
+                <p className="v-mono mt-2 text-sm text-[var(--text-primary)]">{service.gitBranch ?? 'not configured'}</p>
               </div>
+            </div>
             </div>
           </div>
         )}
 
         {activeSection === 'variables' && (
-          <div className="panel p-6">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
-                  <KeyRound size={20} className="text-[var(--accent-primary)]" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-semibold text-[var(--text-primary)]">Environment Variables</h2>
-                  <p className="text-sm text-[var(--text-secondary)]">
-                    Runtime values injected at deploy. Reference another service's variable with{' '}
-                    <code className="mono text-[var(--accent-primary)]">{'${{service.KEY}}'}</code> or a project
-                    shared variable with{' '}
-                    <code className="mono text-[var(--accent-primary)]">{'${{shared.KEY}}'}</code>
-                  </p>
+          <div className="s-card">
+            <div className="s-cardhead">
+              <span className="s-ibox"><KeyRound /></span>
+              <div>
+                <div className="s-t">Environment Variables</div>
+                <div className="mt-0.5 text-[11px] text-[var(--text-tertiary)]">
+                  Reference another service's variable with{' '}
+                  <code className="v-mono text-[var(--accent-primary)]">{'${{service.KEY}}'}</code> or a project
+                  shared variable with{' '}
+                  <code className="v-mono text-[var(--accent-primary)]">{'${{shared.KEY}}'}</code>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setBulkOpen((open) => !open)}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-secondary)] hover:border-[var(--border-default)] transition-colors"
-                >
+              <div className="s-trail">
+                <QuietBtn onClick={() => setBulkOpen((open) => !open)}>
                   <ClipboardPaste size={12} />
                   Paste .env
-                </button>
-                <button
-                  onClick={() => setVarDrafts([...varRows, { key: '', value: '', isSecret: false }])}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-secondary)] hover:border-[var(--border-default)] transition-colors"
-                >
+                </QuietBtn>
+                <QuietBtn onClick={() => setVarDrafts([...varRows, { key: '', value: '', isSecret: false }])}>
                   <Plus size={12} />
                   Add variable
-                </button>
-                <button
+                </QuietBtn>
+                <GhostBtn
                   onClick={() => saveVariablesMutation.mutate(varRows)}
                   disabled={!varDirty || Object.keys(varErrors).length > 0 || saveVariablesMutation.isPending}
-                  className="flex items-center gap-2 px-4 py-1.5 rounded-[var(--radius-md)] text-xs font-medium text-[var(--accent-on)] shadow transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{ background: 'var(--accent-primary)' }}
                 >
                   {saveVariablesMutation.isPending ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
                   Save
-                </button>
+                </GhostBtn>
               </div>
             </div>
+            <div className="px-4 pb-4">
 
             {envCheckQuery.data && !envCheckQuery.data.ok && (
               <div className="mb-4 rounded-[var(--radius-md)] border border-[var(--warning)]/40 bg-[var(--warning-soft)] p-4">
                 <p className="text-xs font-semibold text-[var(--warning)] mb-2">Environment issues detected</p>
                 <ul className="space-y-1 text-xs text-[var(--text-secondary)]">
                   {(envCheckQuery.data.unresolved ?? []).map((u) => (
-                    <li key={u} className="mono">Unresolved reference: {u}</li>
+                    <li key={u} className="v-mono">Unresolved reference: {u}</li>
                   ))}
                   {(envCheckQuery.data.empty ?? []).map((k) => (
-                    <li key={k} className="mono">Empty value: {k}</li>
+                    <li key={k} className="v-mono">Empty value: {k}</li>
                   ))}
                   {(envCheckQuery.data.unreadable ?? []).map((k) => (
-                    <li key={k} className="mono">Cannot decrypt secret (key rotated?): {k}</li>
+                    <li key={k} className="v-mono">Cannot decrypt secret (key rotated?): {k}</li>
                   ))}
                 </ul>
               </div>
             )}
 
             {bulkOpen && (
-              <div className="mb-4 panel-soft p-4">
+              <div className="mb-4 s-inset">
                 <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)] mb-2">
                   Paste .env contents
                 </label>
@@ -1342,19 +1277,19 @@ export function ServiceDetailPage() {
                   onChange={(e) => setBulkText(e.target.value)}
                   rows={6}
                   placeholder={'DATABASE_URL=postgres://...\nAPI_KEY=secret\n# comments are ignored'}
-                  className="w-full px-3 py-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] mono text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all"
+                  className="w-full px-3 py-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] v-mono text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all"
                 />
                 <div className="mt-3 flex justify-end gap-2">
                   <button
                     onClick={() => { setBulkOpen(false); setBulkText(''); }}
-                    className="px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-secondary)] hover:border-[var(--border-default)] transition-colors"
+                    className="s-btn-quiet"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={applyBulkPaste}
-                    className="px-3 py-1.5 rounded-[var(--radius-md)] text-xs font-medium text-[var(--accent-on)] transition-all"
-                    style={{ background: 'var(--accent-primary)' }}
+                    className="s-btn-accent"
+                    
                   >
                     Import {parseDotenv(bulkText).length > 0 ? `${parseDotenv(bulkText).length} variables` : ''}
                   </button>
@@ -1367,7 +1302,7 @@ export function ServiceDetailPage() {
                 <Loader2 size={20} className="animate-spin" />
               </div>
             ) : varRows.length === 0 ? (
-              <div className="panel-soft p-8 text-center">
+              <div className="s-inset !p-8 text-center">
                 <p className="text-sm text-[var(--text-secondary)]">No variables configured.</p>
                 <p className="mt-1 text-xs text-[var(--text-muted)]">Add rows or paste a .env file to get started.</p>
               </div>
@@ -1386,7 +1321,7 @@ export function ServiceDetailPage() {
                         value={row.key}
                         onChange={(e) => updateVarRow(i, { key: e.target.value })}
                         placeholder="KEY"
-                        className={`h-10 px-3 rounded-[var(--radius-md)] border bg-[var(--surface-muted)] mono text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:ring-1 transition-all ${
+                        className={`h-10 px-3 rounded-[var(--radius-md)] border bg-[var(--surface-muted)] v-mono text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:ring-1 transition-all ${
                           varErrors[i]
                             ? 'border-[var(--error)] focus:border-[var(--error)] focus:ring-[var(--error)]'
                             : 'border-[var(--border-subtle)] focus:border-[var(--accent-primary)] focus:ring-[var(--accent-primary)]'
@@ -1398,7 +1333,7 @@ export function ServiceDetailPage() {
                         type={row.isSecret ? 'password' : 'text'}
                         placeholder="value"
                         autoComplete="off"
-                        className="h-10 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] mono text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all"
+                        className="h-10 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] v-mono text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all"
                       />
                       <button
                         type="button"
@@ -1439,34 +1374,33 @@ export function ServiceDetailPage() {
                   : 'Failed to save variables'}
               </p>
             )}
+            </div>
           </div>
         )}
 
         {activeSection === 'cron' && (
-          <div className="panel p-6">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
-                  <Clock size={20} className="text-[var(--accent-primary)]" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-semibold text-[var(--text-primary)]">Cron Jobs</h2>
-                  <p className="text-sm text-[var(--text-secondary)]">Scheduled commands executed inside the service container</p>
-                </div>
+          <div className="s-card">
+            <div className="s-cardhead">
+              <span className="s-ibox"><Clock /></span>
+              <div>
+                <div className="s-t">Cron Jobs</div>
+                <div className="mt-0.5 text-[11px] text-[var(--text-tertiary)]">Scheduled commands executed inside the service container</div>
               </div>
               {signedIn ? (
-              <button
-                onClick={() => { setEditingCronId(null); setCronForm({ name: '', schedule: '', command: '', timezone: 'UTC', enabled: true, retention: 30 }); }}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-secondary)] hover:border-[var(--border-default)] transition-colors"
-              >
-                <Plus size={12} />
-                New job
-              </button>
+              <div className="s-trail">
+                <QuietBtn
+                  onClick={() => { setEditingCronId(null); setCronForm({ name: '', schedule: '', command: '', timezone: 'UTC', enabled: true, retention: 30 }); }}
+                >
+                  <Plus size={12} />
+                  New job
+                </QuietBtn>
+              </div>
               ) : null}
             </div>
+            <div className="px-4 pb-4">
 
             {cronForm && (
-              <div className="mb-4 panel-soft p-4 space-y-3">
+              <div className="mb-4 s-inset space-y-3">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <input
                     value={cronForm.name}
@@ -1478,14 +1412,14 @@ export function ServiceDetailPage() {
                     value={cronForm.schedule}
                     onChange={(e) => setCronForm({ ...cronForm, schedule: e.target.value })}
                     placeholder="Schedule (e.g. 0 3 * * * or @daily)"
-                    className="px-3 py-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] mono text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all"
+                    className="px-3 py-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] v-mono text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all"
                   />
                 </div>
                 <input
                   value={cronForm.command}
                   onChange={(e) => setCronForm({ ...cronForm, command: e.target.value })}
                   placeholder="Command (runs via sh -c inside the container)"
-                  className="w-full px-3 py-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] mono text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all"
+                  className="w-full px-3 py-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] v-mono text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all"
                 />
                 <div className="flex flex-wrap items-center gap-3">
                   <input
@@ -1508,15 +1442,15 @@ export function ServiceDetailPage() {
                   <div className="ml-auto flex gap-2">
                     <button
                       onClick={() => { setCronForm(null); setEditingCronId(null); }}
-                      className="px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-secondary)] hover:border-[var(--border-default)] transition-colors"
+                      className="s-btn-quiet"
                     >
                       Cancel
                     </button>
                     <button
                       onClick={() => saveCronMutation.mutate()}
                       disabled={!cronForm.name.trim() || !cronForm.schedule.trim() || !cronForm.command.trim() || saveCronMutation.isPending}
-                      className="flex items-center gap-2 px-4 py-1.5 rounded-[var(--radius-md)] text-xs font-medium text-[var(--accent-on)] transition-all disabled:opacity-50"
-                      style={{ background: 'var(--accent-primary)' }}
+                      className="s-btn-accent disabled:opacity-50"
+                      
                     >
                       {saveCronMutation.isPending ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
                       {editingCronId ? 'Save job' : 'Create job'}
@@ -1536,14 +1470,14 @@ export function ServiceDetailPage() {
                 <Loader2 size={20} className="animate-spin" />
               </div>
             ) : (isDemoMode ? getDemoCronJobsByService(serviceId) : cronJobsQuery.data ?? []).length === 0 ? (
-              <div className="panel-soft p-8 text-center">
+              <div className="s-inset !p-8 text-center">
                 <p className="text-sm text-[var(--text-secondary)]">No cron jobs configured.</p>
                 <p className="mt-1 text-xs text-[var(--text-muted)]">Create a job to run commands on a schedule inside this service's container.</p>
               </div>
             ) : (
               <div className="space-y-2">
                 {(isDemoMode ? getDemoCronJobsByService(serviceId) : cronJobsQuery.data ?? []).map((job) => (
-                  <div key={job.id} className="panel-soft p-3">
+                  <div key={job.id} className="s-inset !p-3">
                     <div className="flex items-center gap-3">
                       <button
                         onClick={() => signedIn && toggleCronMutation.mutate(job)}
@@ -1556,9 +1490,9 @@ export function ServiceDetailPage() {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-medium text-[var(--text-primary)] truncate">{job.name}</span>
-                          <span className="mono text-xs text-[var(--text-muted)]">{job.schedule}</span>
+                          <span className="v-mono text-xs text-[var(--text-muted)]">{job.schedule}</span>
                         </div>
-                        <p className="mono text-xs text-[var(--text-tertiary)] truncate">{job.command}</p>
+                        <p className="v-mono text-xs text-[var(--text-tertiary)] truncate">{job.command}</p>
                         <p className="text-xs text-[var(--text-muted)]">
                           {job.next_run_at ? `next ${formatRelative(job.next_run_at)}` : 'not scheduled'}
                           {job.last_status ? ` · last ${job.last_status}` : ''}
@@ -1610,7 +1544,7 @@ export function ServiceDetailPage() {
                                   <span className="text-[var(--text-muted)]">{ex.status}</span>
                                 </div>
                                 {(ex.output || ex.error) && (
-                                  <pre className="mono mt-1 ml-3.5 whitespace-pre-wrap break-all text-[var(--text-tertiary)]">{ex.output || ex.error}</pre>
+                                  <pre className="v-mono mt-1 ml-3.5 whitespace-pre-wrap break-all text-[var(--text-tertiary)]">{ex.output || ex.error}</pre>
                                 )}
                               </div>
                             ))}
@@ -1622,30 +1556,27 @@ export function ServiceDetailPage() {
                 ))}
               </div>
             )}
+            </div>
           </div>
         )}
 
         {activeSection === 'previews' && (
-          <div className="panel p-6">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
-                  <GitPullRequest size={20} className="text-[var(--accent-primary)]" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-semibold text-[var(--text-primary)]">Preview Environments</h2>
-                  <p className="text-sm text-[var(--text-secondary)]">Ephemeral per-branch deployments of this service</p>
-                </div>
+          <div className="s-card">
+            <div className="s-cardhead">
+              <span className="s-ibox"><GitPullRequest /></span>
+              <div>
+                <div className="s-t">Preview Environments</div>
+                <div className="mt-0.5 text-[11px] text-[var(--text-tertiary)]">Ephemeral per-branch deployments of this service</div>
               </div>
               {signedIn ? (
-              <button
-                onClick={() => setPreviewForm({ branch: '', prNumber: '', ttlHours: '72' })}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-secondary)] hover:border-[var(--border-default)] transition-colors"
-              >
-                <Plus size={12} /> New preview
-              </button>
+              <div className="s-trail">
+                <QuietBtn onClick={() => setPreviewForm({ branch: '', prNumber: '', ttlHours: '72' })}>
+                  <Plus size={12} /> New preview
+                </QuietBtn>
+              </div>
               ) : null}
             </div>
+            <div className="px-4 pb-4">
 
             {previewForm && (
               <div className="mb-6 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] p-4 space-y-3">
@@ -1680,13 +1611,13 @@ export function ServiceDetailPage() {
                   <button
                     onClick={() => createPreviewMutation.mutate()}
                     disabled={!previewForm.branch.trim() || createPreviewMutation.isPending}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-on)] text-xs font-medium disabled:opacity-40"
+                    className="s-btn-accent disabled:opacity-40"
                   >
                     {createPreviewMutation.isPending ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />} Create
                   </button>
                   <button
                     onClick={() => setPreviewForm(null)}
-                    className="px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs text-[var(--text-secondary)] hover:border-[var(--border-default)]"
+                    className="s-btn-quiet"
                   >
                     Cancel
                   </button>
@@ -1755,22 +1686,20 @@ export function ServiceDetailPage() {
                 {((deletePreviewMutation.error ?? promotePreviewMutation.error) as Error)?.message ?? 'Operation failed'}
               </p>
             )}
+            </div>
           </div>
         )}
 
         {activeSection === 'scaling' && (
-          <div className="panel p-6">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
-                  <Layers size={20} className="text-[var(--accent-primary)]" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-semibold text-[var(--text-primary)]">Scaling</h2>
-                  <p className="text-sm text-[var(--text-secondary)]">Replica policy and manual scaling</p>
-                </div>
+          <div className="s-card">
+            <div className="s-cardhead">
+              <span className="s-ibox"><Layers /></span>
+              <div>
+                <div className="s-t">Scaling</div>
+                <div className="mt-0.5 text-[11px] text-[var(--text-tertiary)]">Replica policy and manual scaling</div>
               </div>
             </div>
+            <div className="px-4 pb-4">
 
             {scalingPolicyQuery.isLoading ? (
               <p className="text-sm text-[var(--text-secondary)]">Loading…</p>
@@ -1778,8 +1707,8 @@ export function ServiceDetailPage() {
               <>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
                   <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] p-3">
-                    <p className="text-xs text-[var(--text-tertiary)] uppercase tracking-wide">Replicas</p>
-                    <p className="text-xl font-semibold text-[var(--text-primary)]">
+                    <p className="v-mono text-[10.5px] uppercase tracking-[0.08em] text-[var(--text-tertiary)]">Replicas</p>
+                    <p className="font-headline text-xl font-semibold text-[var(--text-primary)]">
                       {scalingStateQuery.data?.CurrentReplicas ??
                         runtimeQuery.data?.containers.filter((c) => c.state === 'running').length ??
                         '—'}
@@ -1789,19 +1718,19 @@ export function ServiceDetailPage() {
                     </p>
                   </div>
                   <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] p-3">
-                    <p className="text-xs text-[var(--text-tertiary)] uppercase tracking-wide">Policy</p>
-                    <p className="text-xl font-semibold text-[var(--text-primary)]">
+                    <p className="v-mono text-[10.5px] uppercase tracking-[0.08em] text-[var(--text-tertiary)]">Policy</p>
+                    <p className="font-headline text-xl font-semibold text-[var(--text-primary)]">
                       {scalingPolicyQuery.data ? `${scalingPolicyQuery.data.min_replicas}–${scalingPolicyQuery.data.max_replicas}` : 'None'}
                     </p>
                   </div>
                   <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] p-3">
-                    <p className="text-xs text-[var(--text-tertiary)] uppercase tracking-wide">Autoscaling</p>
-                    <p className="text-xl font-semibold text-[var(--text-primary)]">
+                    <p className="v-mono text-[10.5px] uppercase tracking-[0.08em] text-[var(--text-tertiary)]">Autoscaling</p>
+                    <p className="font-headline text-xl font-semibold text-[var(--text-primary)]">
                       {scalingPolicyQuery.data?.enabled ? 'On' : 'Off'}
                     </p>
                   </div>
                   <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] p-3">
-                    <p className="text-xs text-[var(--text-tertiary)] uppercase tracking-wide">Last action</p>
+                    <p className="v-mono text-[10.5px] uppercase tracking-[0.08em] text-[var(--text-tertiary)]">Last action</p>
                     <p className="text-sm font-medium text-[var(--text-primary)] truncate">
                       {scalingStateQuery.data?.LastScaleDirection ?? '—'}
                     </p>
@@ -1828,7 +1757,7 @@ export function ServiceDetailPage() {
                       type="button"
                       disabled={manualScaleMutation.isPending || !scaleReplicas}
                       onClick={() => manualScaleMutation.mutate(Number(scaleReplicas))}
-                      className="px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-on)] text-sm font-medium disabled:opacity-50"
+                      className="s-btn-accent disabled:opacity-50"
                     >
                       {manualScaleMutation.isPending ? 'Scaling…' : 'Scale'}
                     </button>
@@ -1841,7 +1770,7 @@ export function ServiceDetailPage() {
                         targetMemory: String(scalingPolicyQuery.data?.target_memory ?? 80),
                         enabled: scalingPolicyQuery.data?.enabled ?? true,
                       })}
-                      className="px-4 py-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)]"
+                      className="s-btn-quiet"
                     >
                       {scalingPolicyQuery.data ? 'Edit policy' : 'Create policy'}
                     </button>
@@ -1850,7 +1779,7 @@ export function ServiceDetailPage() {
                         type="button"
                         disabled={deleteScalingMutation.isPending}
                         onClick={() => { if (window.confirm('Disable autoscaling for this service?')) deleteScalingMutation.mutate(); }}
-                        className="px-4 py-2 rounded-[var(--radius-md)] border border-[var(--error)] text-sm text-[var(--error)] disabled:opacity-50"
+                        className="s-btn-quiet !text-[var(--error)] !border-[var(--error)]/50"
                       >
                         Disable policy
                       </button>
@@ -1894,14 +1823,14 @@ export function ServiceDetailPage() {
                         type="button"
                         disabled={saveScalingMutation.isPending}
                         onClick={() => saveScalingMutation.mutate()}
-                        className="px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-on)] text-sm font-medium disabled:opacity-50"
+                        className="s-btn-accent disabled:opacity-50"
                       >
                         {saveScalingMutation.isPending ? 'Saving…' : 'Save policy'}
                       </button>
                       <button
                         type="button"
                         onClick={() => setScalingForm(null)}
-                        className="px-4 py-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)]"
+                        className="s-btn-quiet"
                       >
                         Cancel
                       </button>
@@ -1921,46 +1850,46 @@ export function ServiceDetailPage() {
                 )}
               </>
             )}
+            </div>
           </div>
         )}
 
         {activeSection === 'console' && (
-          <div className="panel p-6">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
-                <Terminal size={20} className="text-[var(--accent-primary)]" />
-              </div>
+          <div className="s-card">
+            <div className="s-cardhead">
+              <span className="s-ibox"><Terminal /></span>
               <div>
-                <h2 className="text-lg font-semibold text-[var(--text-primary)]">Console</h2>
-                <p className="text-sm text-[var(--text-secondary)]">Interactive shell inside the service container</p>
+                <div className="s-t">Console</div>
+                <div className="mt-0.5 text-[11px] text-[var(--text-tertiary)]">Interactive shell inside the service container</div>
               </div>
             </div>
-            <ServiceTerminal serviceId={serviceId} />
+            <div className="px-4 pb-4">
+              <ServiceTerminal serviceId={serviceId} />
+            </div>
           </div>
         )}
 
         {activeSection === 'settings' && (
-          <div className="panel p-6">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
-                <Settings size={20} className="text-[var(--accent-primary)]" />
-              </div>
+          <div className="s-card">
+            <div className="s-cardhead">
+              <span className="s-ibox"><Settings /></span>
               <div>
-                <h2 className="text-lg font-semibold text-[var(--text-primary)]">Settings</h2>
-                <p className="text-sm text-[var(--text-secondary)]">Service metadata and history</p>
+                <div className="s-t">Settings</div>
+                <div className="mt-0.5 text-[11px] text-[var(--text-tertiary)]">Service metadata and history</div>
               </div>
             </div>
+            <div className="px-4 pb-4">
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="panel-soft p-4">
+              <div className="s-inset">
                 <p className="text-xs uppercase tracking-wider text-[var(--text-muted)]">Service ID</p>
-                <p className="mono mt-2 text-sm text-[var(--text-primary)] break-all">{service.id}</p>
+                <p className="v-mono mt-2 text-sm text-[var(--text-primary)] break-all">{service.id}</p>
               </div>
-              <div className="panel-soft p-4">
+              <div className="s-inset">
                 <p className="text-xs uppercase tracking-wider text-[var(--text-muted)]">Created</p>
                 <p className="mt-2 text-sm text-[var(--text-primary)]">{formatDate(service.createdAt)}</p>
               </div>
-              <div className="panel-soft p-4 md:col-span-2">
+              <div className="s-inset md:col-span-2">
                 <p className="text-xs uppercase tracking-wider text-[var(--text-muted)]">Last Update</p>
                 <p className="mt-2 text-sm text-[var(--text-primary)]">{formatRelative(service.updatedAt)}</p>
               </div>
@@ -1969,7 +1898,7 @@ export function ServiceDetailPage() {
             {!isDemoMode && (
               <div className="mt-6 pt-6 border-t border-[var(--border-subtle)]">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-medium text-[var(--text-primary)]">Networking</h3>
+                  <h3 className="s-t">Networking</h3>
                   {networkForm === null && (
                     <button
                       type="button"
@@ -1982,7 +1911,7 @@ export function ServiceDetailPage() {
                           replicas: String(service.replicas ?? 1),
                         })
                       }
-                      className="px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium hover:border-[var(--border-default)] transition-colors"
+                      className="s-btn-quiet"
                     >
                       Edit
                     </button>
@@ -1996,10 +1925,10 @@ export function ServiceDetailPage() {
                         Live: <span className="text-[var(--text-primary)] font-medium">{runtimeQuery.data.containers.filter((c) => c.state === 'running').length}/{runtimeQuery.data.desired}</span> replicas
                       </span>
                       <span className="text-[var(--text-tertiary)]">
-                        Internal: <span className="mono text-[var(--text-primary)]">{service.name}{service.port ? `:${service.port}` : ''}</span>
+                        Internal: <span className="v-mono text-[var(--text-primary)]">{service.name}{service.port ? `:${service.port}` : ''}</span>
                       </span>
                       {runtimeQuery.data.urls.map((url) => (
-                        <a key={url} href={url} target="_blank" rel="noopener noreferrer" className="mono text-[var(--accent-primary)] hover:underline">
+                        <a key={url} href={url} target="_blank" rel="noopener noreferrer" className="v-mono text-[var(--accent-primary)] hover:underline">
                           {url}
                         </a>
                       ))}
@@ -2098,14 +2027,14 @@ export function ServiceDetailPage() {
                             replicas: Math.max(1, Math.min(20, Number(networkForm.replicas) || 1)),
                           })
                         }
-                        className="px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-on)] text-sm font-medium disabled:opacity-50"
+                        className="s-btn-accent disabled:opacity-50"
                       >
                         {updateServiceMutation.isPending ? 'Saving…' : 'Save'}
                       </button>
                       <button
                         type="button"
                         onClick={() => setNetworkForm(null)}
-                        className="px-4 py-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)]"
+                        className="s-btn-quiet"
                       >
                         Cancel
                       </button>
@@ -2122,12 +2051,12 @@ export function ServiceDetailPage() {
             {!isDemoMode && (
               <div className="mt-6 pt-6 border-t border-[var(--border-subtle)]">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-medium text-[var(--text-primary)]">Volumes</h3>
+                  <h3 className="s-t">Volumes</h3>
                   {volumesForm === null && (
                     <button
                       type="button"
                       onClick={() => setVolumesForm([...(service.volumes ?? [])])}
-                      className="px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium hover:border-[var(--border-default)] transition-colors"
+                      className="s-btn-quiet"
                     >
                       Edit
                     </button>
@@ -2142,9 +2071,9 @@ export function ServiceDetailPage() {
                       {(service.volumes ?? []).map((v, i) => (
                         <div key={i} className="flex items-center gap-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] px-3 py-2 text-xs">
                           <span className="px-1.5 py-0.5 rounded bg-[var(--surface-muted)] text-[var(--text-tertiary)] uppercase tracking-wide">{v.type || 'volume'}</span>
-                          <span className="mono text-[var(--text-primary)]">{v.source}</span>
+                          <span className="v-mono text-[var(--text-primary)]">{v.source}</span>
                           <span className="text-[var(--text-tertiary)]">→</span>
-                          <span className="mono text-[var(--text-primary)]">{v.target}</span>
+                          <span className="v-mono text-[var(--text-primary)]">{v.target}</span>
                           {v.read_only && <span className="text-[var(--text-tertiary)]">(read-only)</span>}
                         </div>
                       ))}
@@ -2174,7 +2103,7 @@ export function ServiceDetailPage() {
                             setVolumesForm(next);
                           }}
                           placeholder={v.type === 'bind' ? '/host/path' : 'volume-name'}
-                          className="px-3 py-1.5 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-xs mono text-[var(--text-primary)]"
+                          className="s-btn-quiet"
                         />
                         <input
                           value={v.target}
@@ -2184,7 +2113,7 @@ export function ServiceDetailPage() {
                             setVolumesForm(next);
                           }}
                           placeholder="/container/path"
-                          className="px-3 py-1.5 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-xs mono text-[var(--text-primary)]"
+                          className="s-btn-quiet"
                         />
                         <label className="flex items-center gap-1 text-[10px] text-[var(--text-tertiary)]">
                           <input
@@ -2211,7 +2140,7 @@ export function ServiceDetailPage() {
                       <button
                         type="button"
                         onClick={() => setVolumesForm([...volumesForm, { type: 'volume', source: '', target: '', read_only: false }])}
-                        className="px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium hover:border-[var(--border-default)] transition-colors"
+                        className="s-btn-quiet"
                       >
                         Add mount
                       </button>
@@ -2228,14 +2157,14 @@ export function ServiceDetailPage() {
                             { onSuccess: () => setVolumesForm(null) },
                           )
                         }
-                        className="px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-on)] text-sm font-medium disabled:opacity-50"
+                        className="s-btn-accent disabled:opacity-50"
                       >
                         {updateServiceMutation.isPending ? 'Saving…' : 'Save'}
                       </button>
                       <button
                         type="button"
                         onClick={() => setVolumesForm(null)}
-                        className="px-4 py-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)]"
+                        className="s-btn-quiet"
                       >
                         Cancel
                       </button>
@@ -2252,7 +2181,7 @@ export function ServiceDetailPage() {
             {!isDemoMode && (
               <div className="mt-6 pt-6 border-t border-[var(--border-subtle)]">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-medium text-[var(--text-primary)]">Domains</h3>
+                  <h3 className="s-t">Domains</h3>
                   <button
                     type="button"
                     disabled={domainMutation.isPending}
@@ -2260,7 +2189,7 @@ export function ServiceDetailPage() {
                       const results = await checkServiceDomains(serviceId);
                       setDomainChecks(Object.fromEntries(results.map((r) => [r.domain, r])));
                     }}
-                    className="px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium hover:border-[var(--border-default)] transition-colors"
+                    className="s-btn-quiet"
                   >
                     Check DNS
                   </button>
@@ -2274,7 +2203,7 @@ export function ServiceDetailPage() {
                     const check = domainChecks?.[d.domain];
                     return (
                       <div key={d.id} className="flex items-center gap-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] px-3 py-2 text-xs">
-                        <span className="mono text-[var(--text-primary)]">{d.domain}</span>
+                        <span className="v-mono text-[var(--text-primary)]">{d.domain}</span>
                         {d.is_default && <span className="px-1.5 py-0.5 rounded bg-[var(--accent-primary)]/15 text-[var(--accent-primary)]">default</span>}
                         {check && (
                           <span className={`px-1.5 py-0.5 rounded ${check.status === 'ok' ? 'bg-[var(--success-soft)] text-[var(--success)]' : check.status === 'pending' ? 'bg-[var(--warning-soft)] text-[var(--warning)]' : 'bg-[var(--error-soft)] text-[var(--error)]'}`}>
@@ -2308,7 +2237,7 @@ export function ServiceDetailPage() {
                     value={domainInput}
                     onChange={(e) => setDomainInput(e.target.value)}
                     placeholder="app.example.com"
-                    className="flex-1 px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm mono text-[var(--text-primary)]"
+                    className="flex-1 px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm v-mono text-[var(--text-primary)]"
                   />
                   <button
                     type="button"
@@ -2318,7 +2247,7 @@ export function ServiceDetailPage() {
                         onSuccess: () => setDomainInput(''),
                       })
                     }
-                    className="px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-on)] text-sm font-medium disabled:opacity-50"
+                    className="s-btn-accent disabled:opacity-50"
                   >
                     Add
                   </button>
@@ -2334,7 +2263,7 @@ export function ServiceDetailPage() {
               <div className="mt-6 pt-6 border-t border-[var(--border-subtle)]">
                 <div className="flex items-center justify-between mb-3">
                   <div>
-                    <h3 className="text-sm font-medium text-[var(--text-primary)]">Sleep</h3>
+                    <h3 className="s-t">Sleep</h3>
                     <p className="text-xs text-[var(--text-tertiary)] mt-0.5">
                       Scale to zero after idle minutes without traffic. Requests resume the service automatically.
                     </p>
@@ -2344,7 +2273,7 @@ export function ServiceDetailPage() {
                       type="button"
                       disabled={wakeMutation.isPending}
                       onClick={() => wakeMutation.mutate()}
-                      className="px-3 py-1.5 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-on)] text-xs font-medium disabled:opacity-50"
+                      className="s-btn-accent disabled:opacity-50"
                     >
                       {wakeMutation.isPending ? 'Waking…' : 'Wake now'}
                     </button>
@@ -2353,7 +2282,7 @@ export function ServiceDetailPage() {
                       type="button"
                       disabled={sleepMutation.isPending || service.status !== 'running'}
                       onClick={() => sleepMutation.mutate()}
-                      className="px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium hover:border-[var(--border-default)] transition-colors disabled:opacity-50"
+                      className="s-btn-quiet"
                     >
                       {sleepMutation.isPending ? 'Sleeping…' : 'Sleep now'}
                     </button>
@@ -2393,7 +2322,7 @@ export function ServiceDetailPage() {
                         sleep_idle_minutes: Math.max(1, Math.min(1440, Number(sleepMinutes) || 15)),
                       })
                     }
-                    className="px-3 py-1.5 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-on)] text-xs font-medium disabled:opacity-50"
+                    className="s-btn-accent disabled:opacity-50"
                   >
                     Save
                   </button>
@@ -2407,7 +2336,7 @@ export function ServiceDetailPage() {
             {!isDemoMode && (nodesQuery.data?.length ?? 0) > 0 && (
               <div className="mt-6 pt-6 border-t border-[var(--border-subtle)]">
                 <div className="mb-3">
-                  <h3 className="text-sm font-medium text-[var(--text-primary)]">Placement</h3>
+                  <h3 className="s-t">Placement</h3>
                   <p className="text-xs text-[var(--text-tertiary)] mt-0.5">
                     Which node runs this service's containers. Remote nodes pull the image
                     from its registry — git builds and domains stay on the local host.
@@ -2446,7 +2375,7 @@ export function ServiceDetailPage() {
                         type="button"
                         disabled={updateServiceMutation.isPending}
                         onClick={() => updateServiceMutation.mutate({ node_id: nodeDraft })}
-                        className="px-3 py-1.5 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-on)] text-xs font-medium disabled:opacity-50"
+                        className="s-btn-accent disabled:opacity-50"
                       >
                         Save
                       </button>
@@ -2496,7 +2425,7 @@ export function ServiceDetailPage() {
             {!isDemoMode && (
               <div className="mt-6 pt-6 border-t border-[var(--border-subtle)]">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-medium text-[var(--text-primary)]">Access</h3>
+                  <h3 className="s-t">Access</h3>
                   {accessForm === null && (
                     <button
                       type="button"
@@ -2509,7 +2438,7 @@ export function ServiceDetailPage() {
                             .join('\n'),
                         })
                       }
-                      className="px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium hover:border-[var(--border-default)] transition-colors"
+                      className="s-btn-quiet"
                     >
                       Edit
                     </button>
@@ -2554,7 +2483,7 @@ export function ServiceDetailPage() {
                         onChange={(e) => setAccessForm({ ...accessForm, basicAuth: e.target.value })}
                         rows={2}
                         placeholder="admin:s3cret"
-                        className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm mono text-[var(--text-primary)]"
+                        className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm v-mono text-[var(--text-primary)]"
                       />
                     </div>
                     <div>
@@ -2564,7 +2493,7 @@ export function ServiceDetailPage() {
                         onChange={(e) => setAccessForm({ ...accessForm, traefikLabels: e.target.value })}
                         rows={3}
                         placeholder={"middlewares.rl.ratelimit.average=100\nmiddlewares.sec.headers.customresponseheaders.X-Frame-Options=DENY"}
-                        className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm mono text-[var(--text-primary)]"
+                        className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm v-mono text-[var(--text-primary)]"
                       />
                     </div>
                     <div className="flex items-center gap-2">
@@ -2595,14 +2524,14 @@ export function ServiceDetailPage() {
                             { onSuccess: () => setAccessForm(null) },
                           );
                         }}
-                        className="px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-on)] text-sm font-medium disabled:opacity-50"
+                        className="s-btn-accent disabled:opacity-50"
                       >
                         {updateServiceMutation.isPending ? 'Saving…' : 'Save'}
                       </button>
                       <button
                         type="button"
                         onClick={() => setAccessForm(null)}
-                        className="px-4 py-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)]"
+                        className="s-btn-quiet"
                       >
                         Cancel
                       </button>
@@ -2616,7 +2545,7 @@ export function ServiceDetailPage() {
             {!isDemoMode && (
               <div className="mt-6 pt-6 border-t border-[var(--border-subtle)]">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-medium text-[var(--text-primary)]">Build &amp; Resources</h3>
+                  <h3 className="s-t">Build &amp; Resources</h3>
                   {buildForm === null && (
                     <button
                       type="button"
@@ -2629,7 +2558,7 @@ export function ServiceDetailPage() {
                           staticDir: service.staticDir ?? '',
                         })
                       }
-                      className="px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium hover:border-[var(--border-default)] transition-colors"
+                      className="s-btn-quiet"
                     >
                       Edit
                     </button>
@@ -2652,7 +2581,7 @@ export function ServiceDetailPage() {
                     {service.builder === 'static' && (
                       <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] p-3 col-span-2">
                         <p className="text-[var(--text-tertiary)] uppercase tracking-wide">Static build</p>
-                        <p className="mt-1 text-sm font-medium mono text-[var(--text-primary)]">
+                        <p className="mt-1 text-sm font-medium v-mono text-[var(--text-primary)]">
                           {service.staticBuildCmd || 'npm ci && npm run build'} → {service.staticDir || 'dist'}
                         </p>
                       </div>
@@ -2679,7 +2608,7 @@ export function ServiceDetailPage() {
                           value={buildForm.cpuReserve}
                           onChange={(e) => setBuildForm({ ...buildForm, cpuReserve: e.target.value })}
                           placeholder="0.25"
-                          className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm mono text-[var(--text-primary)]"
+                          className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm v-mono text-[var(--text-primary)]"
                         />
                       </div>
                       <div>
@@ -2688,7 +2617,7 @@ export function ServiceDetailPage() {
                           value={buildForm.memoryReserve}
                           onChange={(e) => setBuildForm({ ...buildForm, memoryReserve: e.target.value })}
                           placeholder="128Mi"
-                          className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm mono text-[var(--text-primary)]"
+                          className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm v-mono text-[var(--text-primary)]"
                         />
                       </div>
                     </div>
@@ -2700,7 +2629,7 @@ export function ServiceDetailPage() {
                             value={buildForm.staticCmd}
                             onChange={(e) => setBuildForm({ ...buildForm, staticCmd: e.target.value })}
                             placeholder="npm ci && npm run build"
-                            className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm mono text-[var(--text-primary)]"
+                            className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm v-mono text-[var(--text-primary)]"
                           />
                         </div>
                         <div>
@@ -2709,7 +2638,7 @@ export function ServiceDetailPage() {
                             value={buildForm.staticDir}
                             onChange={(e) => setBuildForm({ ...buildForm, staticDir: e.target.value })}
                             placeholder="dist"
-                            className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm mono text-[var(--text-primary)]"
+                            className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm v-mono text-[var(--text-primary)]"
                           />
                         </div>
                       </div>
@@ -2730,14 +2659,14 @@ export function ServiceDetailPage() {
                             { onSuccess: () => setBuildForm(null) },
                           );
                         }}
-                        className="px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-on)] text-sm font-medium disabled:opacity-50"
+                        className="s-btn-accent disabled:opacity-50"
                       >
                         {updateServiceMutation.isPending ? 'Saving…' : 'Save'}
                       </button>
                       <button
                         type="button"
                         onClick={() => setBuildForm(null)}
-                        className="px-4 py-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)]"
+                        className="s-btn-quiet"
                       >
                         Cancel
                       </button>
@@ -2754,14 +2683,11 @@ export function ServiceDetailPage() {
             {!isDemoMode && (
               <div className="mt-6 pt-6 border-t border-[var(--border-subtle)]">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-medium text-[var(--text-primary)]">Deployment History</h3>
-                  <button
-                    onClick={() => deploymentsQuery.refetch()}
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium hover:border-[var(--border-default)] transition-colors"
-                  >
+                  <h3 className="s-t">Deployment History</h3>
+                  <QuietBtn onClick={() => deploymentsQuery.refetch()}>
                     <RefreshCw size={12} />
                     Refresh
-                  </button>
+                  </QuietBtn>
                 </div>
 
                 <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] overflow-hidden">
@@ -2800,8 +2726,8 @@ export function ServiceDetailPage() {
                             <td className="px-4 py-3">
                               <StatusBadge status={deployment.status} />
                             </td>
-                            <td className="px-4 py-3 mono text-[var(--text-secondary)]">{deployment.id}</td>
-                            <td className="px-4 py-3 mono text-[var(--text-secondary)]">
+                            <td className="px-4 py-3 v-mono text-[var(--text-secondary)]">{deployment.id}</td>
+                            <td className="px-4 py-3 v-mono text-[var(--text-secondary)]">
                               {deployment.imageName || '—'}:{deployment.imageTag || '—'}
                             </td>
                             <td className="px-4 py-3 text-[var(--text-tertiary)]">
@@ -2814,7 +2740,7 @@ export function ServiceDetailPage() {
                                     setLogDeploymentId(deployment.id);
                                     setActiveSection('logs');
                                   }}
-                                  className="px-3 py-1.5 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] text-xs font-medium hover:border-[var(--border-default)] transition-colors"
+                                  className="s-btn-quiet"
                                 >
                                   Logs
                                 </button>
@@ -2826,7 +2752,7 @@ export function ServiceDetailPage() {
                                       }
                                     }}
                                     disabled={cancelDeploymentMutation.isPending}
-                                    className="px-3 py-1.5 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--error)] hover:border-[var(--error)]/50 disabled:opacity-50 transition-colors"
+                                    className="s-btn-quiet !text-[var(--error)] hover:!border-[var(--error)]/50"
                                   >
                                     {cancelDeploymentMutation.isPending && cancelDeploymentMutation.variables === deployment.id ? '...' : 'Cancel'}
                                   </button>
@@ -2838,7 +2764,7 @@ export function ServiceDetailPage() {
                                     }
                                   }}
                                   disabled={!canRollback(deployment.status) || rollbackMutation.isPending}
-                                  className="px-3 py-1.5 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] text-xs font-medium hover:border-[var(--border-default)] disabled:opacity-50 transition-colors"
+                                  className="s-btn-quiet"
                                 >
                                   {rollbackMutation.isPending && rollbackMutation.variables === deployment.id ? '...' : 'Rollback'}
                                 </button>
@@ -2856,12 +2782,12 @@ export function ServiceDetailPage() {
             {!isDemoMode && signedIn && (
               <div className="mt-6 pt-6 border-t border-[var(--border-subtle)]">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-medium text-[var(--text-primary)]">Lifecycle</h3>
+                  <h3 className="s-t">Lifecycle</h3>
                   {lifecycleForm === null && (
                     <button
                       type="button"
                       onClick={() => setLifecycleForm({ cloneName: `${service.name}-copy`, cloneProject: '', moveTarget: '' })}
-                      className="px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium hover:border-[var(--border-default)] transition-colors"
+                      className="s-btn-quiet"
                     >
                       Manage
                     </button>
@@ -2881,7 +2807,7 @@ export function ServiceDetailPage() {
                           value={lifecycleForm.cloneName}
                           onChange={(e) => setLifecycleForm({ ...lifecycleForm, cloneName: e.target.value })}
                           placeholder={`${service.name}-copy`}
-                          className="w-52 px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm mono text-[var(--text-primary)]"
+                          className="w-52 px-3 py-2 rounded-[var(--radius-md)] bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-sm v-mono text-[var(--text-primary)]"
                         />
                         <select
                           value={lifecycleForm.cloneProject}
@@ -2904,7 +2830,7 @@ export function ServiceDetailPage() {
                               project_id: lifecycleForm.cloneProject || undefined,
                             })
                           }
-                          className="px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-on)] text-sm font-medium disabled:opacity-50"
+                          className="s-btn-accent disabled:opacity-50"
                         >
                           {cloneMutation.isPending ? 'Cloning…' : 'Clone'}
                         </button>
@@ -2937,7 +2863,7 @@ export function ServiceDetailPage() {
                               moveMutation.mutate(lifecycleForm.moveTarget);
                             }
                           }}
-                          className="px-4 py-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-sm font-medium hover:border-[var(--border-default)] disabled:opacity-50 transition-colors"
+                          className="s-btn-quiet"
                         >
                           {moveMutation.isPending ? 'Moving…' : 'Move'}
                         </button>
@@ -2957,7 +2883,7 @@ export function ServiceDetailPage() {
                             deleteServiceMutation.mutate();
                           }
                         }}
-                        className="px-4 py-2 rounded-[var(--radius-md)] border border-[var(--error-soft)] text-[var(--error)] text-sm font-medium hover:bg-[var(--error-soft)] disabled:opacity-50 transition-colors"
+                        className="s-btn-quiet !text-[var(--error)] !border-[var(--error)]/50"
                       >
                         {deleteServiceMutation.isPending ? 'Deleting…' : 'Delete'}
                       </button>
@@ -2967,7 +2893,7 @@ export function ServiceDetailPage() {
                       <button
                         type="button"
                         onClick={() => setLifecycleForm(null)}
-                        className="px-4 py-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)]"
+                        className="s-btn-quiet"
                       >
                         Close
                       </button>
@@ -2981,6 +2907,7 @@ export function ServiceDetailPage() {
                 )}
               </div>
             )}
+            </div>
           </div>
         )}
       </div>

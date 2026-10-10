@@ -38,6 +38,7 @@ import {
 import { useAuthSession } from '@/lib/use-auth-session';
 import { useDemoMode } from '@/lib/demo-mode';
 import { DemoRestricted, LoadingState, useToast } from '@/shared/components';
+import { GhostBtn, QuietBtn, SPageHead, SPill } from '@/shared/components/sentry';
 
 const statLabels: Record<string, string> = {
   users: 'Users',
@@ -199,7 +200,7 @@ export function AdminPage() {
     return (
       <div className="mx-auto max-w-xl px-5 py-24 text-center">
         <ShieldCheck size={28} className="mx-auto text-[var(--error)]" />
-        <h1 className="mt-4 text-lg font-semibold text-[var(--text-primary)]">Admin access required</h1>
+        <h1 className="mt-4 font-headline text-lg font-semibold text-[var(--text-primary)]">Admin access required</h1>
         <p className="mt-2 text-sm text-[var(--text-secondary)]">
           This area is restricted to platform administrators.
         </p>
@@ -216,74 +217,74 @@ export function AdminPage() {
   const invites = invitesQuery.data ?? [];
 
   return (
-    <div className="mx-auto max-w-6xl px-5 py-8">
-      <div className="mb-8">
-        <h1 className="text-[24px] font-bold tracking-tight text-[var(--text-primary)]">Admin console</h1>
-        <p className="mt-1 text-sm text-[var(--text-secondary)]">
-          Platform overview, project approvals, and user management.
-        </p>
-      </div>
+    <div className="w-full px-4 py-6 sm:px-8">
+      <SPageHead
+        title="Admin Console"
+        titleAccent="_"
+        sub="Platform overview, project approvals, and user management."
+      />
 
-      <div className="grid grid-cols-4 gap-3 max-lg:grid-cols-3 max-sm:grid-cols-2">
+      <div className="grid grid-cols-4 gap-3.5 max-lg:grid-cols-3 max-sm:grid-cols-2">
         {Object.entries(statLabels).map(([key, label]) => (
-          <div
-            key={key}
-            className="rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--surface-card)] px-4 py-3.5"
-          >
-            <p className="text-[20px] font-bold tabular-nums text-[var(--text-primary)]">{stats[key] ?? 0}</p>
-            <p className="mt-0.5 text-[10.5px] uppercase tracking-wider text-[var(--text-tertiary)]">{label}</p>
+          <div key={key} className="s-stat">
+            <div className="px-4 pb-1 pt-4">
+              <p className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-[var(--text-tertiary)]">{label}</p>
+              <p className="font-headline mt-3 text-[28px] font-bold leading-none tabular-nums text-[var(--text-primary)]">
+                {stats[key] ?? 0}
+              </p>
+            </div>
+            <div className="s-stat-foot mt-3">
+              <span>total</span>
+            </div>
           </div>
         ))}
       </div>
 
-      <section className="mt-8">
-        <div className="mb-3 flex items-center gap-2">
-          <Clock size={15} className="text-[var(--warning)]" />
-          <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">Pending approvals</h2>
-          {pending.length > 0 ? (
-            <span className="rounded-full bg-[var(--warning-soft)] px-2 py-0.5 text-[10.5px] font-semibold text-[var(--warning)]">
-              {pending.length}
-            </span>
-          ) : null}
+      <section className="s-card !p-0 mt-6 overflow-hidden">
+        <div className="s-cardhead border-b border-[var(--border-subtle)]">
+          <span className="s-ibox"><Clock /></span>
+          <h2 className="s-t">Pending Approvals</h2>
+          <span className="s-trail">
+            {pending.length > 0 ? <SPill tone="warn">{pending.length}</SPill> : null}
+          </span>
         </div>
         {pending.length > 0 ? (
-          <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--surface-card)]">
+          <div>
             {pending.map((project) => (
               <div
                 key={project.id}
                 className="flex items-center gap-4 border-b border-[var(--border-subtle)] px-4 py-3 last:border-b-0"
               >
-                <FolderKanban size={15} className="shrink-0 text-[var(--text-tertiary)]" />
+                <span className="s-ibox !h-7 !w-7"><FolderKanban /></span>
                 <div className="min-w-0 flex-1">
                   <Link to={`/projects/${project.id}`} className="text-[13.5px] font-medium text-[var(--text-primary)] hover:underline">
                     {project.name}
                   </Link>
                   <p className="truncate text-[11.5px] text-[var(--text-tertiary)]">{project.description || 'No description'}</p>
                 </div>
-                <button
-                  type="button"
+                <GhostBtn
                   onClick={() => approvalMutation.mutate({ id: project.id, approved: true })}
                   disabled={approvalMutation.isPending}
-                  className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] bg-[var(--accent-primary)] px-3 py-1.5 text-[12px] font-semibold text-[var(--accent-on)] disabled:opacity-50"
                 >
                   <CheckCircle2 size={13} /> Approve
-                </button>
+                </GhostBtn>
               </div>
             ))}
           </div>
         ) : (
-          <div className="rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--surface-card)] px-4 py-6 text-center text-[13px] text-[var(--text-tertiary)]">
+          <p className="px-4 py-6 text-center text-[13px] text-[var(--text-tertiary)]">
             Nothing waiting for approval.
-          </div>
+          </p>
         )}
       </section>
 
-      <section className="mt-8">
-        <div className="mb-3 flex items-center gap-2">
-          <FolderKanban size={15} className="text-[var(--accent-primary)]" />
-          <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">All projects</h2>
+      <section className="s-card !p-0 mt-6 overflow-hidden">
+        <div className="s-cardhead border-b border-[var(--border-subtle)]">
+          <span className="s-ibox"><FolderKanban /></span>
+          <h2 className="s-t">All Projects</h2>
+          <span className="s-trail"><span className="s-chip" style={{ cursor: 'default' }}>{allProjects.length}</span></span>
         </div>
-        <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--surface-card)]">
+        <div>
           {allProjects.map((project) => (
             <div
               key={project.id}
@@ -297,22 +298,16 @@ export function AdminPage() {
                   {project.stats?.service_count ?? 0} services · {project.stats?.deployment_count ?? 0} deploys
                 </p>
               </div>
-              <span
-                className={`rounded-full px-2.5 py-0.5 text-[10.5px] font-semibold ${
-                  project.isApproved
-                    ? 'bg-[var(--success-soft)] text-[var(--success)]'
-                    : 'bg-[var(--warning-soft)] text-[var(--warning)]'
-                }`}
-              >
+              <SPill tone={project.isApproved ? 'ok' : 'warn'}>
                 {project.isApproved ? 'public' : 'pending'}
-              </span>
+              </SPill>
               <button
                 type="button"
                 onClick={() => {
                   setEditingProject(project);
                   setEditForm({ name: project.name, description: project.description ?? '' });
                 }}
-                className="inline-flex items-center gap-1 rounded-[var(--radius-md)] border border-[var(--border-default)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                className="s-icon-btn"
                 title="Edit project"
               >
                 <Pencil size={12} />
@@ -325,19 +320,17 @@ export function AdminPage() {
                   }
                 }}
                 disabled={deleteMutation.isPending}
-                className="inline-flex items-center gap-1 rounded-[var(--radius-md)] border border-[var(--error)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--error)] hover:bg-[var(--error-soft)] disabled:opacity-50"
+                className="s-icon-btn !text-[var(--text-tertiary)] hover:!text-[var(--error)] disabled:opacity-40"
                 title="Delete project"
               >
                 <Trash2 size={12} />
               </button>
-              <button
-                type="button"
+              <QuietBtn
                 onClick={() => approvalMutation.mutate({ id: project.id, approved: !project.isApproved })}
                 disabled={approvalMutation.isPending}
-                className="rounded-[var(--radius-md)] border border-[var(--border-default)] px-3 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-50"
               >
                 {project.isApproved ? 'Unapprove' : 'Approve'}
-              </button>
+              </QuietBtn>
             </div>
           ))}
           {allProjects.length === 0 ? (
@@ -346,12 +339,13 @@ export function AdminPage() {
         </div>
       </section>
 
-      <section className="mt-8">
-        <div className="mb-3 flex items-center gap-2">
-          <Megaphone size={15} className="text-[var(--accent-primary)]" />
-          <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">Announcements</h2>
+      <section className="s-card !p-0 mt-6 overflow-hidden">
+        <div className="s-cardhead border-b border-[var(--border-subtle)]">
+          <span className="s-ibox"><Megaphone /></span>
+          <h2 className="s-t">Announcements</h2>
+          <span className="s-trail"><span className="s-chip" style={{ cursor: 'default' }}>{banners.length}</span></span>
         </div>
-        <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--surface-card)]">
+        <div>
           <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border-subtle)] px-4 py-3">
             <input
               value={bannerForm.title}
@@ -375,14 +369,12 @@ export function AdminPage() {
               <option value="warning">warning</option>
               <option value="error">error</option>
             </select>
-            <button
-              type="button"
+            <GhostBtn
               onClick={() => bannerCreateMutation.mutate()}
               disabled={bannerCreateMutation.isPending || bannerForm.title.trim().length === 0}
-              className="rounded-[var(--radius-md)] bg-[var(--accent-primary)] px-4 py-2 text-[12px] font-semibold text-[var(--accent-on)] disabled:opacity-50"
             >
               {bannerCreateMutation.isPending ? 'Publishing…' : 'Publish'}
-            </button>
+            </GhostBtn>
           </div>
           {banners.map((banner) => (
             <div
@@ -396,14 +388,12 @@ export function AdminPage() {
                   {banner.body ? ` · ${banner.body}` : ''}
                 </p>
               </div>
-              <button
-                type="button"
+              <QuietBtn
                 onClick={() => bannerToggleMutation.mutate({ id: banner.id, active: !banner.active })}
                 disabled={bannerToggleMutation.isPending}
-                className="rounded-[var(--radius-md)] border border-[var(--border-default)] px-3 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-50"
               >
                 {banner.active ? 'Deactivate' : 'Activate'}
-              </button>
+              </QuietBtn>
               <button
                 type="button"
                 onClick={() => {
@@ -412,7 +402,7 @@ export function AdminPage() {
                   }
                 }}
                 disabled={bannerDeleteMutation.isPending}
-                className="inline-flex items-center gap-1 rounded-[var(--radius-md)] border border-[var(--error)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--error)] hover:bg-[var(--error-soft)] disabled:opacity-50"
+                className="s-icon-btn !text-[var(--text-tertiary)] hover:!text-[var(--error)] disabled:opacity-40"
                 title="Delete banner"
               >
                 <Trash2 size={12} />
@@ -425,12 +415,13 @@ export function AdminPage() {
         </div>
       </section>
 
-      <section className="mt-8">
-        <div className="mb-3 flex items-center gap-2">
-          <UserPlus size={15} className="text-[var(--accent-primary)]" />
-          <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">Team invites</h2>
+      <section className="s-card !p-0 mt-6 overflow-hidden">
+        <div className="s-cardhead border-b border-[var(--border-subtle)]">
+          <span className="s-ibox"><UserPlus /></span>
+          <h2 className="s-t">Team Invites</h2>
+          <span className="s-trail"><span className="s-chip" style={{ cursor: 'default' }}>{invites.length}</span></span>
         </div>
-        <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--surface-card)]">
+        <div>
           <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border-subtle)] px-4 py-3">
             <input
               value={inviteEmail}
@@ -439,35 +430,25 @@ export function AdminPage() {
               type="email"
               className="h-9 min-w-64 flex-1 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 text-sm focus:border-[var(--accent-primary)]"
             />
-            <button
-              type="button"
+            <GhostBtn
               onClick={() => inviteCreateMutation.mutate()}
               disabled={inviteCreateMutation.isPending}
-              className="rounded-[var(--radius-md)] bg-[var(--accent-primary)] px-4 py-2 text-[12px] font-semibold text-[var(--accent-on)] disabled:opacity-50"
             >
               {inviteCreateMutation.isPending ? 'Creating…' : 'Create invite link'}
-            </button>
+            </GhostBtn>
           </div>
           {inviteLink ? (
             <div className="flex items-center gap-2 border-b border-[var(--border-subtle)] bg-[var(--accent-primary-soft)] px-4 py-2.5">
-              <code className="min-w-0 flex-1 truncate text-[12px] text-[var(--accent-primary)]">{inviteLink}</code>
-              <button
-                type="button"
+              <code className="v-mono min-w-0 flex-1 truncate text-[12px] text-[var(--accent-primary)]">{inviteLink}</code>
+              <QuietBtn
                 onClick={() => {
                   navigator.clipboard?.writeText(inviteLink);
                   showToast('success', 'Link copied');
                 }}
-                className="inline-flex items-center gap-1 rounded-[var(--radius-md)] border border-[var(--border-default)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
               >
                 <Copy size={11} /> Copy
-              </button>
-              <button
-                type="button"
-                onClick={() => setInviteLink(null)}
-                className="text-[11px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
-              >
-                Dismiss
-              </button>
+              </QuietBtn>
+              <QuietBtn onClick={() => setInviteLink(null)}>Dismiss</QuietBtn>
             </div>
           ) : null}
           {invites.map((invite) => {
@@ -486,26 +467,17 @@ export function AdminPage() {
                     expires {new Date(invite.expires_at).toLocaleString()}
                   </p>
                 </div>
-                <span
-                  className={`rounded-full px-2.5 py-0.5 text-[10.5px] font-semibold ${
-                    used
-                      ? 'bg-[var(--surface-muted)] text-[var(--text-tertiary)]'
-                      : expired
-                        ? 'bg-[var(--error-soft)] text-[var(--error)]'
-                        : 'bg-[var(--success-soft)] text-[var(--success)]'
-                  }`}
-                >
+                <SPill tone={used ? 'off' : expired ? 'err' : 'ok'}>
                   {used ? 'used' : expired ? 'expired' : 'open'}
-                </span>
+                </SPill>
                 {!used ? (
-                  <button
-                    type="button"
+                  <QuietBtn
                     onClick={() => inviteRevokeMutation.mutate(invite.id)}
                     disabled={inviteRevokeMutation.isPending}
-                    className="rounded-[var(--radius-md)] border border-[var(--error)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--error)] hover:bg-[var(--error-soft)] disabled:opacity-50"
+                    className="hover:!text-[var(--error)] hover:!border-[var(--error)]"
                   >
                     Revoke
-                  </button>
+                  </QuietBtn>
                 ) : null}
               </div>
             );
@@ -516,12 +488,13 @@ export function AdminPage() {
         </div>
       </section>
 
-      <section className="mt-8 pb-10">
-        <div className="mb-3 flex items-center gap-2">
-          <Users size={15} className="text-[var(--accent-tertiary)]" />
-          <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">Users</h2>
+      <section className="s-card !p-0 mt-6 mb-10 overflow-hidden">
+        <div className="s-cardhead border-b border-[var(--border-subtle)]">
+          <span className="s-ibox"><Users /></span>
+          <h2 className="s-t">Users</h2>
+          <span className="s-trail"><span className="s-chip" style={{ cursor: 'default' }}>{users.length}</span></span>
         </div>
-        <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--surface-card)]">
+        <div>
           {users.map((user) => (
             <UserRow
               key={user.id}
@@ -540,30 +513,29 @@ export function AdminPage() {
 
       {impersonation ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-lg overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--bg-base)] shadow-2xl">
-            <div className="border-b border-[var(--border-subtle)] px-5 py-4">
-              <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">
-                Impersonating {impersonation.user.email}
-              </h2>
-              <p className="text-xs text-[var(--text-tertiary)]">
-                Token valid until {new Date(impersonation.expires_at).toLocaleString()} — audit-logged.
-              </p>
+          <div className="w-full max-w-lg s-card !p-0 overflow-hidden">
+            <div className="s-cardhead border-b border-[var(--border-subtle)]">
+              <span className="s-ibox"><ShieldCheck /></span>
+              <h2 className="s-t">Impersonating {impersonation.user.email}</h2>
+              <span className="s-trail">
+                <span className="v-mono text-[10.5px] text-[var(--text-muted)]">
+                  expires {new Date(impersonation.expires_at).toLocaleString()}
+                </span>
+              </span>
             </div>
             <div className="space-y-3 px-5 py-4">
-              <div className="flex items-center gap-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 py-2.5">
-                <code className="min-w-0 flex-1 truncate text-[12px] text-[var(--text-primary)]">
+              <div className="s-inset flex items-center gap-2 px-3 py-2.5">
+                <code className="v-mono min-w-0 flex-1 truncate text-[12px] text-[var(--text-primary)]">
                   {impersonation.token}
                 </code>
-                <button
-                  type="button"
+                <QuietBtn
                   onClick={() => {
                     navigator.clipboard?.writeText(impersonation.token);
                     showToast('success', 'Token copied');
                   }}
-                  className="inline-flex shrink-0 items-center gap-1 rounded-[var(--radius-md)] border border-[var(--border-default)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                 >
                   <Copy size={11} /> Copy
-                </button>
+                </QuietBtn>
               </div>
               <p className="text-[12px] leading-relaxed text-[var(--text-tertiary)]">
                 Use it as a bearer token — e.g. <code className="text-[var(--text-secondary)]">CONTAINR_TOKEN=&lt;token&gt;
@@ -572,13 +544,7 @@ export function AdminPage() {
               </p>
             </div>
             <div className="flex items-center justify-end gap-2 border-t border-[var(--border-subtle)] px-5 py-3.5">
-              <button
-                type="button"
-                onClick={() => setImpersonation(null)}
-                className="rounded-[var(--radius-md)] bg-[var(--accent-primary)] px-4 py-2 text-xs font-semibold text-[var(--accent-on)]"
-              >
-                Done
-              </button>
+              <GhostBtn onClick={() => setImpersonation(null)}>Done</GhostBtn>
             </div>
           </div>
         </div>
@@ -586,10 +552,13 @@ export function AdminPage() {
 
       {editingProject ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--bg-base)] shadow-2xl">
-            <div className="border-b border-[var(--border-subtle)] px-5 py-4">
-              <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">Edit project</h2>
-              <p className="text-xs text-[var(--text-tertiary)]">Admin edit — changes apply immediately.</p>
+          <div className="w-full max-w-md s-card !p-0 overflow-hidden">
+            <div className="s-cardhead border-b border-[var(--border-subtle)]">
+              <span className="s-ibox"><Pencil /></span>
+              <h2 className="s-t">Edit Project</h2>
+              <span className="s-trail">
+                <span className="v-mono text-[10.5px] text-[var(--text-muted)]">admin edit</span>
+              </span>
             </div>
             <div className="space-y-4 px-5 py-4">
               <div>
@@ -611,21 +580,13 @@ export function AdminPage() {
               </div>
             </div>
             <div className="flex items-center justify-end gap-2 border-t border-[var(--border-subtle)] px-5 py-3.5">
-              <button
-                type="button"
-                onClick={() => setEditingProject(null)}
-                className="rounded-[var(--radius-md)] px-3.5 py-2 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--surface-muted)]"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
+              <QuietBtn onClick={() => setEditingProject(null)}>Cancel</QuietBtn>
+              <GhostBtn
                 onClick={() => editMutation.mutate()}
                 disabled={editMutation.isPending || editForm.name.trim().length < 2}
-                className="rounded-[var(--radius-md)] bg-[var(--accent-primary)] px-4 py-2 text-xs font-semibold text-[var(--accent-on)] disabled:opacity-50"
               >
                 {editMutation.isPending ? 'Saving…' : 'Save'}
-              </button>
+              </GhostBtn>
             </div>
           </div>
         </div>
@@ -660,32 +621,22 @@ function UserRow({
         <p className="truncate text-[11.5px] text-[var(--text-tertiary)]">{user.email}</p>
       </div>
       {user.is_admin ? (
-        <span className="inline-flex items-center gap-1 rounded-full bg-[var(--accent-primary-soft)] px-2.5 py-0.5 text-[10.5px] font-semibold text-[var(--accent-primary)]">
-          <ShieldCheck size={11} /> admin
-        </span>
+        <SPill tone="info"><ShieldCheck size={10} /> admin</SPill>
       ) : null}
       {onImpersonate ? (
-        <button
-          type="button"
-          onClick={onImpersonate}
-          className="rounded-[var(--radius-md)] border border-[var(--border-default)] px-3 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-        >
-          Impersonate
-        </button>
+        <QuietBtn onClick={onImpersonate}>Impersonate</QuietBtn>
       ) : null}
-      <button
-        type="button"
+      <QuietBtn
         onClick={() => onToggle(!user.is_admin)}
         disabled={pending || isSelf}
         title={isSelf ? 'You cannot change your own admin flag' : undefined}
-        className="rounded-[var(--radius-md)] border border-[var(--border-default)] px-3 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
       >
         {user.is_admin ? (
           <span className="inline-flex items-center gap-1"><XCircle size={12} /> Revoke</span>
         ) : (
           'Make admin'
         )}
-      </button>
+      </QuietBtn>
     </div>
   );
 }
