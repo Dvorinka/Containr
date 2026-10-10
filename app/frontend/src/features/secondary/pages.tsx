@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -104,6 +104,7 @@ import { formatRelative } from '@/lib/time';
 import { getAuthBaseUrl, signOutAuthSession } from '@/lib/auth-client';
 import { useBuildUpdates } from '@/lib/use-build-updates';
 import { EnhancedMetricCard, LineAreaChart, DonutChart, SegmentedBar, BarChart, DemoRestricted } from '@/shared/components';
+import { SPageHead } from '@/shared/components/sentry';
 import {
   Clock,
   Activity,
@@ -148,13 +149,10 @@ import {
   Send,
 } from 'lucide-react';
 
-function SecondaryPageHeader({ title, description }: { title: string; description: string }) {
+function SecondaryPageHeader({ title, description, actions }: { title: string; description: string; actions?: ReactNode }) {
   return (
-    <div className="border-b border-[var(--border-subtle)]">
-      <div className="w-full px-8 py-5">
-        <h1 className="v-title">{title}<span className="v-cursor">_</span></h1>
-        <p className="v-mono mt-1.5 text-[11px] text-[var(--text-tertiary)]">{description}</p>
-      </div>
+    <div className="w-full px-4 pt-6 sm:px-8">
+      <SPageHead title={title} titleAccent="_" sub={description} actions={actions} />
     </div>
   );
 }
@@ -180,15 +178,17 @@ function StatCard({
   };
 
   return (
-    <div className="panel p-5">
-      <div className="flex items-start justify-between mb-3">
-        <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--surface-muted)] flex items-center justify-center">
-          <Icon size={18} className="text-[var(--text-tertiary)]" />
+    <div className="s-stat">
+      <div className="px-4 pb-1 pt-4">
+        <div className="flex items-center gap-2.5">
+          <span className="s-ibox"><Icon /></span>
+          <span className="text-[11.5px] font-medium text-[var(--text-secondary)]">{title}</span>
         </div>
+        <p className={`font-headline mt-4 text-[30px] font-bold leading-none tracking-tight ${colorClasses[color]}`}>{value}</p>
       </div>
-      <p className={`text-2xl font-semibold ${colorClasses[color]}`}>{value}</p>
-      <p className="text-xs font-medium text-[var(--text-muted)] mt-1">{title}</p>
-      <p className="text-xs text-[var(--text-tertiary)] mt-2">{description}</p>
+      <div className="s-stat-foot mt-4">
+        <span>{description}</span>
+      </div>
     </div>
   );
 }
@@ -450,14 +450,14 @@ export function UsagePage() {
             <p className="mt-3 text-sm text-[var(--text-muted)]">Loading usage data...</p>
           </div>
         ) : !isDemoMode && buildsQuery.isError ? (
-          <div className="panel p-8 text-center">
+          <div className="s-card p-8 text-center">
             <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-[var(--error-soft)] flex items-center justify-center">
               <AlertCircle size={24} className="text-[var(--error)]" />
             </div>
             <p className="text-sm text-[var(--error)]">Failed to load usage data</p>
           </div>
         ) : !signedIn ? (
-          <div className="panel p-8 text-center">
+          <div className="s-card p-8 text-center">
             <p className="text-sm text-[var(--text-secondary)]">Sign in to view build activity and capacity.</p>
           </div>
         ) : (
@@ -490,14 +490,12 @@ export function UsagePage() {
               />
             </div>
 
-            <section className="panel p-6">
+            <section className="s-card p-5">
               <div className="mb-5 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)]">
-                    <Server size={18} className="text-[var(--accent-primary)]" />
-                  </div>
+                  <span className="s-ibox !w-9 !h-9"><Server /></span>
                   <div>
-                    <h2 className="text-lg font-semibold text-[var(--text-primary)]">Host Monitoring</h2>
+                    <h2 className="s-t">Host Monitoring</h2>
                     <p className="text-xs text-[var(--text-tertiary)]">
                       {host
                         ? `${host.hostname} · ${host.os}/${host.architecture} · uptime ${formatUptime(host.uptimeSeconds)}${host.dockerAvailable ? '' : ' · Docker unavailable'}`
@@ -578,13 +576,11 @@ export function UsagePage() {
               )}
             </section>
 
-            <section className="panel p-6">
+            <section className="s-card p-5">
               <div className="mb-5 flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-[var(--radius-md)] bg-[var(--surface-muted)]">
-                  <Radio size={18} className="text-[var(--text-tertiary)]" />
-                </div>
+                <span className="s-ibox !w-9 !h-9"><Radio /></span>
                 <div>
-                  <h2 className="text-lg font-semibold text-[var(--text-primary)]">Node Agents</h2>
+                  <h2 className="s-t">Node Agents</h2>
                   <p className="text-xs text-[var(--text-tertiary)]">Remote VPS, VM, and LXC capacity for placement and autoscaling.</p>
                 </div>
               </div>
@@ -678,8 +674,8 @@ export function UsagePage() {
                     <button
                       onClick={() => createTokenMutation.mutate()}
                       disabled={createTokenMutation.isPending}
-                      className="h-8 px-3 rounded-[var(--radius-md)] text-xs font-medium text-[var(--accent-on)] transition-all disabled:opacity-50"
-                      style={{ background: 'var(--accent-primary)' }}
+                      className="s-btn-accent h-8 disabled:opacity-50"
+                      
                     >
                       {createTokenMutation.isPending ? 'Issuing…' : 'Issue token'}
                     </button>
@@ -688,7 +684,7 @@ export function UsagePage() {
                   {issuedToken && (
                     <div className="mb-3 rounded-[var(--radius-md)] border border-[var(--success)]/30 bg-[var(--success-soft)] p-3">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="mono text-xs text-[var(--text-primary)] break-all">{issuedToken.token}</span>
+                        <span className="v-mono text-xs text-[var(--text-primary)] break-all">{issuedToken.token}</span>
                         <button
                           onClick={() => void navigator.clipboard.writeText(issuedToken.token ?? '')}
                           className="flex items-center gap-1 text-xs text-[var(--accent-primary)] hover:underline shrink-0"
@@ -706,11 +702,11 @@ export function UsagePage() {
                     </p>
                   )}
 
-                  <pre className="mono text-xs text-[var(--text-secondary)] whitespace-pre-wrap">{installCommand}</pre>
-                  <pre className="mono text-xs text-[var(--text-secondary)] whitespace-pre-wrap mt-2">{sshCommand}</pre>
+                  <pre className="v-mono text-xs text-[var(--text-secondary)] whitespace-pre-wrap">{installCommand}</pre>
+                  <pre className="v-mono text-xs text-[var(--text-secondary)] whitespace-pre-wrap mt-2">{sshCommand}</pre>
                   <div className="mt-4 space-y-2 text-xs text-[var(--text-tertiary)]">
-                    <p>Agent endpoint: <span className="mono text-[var(--text-primary)]">{agentEndpoint}</span></p>
-                    <p>Use an issued token above, or set <span className="mono text-[var(--text-primary)]">CONTAINR_AGENT_AUTH_TOKENS</span> on the backend.</p>
+                    <p>Agent endpoint: <span className="v-mono text-[var(--text-primary)]">{agentEndpoint}</span></p>
+                    <p>Use an issued token above, or set <span className="v-mono text-[var(--text-primary)]">CONTAINR_AGENT_AUTH_TOKENS</span> on the backend.</p>
                     <p>Agent sends host resources, polls pending Docker commands, and reports command results.</p>
                   </div>
 
@@ -876,13 +872,11 @@ export function PeoplePage() {
               />
             </div>
 
-            <section className="panel p-6">
+            <section className="s-card p-5">
               <div className="mb-5 flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)]">
-                  <UserPlus size={18} className="text-[var(--accent-primary)]" />
-                </div>
+                <span className="s-ibox !w-9 !h-9"><UserPlus /></span>
                 <div>
-                  <h2 className="text-lg font-semibold text-[var(--text-primary)]">Manual User Creation</h2>
+                  <h2 className="s-t">Manual User Creation</h2>
                   <p className="text-xs text-[var(--text-tertiary)]">Public registration is closed after bootstrap.</p>
                 </div>
               </div>
@@ -921,8 +915,8 @@ export function PeoplePage() {
                 <button
                   type="submit"
                   disabled={createUserMutation.isPending}
-                  className="inline-flex h-10 items-center justify-center gap-2 rounded-[var(--radius-md)] px-4 text-sm font-semibold text-[var(--accent-on)] disabled:opacity-60"
-                  style={{ background: 'var(--accent-primary)' }}
+                  className="s-btn-accent h-10 justify-center disabled:opacity-60"
+                  
                 >
                   {createUserMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />}
                   Create
@@ -1057,14 +1051,12 @@ function GitProvidersSection() {
   const selectedType = gitProviderTypes.find((t) => t.value === form.name)!;
 
   return (
-    <section className="panel p-6">
+    <section className="s-card p-5">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
-            <GitBranch size={18} className="text-[var(--accent-primary)]" />
-          </div>
+          <span className="s-ibox !w-9 !h-9"><GitBranch /></span>
           <div>
-            <h2 className="text-lg font-semibold text-[var(--text-primary)]">Git Providers</h2>
+            <h2 className="s-t">Git Providers</h2>
             <p className="text-xs text-[var(--text-tertiary)]">Connect accounts to deploy services from repositories</p>
           </div>
         </div>
@@ -1073,8 +1065,8 @@ function GitProvidersSection() {
             <button
               onClick={() => provisionMutation.mutate()}
               disabled={provisionMutation.isPending}
-              className="flex items-center gap-2 h-9 px-4 rounded-[var(--radius-md)] text-[var(--accent-on)] text-sm font-medium shadow-lg transition-all disabled:opacity-50"
-              style={{ background: 'var(--accent-primary)' }}
+              className="s-btn-accent h-9 disabled:opacity-50"
+              
             >
               <GitBranch size={14} />
               {provisionMutation.isPending ? 'Opening GitHub…' : 'Set up GitHub App'}
@@ -1090,8 +1082,8 @@ function GitProvidersSection() {
           )}
           <button
             onClick={() => setFormOpen((open) => !open)}
-            className="flex items-center gap-2 h-9 px-4 rounded-[var(--radius-md)] text-[var(--accent-on)] text-sm font-medium shadow-lg transition-all"
-            style={{ background: 'var(--accent-primary)' }}
+            className="s-btn-accent h-9"
+            
           >
             <Link2 size={14} />
             {formOpen ? 'Close' : 'Connect'}
@@ -1140,12 +1132,10 @@ function GitProvidersSection() {
           {providers.map((provider) => (
             <div
               key={provider.id}
-              className="flex items-center justify-between p-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)]"
+              className="s-inset flex items-center justify-between"
             >
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-[var(--radius-sm)] bg-[var(--surface-card)] flex items-center justify-center">
-                  <GitBranch size={14} className="text-[var(--text-tertiary)]" />
-                </div>
+                <span className="s-ibox"><GitBranch /></span>
                 <div>
                   <p className="text-sm font-medium text-[var(--text-primary)]">{provider.display_name}</p>
                   <p className="text-xs text-[var(--text-muted)] capitalize">{provider.name.replace('_', ' ')}</p>
@@ -1201,7 +1191,7 @@ function GitProvidersSection() {
               type="password"
               value={form.accessToken}
               onChange={(e) => setForm((p) => ({ ...p, accessToken: e.target.value }))}
-              className="w-full h-10 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm mono focus:border-[var(--accent-primary)] transition-colors"
+              className="w-full h-10 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm v-mono focus:border-[var(--accent-primary)] transition-colors"
               placeholder="••••••••••••••••"
             />
             <p className="text-xs text-[var(--text-muted)] mt-1.5">{selectedType.tokenHint}</p>
@@ -1214,7 +1204,7 @@ function GitProvidersSection() {
               <input
                 value={form.apiUrl}
                 onChange={(e) => setForm((p) => ({ ...p, apiUrl: e.target.value }))}
-                className="w-full h-10 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm mono focus:border-[var(--accent-primary)] transition-colors"
+                className="w-full h-10 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm v-mono focus:border-[var(--accent-primary)] transition-colors"
                 placeholder="https://gitea.example.com"
               />
             </div>
@@ -1228,8 +1218,8 @@ function GitProvidersSection() {
             <button
               onClick={() => createMutation.mutate()}
               disabled={!form.accessToken.trim() || createMutation.isPending}
-              className="flex items-center gap-2 h-9 px-4 rounded-[var(--radius-md)] text-[var(--accent-on)] text-sm font-medium shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-              style={{ background: 'var(--accent-primary)' }}
+              className="s-btn-accent h-9 disabled:opacity-50 disabled:cursor-not-allowed"
+              
             >
               {createMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
               Connect Provider
@@ -1274,7 +1264,7 @@ export function GitHubAppCallbackPage() {
       {!code ? (
         <>
           <AlertCircle size={28} className="mx-auto text-[var(--error)]" />
-          <h1 className="mt-4 text-lg font-semibold text-[var(--text-primary)]">Missing code</h1>
+          <h1 className="mt-4 font-headline text-lg font-semibold text-[var(--text-primary)]">Missing code</h1>
           <p className="mt-2 text-sm text-[var(--text-tertiary)]">
             GitHub did not return an app code. Start the setup again from Git providers.
           </p>
@@ -1282,14 +1272,14 @@ export function GitHubAppCallbackPage() {
       ) : convertMutation.isError ? (
         <>
           <AlertCircle size={28} className="mx-auto text-[var(--error)]" />
-          <h1 className="mt-4 text-lg font-semibold text-[var(--text-primary)]">Setup failed</h1>
+          <h1 className="mt-4 font-headline text-lg font-semibold text-[var(--text-primary)]">Setup failed</h1>
           <p className="mt-2 text-sm text-[var(--text-tertiary)]">
             {convertMutation.error instanceof Error ? convertMutation.error.message : 'Could not provision the GitHub App'}
           </p>
           <button
             type="button"
             onClick={() => navigate('/settings', { replace: true })}
-            className="mt-6 rounded-[var(--radius-md)] bg-[var(--accent-primary)] px-4 py-2 text-sm font-semibold text-[var(--accent-on)]"
+            className="s-btn-accent mt-6"
           >
             Back to settings
           </button>
@@ -1297,7 +1287,7 @@ export function GitHubAppCallbackPage() {
       ) : (
         <>
           <Loader2 size={28} className="mx-auto animate-spin text-[var(--accent-primary)]" />
-          <h1 className="mt-4 text-lg font-semibold text-[var(--text-primary)]">Setting up GitHub App</h1>
+          <h1 className="mt-4 font-headline text-lg font-semibold text-[var(--text-primary)]">Setting up GitHub App</h1>
           <p className="mt-2 text-sm text-[var(--text-tertiary)]">Exchanging the app credentials…</p>
         </>
       )}
@@ -1353,13 +1343,11 @@ function PlatformSettingsSection() {
   };
 
   return (
-    <section className="panel p-6">
+    <section className="s-card p-5">
       <div className="flex items-center gap-3 mb-4">
-        <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
-          <Cloud size={18} className="text-[var(--accent-primary)]" />
-        </div>
+        <span className="s-ibox !w-9 !h-9"><Cloud /></span>
         <div>
-          <h2 className="text-lg font-semibold text-[var(--text-primary)]">Platform</h2>
+          <h2 className="s-t">Platform</h2>
           <p className="text-xs text-[var(--text-tertiary)]">Owner only - values set here override environment variables</p>
         </div>
       </div>
@@ -1412,8 +1400,8 @@ function PlatformSettingsSection() {
               <button
                 onClick={saveToken}
                 disabled={saveMutation.isPending || !tokenDraft.trim()}
-                className="h-9 px-4 rounded-[var(--radius-md)] text-sm font-medium text-[var(--accent-on)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                style={{ background: 'var(--accent-primary)' }}
+                className="s-btn-accent h-9 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                
               >
                 Save
               </button>
@@ -1475,8 +1463,8 @@ function PlatformSettingsSection() {
                   saveMutation.mutate({ branding: b });
                 }}
                 disabled={saveMutation.isPending || Object.keys(brandDraft).length === 0}
-                className="h-9 px-4 rounded-[var(--radius-md)] text-sm font-medium text-[var(--accent-on)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                style={{ background: 'var(--accent-primary)' }}
+                className="s-btn-accent h-9 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                
               >
                 Save branding
               </button>
@@ -1548,13 +1536,11 @@ function UserTokensSection({ isAdmin }: { isAdmin: boolean }) {
       ];
 
   return (
-    <section className="panel p-6">
+    <section className="s-card p-5">
       <div className="flex items-center gap-3 mb-4">
-        <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
-          <Key size={18} className="text-[var(--accent-primary)]" />
-        </div>
+        <span className="s-ibox !w-9 !h-9"><Key /></span>
         <div>
-          <h2 className="text-lg font-semibold text-[var(--text-primary)]">Personal Access Tokens</h2>
+          <h2 className="s-t">Personal Access Tokens</h2>
           <p className="text-xs text-[var(--text-tertiary)]">Authenticate the CLI, MCP server, and scripts - same rights as you, bounded by scope</p>
         </div>
       </div>
@@ -1588,8 +1574,8 @@ function UserTokensSection({ isAdmin }: { isAdmin: boolean }) {
           <button
             onClick={() => createMutation.mutate()}
             disabled={createMutation.isPending || !tokenName.trim()}
-            className="h-9 px-4 rounded-[var(--radius-md)] text-sm font-medium text-[var(--accent-on)] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-            style={{ background: 'var(--accent-primary)' }}
+            className="s-btn-accent h-9 disabled:opacity-50 disabled:cursor-not-allowed"
+            
           >
             {createMutation.isPending ? 'Creating…' : 'Create token'}
           </button>
@@ -1598,7 +1584,7 @@ function UserTokensSection({ isAdmin }: { isAdmin: boolean }) {
         {issuedToken ? (
           <div className="rounded-[var(--radius-md)] border border-[var(--success)]/30 bg-[var(--success-soft)] p-3">
             <div className="flex items-center justify-between gap-2">
-              <span className="mono text-xs text-[var(--text-primary)] break-all">{issuedToken.token}</span>
+              <span className="v-mono text-xs text-[var(--text-primary)] break-all">{issuedToken.token}</span>
               <button
                 onClick={() => void navigator.clipboard.writeText(issuedToken.token ?? '')}
                 className="flex items-center gap-1 text-xs text-[var(--accent-primary)] hover:underline shrink-0"
@@ -1608,7 +1594,7 @@ function UserTokensSection({ isAdmin }: { isAdmin: boolean }) {
               </button>
             </div>
             <p className="mt-1 text-xs text-[var(--text-tertiary)]">
-              Shown once - store it now. Use with <span className="mono">containr auth login --token</span> or as a Bearer token.
+              Shown once - store it now. Use with <span className="v-mono">containr auth login --token</span> or as a Bearer token.
             </p>
           </div>
         ) : null}
@@ -1630,7 +1616,7 @@ function UserTokensSection({ isAdmin }: { isAdmin: boolean }) {
               <div key={token.id} className="flex items-center justify-between gap-2 text-xs">
                 <div className="min-w-0">
                   <span className="text-[var(--text-primary)]">{token.name}</span>
-                  <span className="ml-2 mono text-[var(--text-muted)]">{token.key_prefix}…</span>
+                  <span className="ml-2 v-mono text-[var(--text-muted)]">{token.key_prefix}…</span>
                   <span className="ml-2 rounded px-1.5 py-0.5 bg-[var(--surface-muted)] text-[var(--text-secondary)]">{token.scope}</span>
                   <span className="ml-2 text-[var(--text-muted)]">
                     {token.last_used_at ? `used ${formatRelative(token.last_used_at)}` : 'unused'}
@@ -1692,13 +1678,11 @@ function RegistriesSection() {
   const registries = registriesQuery.data ?? [];
 
   return (
-    <section className="panel p-6">
+    <section className="s-card p-5">
       <div className="flex items-center gap-3 mb-4">
-        <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
-          <Archive size={18} className="text-[var(--accent-primary)]" />
-        </div>
+        <span className="s-ibox !w-9 !h-9"><Archive /></span>
         <div>
-          <h2 className="text-lg font-semibold text-[var(--text-primary)]">Registry credentials</h2>
+          <h2 className="s-t">Registry credentials</h2>
           <p className="text-xs text-[var(--text-tertiary)]">Pull private images on deploy - matched by image host, stored encrypted</p>
         </div>
       </div>
@@ -1733,8 +1717,8 @@ function RegistriesSection() {
           <button
             onClick={() => createMutation.mutate()}
             disabled={createMutation.isPending || !name.trim() || !host.trim()}
-            className="h-9 px-4 rounded-[var(--radius-md)] text-sm font-medium text-[var(--accent-on)] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-            style={{ background: 'var(--accent-primary)' }}
+            className="s-btn-accent h-9 disabled:opacity-50 disabled:cursor-not-allowed"
+            
           >
             {createMutation.isPending ? 'Adding…' : 'Add registry'}
           </button>
@@ -1760,7 +1744,7 @@ function RegistriesSection() {
               <div key={r.id} className="flex items-center justify-between gap-2 text-xs">
                 <div className="min-w-0">
                   <span className="text-[var(--text-primary)]">{r.name}</span>
-                  <span className="ml-2 mono text-[var(--text-muted)]">{r.host}</span>
+                  <span className="ml-2 v-mono text-[var(--text-muted)]">{r.host}</span>
                   {r.username ? <span className="ml-2 text-[var(--text-secondary)]">{r.username}</span> : null}
                   <span className="ml-2 rounded px-1.5 py-0.5 bg-[var(--surface-muted)] text-[var(--text-secondary)]">
                     {r.has_password ? 'password set' : 'anonymous'}
@@ -1828,13 +1812,11 @@ function BackupTargetsSection() {
   const fieldCls = 'h-9 flex-1 min-w-[130px] rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] transition-all';
 
   return (
-    <section className="panel p-6">
+    <section className="s-card p-5">
       <div className="flex items-center gap-3 mb-4">
-        <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
-          <HardDrive size={18} className="text-[var(--accent-primary)]" />
-        </div>
+        <span className="s-ibox !w-9 !h-9"><HardDrive /></span>
         <div>
-          <h2 className="text-lg font-semibold text-[var(--text-primary)]">Backup targets</h2>
+          <h2 className="s-t">Backup targets</h2>
           <p className="text-xs text-[var(--text-tertiary)]">S3-compatible destinations for database archives — keys stored encrypted</p>
         </div>
       </div>
@@ -1853,8 +1835,8 @@ function BackupTargetsSection() {
           <button
             onClick={() => createMutation.mutate()}
             disabled={createMutation.isPending || !form.name.trim() || !form.endpoint.trim() || !form.bucket.trim()}
-            className="h-9 px-4 rounded-[var(--radius-md)] text-sm font-medium text-[var(--accent-on)] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-            style={{ background: 'var(--accent-primary)' }}
+            className="s-btn-accent h-9 disabled:opacity-50 disabled:cursor-not-allowed"
+            
           >
             {createMutation.isPending ? 'Checking…' : 'Add target'}
           </button>
@@ -1880,7 +1862,7 @@ function BackupTargetsSection() {
               <div key={t.id} className="flex items-center justify-between gap-2 text-xs">
                 <div className="min-w-0">
                   <span className="text-[var(--text-primary)]">{t.name}</span>
-                  <span className="ml-2 mono text-[var(--text-muted)]">{t.endpoint}/{t.bucket}{t.prefix ? `/${t.prefix}` : ''}</span>
+                  <span className="ml-2 v-mono text-[var(--text-muted)]">{t.endpoint}/{t.bucket}{t.prefix ? `/${t.prefix}` : ''}</span>
                   <span className="ml-2 rounded px-1.5 py-0.5 bg-[var(--surface-muted)] text-[var(--text-secondary)]">
                     {t.has_credentials ? 'keys set' : 'anonymous'}{t.use_tls ? '' : ' · no TLS'}
                   </span>
@@ -1961,13 +1943,11 @@ function NotificationChannelsSection() {
   const channels = channelsQuery.data ?? [];
 
   return (
-    <section className="panel p-6">
+    <section className="s-card p-5">
       <div className="flex items-center gap-3 mb-4">
-        <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
-          <Bell size={18} className="text-[var(--accent-primary)]" />
-        </div>
+        <span className="s-ibox !w-9 !h-9"><Bell /></span>
         <div>
-          <h2 className="text-lg font-semibold text-[var(--text-primary)]">Push notifications</h2>
+          <h2 className="s-t">Push notifications</h2>
           <p className="text-xs text-[var(--text-tertiary)]">Relay notifications to a self-hosted ntfy or Gotify server</p>
         </div>
       </div>
@@ -1998,8 +1978,8 @@ function NotificationChannelsSection() {
           <button
             onClick={() => createMutation.mutate()}
             disabled={createMutation.isPending || !endpoint.trim()}
-            className="h-9 px-4 rounded-[var(--radius-md)] text-sm font-medium text-[var(--accent-on)] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-            style={{ background: 'var(--accent-primary)' }}
+            className="s-btn-accent h-9 disabled:opacity-50 disabled:cursor-not-allowed"
+            
           >
             {createMutation.isPending ? 'Adding…' : 'Add channel'}
           </button>
@@ -2027,7 +2007,7 @@ function NotificationChannelsSection() {
                   <span className="rounded px-1.5 py-0.5 bg-[var(--surface-muted)] text-[var(--text-secondary)] uppercase">
                     {ch.kind}
                   </span>
-                  <span className="ml-2 mono text-[var(--text-primary)] break-all">{ch.endpoint}</span>
+                  <span className="ml-2 v-mono text-[var(--text-primary)] break-all">{ch.endpoint}</span>
                   {testResult[ch.id] === 'ok' ? (
                     <span className="ml-2 text-[var(--success)]">delivered</span>
                   ) : testResult[ch.id] ? (
@@ -2148,13 +2128,11 @@ export function SettingsPage() {
       <div className="w-full px-4 py-6 sm:px-8">
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           {/* Profile Section */}
-          <section className="panel p-6">
+          <section className="s-card p-5">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
-                <User size={18} className="text-[var(--accent-primary)]" />
-              </div>
+              <span className="s-ibox !w-9 !h-9"><User /></span>
               <div>
-                <h2 className="text-lg font-semibold text-[var(--text-primary)]">Profile</h2>
+                <h2 className="s-t">Profile</h2>
                 <p className="text-xs text-[var(--text-tertiary)]">Backed by GET/PUT /user/profile</p>
               </div>
             </div>
@@ -2196,8 +2174,8 @@ export function SettingsPage() {
                   <button
                     onClick={() => updateProfileMutation.mutate()}
                     disabled={!hasProfileChanges || updateProfileMutation.isPending}
-                    className="flex items-center gap-2 h-9 px-4 rounded-[var(--radius-md)] text-[var(--accent-on)] text-sm font-medium shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                    style={{ background: 'var(--accent-primary)' }}
+                    className="s-btn-accent h-9 disabled:opacity-50 disabled:cursor-not-allowed"
+                    
                   >
                     {updateProfileMutation.isPending ? (
                       <>
@@ -2248,13 +2226,11 @@ export function SettingsPage() {
           <GitProvidersSection />
 
           {/* Audit Logs Section */}
-          <section className="panel p-6">
+          <section className="s-card p-5">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
-                <ScrollText size={18} className="text-[var(--accent-primary)]" />
-              </div>
+              <span className="s-ibox !w-9 !h-9"><ScrollText /></span>
               <div>
-                <h2 className="text-lg font-semibold text-[var(--text-primary)]">Audit Logs</h2>
+                <h2 className="s-t">Audit Logs</h2>
                 <p className="text-xs text-[var(--text-tertiary)]">Every authenticated action recorded by the platform</p>
               </div>
             </div>
@@ -2271,13 +2247,11 @@ export function SettingsPage() {
           </section>
 
           {/* Runtime & Local State Section */}
-          <section className="panel p-6">
+          <section className="s-card p-5">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--surface-muted)] flex items-center justify-center">
-                <Settings size={18} className="text-[var(--text-tertiary)]" />
-              </div>
+              <span className="s-ibox !w-9 !h-9"><Settings /></span>
               <div>
-                <h2 className="text-lg font-semibold text-[var(--text-primary)]">Runtime & Local State</h2>
+                <h2 className="s-t">Runtime & Local State</h2>
                 <p className="text-xs text-[var(--text-tertiary)]">API endpoints, cookie-session mode, and storage diagnostics</p>
               </div>
             </div>
@@ -2288,7 +2262,7 @@ export function SettingsPage() {
                   <Key size={14} className="text-[var(--text-tertiary)]" />
                   <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">API Base</span>
                 </div>
-                <p className="mono text-xs text-[var(--text-primary)] break-all">{getApiBaseUrl()}</p>
+                <p className="v-mono text-xs text-[var(--text-primary)] break-all">{getApiBaseUrl()}</p>
               </div>
 
               <div className="p-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)]">
@@ -2296,7 +2270,7 @@ export function SettingsPage() {
                   <Key size={14} className="text-[var(--text-tertiary)]" />
                   <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Auth Base</span>
                 </div>
-                <p className="mono text-xs text-[var(--text-primary)] break-all">{getAuthBaseUrl()}</p>
+                <p className="v-mono text-xs text-[var(--text-primary)] break-all">{getAuthBaseUrl()}</p>
               </div>
 
               <div className="p-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)]">
@@ -2350,7 +2324,7 @@ export function SettingsPage() {
                 <p className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)] mb-2">Cached Keys</p>
                 <ul className="space-y-1">
                   {storageSummary.canvasKeys.slice(0, 5).map((key) => (
-                    <li key={key} className="mono text-xs text-[var(--text-tertiary)] truncate">
+                    <li key={key} className="v-mono text-xs text-[var(--text-tertiary)] truncate">
                       {key}
                     </li>
                   ))}
@@ -2522,7 +2496,7 @@ export function DatabasesPage() {
             <button
               type="button"
               onClick={() => setCreateOpen(true)}
-              className="inline-flex h-9 items-center gap-1.5 rounded-[var(--radius-md)] bg-[var(--accent-primary)] px-4 text-[12.5px] font-semibold text-[var(--accent-on)]"
+              className="s-btn-accent h-9 text-[12.5px]"
             >
               <Database size={13} /> New database
             </button>
@@ -2540,7 +2514,7 @@ export function DatabasesPage() {
               <button
                 type="button"
                 onClick={() => setCreateOpen(true)}
-                className="mt-4 inline-flex items-center gap-1.5 rounded-[var(--radius-md)] bg-[var(--accent-primary)] px-4 py-2 text-[12.5px] font-semibold text-[var(--accent-on)]"
+                className="s-btn-accent mt-4 text-[12.5px]"
               >
                 <Database size={13} /> Create your first database
               </button>
@@ -2574,7 +2548,7 @@ export function DatabasesPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium text-[var(--text-primary)]">{db.name}</span>
-                        <span className="text-xs px-1.5 py-0.5 rounded bg-[var(--surface-muted)] text-[var(--text-secondary)] mono">{db.type}{db.version ? ` ${db.version}` : ''}</span>
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-[var(--surface-muted)] text-[var(--text-secondary)] v-mono">{db.type}{db.version ? ` ${db.version}` : ''}</span>
                         {db.provider === 'external' && (
                           <span className="text-xs px-1.5 py-0.5 rounded bg-[var(--accent-primary-soft)] text-[var(--accent-primary)]">external</span>
                         )}
@@ -2594,7 +2568,7 @@ export function DatabasesPage() {
                       <div>
                         <p className="mb-1.5 text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Connection URL</p>
                         <div className="flex items-center gap-2">
-                          <code className="mono flex-1 truncate rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 py-2 text-xs text-[var(--text-primary)]">
+                          <code className="v-mono flex-1 truncate rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 py-2 text-xs text-[var(--text-primary)]">
                             {db.connection_url || '—'}
                           </code>
                           {db.connection_url && (
@@ -2617,7 +2591,7 @@ export function DatabasesPage() {
                             <button
                               onClick={() => testByIdMutation.mutate(db.id ?? '')}
                               disabled={testByIdMutation.isPending}
-                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-secondary)] hover:border-[var(--border-default)] disabled:opacity-40 transition-colors"
+                              className="s-btn-quiet"
                             >
                               <RefreshCw size={11} /> Test connection
                             </button>
@@ -2634,21 +2608,21 @@ export function DatabasesPage() {
                         <button
                           onClick={() => actionMutation.mutate({ id: db.id ?? '', action: 'start' })}
                           disabled={running || actionMutation.isPending}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-secondary)] hover:border-[var(--border-default)] disabled:opacity-40 transition-colors"
+                          className="s-btn-quiet"
                         >
                           <Play size={11} /> Start
                         </button>
                         <button
                           onClick={() => actionMutation.mutate({ id: db.id ?? '', action: 'stop' })}
                           disabled={!running || actionMutation.isPending}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-secondary)] hover:border-[var(--border-default)] disabled:opacity-40 transition-colors"
+                          className="s-btn-quiet"
                         >
                           <Square size={11} /> Stop
                         </button>
                         <button
                           onClick={() => actionMutation.mutate({ id: db.id ?? '', action: 'restart' })}
                           disabled={!running || actionMutation.isPending}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-secondary)] hover:border-[var(--border-default)] disabled:opacity-40 transition-colors"
+                          className="s-btn-quiet"
                         >
                           <RefreshCw size={11} /> Restart
                         </button>
@@ -2665,7 +2639,7 @@ export function DatabasesPage() {
                           onClick={() => setBindDb(bindDb?.id === db.id ? null : db)}
                           disabled={!db.connection_url}
                           title={db.connection_url ? 'Inject connection URL into a service' : 'No connection URL available'}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-secondary)] hover:border-[var(--border-default)] disabled:opacity-40 transition-colors"
+                          className="s-btn-quiet"
                         >
                           <Link2 size={11} /> Bind
                         </button>
@@ -2697,7 +2671,7 @@ export function DatabasesPage() {
                           ] as const).map(([label, value]) => (
                             <div key={label} className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 py-2">
                               <p className="text-xs text-[var(--text-muted)]">{label}</p>
-                              <p className="mono text-sm text-[var(--text-primary)]">{value}</p>
+                              <p className="v-mono text-sm text-[var(--text-primary)]">{value}</p>
                             </div>
                           ))}
                         </div>
@@ -2743,8 +2717,8 @@ export function DatabasesPage() {
                           <button
                             onClick={() => backupMutation.mutate(db.id ?? '')}
                             disabled={!running || backupMutation.isPending}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-md)] text-xs font-medium text-[var(--accent-on)] disabled:opacity-40 transition-all"
-                            style={{ background: 'var(--accent-primary)' }}
+                            className="s-btn-accent disabled:opacity-40"
+                            
                           >
                             <Archive size={11} />
                             {backupMutation.isPending ? 'Starting…' : 'New backup'}
@@ -2764,7 +2738,7 @@ export function DatabasesPage() {
                             {backups.map((b) => (
                               <div key={b.id} className="flex items-center gap-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 py-2 text-xs">
                                 <span className="text-[var(--text-secondary)]">{formatRelative(b.created_at)}</span>
-                                <span className="mono text-[var(--text-muted)]">{b.size}</span>
+                                <span className="v-mono text-[var(--text-muted)]">{b.size}</span>
                                 <span className={`${b.status === 'completed' ? 'text-[var(--success)]' : b.status === 'in_progress' ? 'text-[var(--warning)]' : 'text-[var(--error)]'}`}>{b.status}</span>
                                 {b.remote && <span className="rounded bg-[var(--surface-card)] px-1.5 py-0.5 text-[var(--accent-primary)]" title="Also shipped to the configured backup target">offsite</span>}
                                 {b.status === 'completed' && (
@@ -2994,7 +2968,7 @@ export function DatabasesPage() {
                   (createMode === 'managed' ? createMutation.isPending : registerExternalMutation.isPending) ||
                   (createMode === 'managed' ? createForm.name.trim().length === 0 : externalForm.name.trim().length === 0 || externalForm.host.trim().length === 0)
                 }
-                className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] bg-[var(--accent-primary)] px-4 py-2 text-xs font-semibold text-[var(--accent-on)] disabled:opacity-50"
+                className="s-btn-accent disabled:opacity-50"
               >
                 {(createMode === 'managed' ? createMutation.isPending : registerExternalMutation.isPending) ? <Loader2 size={13} className="animate-spin" /> : null}
                 {createMode === 'managed' ? 'Create database' : 'Register database'}
@@ -3041,10 +3015,10 @@ function BindDatabasePanel({
   const services = servicesQuery.data ?? [];
 
   return (
-    <div className="rounded-[var(--radius-md)] border border-[var(--border-default)] bg-[var(--surface-card)] p-4 space-y-3">
+    <div className="s-card space-y-3">
       <div className="flex items-center justify-between">
-        <p className="text-xs font-medium text-[var(--text-primary)]">Bind to service</p>
-        <button onClick={onClose} className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)]">Close</button>
+        <p className="s-t">Bind to service</p>
+        <button onClick={onClose} className="v-mono text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)]">close</button>
       </div>
       <p className="text-xs text-[var(--text-muted)]">
         Injects this database's connection URL as an environment variable on the selected service.
@@ -3082,13 +3056,13 @@ function BindDatabasePanel({
           <input
             value={varKey}
             onChange={(e) => setVarKey(e.target.value)}
-            className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-2 py-1.5 text-xs mono text-[var(--text-primary)] w-40"
+            className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-2 py-1.5 text-xs v-mono text-[var(--text-primary)] w-40"
           />
         </label>
         <button
           onClick={() => bindMutation.mutate()}
           disabled={!serviceId || !varKey.trim() || bindMutation.isPending}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-on)] text-xs font-medium disabled:opacity-40"
+          className="s-btn-accent disabled:opacity-40"
         >
           {bindMutation.isPending ? <Loader2 size={11} className="animate-spin" /> : <Link2 size={11} />} Bind
         </button>
@@ -3129,7 +3103,7 @@ function BackupScheduleRow({
         value={value}
         onChange={(e) => setValue(e.target.value)}
         placeholder="cron schedule, e.g. 0 3 * * *"
-        className="w-44 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-2 py-1.5 text-xs mono text-[var(--text-primary)]"
+        className="w-44 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-2 py-1.5 text-xs v-mono text-[var(--text-primary)]"
       />
       <button
         onClick={() => mutation.mutate(value.trim())}
@@ -3297,17 +3271,17 @@ export function HighAvailabilityPage() {
         </div>
 
         {isAdmin ? (
-        <div className="panel p-6">
+        <div className="s-card p-5">
           <div className="flex items-center gap-3 mb-4">
             <Zap size={18} className="text-[var(--accent-primary)]" />
-            <h2 className="text-base font-semibold text-[var(--text-primary)]">Manager controls</h2>
+            <h2 className="s-t">Manager controls</h2>
           </div>
           <div className="flex flex-wrap items-end gap-3">
             <button
               type="button"
               disabled={toggleMutation.isPending || statusQuery.isLoading}
               onClick={() => toggleMutation.mutate(!status?.enabled)}
-              className="px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-on)] text-sm font-medium disabled:opacity-50"
+              className="s-btn-accent disabled:opacity-50"
             >
               {status?.enabled ? 'Disable HA manager' : 'Enable HA manager'}
             </button>
@@ -3338,10 +3312,10 @@ export function HighAvailabilityPage() {
         </div>
         ) : null}
 
-        <div className="panel p-6">
+        <div className="s-card p-5">
           <div className="flex items-center gap-3 mb-4">
             <AlertCircle size={18} className="text-[var(--accent-primary)]" />
-            <h2 className="text-base font-semibold text-[var(--text-primary)]">Active alerts</h2>
+            <h2 className="s-t">Active alerts</h2>
           </div>
           {!isDemoMode && alertsQuery.isLoading ? (
             <p className="text-sm text-[var(--text-secondary)]">Loading…</p>
@@ -3365,7 +3339,7 @@ export function HighAvailabilityPage() {
                     type="button"
                     disabled={resolveMutation.isPending}
                     onClick={() => alert.id && resolveMutation.mutate(alert.id)}
-                    className="ml-4 shrink-0 px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] disabled:opacity-50"
+                    className="s-btn-quiet"
                   >
                     Resolve
                   </button>
@@ -3376,17 +3350,17 @@ export function HighAvailabilityPage() {
           )}
         </div>
 
-        <div className="panel p-6">
+        <div className="s-card p-5">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
               <ShieldCheck size={18} className="text-[var(--accent-primary)]" />
-              <h2 className="text-base font-semibold text-[var(--text-primary)]">Failover policies</h2>
+              <h2 className="s-t">Failover policies</h2>
             </div>
             {policyForm === null && isAdmin && (
               <button
                 type="button"
                 onClick={() => setPolicyForm({ serviceId: '', strategy: 'active_passive', minHealthyNodes: '1', maxFailures: '3', enabled: true, editing: false })}
-                className="px-3 py-1.5 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-on)] text-xs font-medium"
+                className="s-btn-accent "
               >
                 New policy
               </button>
@@ -3480,14 +3454,14 @@ export function HighAvailabilityPage() {
                   type="button"
                   disabled={savePolicyMutation.isPending || !policyForm.serviceId}
                   onClick={() => savePolicyMutation.mutate()}
-                  className="px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-on)] text-sm font-medium disabled:opacity-50"
+                  className="s-btn-accent disabled:opacity-50"
                 >
                   {savePolicyMutation.isPending ? 'Saving…' : 'Save policy'}
                 </button>
                 <button
                   type="button"
                   onClick={() => setPolicyForm(null)}
-                  className="px-4 py-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)]"
+                  className="s-btn-quiet"
                 >
                   Cancel
                 </button>
@@ -3526,7 +3500,7 @@ export function HighAvailabilityPage() {
                         enabled: policy.enabled ?? true,
                         editing: true,
                       })}
-                      className="px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)]"
+                      className="s-btn-quiet"
                     >
                       Edit
                     </button>
@@ -3553,10 +3527,10 @@ export function HighAvailabilityPage() {
           )}
         </div>
 
-        <div className="panel p-6">
+        <div className="s-card p-5">
           <div className="flex items-center gap-3 mb-4">
             <HeartPulse size={18} className="text-[var(--accent-primary)]" />
-            <h2 className="text-base font-semibold text-[var(--text-primary)]">Health check results</h2>
+            <h2 className="s-t">Health check results</h2>
           </div>
           {!isDemoMode && healthQuery.isLoading ? (
             <p className="text-sm text-[var(--text-secondary)]">Loading…</p>
@@ -3741,7 +3715,7 @@ export function SecurityPage() {
                 type="button"
                 disabled={scanMutation.isPending}
                 onClick={() => scanMutation.mutate()}
-                className="px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-on)] text-sm font-medium disabled:opacity-50"
+                className="s-btn-accent disabled:opacity-50"
               >
                 {scanMutation.isPending ? 'Starting…' : 'Run scan'}
               </button>
@@ -3784,10 +3758,10 @@ export function SecurityPage() {
         )}
 
         {effectiveProjectId && (
-          <div className="panel p-6">
+          <div className="s-card p-5">
             <div className="flex items-center gap-3 mb-4">
               <Shield size={18} className="text-[var(--accent-primary)]" />
-              <h2 className="text-base font-semibold text-[var(--text-primary)]">Findings</h2>
+              <h2 className="s-t">Findings</h2>
             </div>
             {!isDemoMode && vulnsQuery.isLoading ? (
               <p className="text-sm text-[var(--text-secondary)]">Loading…</p>
@@ -3826,7 +3800,7 @@ export function SecurityPage() {
                           type="button"
                           disabled={vulnMutation.isPending}
                           onClick={() => vulnMutation.mutate({ id: v.id!, status: 'ignored' })}
-                          className="px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs text-[var(--text-secondary)] disabled:opacity-50"
+                          className="s-btn-quiet"
                         >
                           Ignore
                         </button>
@@ -3840,10 +3814,10 @@ export function SecurityPage() {
         )}
 
         {effectiveProjectId && (
-          <div className="panel p-6">
+          <div className="s-card p-5">
             <div className="flex items-center gap-3 mb-4">
               <Clock size={18} className="text-[var(--accent-primary)]" />
-              <h2 className="text-base font-semibold text-[var(--text-primary)]">Scan history</h2>
+              <h2 className="s-t">Scan history</h2>
             </div>
             {!isDemoMode && historyQuery.isLoading ? (
               <p className="text-sm text-[var(--text-secondary)]">Loading…</p>

@@ -1,6 +1,7 @@
 import type { ServiceEntity } from '@/lib/api-client';
-import { serviceStatusClass } from '@/lib/api-client';
 import type { ServiceVariable } from '../auto-connections';
+import { GhostBtn, QuietBtn, SPill } from '@/shared/components/sentry';
+import { statusTone } from '@/shared/components/sentry-utils';
 import { ServiceIcon } from './ServiceIcon';
 import { serviceAccent } from './service-visuals';
 import { formatRelative } from '@/lib/time';
@@ -63,28 +64,11 @@ function statusLabel(status: string): string {
   }
 }
 
-function statusColor(status: string): string {
-  switch (status) {
-    case 'running':
-    case 'deployed':
-      return 'var(--success)';
-    case 'failed':
-      return 'var(--error)';
-    case 'building':
-    case 'deploying':
-    case 'pending':
-    case 'rolling_back':
-      return 'var(--warning)';
-    default:
-      return 'var(--text-tertiary)';
-  }
-}
-
 function Section({ title, children, action }: { title: string; children: React.ReactNode; action?: React.ReactNode }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-1.5">
-        <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">{title}</p>
+        <p className="v-mono text-[10px] uppercase tracking-[0.14em] text-[var(--text-muted)]">{title}</p>
         {action}
       </div>
       {children}
@@ -163,48 +147,49 @@ export function ServiceInspector({
 
   return (
     <aside className="canvas-inspector absolute right-4 top-4 bottom-4 w-[312px] panel-glass flex flex-col overflow-hidden">
-      <div className="flex items-center gap-3 px-4 pt-4 pb-3 border-b border-[var(--border-subtle)]">
-        <div
-          className="w-9 h-9 rounded-[var(--radius-md)] flex items-center justify-center flex-shrink-0"
-          style={{ background: `${accent}1c`, color: accent }}
+      <div className="s-cardhead border-b border-[var(--border-subtle)]">
+        <span
+          className="s-ibox flex-shrink-0"
+          style={{ background: `${accent}14`, color: accent, borderColor: `${accent}33` }}
         >
-          <ServiceIcon service={service} size={16} />
-        </div>
+          <ServiceIcon service={service} size={15} />
+        </span>
         <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-semibold text-[var(--text-primary)] truncate">{service.name}</h3>
-          <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-tertiary)]">
-            <span className={`status-dot ${serviceStatusClass(service.status)}`} />
-            <span style={{ color: statusColor(service.status) }}>{statusLabel(service.status)}</span>
-            <span>· {service.type}</span>
-            {service.environment && service.environment !== 'production' && <span>· {service.environment}</span>}
+          <h3 className="text-[13px] font-semibold text-[var(--text-primary)] truncate leading-tight">{service.name}</h3>
+          <div className="flex items-center gap-1.5 mt-1">
+            <SPill tone={statusTone(service.status)}>{statusLabel(service.status)}</SPill>
+            <span className="v-mono text-[10px] text-[var(--text-tertiary)]">
+              {service.type}
+              {service.environment && service.environment !== 'production' ? ` · ${service.environment}` : ''}
+            </span>
           </div>
         </div>
         <button
           type="button"
           onClick={onClose}
-          className="w-7 h-7 rounded-md flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-muted)]"
+          className="s-icon-btn"
           title="Close (Esc)"
         >
-          <X size={14} />
+          <X size={12} />
         </button>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
         {(publicUrl || service.port) && (
           <Section title="Address">
-            <div className="flex items-center gap-1.5 group">
+            <div className="s-inset flex items-center gap-1.5 px-2.5 py-2 group">
               <Globe size={11} className="text-[var(--text-tertiary)] flex-shrink-0" />
               {publicUrl ? (
                 <a
                   href={publicUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mono text-[11px] text-[var(--accent-primary)] hover:underline break-all"
+                  className="v-mono text-[11px] text-[var(--accent-primary)] hover:underline break-all"
                 >
                   {publicUrl.replace(/^https?:\/\//, '')}
                 </a>
               ) : (
-                <span className="mono text-[11px] text-[var(--text-secondary)]">
+                <span className="v-mono text-[11px] text-[var(--text-secondary)]">
                   {service.name}:{service.port}
                 </span>
               )}
@@ -218,7 +203,7 @@ export function ServiceInspector({
               </button>
             </div>
             {publicUrl && service.port ? (
-              <p className="mono text-[10.5px] text-[var(--text-tertiary)] mt-0.5 pl-4">
+              <p className="v-mono text-[10.5px] text-[var(--text-tertiary)] mt-1 pl-1">
                 {service.name}:{service.port}
               </p>
             ) : null}
@@ -266,13 +251,13 @@ export function ServiceInspector({
               {variables.slice(0, 6).map((variable) => (
                 <div
                   key={variable.key}
-                  className="flex items-center gap-2 px-2 py-1.5 rounded-[var(--radius-sm)] bg-[var(--surface-muted)]/50"
+                  className="s-inset !rounded-[6px] flex items-center gap-2 px-2 py-1.5"
                 >
                   <KeyRound size={9} className="text-[var(--text-tertiary)] flex-shrink-0" />
-                  <span className="mono text-[10px] text-[var(--text-primary)] truncate font-medium">
+                  <span className="v-mono text-[10px] text-[var(--text-primary)] truncate font-medium">
                     {variable.key}
                   </span>
-                  <span className="mono text-[10px] text-[var(--text-tertiary)] truncate ml-auto max-w-[130px]" title={variable.isSecret ? 'Secret' : variable.value}>
+                  <span className="v-mono text-[10px] text-[var(--text-tertiary)] truncate ml-auto max-w-[130px]" title={variable.isSecret ? 'Secret' : variable.value}>
                     {variable.isSecret ? '••••••••' : variable.value}
                   </span>
                 </div>
@@ -299,7 +284,7 @@ export function ServiceInspector({
               {visibleConfig.map(([label, value]) => (
                 <div key={label} className="flex items-baseline gap-2">
                   <dt className="text-[10px] text-[var(--text-muted)] w-[70px] flex-shrink-0">{label}</dt>
-                  <dd className="mono text-[10.5px] text-[var(--text-secondary)] truncate" title={value}>
+                  <dd className="v-mono text-[10.5px] text-[var(--text-secondary)] truncate" title={value}>
                     {value}
                   </dd>
                 </div>
@@ -307,7 +292,7 @@ export function ServiceInspector({
               {(service.replicas ?? 0) > 0 && (
                 <div className="flex items-baseline gap-2">
                   <dt className="text-[10px] text-[var(--text-muted)] w-[70px] flex-shrink-0">Replicas</dt>
-                  <dd className="mono text-[10.5px] text-[var(--text-secondary)]">{service.replicas}</dd>
+                  <dd className="v-mono text-[10.5px] text-[var(--text-secondary)]">{service.replicas}</dd>
                 </div>
               )}
             </dl>
@@ -318,7 +303,7 @@ export function ServiceInspector({
           {connections.length === 0 ? (
             <p className="text-[11px] text-[var(--text-muted)]">
               No inferred connections. Reference another service via{' '}
-              <span className="mono">{'{{variable}}'}</span> placeholders in env vars.
+              <span className="v-mono">{'{{variable}}'}</span> placeholders in env vars.
             </p>
           ) : (
             <div className="space-y-1.5">
@@ -327,13 +312,13 @@ export function ServiceInspector({
                   key={conn.id}
                   type="button"
                   onClick={() => onSelectPeer(conn.peerId)}
-                  className="w-full text-left px-2.5 py-2 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--surface-muted)]/40 hover:bg-[var(--surface-muted)] transition-colors"
+                  className="s-inset !rounded-[6px] w-full text-left px-2.5 py-2 hover:border-[var(--border-default)] transition-colors"
                 >
                   <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-primary)]">
                     <Link2 size={10} className="text-[var(--accent-primary)] flex-shrink-0" />
                     <span className="truncate font-medium">{conn.outbound ? `→ ${conn.peer}` : `← ${conn.peer}`}</span>
                   </div>
-                  <p className="mono text-[9.5px] text-[var(--text-tertiary)] truncate mt-0.5 pl-4">
+                  <p className="v-mono text-[9.5px] text-[var(--text-tertiary)] truncate mt-0.5 pl-4">
                     {conn.reasons.join(' · ')}
                   </p>
                 </button>
@@ -350,65 +335,58 @@ export function ServiceInspector({
       </div>
 
       <div className="border-t border-[var(--border-subtle)] px-4 py-3 space-y-2">
-        <button
-          type="button"
+        <GhostBtn
           onClick={() => onOpenService(service.id)}
-          className="w-full flex items-center justify-center gap-2 h-9 rounded-[var(--radius-md)] text-[var(--accent-on)] text-[13px] font-medium"
-          style={{ background: 'var(--accent-primary)' }}
+          className="w-full justify-center !h-9"
         >
           <ArrowUpRight size={14} />
           Open service
-        </button>
+        </GhostBtn>
         <div className="grid grid-cols-3 gap-1.5">
-          <button
-            type="button"
+          <QuietBtn
             disabled={actions.pending || readOnly}
             onClick={actions.deploy}
-            className="flex items-center justify-center gap-1 h-8 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-default)] transition-colors disabled:opacity-40"
+            className="justify-center"
           >
             {actions.deployPending ? <Loader2 size={11} className="animate-spin" /> : <Rocket size={11} />}
             Deploy
-          </button>
+          </QuietBtn>
           {service.status !== 'running' ? (
-            <button
-              type="button"
+            <QuietBtn
               disabled={actions.pending || readOnly}
               onClick={actions.start}
-              className="flex items-center justify-center gap-1 h-8 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-default)] transition-colors disabled:opacity-40"
+              className="justify-center"
             >
               <Play size={11} />
               Start
-            </button>
+            </QuietBtn>
           ) : (
-            <button
-              type="button"
+            <QuietBtn
               disabled={actions.pending || readOnly}
               onClick={actions.restart}
-              className="flex items-center justify-center gap-1 h-8 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-default)] transition-colors disabled:opacity-40"
+              className="justify-center"
             >
               {actions.restartPending ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
               Restart
-            </button>
+            </QuietBtn>
           )}
-          <button
-            type="button"
+          <QuietBtn
             disabled={actions.pending || readOnly || service.status !== 'running'}
             onClick={actions.stop}
-            className="flex items-center justify-center gap-1 h-8 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-default)] transition-colors disabled:opacity-40"
+            className="justify-center"
           >
             <Square size={11} />
             Stop
-          </button>
+          </QuietBtn>
         </div>
-        <button
-          type="button"
+        <QuietBtn
           disabled={actions.pending || readOnly}
           onClick={actions.remove}
-          className="w-full flex items-center justify-center gap-1.5 h-8 rounded-[var(--radius-sm)] text-[11px] font-medium text-[var(--error)] hover:bg-[var(--error-soft)] transition-colors disabled:opacity-40"
+          className="w-full justify-center !text-[var(--error)] hover:!border-[var(--error)]/50"
         >
           <Trash2 size={11} />
           Delete service
-        </button>
+        </QuietBtn>
       </div>
     </aside>
   );

@@ -9,11 +9,13 @@ import {
   ChartBar,
   CheckCircle2,
   ChevronsLeft,
+  ChevronsUpDown,
   Clock,
   Container,
   Database,
   FileText,
   FolderKanban,
+  LayoutDashboard,
   LayoutTemplate,
   LogIn,
   LogOut,
@@ -41,22 +43,26 @@ import {
   markAllNotificationsRead,
   markNotificationRead,
   pullUpgradeImage,
+  listProjects,
 } from '@/lib/api-client';
 import { signOutAuthSession } from '@/lib/auth-client';
 import { isDemoSearch } from '@/lib/demo-mode';
+import { demoProjects } from '@/lib/demo-data';
 import { useAuthSession } from '@/lib/use-auth-session';
-import { BannerBar, BrandWordmark, useToast } from '@/shared/components';
+import { BannerBar, BrandWordmark, CommandPalette, useToast } from '@/shared/components';
 
 type NavItem = { label: string; href: string; icon: typeof FolderKanban; hint: string };
 type NavSection = { title: string; items: NavItem[] };
 
 const navSections: NavSection[] = [
   {
-    title: 'Build',
+    title: 'Platform',
     items: [
+      { label: 'Dashboard', href: '/', icon: LayoutDashboard, hint: 'Fleet overview' },
       { label: 'Projects', href: '/projects', icon: FolderKanban, hint: 'Services & deployments' },
       { label: 'Templates', href: '/templates', icon: LayoutTemplate, hint: 'Deployable presets' },
       { label: 'Builds', href: '/builds', icon: FileText, hint: 'Build history' },
+      { label: 'Databases', href: '/databases', icon: Database, hint: 'Managed data services' },
     ],
   },
   {
@@ -64,7 +70,6 @@ const navSections: NavSection[] = [
     items: [
       { label: 'Operations', href: '/operations', icon: Activity, hint: 'Live jobs & failures' },
       { label: 'Activity', href: '/activity', icon: Clock, hint: 'Platform event feed' },
-      { label: 'Databases', href: '/databases', icon: Database, hint: 'Managed data services' },
       { label: 'High Availability', href: '/ha', icon: ShieldCheck, hint: 'Failover & health' },
       { label: 'Security', href: '/security', icon: Shield, hint: 'Scans & compliance' },
       { label: 'Usage', href: '/usage', icon: ChartBar, hint: 'Resource consumption' },
@@ -164,6 +169,18 @@ export function PlatformShell() {
   const [theme, setTheme] = useState<ThemeMode>(() => getInitialTheme());
   const [sidebarExpanded, setSidebarExpanded] = useState<boolean>(() => getInitialSidebar());
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setPaletteOpen((open) => !open);
+      }
+    };
+    document.addEventListener('keydown', down);
+    return () => document.removeEventListener('keydown', down);
+  }, []);
 
   const sessionQuery = useAuthSession({ enabled: !isDemoMode });
   const signedIn = isDemoMode || Boolean(sessionQuery.data);
@@ -234,8 +251,19 @@ export function PlatformShell() {
     }
   };
 
-  const isActiveRoute = (itemHref: string) =>
-    location.pathname === itemHref || location.pathname.startsWith(`${itemHref}/`);
+  // Longest matching href wins so /settings/audit-logs lights only
+  // "Audit Logs", not "Settings" as well.
+  const activeHref = location.pathname === '/'
+    ? '/'
+    : visibleNavSections
+        .flatMap((section) => section.items.map((item) => item.href))
+        .filter(
+          (itemHref) =>
+            itemHref !== '/' &&
+            (location.pathname === itemHref || location.pathname.startsWith(`${itemHref}/`)),
+        )
+        .sort((a, b) => b.length - a.length)[0] ?? null;
+  const isActiveRoute = (itemHref: string) => itemHref === activeHref;
 
   const userName = isDemoMode ? 'Demo workspace' : profileQuery.data?.name ?? sessionQuery.data?.user.name ?? 'Account';
   const userEmail = isDemoMode ? 'Sample data · read-only' : profileQuery.data?.email ?? sessionQuery.data?.user.email ?? 'Local session';
@@ -246,14 +274,20 @@ export function PlatformShell() {
     .slice(0, 2)
     .toUpperCase() || 'C';
 
-  const avatar = (
-    <div
-      className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full text-[11px] font-bold"
-      style={{ background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))', color: 'var(--accent-on)' }}
-    >
-      {initials}
-    </div>
-  );
+  const paletteNavigate = (target: string) => {
+    navigate(href(target));
+  };
+
+  // Project deep-links for the palette — only fetched once it opens.
+  const paletteProjectsQuery = useQuery({
+    queryKey: ['palette-projects'],
+    queryFn: () => listProjects(),
+    enabled: paletteOpen && !isDemoMode,
+    staleTime: 60_000,
+  });
+  const paletteProjects = isDemoMode
+    ? demoProjects
+    : paletteProjectsQuery.data ?? [];
 
   if (!isDemoMode && signedIn && setupQuery.data?.needs_setup) {
     return <Navigate to="/setup" replace />;
@@ -261,40 +295,46 @@ export function PlatformShell() {
 
   return (
     <div className="app-shell min-h-screen">
-      <div className="ambient-glow" />
-
       <div className="relative flex min-h-screen">
+        {/* ── Sidebar — fixed rail per design/23-sentry ── */}
         <aside
-          className="hidden h-screen shrink-0 flex-col border-r py-4 transition-[width] duration-200 md:flex"
-          style={{
-            width: sidebarExpanded ? '218px' : '62px',
-            background: 'var(--bg-base)',
-            borderRightColor: 'var(--border-subtle)',
-          }}
+          className="shell-side hidden h-screen shrink-0 flex-col md:flex"
+          style={{ width: sidebarExpanded ? '252px' : '64px' }}
         >
-          <div className={`flex items-center ${sidebarExpanded ? 'justify-between px-3' : 'flex-col items-center gap-2'}`}>
-            <NavLink to={href('/projects')} title="Containr">
-              <img src="/containr.svg" alt="Containr" className="h-[38px] w-[38px] rounded-xl" />
+          <div
+            className={`flex items-center ${
+              sidebarExpanded ? 'gap-2.5 px-[18px] pb-5 pt-4' : 'flex-col gap-3 px-2 pb-4 pt-4'
+            }`}
+          >
+            <NavLink to={href('/')} title="Containr" className="flex items-center gap-2.5">
+              <span className="shell-mark grid h-[26px] w-[26px] shrink-0 place-items-center">
+                <Container size={14} />
+              </span>
+              {sidebarExpanded ? (
+                <span className="font-headline text-[15px] font-semibold tracking-[-0.01em] text-[var(--text-primary)]">
+                  <BrandWordmark />
+                </span>
+              ) : null}
             </NavLink>
             <button
               type="button"
               onClick={() => setSidebarExpanded((v) => !v)}
               title={sidebarExpanded ? 'Collapse sidebar' : 'Expand sidebar'}
-              className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-tertiary)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)]"
+              className={`shell-collapse flex items-center justify-center ${
+                sidebarExpanded ? 'ml-auto h-[22px] w-[22px]' : 'h-7 w-7'
+              }`}
             >
-              {sidebarExpanded ? <ChevronsLeft size={15} /> : <PanelLeft size={15} />}
+              {sidebarExpanded ? <ChevronsLeft size={14} /> : <PanelLeft size={15} />}
             </button>
           </div>
 
-          <nav className="mt-3 flex flex-1 flex-col gap-4 overflow-y-auto px-2">
-            {visibleNavSections.map((section) => (
-              <div key={section.title}>
+          <nav className={`flex flex-1 flex-col overflow-y-auto ${sidebarExpanded ? 'px-3' : 'gap-4 px-2'}`}>
+            {visibleNavSections.map((section, si) => (
+              <div key={section.title} className={si > 0 && sidebarExpanded ? 'mt-[26px]' : ''}>
                 {sidebarExpanded ? (
-                  <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
-                    {section.title}
-                  </p>
+                  <p className="shell-nav-group">{section.title}</p>
                 ) : null}
-                <div className={`flex flex-col gap-0.5 ${sidebarExpanded ? '' : 'items-center'}`}>
+                <div className={`flex flex-col ${sidebarExpanded ? '' : 'items-center gap-1'}`}>
                   {section.items.map((item) => {
                     const Icon = item.icon;
                     const isActive = isActiveRoute(item.href);
@@ -303,27 +343,12 @@ export function PlatformShell() {
                         key={item.href}
                         to={href(item.href)}
                         title={sidebarExpanded ? item.hint : `${item.label} — ${item.hint}`}
-                        className={`relative flex items-center rounded-[11px] transition-colors ${
-                          sidebarExpanded ? 'gap-2.5 px-2 py-2' : 'h-10 w-10 justify-center'
-                        } ${
-                          isActive
-                            ? 'bg-[var(--accent-primary-soft)] text-[var(--accent-primary)]'
-                            : 'text-[var(--text-tertiary)] hover:bg-[var(--surface-muted)] hover:text-[var(--text-secondary)]'
+                        className={`shell-ni ${isActive ? 'on' : ''} ${
+                          sidebarExpanded ? '' : 'h-10 w-10 justify-center !px-0'
                         }`}
                       >
-                        {isActive ? (
-                          <span
-                            className="absolute -left-2 h-4 w-[2.5px] rounded-full"
-                            style={{ background: 'var(--accent-primary)' }}
-                          />
-                        ) : null}
-                        <Icon size={17} className="shrink-0" />
-                        {sidebarExpanded ? (
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-[13px] font-medium leading-tight">{item.label}</span>
-                            <span className="block truncate text-[10px] text-[var(--text-tertiary)]">{item.hint}</span>
-                          </span>
-                        ) : null}
+                        <Icon size={16} className="shrink-0" />
+                        {sidebarExpanded ? <span className="truncate">{item.label}</span> : null}
                       </NavLink>
                     );
                   })}
@@ -332,23 +357,26 @@ export function PlatformShell() {
             ))}
           </nav>
 
-          <div className={`flex flex-col gap-2 px-2 pt-2 ${sidebarExpanded ? '' : 'items-center'}`}>
+          <div className={`mt-auto ${sidebarExpanded ? 'px-3 pb-3.5' : 'flex justify-center px-2 pb-3'}`}>
             {signedIn ? (
               <DropdownMenu.Root>
                 <DropdownMenu.Trigger asChild>
                   <button
                     type="button"
                     title={sidebarExpanded ? undefined : userEmail}
-                    className={`flex items-center gap-2.5 rounded-[11px] text-left transition-colors hover:bg-[var(--surface-muted)] ${
-                      sidebarExpanded ? 'w-full px-2 py-2' : 'h-10 w-10 justify-center'
+                    className={`shell-user ${
+                      sidebarExpanded ? 'w-full' : 'h-10 w-10 justify-center border-transparent bg-transparent'
                     }`}
                   >
-                    {avatar}
+                    <span className="shell-avatar">{initials}</span>
                     {sidebarExpanded ? (
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[12.5px] font-medium text-[var(--text-primary)]">{userName}</span>
-                        <span className="block truncate text-[10.5px] text-[var(--text-tertiary)]">{userEmail}</span>
-                      </span>
+                      <>
+                        <span className="min-w-0 flex-1 text-left">
+                          <span className="block truncate text-[13px] font-medium text-[var(--text-primary)]">{userName}</span>
+                          <span className="block truncate text-[10.5px] text-[var(--text-tertiary)]">{userEmail}</span>
+                        </span>
+                        <ChevronsUpDown size={13} className="shrink-0 text-[var(--text-tertiary)]" />
+                      </>
                     ) : null}
                   </button>
                 </DropdownMenu.Trigger>
@@ -427,12 +455,12 @@ export function PlatformShell() {
               <NavLink
                 to="/auth/sign-in"
                 title="Sign in"
-                className={`flex items-center gap-2.5 rounded-[11px] text-[var(--text-tertiary)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)] ${
-                  sidebarExpanded ? 'w-full px-2 py-2' : 'h-10 w-10 justify-center'
+                className={`shell-ni ${
+                  sidebarExpanded ? 'w-full' : 'h-10 w-10 justify-center !px-0'
                 }`}
               >
                 <LogIn size={16} className="shrink-0" />
-                {sidebarExpanded ? <span className="text-[12.5px] font-medium">Sign in</span> : null}
+                {sidebarExpanded ? <span className="text-[13px] font-medium">Sign in</span> : null}
               </NavLink>
             )}
           </div>
@@ -440,71 +468,46 @@ export function PlatformShell() {
 
         <div className="relative z-10 flex min-h-screen min-w-0 flex-1 flex-col overflow-hidden">
           <BannerBar />
-          <header
-            className="hidden h-[46px] shrink-0 items-center border-b px-5 md:flex"
-            style={{
-              background: 'var(--bg-base)',
-              borderBottomColor: 'var(--border-subtle)',
-              fontFamily: "'JetBrains Mono', monospace",
-              fontSize: '11px',
-            }}
-          >
-            <NavLink to={href('/projects')} className="mr-5 text-sm font-extrabold tracking-tight text-[var(--text-primary)]" style={{ fontFamily: 'Inter, sans-serif' }}>
-              <BrandWordmark />
-            </NavLink>
+          {/* ── Topbar — search left, utility icons right ── */}
+          <header className="shell-top hidden h-[56px] shrink-0 items-center gap-3.5 md:flex">
+            <button
+              type="button"
+              onClick={() => setPaletteOpen(true)}
+              className="shell-search"
+            >
+              <Search size={13} className="shrink-0" />
+              Search anything
+              <kbd>⌘ K</kbd>
+            </button>
 
-            <div className="flex items-center gap-5">
-              <span className="v-tick"><i className="sig" /><b>{isDemoMode ? 'demo' : 'nominal'}</b></span>
-              <span className="v-tick"><i className="sig" style={{ background: 'var(--text-tertiary)' }} />node <b>local</b></span>
-            </div>
+            <span className="v-env">{isDemoMode ? 'env:demo' : `env:${import.meta.env.MODE}`}</span>
 
-            <div className="search-box ml-6 max-w-[300px]" style={{ height: 30 }}>
-              <Search size={13} />
-              <input type="text" placeholder="search…" className="v-mono" style={{ fontSize: 11.5 }} />
-            </div>
+            <div className="flex-1" />
 
-            <div className="ml-auto flex items-center gap-4">
-              <span className="v-env">{isDemoMode ? 'env:demo' : 'env:production'}</span>
+            {isAdmin && !isDemoMode ? (
               <button
                 type="button"
-                onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
-                className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-md)] border text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                style={{ borderColor: 'var(--border-subtle)' }}
-                title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+                onClick={() => pullMutation.mutate()}
+                disabled={pullMutation.isPending || !upgradeQuery.data?.imageRef}
+                className="s-btn-accent"
+                title={upgradeQuery.data?.message || 'Pull latest configured image'}
               >
-                {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
+                {pullMutation.isPending ? <RefreshCw size={13} className="animate-spin" /> : <UploadCloud size={13} />}
+                Upgrade
               </button>
+            ) : null}
 
-              {isAdmin && !isDemoMode ? (
+            {signedIn && !isDemoMode ? (
+              <div className="relative">
                 <button
                   type="button"
-                  onClick={() => pullMutation.mutate()}
-                  disabled={pullMutation.isPending || !upgradeQuery.data?.imageRef}
-                  className="inline-flex h-8 items-center gap-2 rounded-[var(--radius-md)] px-3 text-xs font-semibold text-[var(--accent-on)] disabled:cursor-not-allowed disabled:opacity-50"
-                  style={{ background: 'var(--accent-primary)' }}
-                  title={upgradeQuery.data?.message || 'Pull latest configured image'}
+                  onClick={() => setNotificationsOpen((open) => !open)}
+                  className="shell-tic relative"
+                  aria-label="Notifications"
                 >
-                  {pullMutation.isPending ? <RefreshCw size={14} className="animate-spin" /> : <UploadCloud size={14} />}
-                  Upgrade
+                  <Bell size={16} />
+                  {unreadCount > 0 ? <span className="shell-tic-dot" /> : null}
                 </button>
-              ) : null}
-
-              {signedIn && !isDemoMode ? (
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setNotificationsOpen((open) => !open)}
-                    className="relative flex h-8 w-8 items-center justify-center rounded-[var(--radius-md)] border text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                    style={{ borderColor: 'var(--border-subtle)' }}
-                    aria-label="Notifications"
-                  >
-                    <Bell size={15} />
-                    {unreadCount > 0 ? (
-                      <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--accent-primary)] px-1 text-[10px] font-semibold text-[var(--accent-on)]">
-                        {unreadCount > 99 ? '99+' : unreadCount}
-                      </span>
-                    ) : null}
-                  </button>
 
                   {notificationsOpen ? (
                     <div className="absolute right-0 top-10 z-50 w-80 rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--surface-card)] p-3 shadow-2xl">
@@ -566,13 +569,21 @@ export function PlatformShell() {
                   ) : null}
                 </div>
               ) : null}
-            </div>
+
+            <button
+              type="button"
+              onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
+              className="shell-tic"
+              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+            </button>
           </header>
 
           <header className="md:hidden sticky top-0 z-50 border-b border-[var(--border-subtle)] bg-[var(--bg-base)]/85 backdrop-blur-2xl">
             <div className="flex items-center justify-between p-4">
-              <NavLink to={href('/projects')} className="flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--accent-on)]">
+              <NavLink to={href('/')} className="flex items-center gap-3">
+                <div className="shell-mark flex h-9 w-9 items-center justify-center">
                   <Container size={16} />
                 </div>
                 <span className="font-headline font-semibold text-[var(--text-primary)]">Containr</span>
@@ -613,6 +624,17 @@ export function PlatformShell() {
           </main>
         </div>
       </div>
+
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        onNavigate={paletteNavigate}
+        openTargets={paletteProjects.map((p) => ({
+          label: p.name,
+          target: `/projects/${p.id}`,
+          description: 'Project workspace',
+        }))}
+      />
     </div>
   );
 }

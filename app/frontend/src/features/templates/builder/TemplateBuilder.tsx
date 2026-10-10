@@ -17,6 +17,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Database, GitBranch, Package, Timer, Trash2, X } from 'lucide-react';
+import { GhostBtn, QuietBtn } from '@/shared/components/sentry';
 import {
   canvasFromConfig,
   configFromCanvas,
@@ -57,7 +58,7 @@ function ServiceBuilderNodeView({ data, selected }: NodeProps<ServiceBuilderNode
       </div>
       <div className="mt-1 flex items-center justify-between gap-2">
         <span className="text-[10.5px] uppercase tracking-wide text-[var(--text-tertiary)]">{meta.label}</span>
-        <span className="mono max-w-[120px] truncate text-[10.5px] text-[var(--text-secondary)]">
+        <span className="v-mono max-w-[120px] truncate text-[10.5px] text-[var(--text-secondary)]">
           {data.svc.runtime || data.svc.repo || '—'}
         </span>
       </div>
@@ -120,8 +121,8 @@ function BuilderInner({
             id: `${dep}->${svc.key}`,
             source: dep,
             target: svc.key,
-            markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14, color: 'rgba(180,227,74,0.55)' },
-            style: { stroke: 'rgba(180,227,74,0.42)', strokeWidth: 1.6 },
+            markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14, color: 'rgba(56, 189, 248,0.55)' },
+            style: { stroke: 'rgba(56, 189, 248,0.42)', strokeWidth: 1.6 },
             className: 'edge-premium',
           })),
       ),
@@ -239,7 +240,7 @@ function BuilderInner({
                 key={t}
                 type="button"
                 onClick={() => addService(t)}
-                className="canvas-pill inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                className="s-chip !py-1.5"
               >
                 <Icon size={12} className={meta.cls} />
                 {meta.label}
@@ -263,7 +264,7 @@ function BuilderInner({
           deleteKeyCode={['Backspace', 'Delete']}
           proOptions={{ hideAttribution: true }}
         >
-          <Background variant={BackgroundVariant.Dots} gap={22} size={1.2} color="rgba(255,255,255,0.07)" />
+          <Background variant={BackgroundVariant.Dots} gap={22} size={1.2} color="var(--tint-07)" />
         </ReactFlow>
         <div className="canvas-pill absolute bottom-3 left-3 z-10 px-3 py-1.5 text-[10.5px] text-[var(--text-tertiary)]">
           drag = move · connect handles = depends_on · double-click = add web · Del = remove
@@ -295,21 +296,16 @@ function BuilderInner({
             </div>
           ) : null}
           <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={onCancel}
-              className="flex-1 rounded-[var(--radius-md)] px-3 py-2 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--surface-muted)]"
-            >
+            <QuietBtn onClick={onCancel} className="flex-1 justify-center">
               Back to JSON
-            </button>
-            <button
-              type="button"
+            </QuietBtn>
+            <GhostBtn
               disabled={errors.length > 0 || services.size === 0}
               onClick={() => onApply(configFromCanvas(builderNodes, config))}
-              className="flex-1 rounded-[var(--radius-md)] bg-[var(--accent-primary)] px-3 py-2 text-xs font-semibold text-[var(--accent-on)] disabled:opacity-50"
+              className="flex-1 justify-center"
             >
               Apply to JSON
-            </button>
+            </GhostBtn>
           </div>
         </div>
       </div>
@@ -409,7 +405,7 @@ function Inspector({
 
       <label className={`${LABEL_CLS} mt-3`}>Environment (KEY=value, one per line)</label>
       <textarea
-        className={`${FIELD_CLS} mono min-h-[70px] resize-y`}
+        className={`${FIELD_CLS} v-mono min-h-[70px] resize-y`}
         defaultValue={envText}
         spellCheck={false}
         onBlur={(e) => {
@@ -425,7 +421,7 @@ function Inspector({
 
       <label className={`${LABEL_CLS} mt-3`}>Volumes (source:target[:ro], one per line)</label>
       <textarea
-        className={`${FIELD_CLS} mono min-h-[50px] resize-y`}
+        className={`${FIELD_CLS} v-mono min-h-[50px] resize-y`}
         defaultValue={volText}
         spellCheck={false}
         onBlur={(e) => {

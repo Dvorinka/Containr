@@ -6,6 +6,7 @@ import { type FilterConfig } from '@/lib/dynamic-filter';
 import { useDynamicFilter, useFilterState } from '@/lib/use-dynamic-filter';
 import { formatRelative } from '@/lib/time';
 import { DemoRestricted, FilterBar } from '@/shared/components';
+import { QuietBtn, SCard, SPageHead, SPill } from '@/shared/components/sentry';
 import {
   Activity, AlertCircle, CheckCircle2, Database, GitBranch, Info, Key,
   Loader2, Package, Projector, Rocket, Shield, User, Users, Wrench,
@@ -22,6 +23,10 @@ const SEVERITY_STYLE: Record<string, { icon: typeof Info; cls: string; dot: stri
   warning: { icon: AlertCircle,   cls: 'text-[var(--warning)]', dot: 'bg-[var(--warning)]' },
   success: { icon: CheckCircle2,  cls: 'text-[var(--success)]', dot: 'bg-[var(--success)]' },
   info:    { icon: Info,          cls: 'text-[var(--accent-primary)]', dot: 'bg-[var(--accent-primary)]' },
+};
+
+const SEV_TONE: Record<string, 'err' | 'warn' | 'ok' | 'info'> = {
+  error: 'err', warning: 'warn', success: 'ok', info: 'info',
 };
 
 const SCHEMA: FilterConfig<ActivityEntry>[] = [
@@ -58,46 +63,33 @@ export function ActivityPage() {
 
   return (
     <div className="min-h-screen">
-      <div className="border-b border-[var(--border-subtle)]">
-        <div className="w-full px-8 py-5">
-          <h1 className="v-title">Activity<span className="v-cursor">_</span></h1>
-          <p className="v-mono mt-1.5 text-[11px] text-[var(--text-tertiary)]">
-            platform events across your visible projects
-          </p>
-        </div>
+      <div className="w-full px-4 pt-6 sm:px-8">
+        <SPageHead
+          title="Activity"
+          titleAccent="_"
+          sub="Platform events across your visible projects"
+          actions={query.isFetching ? <Loader2 size={14} className="animate-spin text-[var(--text-muted)]" /> : undefined}
+        />
       </div>
 
-      <div className="px-4 py-6 sm:px-8 space-y-4">
-        <div className="flex items-start gap-3">
-          <div className="flex-1">
+      <div className="px-4 sm:px-8 space-y-4">
+        <SCard icon={<Activity />} title="Event Feed" accent={`${entries.length} events`} pad={false}>
+          <div className="px-4 pt-1 pb-3">
             <FilterBar {...filter} />
           </div>
-          {query.isFetching && <Loader2 size={14} className="animate-spin text-[var(--text-muted)] mt-3" />}
-        </div>
+          <div className="divide-y divide-[var(--border-subtle)] border-t border-[var(--border-subtle)]">
+            {query.isLoading && <p className="px-5 py-8 text-xs text-[var(--text-muted)]">Loading…</p>}
+            {!query.isLoading && entries.length === 0 && (
+              <p className="px-5 py-8 text-xs text-[var(--text-muted)]">No events yet — activity appears here as you deploy, configure, and manage services.</p>
+            )}
+            {entries.map((e) => <Entry key={e.id} entry={e} />)}
+          </div>
+        </SCard>
 
-        <div className="panel p-0 divide-y divide-[var(--border-subtle)]">
-          {query.isLoading && <p className="px-5 py-8 text-xs text-[var(--text-muted)]">Loading…</p>}
-          {!query.isLoading && entries.length === 0 && (
-            <p className="px-5 py-8 text-xs text-[var(--text-muted)]">No events yet — activity appears here as you deploy, configure, and manage services.</p>
-          )}
-          {entries.map((e) => <Entry key={e.id} entry={e} />)}
-        </div>
-
-        <div className="flex items-center gap-3">
-          <button
-            disabled={page <= 1}
-            onClick={() => setPage(page - 1)}
-            className="v-mono text-[11px] px-3 py-1.5 rounded-md border border-[var(--border-subtle)] text-[var(--text-muted)] disabled:opacity-40 hover:text-[var(--text-primary)]"
-          >
-            newer
-          </button>
-          <button
-            disabled={!query.data?.has_more}
-            onClick={() => setPage(page + 1)}
-            className="v-mono text-[11px] px-3 py-1.5 rounded-md border border-[var(--border-subtle)] text-[var(--text-muted)] disabled:opacity-40 hover:text-[var(--text-primary)]"
-          >
-            older
-          </button>
+        <div className="flex items-center gap-2.5">
+          <QuietBtn disabled={page <= 1} onClick={() => setPage(page - 1)}>← newer</QuietBtn>
+          <QuietBtn disabled={!query.data?.has_more} onClick={() => setPage(page + 1)}>older →</QuietBtn>
+          <span className="v-mono text-[10.5px] text-[var(--text-muted)]">page {page}</span>
         </div>
       </div>
     </div>
@@ -108,14 +100,14 @@ function Entry({ entry }: { entry: ActivityEntry }) {
   const Cat = CATEGORY_ICONS[entry.category] ?? Activity;
   const sev = SEVERITY_STYLE[entry.severity] ?? SEVERITY_STYLE.info;
   return (
-    <div className="flex items-center gap-3 px-5 py-3">
-      <div className={`w-8 h-8 rounded-md bg-[var(--bg-elevated)] flex items-center justify-center ${sev.cls}`}>
-        <Cat size={15} />
+    <div className="flex items-center gap-3 px-4 py-3 hover:bg-[var(--tint-03)] transition-colors">
+      <div className={`s-ibox ${sev.cls}`} style={{ width: 30, height: 30 }}>
+        <Cat size={14} />
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="text-[13px] text-[var(--text-primary)] truncate">{entry.label || entry.action}</span>
-          <span className={`v-mono text-[9px] uppercase px-1.5 py-0.5 rounded ${sev.cls} bg-[var(--bg-elevated)]`}>{entry.severity}</span>
+          <span className="text-[13px] font-medium text-[var(--text-primary)] truncate">{entry.label || entry.action}</span>
+          <SPill tone={SEV_TONE[entry.severity] ?? 'info'}>{entry.severity}</SPill>
         </div>
         <div className="v-mono text-[10px] text-[var(--text-muted)] mt-0.5">
           {entry.category} · {entry.action}{entry.user_email ? ` · ${entry.user_email}` : ''}

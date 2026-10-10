@@ -78,8 +78,8 @@ export function ServiceMetricsDashboard() {
       userData,
       perf: perfPercent,
       perfData: [
-        { data: perfData1, color: '#7ab8ff', fillOpacity: 0.15 },
-        { data: perfData2, color: '#f2c94c', fillOpacity: 0.15 }
+        { data: perfData1, color: 'var(--accent-primary)', fillOpacity: 0.15 },
+        { data: perfData2, color: 'var(--warning)', fillOpacity: 0.15 }
       ],
       upSpeed: seededRandom(`${serviceId}:upspeed`, 8, 13).toFixed(1),
       downSpeed: seededRandom(`${serviceId}:downspeed`, 4, 7).toFixed(1),
@@ -107,9 +107,8 @@ export function ServiceMetricsDashboard() {
   };
 
   return (
-    <div className="min-h-screen" style={{ background: '#16171c' }}>
+    <div className="min-h-screen" style={{ background: 'var(--bg-void)' }}>
       {/* Ambient glow */}
-      <div className="ambient-glow" />
 
       <div className="flex min-h-screen relative">
         {/* Sidebar - self.html exact match */}
@@ -117,8 +116,8 @@ export function ServiceMetricsDashboard() {
           className="hidden md:flex shrink-0 flex-col items-center border-r"
           style={{ 
             width: '64px',
-            background: '#111217',
-            borderRight: '1px solid rgba(255,255,255,0.07)',
+            background: 'var(--bg-surface)',
+            borderRight: '1px solid var(--border-subtle)',
             padding: '16px 0',
             gap: '5px'
           }}
@@ -169,10 +168,10 @@ export function ServiceMetricsDashboard() {
             style={{ 
               width: '34px', 
               height: '34px', 
-              background: '#22233a',
+              background: 'var(--accent-primary-soft)',
               fontSize: '11px',
               fontWeight: 700,
-              color: '#9295a4',
+              color: 'var(--text-tertiary)',
               marginTop: '4px',
               letterSpacing: '-0.3px'
             }}
@@ -188,8 +187,8 @@ export function ServiceMetricsDashboard() {
             className="shrink-0 flex items-center"
             style={{ 
               height: '52px',
-              background: '#111217',
-              borderBottom: '1px solid rgba(255,255,255,0.07)',
+              background: 'var(--bg-surface)',
+              borderBottom: '1px solid var(--border-subtle)',
               padding: '0 22px',
               gap: '14px'
             }}
@@ -201,22 +200,22 @@ export function ServiceMetricsDashboard() {
             
             <div className="ml-auto flex items-center" style={{ gap: '8px' }}>
               <button 
-                className="rounded-[9px] border bg-transparent text-[#9295a4] font-medium cursor-pointer"
+                className="rounded-[9px] border bg-transparent text-[var(--text-tertiary)] font-medium cursor-pointer"
                 style={{
                   height: '32px',
                   padding: '0 14px',
-                  border: '1px solid rgba(255,255,255,0.1)',
+                  border: '1px solid var(--border-default)',
                   fontSize: '13px'
                 }}
               >
                 Support
               </button>
               <button 
-                className="rounded-[9px] border-none flex items-center text-[#e8e9f0] font-medium cursor-pointer"
+                className="rounded-[9px] border-none flex items-center text-[var(--text-primary)] font-medium cursor-pointer"
                 style={{
                   height: '32px',
                   padding: '0 14px',
-                  background: 'rgba(255,255,255,0.08)',
+                  background: 'var(--bg-overlay)',
                   fontSize: '13px',
                   gap: '6px'
                 }}
@@ -229,10 +228,10 @@ export function ServiceMetricsDashboard() {
                 style={{
                   width: '32px',
                   height: '32px',
-                  border: '1px solid rgba(255,255,255,0.1)'
+                  border: '1px solid var(--border-default)'
                 }}
               >
-                <Bell size={15} color="#9295a4" />
+                <Bell size={15}  />
               </button>
             </div>
           </header>
@@ -245,22 +244,22 @@ export function ServiceMetricsDashboard() {
               style={{ 
                 gap: '6px', 
                 padding: '14px 0 10px',
-                color: '#6b6e7d',
+                color: 'var(--text-tertiary)',
                 fontSize: '13px'
               }}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b6e7d" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="15 18 9 12 15 6"/>
               </svg>
               <button 
                 onClick={() => navigate(-1)}
-                style={{ color: '#6b6e7d' }}
-                className="hover:text-[#9295a4] transition-colors"
+                style={{ color: 'var(--text-tertiary)' }}
+                className="hover:text-[var(--text-tertiary)] transition-colors"
               >
                 Servers
               </button>
               <span style={{ opacity: 0.4 }}>/</span>
-              <span style={{ color: '#9295a4' }}>[NuFest] - App Project</span>
+              <span style={{ color: 'var(--text-tertiary)' }}>[NuFest] - App Project</span>
             </div>
 
             {/* Project Header */}
@@ -280,7 +279,7 @@ export function ServiceMetricsDashboard() {
               </div>
               <div>
                 <div className="flex items-center" style={{ gap: '10px' }}>
-                  <span style={{ fontSize: '20px', fontWeight: 800, letterSpacing: '-0.5px', color: '#e8e9f0' }}>
+                  <span style={{ fontSize: '20px', fontWeight: 800, letterSpacing: '-0.5px', color: 'var(--text-primary)' }}>
                     [NuFest] - App Project
                   </span>
                   <span className={`badge-${isSystemRunning ? 'active' : 'stopped'}`}>
@@ -293,8 +292,8 @@ export function ServiceMetricsDashboard() {
                     href="https://nufest-dth.app"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center hover:text-[#9295a4] transition-colors"
-                    style={{ color: '#6b6e7d', fontSize: '12.5px', textDecoration: 'none', gap: '4px' }}
+                    className="flex items-center hover:text-[var(--text-tertiary)] transition-colors"
+                    style={{ color: 'var(--text-tertiary)', fontSize: '12.5px', textDecoration: 'none', gap: '4px' }}
                   >
                     https://nufest-dth.app
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -304,8 +303,8 @@ export function ServiceMetricsDashboard() {
                     </svg>
                   </a>
                   <button 
-                    className="flex items-center hover:text-[#9295a4] transition-colors"
-                    style={{ color: '#6b6e7d', fontSize: '12.5px', gap: '4px' }}
+                    className="flex items-center hover:text-[var(--text-tertiary)] transition-colors"
+                    style={{ color: 'var(--text-tertiary)', fontSize: '12.5px', gap: '4px' }}
                   >
                     Project Information
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -344,7 +343,7 @@ export function ServiceMetricsDashboard() {
             <div 
               className="flex"
               style={{ 
-                borderBottom: '1px solid rgba(255,255,255,0.07)',
+                borderBottom: '1px solid var(--border-subtle)',
                 marginBottom: '18px'
               }}
             >
@@ -365,16 +364,16 @@ export function ServiceMetricsDashboard() {
 
             {/* Metrics Header */}
             <div className="flex items-center justify-between" style={{ marginBottom: '16px' }}>
-              <span style={{ fontSize: '15px', fontWeight: 700, color: '#e8e9f0' }}>Metrics</span>
+              <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>Metrics</span>
               <div className="flex items-center" style={{ gap: '8px' }}>
                 <button 
                   className="rounded-[9px] border flex items-center font-medium cursor-pointer"
                   style={{
                     height: '32px',
                     padding: '0 12px',
-                    border: '1px solid rgba(255,255,255,0.09)',
-                    background: 'rgba(255,255,255,0.04)',
-                    color: '#9295a4',
+                    border: '1px solid var(--border-default)',
+                    background: 'var(--bg-elevated)',
+                    color: 'var(--text-tertiary)',
                     fontSize: '12.5px',
                     gap: '6px'
                   }}
@@ -408,7 +407,7 @@ export function ServiceMetricsDashboard() {
                 status="good"
                 statusText="Good"
                 icon={<Cpu size={16} />}
-                chart={<LineChart data={metrics.cpuData} color="#b4e34a" height={76} />}
+                chart={<LineChart data={metrics.cpuData} color="#38bdf8" height={76} />}
                 animationDelay={0.04}
               />
 
@@ -418,23 +417,23 @@ export function ServiceMetricsDashboard() {
                   <div className="card-icon">
                     <MemoryStick size={16} />
                   </div>
-                  <span style={{ fontSize: 14, fontWeight: 600, color: '#e8e9f0' }}>RAM Usage</span>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>RAM Usage</span>
                 </div>
-                <div style={{ fontSize: 38, fontWeight: 900, letterSpacing: '-1.5px', lineHeight: 1, color: '#e8e9f0' }}>
+                <div style={{ fontSize: 38, fontWeight: 900, letterSpacing: '-1.5px', lineHeight: 1, color: 'var(--text-primary)' }}>
                   {metrics.ram}%
                 </div>
-                <div style={{ fontSize: 12, color: '#6b6e7d', marginTop: 4 }}>
-                  <span style={{ color: '#f2c94c', fontWeight: 700 }}>Average</span> Daily usage
+                <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 4 }}>
+                  <span style={{ color: 'var(--warning)', fontWeight: 700 }}>Average</span> Daily usage
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', margin: '10px 0 4px', position: 'relative' }}>
-                  <DonutChart percentage={metrics.ram} color="#f2c94c" />
+                  <DonutChart percentage={metrics.ram} color="var(--warning)" />
                   <div style={{ position: 'absolute', bottom: 14, textAlign: 'center' }}>
-                    <div style={{ fontSize: 10.5, color: '#6b6e7d', marginBottom: 1 }}>Used</div>
-                    <div style={{ fontSize: 12.5, fontWeight: 700, color: '#e8e9f0' }}>{metrics.ramUsedGB} GB / 8GB</div>
+                    <div style={{ fontSize: 10.5, color: 'var(--text-tertiary)', marginBottom: 1 }}>Used</div>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-primary)' }}>{metrics.ramUsedGB} GB / 8GB</div>
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 4 }}>
-                  <span style={{ fontSize: 13, color: '#6b6e7d', fontWeight: 500, cursor: 'pointer' }}>Details</span>
+                  <span style={{ fontSize: 13, color: 'var(--text-tertiary)', fontWeight: 500, cursor: 'pointer' }}>Details</span>
                   <div className="arrow-btn">
                     <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
                       <polyline points="9 18 15 12 9 6" />

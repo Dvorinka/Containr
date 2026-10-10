@@ -1,4 +1,5 @@
 import { type ReactNode } from 'react';
+import { ChevronRight, MoreHorizontal } from 'lucide-react';
 
 interface EnhancedMetricCardProps {
   title: string;
@@ -15,6 +16,42 @@ interface EnhancedMetricCardProps {
   horizontal?: boolean;
 }
 
+const statusColors: Record<string, string> = {
+  good: 'var(--success)',
+  average: 'var(--warning)',
+  warning: 'var(--warning)',
+};
+
+function CardHead({ icon, title }: { icon: ReactNode; title: string }) {
+  return (
+    <div className="s-cardhead">
+      <span className="s-ibox">{icon}</span>
+      <span className="text-[11.5px] font-medium text-[var(--text-secondary)] whitespace-nowrap">{title}</span>
+      <span className="ml-auto text-[var(--text-tertiary)]">
+        <MoreHorizontal size={14} />
+      </span>
+    </div>
+  );
+}
+
+function CardFoot({ label, onClick }: { label: string; onClick?: () => void }) {
+  return (
+    <div className="s-stat-foot mt-auto">
+      <span
+        onClick={onClick}
+        className="cursor-pointer hover:text-[var(--text-secondary)] transition-colors"
+      >
+        {label}
+      </span>
+      {onClick && (
+        <button className="s-icon-btn !w-[26px] !h-[26px]" onClick={onClick} title={label}>
+          <ChevronRight size={12} />
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function EnhancedMetricCard({
   title,
   value,
@@ -29,75 +66,23 @@ export function EnhancedMetricCard({
   animationDelay = 0,
   horizontal = false,
 }: EnhancedMetricCardProps) {
-  const statusColors: Record<string, string> = {
-    good: '#5ee6a0',
-    average: '#f2c94c',
-    warning: '#f2c94c',
-  };
-
-  // Horizontal layout for cards like Active User
   if (horizontal) {
     return (
-      <div
-        className={`card ${className}`}
-        style={{
-          display: 'flex',
-          flexDirection: 'row',
-          padding: 0,
-          overflow: 'hidden',
-          animationDelay: `${animationDelay}s`,
-        }}
-      >
-        <div style={{
-          flex: 1,
-          padding: '20px 18px 18px 20px',
-          display: 'flex',
-          flexDirection: 'column',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-            <div className="card-icon">{icon}</div>
-            <span style={{ fontSize: 14, fontWeight: 600, color: '#e8e9f0' }}>{title}</span>
-          </div>
-          <div style={{
-            fontSize: 36,
-            fontWeight: 900,
-            letterSpacing: '-1.5px',
-            lineHeight: 1,
-            color: '#e8e9f0',
-          }}>
-            {value}
-          </div>
-          {subtitle && (
-            <div style={{ fontSize: 12, color: '#6b6e7d', marginTop: 4 }}>{subtitle}</div>
-          )}
-          {details && <div style={{ marginTop: 12 }}>{details}</div>}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginTop: 'auto',
-            paddingTop: 14,
-          }}>
-            <span
-              style={{ fontSize: 13, color: '#6b6e7d', fontWeight: 500, cursor: 'pointer' }}
-              onClick={onClick}
-            >
-              Details
-            </span>
-            <div className="arrow-btn" onClick={onClick}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="9 18 15 12 9 6" />
-              </svg>
+      <div className={`s-card flex flex-row overflow-hidden ${className}`} style={{ animationDelay: `${animationDelay}s` }}>
+        <div className="flex flex-1 flex-col">
+          <CardHead icon={icon} title={title} />
+          <div className="px-4">
+            <div className="font-headline text-[32px] font-bold leading-none tracking-[-0.025em] text-[var(--text-primary)]">
+              {value}
             </div>
+            {subtitle && <div className="mt-1 text-[11.5px] text-[var(--text-tertiary)]">{subtitle}</div>}
+            {details && <div className="mt-3">{details}</div>}
           </div>
+          <div className="mt-4" />
+          <CardFoot label="Details" onClick={onClick} />
         </div>
         {chart && (
-          <div style={{
-            width: '50%',
-            padding: '16px 14px 46px 0',
-            display: 'flex',
-            alignItems: 'flex-end',
-          }}>
+          <div className="flex w-1/2 items-end py-3 pr-3.5">
             {chart}
           </div>
         )}
@@ -105,64 +90,25 @@ export function EnhancedMetricCard({
     );
   }
 
-  // Standard vertical card layout - matching self.html exactly
   return (
-    <div
-      className={`card ${className}`}
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        padding: 20,
-        animationDelay: `${animationDelay}s`,
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-        <div className="card-icon">{icon}</div>
-        <span style={{ fontSize: 14, fontWeight: 600, color: '#e8e9f0' }}>{title}</span>
-      </div>
-
-      <div style={{
-        fontSize: 38,
-        fontWeight: 900,
-        letterSpacing: '-1.5px',
-        lineHeight: 1,
-        color: '#e8e9f0',
-      }}>
-        {value}
-      </div>
-
-      {(subtitle || statusText) && (
-        <div style={{ fontSize: 12, color: '#6b6e7d', marginTop: 4 }}>
-          {statusText && status && (
-            <span style={{ color: statusColors[status], fontWeight: 700 }}>{statusText}</span>
-          )}{' '}
-          {subtitle}
+    <div className={`s-card flex flex-col ${className}`} style={{ animationDelay: `${animationDelay}s` }}>
+      <CardHead icon={icon} title={title} />
+      <div className="px-4 pb-1">
+        <div className="font-headline text-[32px] font-bold leading-none tracking-[-0.025em] text-[var(--text-primary)]">
+          {value}
         </div>
-      )}
-
-      {chart && <div style={{ marginTop: 12, marginBottom: 6 }}>{chart}</div>}
-
-      {details && <div style={{ marginTop: 16 }}>{details}</div>}
-
-      <div style={{ 
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'space-between', 
-        paddingTop: 4, 
-        marginTop: 'auto' 
-      }}>
-        <span
-          onClick={onClick}
-          style={{ fontSize: 13, color: '#6b6e7d', fontWeight: 500, cursor: 'pointer' }}
-        >
-          Details
-        </span>
-        <div className="arrow-btn" onClick={onClick}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="9 18 15 12 9 6" />
-          </svg>
-        </div>
+        {(subtitle || statusText) && (
+          <div className="mt-1.5 text-[11.5px] text-[var(--text-tertiary)]">
+            {statusText && status && (
+              <span className="font-semibold" style={{ color: statusColors[status] }}>{statusText}</span>
+            )}{' '}
+            {subtitle}
+          </div>
+        )}
+        {chart && <div className="mt-3 mb-1">{chart}</div>}
+        {details && <div className="mt-3">{details}</div>}
       </div>
+      <CardFoot label="Details" onClick={onClick} />
     </div>
   );
 }
@@ -186,118 +132,56 @@ export function CacheMetricCard({
   const nonCachePercent = Math.round((nonCacheMB / totalMB) * 100);
 
   return (
-    <div
-      className="card"
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        padding: 20,
-        animationDelay: `${animationDelay}s`,
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-        <div className="card-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="#9295a4" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="3 6 5 6 21 6"/>
-            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+    <div className="s-card flex flex-col" style={{ animationDelay: `${animationDelay}s` }}>
+      <CardHead
+        icon={
+          <svg viewBox="0 0 24 24" width="13.5" height="13.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
           </svg>
+        }
+        title="Cache"
+      />
+      <div className="px-4">
+        <div className="font-headline text-[32px] font-bold leading-none tracking-[-0.025em] text-[var(--text-primary)]">
+          {totalMB} <span className="text-[12px] font-medium text-[var(--text-tertiary)]">MB</span>
         </div>
-        <span style={{ fontSize: 14, fontWeight: 600, color: '#e8e9f0' }}>Cache</span>
-      </div>
-
-      <div style={{
-        fontSize: 38,
-        fontWeight: 900,
-        letterSpacing: '-1.5px',
-        lineHeight: 1,
-        color: '#e8e9f0',
-      }}>
-        {totalMB} MB
-      </div>
-
-      <div style={{ fontSize: 12, color: '#6b6e7d', marginTop: 4 }}>
-        <span style={{ color: '#f2c94c', fontWeight: 700 }}>{Math.round(totalMB * 0.625)}MB Average</span> cached images and files
-      </div>
-
-      {/* Segmented Bar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 5, margin: '16px 0 15px', height: 32 }}>
-        <div 
-          className="cache-seg" 
-          style={{ 
-            width: `${cachePercent}%`, 
-            background: '#ff6b5b', 
-            borderRadius: '10px 4px 4px 10px' 
-          }} 
-        />
-        <div 
-          className="cache-seg" 
-          style={{ 
-            width: `${nonCachePercent}%`, 
-            background: '#8c6ef0', 
-            borderRadius: '5px' 
-          }} 
-        />
-        <div 
-          className="cache-seg" 
-          style={{ 
-            flex: 1, 
-            background: 'rgba(255,255,255,0.07)', 
-            borderRadius: '4px 10px 10px 4px' 
-          }} 
-        />
-      </div>
-
-      {/* Stats Row */}
-      <div style={{ 
-        display: 'grid', 
-        gridTemplateColumns: '1fr auto 1fr auto 1fr', 
-        gap: 0, 
-        alignItems: 'stretch' 
-      }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#6b6e7d', marginBottom: 5 }}>
-            <div className="stat-dot" style={{ background: '#ff6b5b' }} /> Cache
-          </div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-            <span style={{ fontSize: 15, fontWeight: 800 }}>{cacheMB} MB</span>
-            <span style={{ fontSize: 11, color: '#6b6e7d' }}>{cachePercent}%</span>
-          </div>
+        <div className="mt-1.5 text-[11.5px] text-[var(--text-tertiary)]">
+          <span className="font-semibold text-[var(--warning)]">{Math.round(totalMB * 0.625)}MB average</span> cached images and files
         </div>
-        <div style={{ width: 1, background: 'rgba(255,255,255,0.08)', margin: '0 16px' }} />
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#6b6e7d', marginBottom: 5 }}>
-            <div className="stat-dot" style={{ background: '#8c6ef0' }} /> Non-Cache
-          </div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-            <span style={{ fontSize: 15, fontWeight: 800 }}>{nonCacheMB} MB</span>
-            <span style={{ fontSize: 11, color: '#6b6e7d' }}>{nonCachePercent}%</span>
-          </div>
+
+        {/* Segmented bar */}
+        <div className="my-4 flex h-8 items-center gap-1">
+          <div className="h-full rounded-l-md" style={{ width: `${cachePercent}%`, background: 'var(--error)' }} />
+          <div className="h-full" style={{ width: `${nonCachePercent}%`, background: 'var(--accent-tertiary)' }} />
+          <div className="h-full flex-1 rounded-r-md bg-[var(--tint-07)]" />
         </div>
-        <div style={{ width: 1, background: 'rgba(255,255,255,0.08)', margin: '0 16px' }} />
-        <div>
-          <div style={{ fontSize: 11, color: '#6b6e7d', marginBottom: 5 }}>Total</div>
-          <div style={{ fontSize: 15, fontWeight: 800 }}>{totalMB * 5} GB</div>
+
+        {/* Stats row */}
+        <div className="grid grid-cols-[1fr_auto_1fr_auto_1fr] items-stretch">
+          {[
+            { dot: 'var(--error)', label: 'Cache', value: `${cacheMB} MB`, pct: `${cachePercent}%` },
+            { dot: 'var(--accent-tertiary)', label: 'Non-Cache', value: `${nonCacheMB} MB`, pct: `${nonCachePercent}%` },
+            { dot: null, label: 'Total', value: `${totalMB * 5} GB`, pct: '' },
+          ].map((s, i) => (
+            <div key={s.label} className="contents">
+              {i > 0 && <div className="mx-4 w-px bg-[var(--border-subtle)]" />}
+              <div>
+                <div className="mb-1 flex items-center gap-1.5 text-[10.5px] text-[var(--text-tertiary)]">
+                  {s.dot && <i className="h-1.5 w-1.5 rounded-full" style={{ background: s.dot }} />}
+                  {s.label}
+                </div>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-[14px] font-bold text-[var(--text-primary)]">{s.value}</span>
+                  {s.pct && <span className="text-[10.5px] text-[var(--text-tertiary)]">{s.pct}</span>}
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
-
-      <div style={{ 
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'space-between', 
-        paddingTop: 16 
-      }}>
-        <span
-          onClick={onClick}
-          style={{ fontSize: 13, color: '#6b6e7d', fontWeight: 500, cursor: 'pointer' }}
-        >
-          Details
-        </span>
-        <div className="arrow-btn" onClick={onClick}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="9 18 15 12 9 6" />
-          </svg>
-        </div>
-      </div>
+      <div className="mt-4" />
+      <CardFoot label="Details" onClick={onClick} />
     </div>
   );
 }
@@ -319,86 +203,47 @@ export function PerformanceMetricCard({
   animationDelay = 0,
 }: PerformanceMetricCardProps) {
   const status = percentage >= 85 ? 'Good' : percentage >= 70 ? 'Average' : 'Warning';
-  const statusColor = percentage >= 85 ? '#5ee6a0' : percentage >= 70 ? '#f2c94c' : '#ff6f5c';
+  const statusColor = percentage >= 85 ? 'var(--success)' : percentage >= 70 ? 'var(--warning)' : 'var(--error)';
 
   return (
-    <div
-      className="card"
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        padding: 20,
-        animationDelay: `${animationDelay}s`,
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-        <div className="card-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="#9295a4" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="2" y1="12" x2="22" y2="12"/>
-            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+    <div className="s-card flex flex-col" style={{ animationDelay: `${animationDelay}s` }}>
+      <CardHead
+        icon={
+          <svg viewBox="0 0 24 24" width="13.5" height="13.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="2" y1="12" x2="22" y2="12" />
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
           </svg>
-        </div>
-        <span style={{ fontSize: 14, fontWeight: 600, color: '#e8e9f0' }}>Performance</span>
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flex: 1 }}>
-        <div style={{ flex: 1 }}>
-          <div style={{
-            fontSize: 36,
-            fontWeight: 900,
-            letterSpacing: '-1.5px',
-            lineHeight: 1,
-            color: '#e8e9f0',
-          }}>
+        }
+        title="Performance"
+      />
+      <div className="flex flex-1 items-start gap-4 px-4">
+        <div className="flex-1">
+          <div className="font-headline text-[32px] font-bold leading-none tracking-[-0.025em] text-[var(--text-primary)]">
             {percentage}%
           </div>
-          <div style={{ fontSize: 12, color: '#6b6e7d', marginTop: 4 }}>
-            <span style={{ color: statusColor, fontWeight: 700 }}>{status}</span> Last scan on {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+          <div className="mt-1.5 text-[11.5px] text-[var(--text-tertiary)]">
+            <span className="font-semibold" style={{ color: statusColor }}>{status}</span>
+            {' '}Last scan {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
           </div>
         </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
-          {/* Chart placeholder - will be replaced with actual chart */}
-          <div style={{ width: 134, height: 58, background: 'rgba(255,255,255,0.03)', borderRadius: 8 }} />
-          
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
-            <div className="speed-row" style={{ color: '#7ab8ff' }}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                <line x1="12" y1="19" x2="12" y2="5"/>
-                <polyline points="5 12 12 19 19 12"/>
-              </svg>
-              <span>{upSpeed}</span> Mbps
-            </div>
-            <div className="speed-row" style={{ color: 'var(--accent-primary)' }}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                <line x1="12" y1="5" x2="12" y2="19"/>
-                <polyline points="19 12 12 5 5 12"/>
-              </svg>
-              <span>{downSpeed}</span> Mbps
-            </div>
+        <div className="flex flex-col items-end gap-2">
+          <div className="h-[58px] w-[134px] rounded-lg bg-[var(--tint-03)]" />
+          <div className="flex flex-col items-end gap-1">
+            {[{ v: upSpeed, up: false }, { v: downSpeed, up: true }].map((s, i) => (
+              <div key={i} className="flex items-center gap-1 text-[11px] font-medium text-[var(--accent-primary)]">
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                  <line x1="12" y1={s.up ? 5 : 19} x2="12" y2={s.up ? 19 : 5} />
+                  {s.up ? <polyline points="19 12 12 5 5 12" /> : <polyline points="5 12 12 19 19 12" />}
+                </svg>
+                <span>{s.v}</span> Mbps
+              </div>
+            ))}
           </div>
         </div>
       </div>
-
-      <div style={{ 
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'space-between', 
-        paddingTop: 14 
-      }}>
-        <span
-          onClick={onClick}
-          style={{ fontSize: 13, color: '#6b6e7d', fontWeight: 500, cursor: 'pointer' }}
-        >
-          Check Speed
-        </span>
-        <div className="arrow-btn" onClick={onClick}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="9 18 15 12 9 6" />
-          </svg>
-        </div>
-      </div>
+      <div className="mt-4" />
+      <CardFoot label="Check Speed" onClick={onClick} />
     </div>
   );
 }

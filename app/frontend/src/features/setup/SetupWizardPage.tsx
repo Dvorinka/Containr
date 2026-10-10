@@ -9,6 +9,7 @@ import {
   getSetupStatus,
   updatePlatformSettings,
 } from '@/lib/api-client';
+import { GhostBtn, QuietBtn } from '@/shared/components/sentry';
 
 // Marker the GitHub App callback reads so the wizard flow resumes here
 // instead of the settings page.
@@ -39,7 +40,7 @@ export function SetupWizardPage() {
     mutationFn: completeSetup,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['setup-status'] });
-      navigate('/projects', { replace: true });
+      navigate('/', { replace: true });
     },
   });
 
@@ -53,7 +54,7 @@ export function SetupWizardPage() {
 
   // Wizard is optional once the instance is already configured.
   if (status && !status.needs_setup && !override) {
-    return <Navigate to="/projects" replace />;
+    return <Navigate to="/" replace />;
   }
 
   const steps: { key: Step; label: string }[] = [
@@ -92,9 +93,12 @@ export function SetupWizardPage() {
         </div>
 
         {step === 'account' ? (
-          <section className="panel p-6">
-            <h1 className="text-xl font-bold text-[var(--text-primary)]">Welcome to Containr</h1>
-            <p className="mt-2 text-sm text-[var(--text-secondary)]">
+          <section className="s-card">
+            <div className="s-cardhead mb-1">
+              <span className="s-ibox"><Rocket /></span>
+              <h1 className="s-t">Welcome to Containr</h1>
+            </div>
+            <p className="mt-1 text-sm text-[var(--text-secondary)]">
               First boot detected. Create the admin account — registration closes to the public
               right after, so this account owns the instance.
             </p>
@@ -105,8 +109,7 @@ export function SetupWizardPage() {
                 </p>
                 <Link
                   to="/auth/sign-in?redirect=/setup"
-                  className="mt-4 inline-flex items-center gap-2 h-9 px-4 rounded-[var(--radius-md)] text-sm font-medium text-[var(--accent-on)]"
-                  style={{ background: 'var(--accent-primary)' }}
+                  className="mt-4 s-btn-accent inline-flex items-center gap-2"
                 >
                   Sign in <ChevronRight size={14} />
                 </Link>
@@ -114,8 +117,7 @@ export function SetupWizardPage() {
             ) : !status?.has_users ? (
               <Link
                 to="/auth/sign-up?redirect=/setup"
-                className="mt-4 inline-flex items-center gap-2 h-9 px-4 rounded-[var(--radius-md)] text-sm font-medium text-[var(--accent-on)]"
-                style={{ background: 'var(--accent-primary)' }}
+                className="mt-4 s-btn-accent inline-flex items-center gap-2"
               >
                 Create admin account <ChevronRight size={14} />
               </Link>
@@ -127,9 +129,9 @@ export function SetupWizardPage() {
         {step === 'tunnel' ? <TunnelStep onNext={() => setOverride('done')} /> : null}
 
         {step === 'done' ? (
-          <section className="panel p-6 text-center">
-            <Rocket size={28} className="mx-auto text-[var(--accent-primary)]" />
-            <h1 className="mt-4 text-xl font-bold text-[var(--text-primary)]">All set</h1>
+          <section className="s-card text-center">
+            <div className="s-ibox mx-auto !h-10 !w-10"><ShieldCheck /></div>
+            <h1 className="mt-4 font-headline text-lg font-bold text-[var(--text-primary)]">All set</h1>
             <p className="mt-2 text-sm text-[var(--text-secondary)]">
               Deploy your first service from a git repo, an image, or a template — the dashboard is
               ready.
@@ -141,12 +143,10 @@ export function SetupWizardPage() {
                   : 'Failed to save setup state'}
               </p>
             ) : null}
-            <button
-              type="button"
+            <GhostBtn
               onClick={() => completeMutation.mutate()}
               disabled={completeMutation.isPending}
-              className="mt-5 inline-flex items-center gap-2 h-10 px-6 rounded-[var(--radius-md)] text-sm font-semibold text-[var(--accent-on)] disabled:opacity-50"
-              style={{ background: 'var(--accent-primary)' }}
+              className="mt-5 !h-10 !px-6"
             >
               {completeMutation.isPending ? (
                 <Loader2 size={14} className="animate-spin" />
@@ -154,7 +154,7 @@ export function SetupWizardPage() {
                 <ShieldCheck size={15} />
               )}
               Enter Containr
-            </button>
+            </GhostBtn>
           </section>
         ) : null}
       </div>
@@ -185,12 +185,12 @@ function GitHubStep({ onNext }: { onNext: () => void }) {
   });
 
   return (
-    <section className="panel p-6">
-      <div className="flex items-center gap-3 mb-3">
-        <Github size={20} className="text-[var(--text-primary)]" />
-        <h1 className="text-xl font-bold text-[var(--text-primary)]">Connect a git provider</h1>
+    <section className="s-card">
+      <div className="s-cardhead mb-1">
+        <span className="s-ibox"><Github /></span>
+        <h1 className="s-t">Connect a Git Provider</h1>
       </div>
-      <p className="text-sm text-[var(--text-secondary)]">
+      <p className="mt-1 text-sm text-[var(--text-secondary)]">
         Provision the instance GitHub App — repo push events then trigger deployments and preview
         environments automatically. Self-hosted GitLab/Gitea can be added later in Settings.
       </p>
@@ -201,24 +201,15 @@ function GitHubStep({ onNext }: { onNext: () => void }) {
             : 'Could not start GitHub App provisioning'}
         </p>
       ) : null}
-      <div className="mt-5 flex items-center gap-3">
-        <button
-          type="button"
+      <div className="mt-5 flex items-center gap-2">
+        <GhostBtn
           onClick={() => provisionMutation.mutate()}
           disabled={provisionMutation.isPending}
-          className="inline-flex items-center gap-2 h-9 px-4 rounded-[var(--radius-md)] text-sm font-medium text-[var(--accent-on)] disabled:opacity-50"
-          style={{ background: 'var(--accent-primary)' }}
         >
-          {provisionMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : null}
+          {provisionMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : null}
           Set up GitHub App
-        </button>
-        <button
-          type="button"
-          onClick={onNext}
-          className="h-9 px-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
-        >
-          Skip for now
-        </button>
+        </GhostBtn>
+        <QuietBtn onClick={onNext}>Skip for now</QuietBtn>
       </div>
     </section>
   );
@@ -237,9 +228,12 @@ function TunnelStep({ onNext }: { onNext: () => void }) {
   });
 
   return (
-    <section className="panel p-6">
-      <h1 className="text-xl font-bold text-[var(--text-primary)]">Public access (optional)</h1>
-      <p className="mt-2 text-sm text-[var(--text-secondary)]">
+    <section className="s-card">
+      <div className="s-cardhead mb-1">
+        <span className="s-ibox"><ShieldCheck /></span>
+        <h1 className="s-t">Public Access (optional)</h1>
+      </div>
+      <p className="mt-1 text-sm text-[var(--text-secondary)]">
         Paste a Cloudflare Tunnel token to expose this instance on the internet. Without one,
         Containr stays reachable on this network — you can add it later in Settings.
       </p>
@@ -248,31 +242,22 @@ function TunnelStep({ onNext }: { onNext: () => void }) {
         value={token}
         onChange={(e) => setToken(e.target.value)}
         placeholder="eyJhIjo… tunnel token"
-        className="mt-4 w-full h-10 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] transition-colors"
+        className="mt-4 w-full h-10 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] v-mono text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] transition-colors"
       />
       {saveMutation.isError ? (
         <p className="mt-3 text-xs text-[var(--error)]">
           {saveMutation.error instanceof Error ? saveMutation.error.message : 'Failed to save token'}
         </p>
       ) : null}
-      <div className="mt-5 flex items-center gap-3">
-        <button
-          type="button"
+      <div className="mt-5 flex items-center gap-2">
+        <GhostBtn
           onClick={() => (token.trim() ? saveMutation.mutate() : onNext())}
           disabled={saveMutation.isPending}
-          className="inline-flex items-center gap-2 h-9 px-4 rounded-[var(--radius-md)] text-sm font-medium text-[var(--accent-on)] disabled:opacity-50"
-          style={{ background: 'var(--accent-primary)' }}
         >
-          {saveMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : null}
+          {saveMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : null}
           {token.trim() ? 'Save tunnel token' : 'Continue'}
-        </button>
-        <button
-          type="button"
-          onClick={onNext}
-          className="h-9 px-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
-        >
-          Skip
-        </button>
+        </GhostBtn>
+        <QuietBtn onClick={onNext}>Skip</QuietBtn>
       </div>
     </section>
   );

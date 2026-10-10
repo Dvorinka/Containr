@@ -18,6 +18,7 @@ import {
 import { useAuthSession } from '@/lib/use-auth-session';
 import { useDemoMode } from '@/lib/demo-mode';
 import { demoProjects, demoTemplates, demoTemplateDetails } from '@/lib/demo-data';
+import { GhostBtn, QuietBtn, SPageHead } from '@/shared/components/sentry';
 import {
   Search,
   Filter,
@@ -489,53 +490,37 @@ export function TemplatesPage() {
 
   return (
     <div className="min-h-screen">
-      {/* Header */}
-      <div className="border-b border-[var(--border-subtle)] bg-[var(--bg-base)]/50 backdrop-blur-sm">
-        <div className="w-full px-8 py-4">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <h1 className="v-title">Template Catalog<span className="v-cursor">_</span></h1>
-              <p className="text-sm text-[var(--text-secondary)]">Deploy services from pre-configured templates</p>
-            </div>
-            <div className="flex items-center gap-3 text-sm text-[var(--text-tertiary)]">
-              <Layers size={16} />
-              <span>{filteredTemplates.length} templates</span>
-              {signedIn && !isDemoMode ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setComposeYaml('');
-                      setComposeWarnings([]);
-                      setComposeError(null);
-                      setComposeOpen(true);
-                    }}
-                    className="inline-flex h-9 items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] px-3.5 text-[12.5px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                  >
-                    <FileCode size={14} /> Import Compose
-                  </button>
-                  <button
-                    type="button"
-                    onClick={openCreateEditor}
-                    className="inline-flex h-9 items-center gap-1.5 rounded-[var(--radius-md)] bg-[var(--accent-primary)] px-3.5 text-[12.5px] font-semibold text-[var(--accent-on)]"
-                  >
-                    <Plus size={14} /> New template
-                  </button>
-                </>
-              ) : null}
-            </div>
-          </div>
-        </div>
+      <div className="w-full px-4 pt-6 sm:px-8">
+        <SPageHead
+          title="Template Catalog"
+          titleAccent="_"
+          sub={`${filteredTemplates.length} templates · deploy services from pre-configured stacks`}
+          actions={signedIn && !isDemoMode ? (
+            <>
+              <QuietBtn
+                onClick={() => {
+                  setComposeYaml('');
+                  setComposeWarnings([]);
+                  setComposeError(null);
+                  setComposeOpen(true);
+                }}
+              >
+                <FileCode size={13} /> Import Compose
+              </QuietBtn>
+              <GhostBtn onClick={openCreateEditor}>
+                <Plus size={13} /> New template
+              </GhostBtn>
+            </>
+          ) : undefined}
+        />
       </div>
 
       {/* Demo Mode Banner */}
       {isDemoMode && (
         <div className="w-full px-8 py-4">
-          <div className="px-4 py-3 rounded-[var(--radius-md)] border border-[var(--warning-soft)] bg-[var(--warning-soft)]/50">
-            <div className="flex items-center gap-2 text-sm text-[var(--warning)]">
-              <Sparkles size={16} />
-              <span>Demo mode active — using sample data</span>
-            </div>
+          <div className="s-inset flex items-center gap-2 text-xs text-[var(--warning)]">
+            <Sparkles size={13} />
+            Demo mode active — using sample data
           </div>
         </div>
       )}
@@ -544,12 +529,12 @@ export function TemplatesPage() {
       <div className="w-full px-4 py-6 sm:px-8">
         <div className="grid grid-cols-1 xl:grid-cols-[380px_1fr] gap-6">
           {/* Template List */}
-          <section className="panel overflow-hidden">
+          <section className="s-card overflow-hidden">
+            <div className="s-cardhead border-b border-[var(--border-subtle)]">
+              <span className="s-ibox"><Filter /></span>
+              <span className="s-t">Filters</span>
+            </div>
             <div className="p-4 border-b border-[var(--border-subtle)]">
-              <div className="flex items-center gap-2 mb-4">
-                <Filter size={16} className="text-[var(--text-tertiary)]" />
-                <span className="text-sm font-medium text-[var(--text-secondary)]">Filters</span>
-              </div>
               <div className="space-y-3">
                 <div>
                   <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-muted)] mb-2">
@@ -614,21 +599,21 @@ export function TemplatesPage() {
                   {filteredTemplates.map((template) => {
                     const selected = template.id === selectedTemplateId;
                     const Icon = categoryIcon(template.category);
-                    const categoryColor = template.category === 'database' ? '#7ab8ff' : template.category === 'frontend' ? '#f2c94c' : template.category === 'web' ? 'var(--accent-primary)' : '#9295a4';
+                    const categoryColor = template.category === 'database' ? 'var(--info)' : template.category === 'frontend' ? 'var(--warning)' : template.category === 'web' ? 'var(--accent-primary)' : 'var(--text-tertiary)';
                     return (
                       <button
                         key={template.id}
                         onClick={() => selectTemplate(template.id)}
                         className={`w-full p-4 rounded-[var(--radius-lg)] border text-left transition-all duration-300 group ${
                           selected
-                            ? 'border-[var(--accent-primary)] bg-[var(--accent-primary-soft)] shadow-lg shadow-[var(--accent-primary-glow)]'
+                            ? 'border-[var(--accent-primary)]/60 bg-[var(--accent-primary-soft)]'
                             : 'border-[var(--border-subtle)] hover:border-[var(--border-default)] hover:bg-[var(--surface-muted)]/50 card-lift'
                         }`}
                       >
                         <div className="flex items-start gap-3">
                           <div 
                             className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-300 ${
-                              selected ? 'ring-2 ring-white/20' : ''
+                              selected ? 'ring-1 ring-[var(--accent-primary)]/40' : ''
                             }`}
                             style={{ 
                               background: selected ? categoryColor : `${categoryColor}20`,
@@ -691,12 +676,10 @@ export function TemplatesPage() {
           </section>
 
           {/* Template Detail */}
-          <section className="panel p-6">
+          <section className="s-card p-5">
             {!selectedTemplateId ? (
               <div className="py-16 text-center">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[var(--surface-muted)] flex items-center justify-center">
-                  <Layers size={28} className="text-[var(--text-tertiary)]" />
-                </div>
+                <div className="s-ibox mx-auto mb-4 !w-14 !h-14"><Layers size={22} /></div>
                 <p className="text-sm text-[var(--text-muted)]">Select a template to view details and deploy</p>
               </div>
             ) : null}
@@ -722,15 +705,15 @@ export function TemplatesPage() {
                 {/* Header */}
                 <div className="flex items-start justify-between gap-4 mb-6">
                   <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
+                    <div className="s-ibox !w-14 !h-14 !rounded-xl text-[var(--accent-primary)]">
                       {(() => {
                         const Icon = categoryIcon(selectedDetail.template.category);
-                        return <Icon size={24} className="text-[var(--accent-primary)]" />;
+                        return <Icon size={24} />;
                       })()}
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <h2 className="text-xl font-semibold text-[var(--text-primary)]">{selectedDetail.template.name}</h2>
+                        <h2 className="font-headline text-lg font-semibold text-[var(--text-primary)]">{selectedDetail.template.name}</h2>
                         {selectedDetail.template.isOfficial && (
                           <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--warning-soft)] text-[var(--warning)] text-xs font-medium">
                             <Star size={10} className="fill-[var(--warning)]" />
@@ -738,7 +721,7 @@ export function TemplatesPage() {
                           </span>
                         )}
                         {!selectedDetail.template.isOfficial && selectedDetail.template.isPublic && (
-                          <span className="px-2 py-0.5 rounded-full bg-[var(--info-soft)] text-[var(--info)] text-xs font-medium">
+                          <span className="s-chip !text-[var(--info)] !border-[color-mix(in_srgb,var(--info)_30%,transparent)] !bg-[var(--info-soft)] v-mono !text-[10.5px]">
                             Public
                           </span>
                         )}
@@ -747,10 +730,10 @@ export function TemplatesPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="px-3 py-1 rounded-full border border-[var(--border-subtle)] text-xs text-[var(--text-tertiary)]">
+                    <span className="s-chip v-mono !text-[10.5px]">
                       {categoryLabel(selectedDetail.template.category)}
                     </span>
-                    <span className="px-3 py-1 rounded-full border border-[var(--border-subtle)] text-xs text-[var(--text-tertiary)]">
+                    <span className="s-chip v-mono !text-[10.5px]">
                       {selectedDetail.config.runtime || 'n/a'}
                     </span>
                     {canManageTemplate(selectedDetail.template) ? (
@@ -777,25 +760,25 @@ export function TemplatesPage() {
 
                 {/* Config Grid */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                  <div className="panel-soft p-4">
+                  <div className="s-inset">
                     <p className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Type</p>
-                    <p className="mono text-sm text-[var(--text-primary)] mt-2">{selectedDetail.config.type || '—'}</p>
+                    <p className="v-mono text-sm text-[var(--text-primary)] mt-2">{selectedDetail.config.type || '—'}</p>
                   </div>
-                  <div className="panel-soft p-4">
+                  <div className="s-inset">
                     <p className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Port</p>
-                    <p className="mono text-sm text-[var(--text-primary)] mt-2">{selectedDetail.config.port || '—'}</p>
+                    <p className="v-mono text-sm text-[var(--text-primary)] mt-2">{selectedDetail.config.port || '—'}</p>
                   </div>
-                  <div className="panel-soft p-4">
+                  <div className="s-inset">
                     <p className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Build</p>
-                    <p className="mono text-xs text-[var(--text-primary)] mt-2 truncate">{selectedDetail.config.buildCommand || '—'}</p>
+                    <p className="v-mono text-xs text-[var(--text-primary)] mt-2 truncate">{selectedDetail.config.buildCommand || '—'}</p>
                   </div>
-                  <div className="panel-soft p-4">
+                  <div className="s-inset">
                     <p className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Start</p>
-                    <p className="mono text-xs text-[var(--text-primary)] mt-2 truncate">{selectedDetail.config.startCommand || '—'}</p>
+                    <p className="v-mono text-xs text-[var(--text-primary)] mt-2 truncate">{selectedDetail.config.startCommand || '—'}</p>
                   </div>
                 </div>
 
-                <div className="panel-soft p-4 mb-6">
+                <div className="s-inset mb-6">
                   <p className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)] mb-2">How Templates Work</p>
                   <p className="text-sm text-[var(--text-secondary)]">
                     Template defaults are merged with your variable inputs. Creating from template saves a stopped service in the selected project, then you deploy it from the service detail page.
@@ -808,7 +791,7 @@ export function TemplatesPage() {
                 </div>
 
                 {isGraphTemplate ? (
-                  <div className="panel-soft p-4 mb-6">
+                  <div className="s-inset mb-6">
                     <div className="flex items-center gap-2 mb-3">
                       <Network size={14} className="text-[var(--accent-primary)]" />
                       <p className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
@@ -824,14 +807,14 @@ export function TemplatesPage() {
                             ) : (
                               <Box size={13} className="text-[var(--text-tertiary)] shrink-0" />
                             )}
-                            <span className="mono text-[var(--text-primary)] truncate">{member.name || member.key}</span>
+                            <span className="v-mono text-[var(--text-primary)] truncate">{member.name || member.key}</span>
                             {member.dependsOn && member.dependsOn.length > 0 ? (
                               <span className="text-[10px] text-[var(--text-tertiary)]">
                                 after {member.dependsOn.join(', ')}
                               </span>
                             ) : null}
                           </div>
-                          <span className="mono text-[11px] text-[var(--text-tertiary)] truncate">
+                          <span className="v-mono text-[11px] text-[var(--text-tertiary)] truncate">
                             {member.type === 'database' ? `managed ${member.runtime}` : member.runtime || member.repo || '—'}
                           </span>
                         </div>
@@ -845,13 +828,11 @@ export function TemplatesPage() {
 
                 {/* Deploy Section */}
                 <div className="border-t border-[var(--border-subtle)] pt-6">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--success-soft)] flex items-center justify-center">
-                      <Play size={18} className="text-[var(--success)]" />
-                    </div>
+                  <div className="s-cardhead !mb-4">
+                    <span className="s-ibox"><Play /></span>
                     <div>
-                      <h3 className="text-lg font-semibold text-[var(--text-primary)]">Deploy from Template</h3>
-                      <p className="text-sm text-[var(--text-secondary)]">
+                      <span className="s-t">Deploy from Template</span>
+                      <p className="v-mono text-[10.5px] text-[var(--text-tertiary)] mt-0.5">
                         {isGraphTemplate ? 'Deploy all members into a project' : 'Configure and create a new service'}
                       </p>
                     </div>
@@ -868,7 +849,7 @@ export function TemplatesPage() {
                       </p>
                       <Link
                         to="/auth/sign-in"
-                        className="mt-3 inline-flex items-center gap-1.5 rounded-[var(--radius-md)] bg-[var(--accent-primary)] px-4 py-2 text-[12.5px] font-semibold text-[var(--accent-on)]"
+                        className="s-btn-accent mt-3 text-[12.5px]"
                       >
                         Sign in <ArrowRight size={13} />
                       </Link>
@@ -974,7 +955,7 @@ export function TemplatesPage() {
                         <span>
                           {lastDeployment.created
                             ? `Stack deployed — ${lastDeployment.created.length} resources`
-                            : <>Service <span className="mono font-medium">{lastDeployment.serviceName}</span> created</>}
+                            : <>Service <span className="v-mono font-medium">{lastDeployment.serviceName}</span> created</>}
                         </span>
                         <Link
                           to={lastDeployment.created
@@ -990,7 +971,7 @@ export function TemplatesPage() {
                           {lastDeployment.created.map((m) => (
                             <div key={m.id} className="flex items-center gap-2 text-xs">
                               {m.kind === 'database' ? <Database size={11} /> : <Box size={11} />}
-                              <span className="mono">{m.name}</span>
+                              <span className="v-mono">{m.name}</span>
                               <span className="opacity-70">({m.kind})</span>
                             </div>
                           ))}
@@ -1003,8 +984,8 @@ export function TemplatesPage() {
                     <button
                       onClick={() => deployMutation.mutate()}
                       disabled={isDeployDisabled}
-                      className="flex items-center gap-2 h-11 px-6 rounded-[var(--radius-md)] text-[var(--accent-on)] text-sm font-medium shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                      style={{ background: 'var(--accent-primary)' }}
+                      className="s-btn-accent h-11 disabled:opacity-50 disabled:cursor-not-allowed"
+                      
                     >
                       {deployMutation.isPending ? (
                         <>
@@ -1137,7 +1118,7 @@ export function TemplatesPage() {
                 value={editorJson}
                 onChange={(e) => setEditorJson(e.target.value)}
                 spellCheck={false}
-                className="mono min-h-[380px] flex-1 resize-none bg-[var(--bg-void)] p-4 text-[12.5px] leading-relaxed text-[var(--text-secondary)] outline-none"
+                className="v-mono min-h-[380px] flex-1 resize-none bg-[var(--bg-void)] p-4 text-[12.5px] leading-relaxed text-[var(--text-secondary)] outline-none"
               />
             )}
             {composeWarnings.length > 0 ? (
@@ -1175,7 +1156,7 @@ export function TemplatesPage() {
                   type="button"
                   onClick={submitEditor}
                   disabled={saveTemplateMutation.isPending}
-                  className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] bg-[var(--accent-primary)] px-4 py-2 text-xs font-semibold text-[var(--accent-on)] disabled:opacity-50"
+                  className="s-btn-accent disabled:opacity-50"
                 >
                   {saveTemplateMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : null}
                   {editingTemplate ? 'Save changes' : 'Create template'}
@@ -1227,7 +1208,7 @@ export function TemplatesPage() {
                 onChange={(e) => setComposeYaml(e.target.value)}
                 spellCheck={false}
                 placeholder={'services:\n  db:\n    image: postgres:16\n  web:\n    image: myapp:latest\n    depends_on: [db]'}
-                className="mono min-h-[320px] flex-1 resize-none bg-[var(--bg-void)] p-4 text-[12.5px] leading-relaxed text-[var(--text-secondary)] outline-none"
+                className="v-mono min-h-[320px] flex-1 resize-none bg-[var(--bg-void)] p-4 text-[12.5px] leading-relaxed text-[var(--text-secondary)] outline-none"
               />
             ) : (
               <div className="flex min-h-[320px] flex-1 flex-col gap-3 bg-[var(--bg-void)] p-4">
@@ -1238,7 +1219,7 @@ export function TemplatesPage() {
                     onChange={(e) => setGitRepo(e.target.value)}
                     spellCheck={false}
                     placeholder="owner/repo or https://github.com/owner/repo.git"
-                    className="mono mt-1 w-full rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-base)] px-3 py-2 text-[12.5px] text-[var(--text-secondary)] outline-none focus:border-[var(--accent-primary)]"
+                    className="v-mono mt-1 w-full rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-base)] px-3 py-2 text-[12.5px] text-[var(--text-secondary)] outline-none focus:border-[var(--accent-primary)]"
                   />
                 </label>
                 <label className="text-xs text-[var(--text-tertiary)]">
@@ -1248,7 +1229,7 @@ export function TemplatesPage() {
                     onChange={(e) => setGitPath(e.target.value)}
                     spellCheck={false}
                     placeholder="deploy/compose.yml"
-                    className="mono mt-1 w-full rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-base)] px-3 py-2 text-[12.5px] text-[var(--text-secondary)] outline-none focus:border-[var(--accent-primary)]"
+                    className="v-mono mt-1 w-full rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-base)] px-3 py-2 text-[12.5px] text-[var(--text-secondary)] outline-none focus:border-[var(--accent-primary)]"
                   />
                 </label>
                 <label className="text-xs text-[var(--text-tertiary)]">
@@ -1258,7 +1239,7 @@ export function TemplatesPage() {
                     onChange={(e) => setGitRef(e.target.value)}
                     spellCheck={false}
                     placeholder="main"
-                    className="mono mt-1 w-full rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-base)] px-3 py-2 text-[12.5px] text-[var(--text-secondary)] outline-none focus:border-[var(--accent-primary)]"
+                    className="v-mono mt-1 w-full rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-base)] px-3 py-2 text-[12.5px] text-[var(--text-secondary)] outline-none focus:border-[var(--accent-primary)]"
                   />
                 </label>
                 <p className="text-[11px] text-[var(--text-tertiary)]">
@@ -1283,7 +1264,7 @@ export function TemplatesPage() {
                 type="button"
                 onClick={() => composeImportMutation.mutate()}
                 disabled={(composeMode === 'paste' ? !composeYaml.trim() : !gitRepo.trim()) || composeImportMutation.isPending}
-                className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] bg-[var(--accent-primary)] px-4 py-2 text-xs font-semibold text-[var(--accent-on)] disabled:opacity-50"
+                className="s-btn-accent disabled:opacity-50"
               >
                 {composeImportMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <FileCode size={13} />}
                 Convert to template

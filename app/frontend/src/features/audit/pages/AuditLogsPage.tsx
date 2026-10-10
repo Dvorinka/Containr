@@ -6,7 +6,9 @@ import { type FilterConfig } from '@/lib/dynamic-filter';
 import { useDynamicFilter } from '@/lib/use-dynamic-filter';
 import { formatDate, formatRelative } from '@/lib/time';
 import { DemoRestricted, FilterBar } from '@/shared/components';
+import { QuietBtn, SCard, SPageHead, SPill, STable, type SCol } from '@/shared/components/sentry';
 import { ScrollText, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import type { AuditLogEntity } from '@/lib/api-client';
 
 const PAGE_SIZE = 50;
 
@@ -72,109 +74,101 @@ export function AuditLogsPage() {
   const hasNext = logs.length === PAGE_SIZE;
   const hasFilters = filter.activeCount > 0;
 
+  const cols: SCol<AuditLogEntity>[] = [
+    {
+      key: 'time', label: 'Time', width: '100px', sortable: false,
+      render: (log) => (
+        <span className="v-mono text-[11px] text-[var(--text-tertiary)]" title={log.createdAt ? formatDate(log.createdAt) : undefined}>
+          {log.createdAt ? formatRelative(log.createdAt) : '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'actor', label: 'Actor', width: 'minmax(140px,1.1fr)',
+      sortValue: (log) => log.userEmail ?? log.userId ?? 'system',
+      render: (log) => (
+        <span className="text-[12px] text-[var(--text-primary)] truncate">
+          {log.userEmail || (log.userId ? log.userId.slice(0, 8) : 'system')}
+        </span>
+      ),
+    },
+    {
+      key: 'resource', label: 'Resource', width: 'minmax(120px,1fr)',
+      sortValue: (log) => log.resource ?? '',
+      render: (log) => <span className="v-mono text-[11.5px] text-[var(--text-secondary)]">{log.resource}</span>,
+    },
+    {
+      key: 'action', label: 'Action', width: 'minmax(130px,1fr)',
+      sortValue: (log) => log.action ?? '',
+      render: (log) => <SPill tone="info">{log.action}</SPill>,
+    },
+    {
+      key: 'rid', label: 'Resource ID', width: 'minmax(110px,0.8fr)', sortable: false,
+      render: (log) => (
+        <span className="v-mono text-[10.5px] text-[var(--text-tertiary)] truncate block" title={log.resourceId}>
+          {log.resourceId || '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'ip', label: 'IP', width: '110px', sortable: false,
+      render: (log) => <span className="v-mono text-[10.5px] text-[var(--text-tertiary)]">{log.ipAddress?.replace(/\/\d+$/, '') || '—'}</span>,
+    },
+    {
+      key: 'details', label: 'Details', width: 'minmax(160px,1.2fr)', sortable: false,
+      render: (log) => (
+        <span className="v-mono text-[10.5px] text-[var(--text-tertiary)] truncate block" title={log.details}>
+          {log.details && log.details !== '{}' ? log.details : '—'}
+        </span>
+      ),
+    },
+  ];
+
   return (
     <div className="min-h-screen">
-      <div className="border-b border-[var(--border-subtle)]">
-        <div className="w-full px-8 py-5">
-          <h1 className="v-title">
-            Audit Logs<span className="v-cursor">_</span>
-          </h1>
-          <p className="v-mono mt-1.5 text-[11px] text-[var(--text-tertiary)]">
-            Every authenticated action recorded by the platform
-          </p>
-        </div>
+      <div className="w-full px-4 pt-6 sm:px-8">
+        <SPageHead
+          title="Audit Logs"
+          titleAccent="_"
+          sub="Every authenticated action recorded by the platform"
+        />
       </div>
 
-      <div className="w-full px-4 py-6 sm:px-8">
-        <section className="panel p-6">
-          <FilterBar {...filter} />
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-[var(--border-subtle)] text-left">
-                  <th className="px-3 py-2.5 font-medium uppercase tracking-wider text-xs text-[var(--text-muted)]">Time</th>
-                  <th className="px-3 py-2.5 font-medium uppercase tracking-wider text-xs text-[var(--text-muted)]">Actor</th>
-                  <th className="px-3 py-2.5 font-medium uppercase tracking-wider text-xs text-[var(--text-muted)]">Resource</th>
-                  <th className="px-3 py-2.5 font-medium uppercase tracking-wider text-xs text-[var(--text-muted)]">Action</th>
-                  <th className="px-3 py-2.5 font-medium uppercase tracking-wider text-xs text-[var(--text-muted)]">Resource ID</th>
-                  <th className="px-3 py-2.5 font-medium uppercase tracking-wider text-xs text-[var(--text-muted)]">IP</th>
-                  <th className="px-3 py-2.5 font-medium uppercase tracking-wider text-xs text-[var(--text-muted)]">Details</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--border-subtle)]">
-                {logsQuery.isLoading ? (
-                  <tr>
-                    <td colSpan={7} className="px-4 py-10 text-center text-[var(--text-muted)]">
-                      <Loader2 size={18} className="animate-spin inline-block" />
-                    </td>
-                  </tr>
-                ) : logsQuery.isError ? (
-                  <tr>
-                    <td colSpan={7} className="px-4 py-10 text-center text-[var(--error)]">
-                      Failed to load audit logs.
-                    </td>
-                  </tr>
-                ) : logs.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="px-4 py-10 text-center">
-                      <ScrollText size={20} className="inline-block mb-2 text-[var(--text-muted)]" />
-                      <p className="text-[var(--text-secondary)]">No audit events{hasFilters ? ' match these filters' : ' recorded yet'}.</p>
-                    </td>
-                  </tr>
-                ) : (
-                  logs.map((log) => (
-                    <tr key={log.id} className="hover:bg-[var(--surface-muted)]/50 transition-colors">
-                      <td className="px-3 py-2.5 whitespace-nowrap text-[var(--text-tertiary)]" title={log.createdAt ? formatDate(log.createdAt) : undefined}>
-                        {log.createdAt ? formatRelative(log.createdAt) : '—'}
-                      </td>
-                      <td className="px-3 py-2.5 text-[var(--text-primary)]">
-                        {log.userEmail || (log.userId ? log.userId.slice(0, 8) : 'system')}
-                      </td>
-                      <td className="px-3 py-2.5 mono text-[var(--text-secondary)]">{log.resource}</td>
-                      <td className="px-3 py-2.5">
-                        <span className="px-2 py-0.5 rounded-[var(--radius-sm)] bg-[var(--accent-primary-soft)] text-xs font-medium text-[var(--accent-primary)]">
-                          {log.action}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5 mono text-xs text-[var(--text-tertiary)] max-w-[140px] truncate" title={log.resourceId}>
-                        {log.resourceId || '—'}
-                      </td>
-                      <td className="px-3 py-2.5 mono text-xs text-[var(--text-tertiary)]">{log.ipAddress?.replace(/\/\d+$/, '') || '—'}</td>
-                      <td className="px-3 py-2.5 mono text-xs text-[var(--text-tertiary)] max-w-[220px] truncate" title={log.details}>
-                        {log.details && log.details !== '{}' ? log.details : '—'}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+      <div className="w-full px-4 sm:px-8">
+        <SCard icon={<ScrollText />} title="Event Log" accent={`page ${page}`} pad={false}>
+          <div className="px-4 pt-1 pb-3">
+            <FilterBar {...filter} />
           </div>
-
-          <div className="mt-4 flex items-center justify-between">
-            <p className="text-xs text-[var(--text-muted)]">
+          <div className="border-t border-[var(--border-subtle)] px-4 overflow-x-auto">
+            {logsQuery.isLoading ? (
+              <div className="py-10 text-center text-[var(--text-muted)]">
+                <Loader2 size={18} className="animate-spin inline-block" />
+              </div>
+            ) : logsQuery.isError ? (
+              <div className="py-10 text-center text-[var(--error)]">Failed to load audit logs.</div>
+            ) : logs.length === 0 ? (
+              <div className="py-10 text-center">
+                <div className="s-ibox mx-auto mb-2"><ScrollText /></div>
+                <p className="text-[var(--text-secondary)] text-sm">No audit events{hasFilters ? ' match these filters' : ' recorded yet'}.</p>
+              </div>
+            ) : (
+              <STable cols={cols} rows={logs} rowKey={(l) => l.id} />
+            )}
+          </div>
+          <div className="flex items-center justify-between px-4 py-3 border-t border-[var(--border-subtle)]">
+            <p className="v-mono text-[10.5px] text-[var(--text-muted)]">
               Page {page}{logs.length > 0 ? ` — ${logs.length} entries` : ''}
             </p>
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page <= 1}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-secondary)] hover:border-[var(--border-default)] disabled:opacity-40 transition-colors"
-              >
-                <ChevronLeft size={12} />
-                Prev
-              </button>
-              <button
-                onClick={() => setPage((p) => p + 1)}
-                disabled={!hasNext}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-secondary)] hover:border-[var(--border-default)] disabled:opacity-40 transition-colors"
-              >
-                Next
-                <ChevronRight size={12} />
-              </button>
+              <QuietBtn onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}>
+                <ChevronLeft size={12} /> Prev
+              </QuietBtn>
+              <QuietBtn onClick={() => setPage((p) => p + 1)} disabled={!hasNext}>
+                Next <ChevronRight size={12} />
+              </QuietBtn>
             </div>
           </div>
-        </section>
+        </SCard>
       </div>
     </div>
   );

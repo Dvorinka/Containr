@@ -77,12 +77,12 @@ export function CardHeader({ title, description, icon, action, className = '', .
     <div className={`flex items-start justify-between gap-4 ${className}`} {...props}>
       <div className="flex items-start gap-3">
         {icon && (
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ring-1 ring-white/5" style={{ background: 'rgba(255,255,255,0.07)' }}>
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ring-1 ring-[var(--tint-05)]" style={{ background: 'var(--tint-07)' }}>
             {icon}
           </div>
         )}
         <div>
-          <h3 className="text-lg font-semibold text-[var(--text-primary)] tracking-tight">{title}</h3>
+          <h3 className="font-headline text-base font-semibold text-[var(--text-primary)] tracking-tight">{title}</h3>
           {description && (
             <p className="text-sm text-[var(--text-secondary)] mt-0.5">{description}</p>
           )}

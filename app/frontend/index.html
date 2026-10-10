@@ -5,6 +5,12 @@
     <link rel="icon" type="image/svg+xml" href="/containr.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>containr</title>
+    <script>
+      try {
+        document.documentElement.dataset.theme =
+          localStorage.getItem('containr.theme') === 'light' ? 'light' : 'dark';
+      } catch { document.documentElement.dataset.theme = 'dark'; }
+    </script>
   </head>
   <body>
     <div id="root"></div>

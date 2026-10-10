@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { ChevronRight } from 'lucide-react';
 
 interface MetricCardProps {
   title: string;
@@ -14,6 +15,12 @@ interface MetricCardProps {
   animationDelay?: number;
   horizontal?: boolean;
 }
+
+const statusColors: Record<string, string> = {
+  good: 'var(--success)',
+  average: 'var(--warning)',
+  warning: 'var(--warning)',
+};
 
 export function MetricCard({
   title,
@@ -49,140 +56,64 @@ export function MetricCard({
     return () => observer.disconnect();
   }, [animationDelay]);
 
-  const statusColors: Record<string, string> = {
-    good: '#5ee6a0',
-    average: '#f2c94c',
-    warning: '#f2c94c',
-  };
+  const reveal = {
+    opacity: isVisible ? 1 : 0,
+    transform: isVisible ? 'translateY(0)' : 'translateY(12px)',
+    transition: 'all 0.5s ease',
+  } as const;
 
-  // Horizontal layout for cards like Active User
+  const footer = (
+    <div className="s-stat-foot">
+      <span
+        onClick={onClick}
+        style={{ cursor: onClick ? 'pointer' : 'default' }}
+      >
+        {statusText && status ? (
+          <b style={{ color: statusColors[status], fontWeight: 600 }}>{statusText}</b>
+        ) : null}{' '}
+        {subtitle ?? 'Details'}
+      </span>
+      {onClick ? (
+        <button className="s-icon-btn !h-6 !w-6" onClick={onClick} title="Details">
+          <ChevronRight size={11} />
+        </button>
+      ) : null}
+    </div>
+  );
+
   if (horizontal) {
     return (
-      <div
-        ref={cardRef}
-        className={`panel ${className}`}
-        style={{
-          display: 'flex',
-          flexDirection: 'row',
-          padding: 0,
-          overflow: 'hidden',
-          opacity: isVisible ? 1 : 0,
-          transform: isVisible ? 'translateY(0)' : 'translateY(12px)',
-          transition: 'all 0.5s ease',
-        }}
-      >
-        <div style={{
-          flex: 1,
-          padding: '20px 18px 18px 20px',
-          display: 'flex',
-          flexDirection: 'column',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-            <div className="card-icon">{icon}</div>
-            <span style={{ fontSize: 14, fontWeight: 600, color: '#e8e9f0' }}>{title}</span>
+      <div ref={cardRef} className={`s-stat ${className}`} style={{ ...reveal, display: 'flex' }}>
+        <div className="flex-1 px-4 pt-4 pb-2 flex flex-col">
+          <div className="flex items-center gap-2.5">
+            <span className="s-ibox">{icon}</span>
+            <span className="text-[11.5px] font-medium text-[var(--text-secondary)]">{title}</span>
           </div>
-          <div style={{
-            fontSize: 36,
-            fontWeight: 900,
-            letterSpacing: '-1.5px',
-            lineHeight: 1,
-            color: '#e8e9f0',
-          }}>
+          <div className="mt-4 font-headline text-[30px] font-bold leading-none tracking-[-0.025em] text-[var(--text-primary)]">
             {value}
           </div>
-          {subtitle && (
-            <div style={{ fontSize: 12, color: '#6b6e7d', marginTop: 4 }}>{subtitle}</div>
-          )}
-          {details && <div style={{ marginTop: 12 }}>{details}</div>}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginTop: 'auto',
-            paddingTop: 14,
-          }}>
-            <span
-              style={{ fontSize: 13, color: '#6b6e7d', fontWeight: 500, cursor: 'pointer' }}
-              onClick={onClick}
-            >
-              Details
-            </span>
-            <div className="arrow-btn" onClick={onClick}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="9 18 15 12 9 6" />
-              </svg>
-            </div>
-          </div>
+          {details ? <div className="mt-3">{details}</div> : null}
+          <div className="mt-auto">{footer}</div>
         </div>
-        {chart && (
-          <div style={{
-            width: '50%',
-            padding: '16px 14px 46px 0',
-            display: 'flex',
-            alignItems: 'flex-end',
-          }}>
-            {chart}
-          </div>
-        )}
+        {chart ? (
+          <div className="w-1/2 flex items-end pr-3 pb-10 pt-3">{chart}</div>
+        ) : null}
       </div>
     );
   }
 
-  // Standard vertical card layout - matching self.html exactly
   return (
-    <div
-      ref={cardRef}
-      className={`panel ${className}`}
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        padding: 20,
-        opacity: isVisible ? 1 : 0,
-        transform: isVisible ? 'translateY(0)' : 'translateY(12px)',
-        transition: 'all 0.5s ease',
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-        <div className="card-icon">{icon}</div>
-        <span style={{ fontSize: 14, fontWeight: 600, color: '#e8e9f0' }}>{title}</span>
+    <div ref={cardRef} className={`s-stat ${className}`} style={reveal}>
+      <div className="flex items-center gap-2.5 px-4 pt-4">
+        <span className="s-ibox">{icon}</span>
+        <span className="text-[11.5px] font-medium text-[var(--text-secondary)]">{title}</span>
       </div>
-
-      <div style={{
-        fontSize: 38,
-        fontWeight: 900,
-        letterSpacing: '-1.5px',
-        lineHeight: 1,
-        color: '#e8e9f0',
-      }}>
+      <div className="px-4 mt-4 font-headline text-[32px] font-bold leading-none tracking-[-0.025em] text-[var(--text-primary)]">
         {value}
       </div>
-
-      {(subtitle || statusText) && (
-        <div style={{ fontSize: 12, color: '#6b6e7d', marginTop: 4 }}>
-          {statusText && status && (
-            <span style={{ color: statusColors[status], fontWeight: 700 }}>{statusText}</span>
-          )}{' '}
-          {subtitle}
-        </div>
-      )}
-
-      {chart && <div style={{ marginTop: 12, marginBottom: 6 }}>{chart}</div>}
-
-      {details && <div style={{ marginTop: 16 }}>{details}</div>}
-
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 4, marginTop: 'auto' }}>
-        <span
-          onClick={onClick}
-          style={{ fontSize: 13, color: '#6b6e7d', fontWeight: 500, cursor: 'pointer' }}
-        >
-          Details
-        </span>
-        <div className="arrow-btn" onClick={onClick}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="9 18 15 12 9 6" />
-          </svg>
-        </div>
-      </div>
+      {chart ? <div className="px-4 mt-3">{chart}</div> : null}
+      {details ? <div className="px-4 mt-3">{details}</div> : null}
+      <div className="mt-4">{footer}</div>
     </div>
   );
 }

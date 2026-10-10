@@ -68,7 +68,7 @@ function gradientId(prefix: string, color: string, index = 0) {
 
 export function LineChart({
   data,
-  color = '#b4e34a',
+  color = '#38bdf8',
   fillColor = 'transparent',
   height = 76,
   showDots = true,
@@ -181,7 +181,7 @@ export function MultiLineChart({
 
 export function LineMetricChart({
   data,
-  color = '#b4e34a',
+  color = '#38bdf8',
   fillOpacity = 0.15,
   height = 76,
   showArea = false,
@@ -204,8 +204,8 @@ export function DualLineChart({
   data1,
   data2,
   height = 58,
-  color1 = '#7ab8ff',
-  color2 = '#f2c94c',
+  color1 = 'var(--accent-primary)',
+  color2 = 'var(--warning)',
   fillOpacity1 = 0.15,
   fillOpacity2 = 0.15,
 }: DualLineChartProps) {

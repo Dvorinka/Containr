@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { listProjectVariables, updateProjectVariables } from '@/lib/api-client';
 import { Loader2, Plus, Save, Trash2, KeyRound } from 'lucide-react';
+import { QuietBtn } from '@/shared/components/sentry';
 
 type Row = { key: string; value: string; isSecret: boolean };
 
@@ -42,26 +43,23 @@ export function SharedVariablesSection({ projectId }: { projectId: string }) {
     <div className="mt-6 pt-6 border-t border-[var(--border-subtle)]">
       <div className="flex items-center justify-between mb-3">
         <div>
-          <h3 className="text-sm font-medium text-[var(--text-secondary)]">Shared Variables</h3>
+          <h3 className="s-t">Shared Variables</h3>
           <p className="mt-1 text-xs text-[var(--text-muted)]">
             Reference from any service as{' '}
-            <code className="mono text-[var(--accent-primary)]">{'${{shared.KEY}}'}</code>. Applied on next
+            <code className="v-mono text-[var(--accent-primary)]">{'${{shared.KEY}}'}</code>. Applied on next
             deploy/redeploy — not live-updated.
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setDrafts([...rows, { key: '', value: '', isSecret: false }])}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-secondary)] hover:border-[var(--border-default)] transition-colors"
-          >
+          <QuietBtn onClick={() => setDrafts([...rows, { key: '', value: '', isSecret: false }])}>
             <Plus size={12} />
             Add
-          </button>
+          </QuietBtn>
           <button
             onClick={() => saveMutation.mutate(rows)}
             disabled={!dirty || saveMutation.isPending}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-md)] text-xs font-medium text-[var(--accent-on)] disabled:opacity-50 transition-all"
-            style={{ background: 'var(--accent-primary)' }}
+            className="s-btn-accent disabled:opacity-50"
+            
           >
             {saveMutation.isPending ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
             Save
@@ -83,7 +81,7 @@ export function SharedVariablesSection({ projectId }: { projectId: string }) {
                 value={row.key}
                 onChange={(e) => updateRow(i, { key: e.target.value })}
                 placeholder="KEY"
-                className="h-9 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] mono text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all"
+                className="h-9 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] v-mono text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all"
               />
               <input
                 value={row.value}
@@ -91,13 +89,13 @@ export function SharedVariablesSection({ projectId }: { projectId: string }) {
                 type={row.isSecret ? 'password' : 'text'}
                 placeholder="value"
                 autoComplete="off"
-                className="h-9 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] mono text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all"
+                className="h-9 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] v-mono text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all"
               />
               <button
                 type="button"
                 title={row.isSecret ? 'Secret — masked on save' : 'Mark as secret'}
                 onClick={() => updateRow(i, { isSecret: !row.isSecret })}
-                className={`w-9 h-9 rounded-[var(--radius-md)] border flex items-center justify-center transition-colors ${
+                className={`w-9 h-9 rounded-lg border flex items-center justify-center transition-colors ${
                   row.isSecret
                     ? 'border-[var(--accent-primary)] bg-[var(--accent-primary-soft)] text-[var(--accent-primary)]'
                     : 'border-[var(--border-subtle)] text-[var(--text-muted)] hover:border-[var(--border-default)]'
@@ -108,7 +106,7 @@ export function SharedVariablesSection({ projectId }: { projectId: string }) {
               <button
                 type="button"
                 onClick={() => setDrafts(rows.filter((_, idx) => idx !== i))}
-                className="w-9 h-9 rounded-[var(--radius-md)] border border-[var(--border-subtle)] flex items-center justify-center text-[var(--text-muted)] hover:border-[var(--error)] hover:text-[var(--error)] transition-colors"
+                className="w-9 h-9 rounded-lg border border-[var(--border-subtle)] flex items-center justify-center text-[var(--text-muted)] hover:border-[var(--error)] hover:text-[var(--error)] transition-colors"
               >
                 <Trash2 size={12} />
               </button>

@@ -167,12 +167,12 @@ function toFlowEdges(
       },
       markerEnd: {
         type: MarkerType.ArrowClosed,
-        color: 'rgba(180, 227, 74, 0.55)',
+        color: 'color-mix(in srgb, var(--accent-primary) 55%, transparent)',
         width: 13,
         height: 13,
       },
       style: {
-        stroke: 'rgba(180, 227, 74, 0.42)',
+        stroke: 'color-mix(in srgb, var(--accent-primary) 42%, transparent)',
         strokeWidth: 1.6,
       },
       className: 'edge-premium',
@@ -198,7 +198,7 @@ function ZoomControls({ onTidy }: { onTidy: () => void }) {
       <button
         type="button"
         onClick={() => setViewport({ x: 0, y: 0, zoom: 1 }, { duration: 180 })}
-        className="canvas-pill-btn mono w-12 text-[11px]"
+        className="canvas-pill-btn v-mono w-12 text-[11px]"
         title="Reset zoom (0)"
       >
         {Math.round(zoom * 100)}%
@@ -873,7 +873,7 @@ function CanvasInner({ projectId, services, variablesByService, onAddService, on
   const minimapNodeColor = useCallback(
     (node: CanvasNode) => {
       if (node.type === 'groupNode') {
-        return 'rgba(255,255,255,0.08)';
+        return 'var(--tint-08)';
       }
       return serviceAccent((node.data as ServiceNodeData).service);
     },
@@ -922,14 +922,14 @@ function CanvasInner({ projectId, services, variablesByService, onAddService, on
         selectionKeyCode="Shift"
         proOptions={{ hideAttribution: true }}
       >
-        <Background variant={BackgroundVariant.Dots} gap={26} size={1.2} color="rgba(255,255,255,0.055)" />
+        <Background variant={BackgroundVariant.Dots} gap={26} size={1.2} color="var(--tint-05)" />
         <MiniMap
           position="bottom-right"
           pannable
           zoomable
           nodeColor={minimapNodeColor}
-          bgColor="rgba(14, 15, 18, 0.92)"
-          maskColor="rgba(12, 13, 15, 0.72)"
+          bgColor="var(--surface-glass)"
+          maskColor="var(--surface-glass)"
           className="canvas-minimap hidden md:block"
         />
       </ReactFlow>
@@ -937,21 +937,19 @@ function CanvasInner({ projectId, services, variablesByService, onAddService, on
       {/* Floating: env filter + group (top-left) */}
       <div className="absolute left-4 top-4 flex items-center gap-2">
         {environments.length > 1 && (
-          <div className="canvas-pill flex items-center gap-0.5 p-1">
-            {['all', ...environments].map((env) => (
-              <button
-                key={env}
-                type="button"
-                onClick={() => setEnvFilter(env)}
-                className={`px-2.5 py-1 rounded-full text-[11px] font-medium capitalize transition-all ${
-                  envFilter === env
-                    ? 'bg-[var(--surface-card)] text-[var(--text-primary)] shadow-sm'
-                    : 'text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'
-                }`}
-              >
-                {env}
-              </button>
-            ))}
+          <div className="canvas-pill !rounded-[9px] p-1">
+            <span className="s-seg">
+              {['all', ...environments].map((env) => (
+                <button
+                  key={env}
+                  type="button"
+                  onClick={() => setEnvFilter(env)}
+                  className={`!w-auto !h-auto px-2.5 py-1 capitalize v-mono text-[10.5px] ${envFilter === env ? 'on' : ''}`}
+                >
+                  {env}
+                </button>
+              ))}
+            </span>
           </div>
         )}
         {!readOnly && (
@@ -1018,12 +1016,12 @@ function CanvasInner({ projectId, services, variablesByService, onAddService, on
       {/* Empty state */}
       {services.length === 0 && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="text-center pointer-events-auto">
-            <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-[var(--surface-card)] border border-[var(--border-subtle)] flex items-center justify-center">
-              <Rocket size={24} className="text-[var(--accent-primary)]" />
+          <div className="text-center pointer-events-auto s-card !py-8 !px-10">
+            <div className="s-ibox mx-auto mb-4 !h-11 !w-11">
+              <Rocket />
             </div>
-            <h3 className="text-base font-semibold text-[var(--text-primary)]">Deploy your first service</h3>
-            <p className="text-sm text-[var(--text-tertiary)] mt-1 mb-4 max-w-xs">
+            <h3 className="font-headline text-base font-semibold text-[var(--text-primary)]">Deploy your first service</h3>
+            <p className="v-mono text-[11.5px] text-[var(--text-tertiary)] mt-1.5 mb-5 max-w-xs">
               Add a service from a git repo or Docker image - it runs on a private network with the rest of this
               project.
             </p>
@@ -1031,10 +1029,9 @@ function CanvasInner({ projectId, services, variablesByService, onAddService, on
               <button
                 type="button"
                 onClick={onAddService}
-                className="inline-flex items-center gap-2 h-9 px-4 rounded-lg text-[var(--accent-on)] text-sm font-medium shadow-lg"
-                style={{ background: 'var(--accent-primary)' }}
+                className="s-btn-accent inline-flex items-center gap-2"
               >
-                <Plus size={15} />
+                <Plus size={13} />
                 Add Service
               </button>
             )}

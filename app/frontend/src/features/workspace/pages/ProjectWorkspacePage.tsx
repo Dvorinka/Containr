@@ -50,7 +50,9 @@ import {
   GitBranch,
   Container,
   FileUp,
+  RefreshCw,
 } from 'lucide-react';
+import { GhostBtn, QuietBtn } from '@/shared/components/sentry';
 
 type WorkspaceView = 'canvas' | 'observability' | 'logs' | 'activity' | 'settings';
 
@@ -146,12 +148,10 @@ function ServiceCreateDialog(props: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-[var(--bg-void)]/80 backdrop-blur-sm" onClick={props.onClose} />
-      <div className="relative w-full max-w-lg panel p-6">
-        <div className="flex items-center gap-3 mb-1">
-          <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
-            <Plus size={20} className="text-[var(--accent-primary)]" />
-          </div>
-          <h3 className="text-xl font-semibold text-[var(--text-primary)]">Add Service</h3>
+      <div className="relative w-full max-w-lg s-card !p-6">
+        <div className="flex items-center gap-2.5 mb-1">
+          <span className="s-ibox !w-9 !h-9"><Plus /></span>
+          <h3 className="font-headline text-lg font-semibold text-[var(--text-primary)]">Add Service</h3>
         </div>
         <p className="text-sm text-[var(--text-secondary)]">
           Deploy a new service to this project. Configure runtime settings after creation.
@@ -202,7 +202,7 @@ function ServiceCreateDialog(props: {
           </div>
 
           {isDatabase ? (
-            <div className="space-y-3 p-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)]/50">
+            <div className="s-inset space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-tertiary)] mb-2">
@@ -287,12 +287,12 @@ function ServiceCreateDialog(props: {
               <input
                 value={form.image ?? ''}
                 onChange={(e) => setForm((p) => ({ ...p, image: e.target.value }))}
-                className="w-full h-11 px-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all mono text-sm"
+                className="w-full h-11 px-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all v-mono text-sm"
                 placeholder="ghcr.io/org/app:latest"
               />
             </div>
           ) : (
-            <div className="space-y-3 p-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)]/50">
+            <div className="s-inset space-y-3">
               <div>
                 <label className="block text-xs font-medium uppercase tracking-wider text-[var(--text-tertiary)] mb-2">
                   Provider
@@ -326,7 +326,7 @@ function ServiceCreateDialog(props: {
                   <input
                     value={repoSearch}
                     onChange={(e) => setRepoSearch(e.target.value)}
-                    className="w-full h-9 px-3 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm mono mb-2"
+                    className="w-full h-9 px-3 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm v-mono mb-2"
                     placeholder="Search repositories..."
                   />
                   {repositoriesQuery.isLoading ? (
@@ -357,7 +357,7 @@ function ServiceCreateDialog(props: {
                               : 'text-[var(--text-secondary)] hover:bg-[var(--surface-card-hover)]'
                           }`}
                         >
-                          <span className="mono text-xs truncate">{repo.full_name}</span>
+                          <span className="v-mono text-xs truncate">{repo.full_name}</span>
                           <span className="text-[10px] text-[var(--text-muted)] ml-2 shrink-0">{repo.default_branch}</span>
                         </button>
                       ))}
@@ -380,7 +380,7 @@ function ServiceCreateDialog(props: {
                       <select
                         value={form.git_branch ?? ''}
                         onChange={(e) => setForm((p) => ({ ...p, git_branch: e.target.value }))}
-                        className="w-full h-10 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm mono"
+                        className="w-full h-10 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm v-mono"
                       >
                         <option value="">Select branch</option>
                         {branches.map((branch) => (
@@ -391,7 +391,7 @@ function ServiceCreateDialog(props: {
                       <input
                         value={form.git_branch ?? ''}
                         onChange={(e) => setForm((p) => ({ ...p, git_branch: e.target.value }))}
-                        className="w-full h-10 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm mono"
+                        className="w-full h-10 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm v-mono"
                         placeholder={selectedRepo?.default_branch ?? 'main'}
                       />
                     )}
@@ -403,7 +403,7 @@ function ServiceCreateDialog(props: {
                     <input
                       value={form.build_path ?? ''}
                       onChange={(e) => setForm((p) => ({ ...p, build_path: e.target.value }))}
-                      className="w-full h-10 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm mono"
+                      className="w-full h-10 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-sm v-mono"
                       placeholder="/ (repo root)"
                     />
                   </div>
@@ -419,7 +419,7 @@ function ServiceCreateDialog(props: {
             <input
               value={form.command ?? ''}
               onChange={(e) => setForm((p) => ({ ...p, command: e.target.value }))}
-              className="w-full h-11 px-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all mono text-sm"
+              className="w-full h-11 px-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all v-mono text-sm"
               placeholder="npm run start"
             />
           </div>
@@ -434,7 +434,7 @@ function ServiceCreateDialog(props: {
         <div className="mt-6 flex justify-end gap-3">
           <button
             onClick={props.onClose}
-            className="px-4 py-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-[var(--text-secondary)] text-sm font-medium hover:text-[var(--text-primary)] hover:border-[var(--border-default)] transition-colors"
+            className="s-btn-quiet"
           >
             Cancel
           </button>
@@ -454,8 +454,8 @@ function ServiceCreateDialog(props: {
                 database: isDatabase ? { engine: dbEngine, plan: dbPlan } : undefined,
               })
             }
-            className="px-5 py-2 rounded-[var(--radius-md)] text-[var(--accent-on)] text-sm font-medium shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-            style={{ background: 'var(--accent-primary)' }}
+            className="s-btn-accent disabled:opacity-50 disabled:cursor-not-allowed"
+            
           >
             {props.loading ? 'Creating...' : isDatabase ? 'Create Database' : 'Create Service'}
           </button>
@@ -689,17 +689,17 @@ export function ProjectWorkspacePage() {
   if ((!isDemoMode && projectQuery.isError) || !project) {
     return (
       <div className="min-h-screen flex items-center justify-center p-8">
-        <div className="panel p-8 text-center max-w-md">
+        <div className="s-card p-8 text-center max-w-md">
           <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-[var(--error-soft)] flex items-center justify-center">
             <X size={24} className="text-[var(--error)]" />
           </div>
-          <p className="text-lg font-medium text-[var(--text-primary)]">Project not found</p>
+          <p className="font-headline text-lg font-medium text-[var(--text-primary)]">Project not found</p>
           <p className="mt-2 text-sm text-[var(--text-secondary)]">
             This project may have been deleted or you don't have access.
           </p>
           <button
             onClick={() => navigate(isDemoMode ? '/projects?demo=1' : '/projects')}
-            className="mt-6 px-4 py-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-sm font-medium hover:border-[var(--border-default)] transition-colors"
+            className="s-btn-quiet"
           >
             Back to Projects
           </button>
@@ -724,13 +724,13 @@ export function ProjectWorkspacePage() {
           <span className="hidden sm:inline">Projects</span>
         </button>
         <div className="w-px h-4 bg-[var(--border-subtle)] shrink-0" />
-        <h1 className="v-title text-sm shrink-0 min-w-0 truncate">{project.name}<span className="v-cursor">_</span></h1>
+        <h1 className="v-title font-headline text-sm shrink-0 min-w-0 truncate">{project.name}<span className="v-cursor">_</span></h1>
         <span className="hidden lg:flex items-center gap-1.5 text-[11px] text-[var(--text-tertiary)] shrink-0">
           {services.length} service{services.length !== 1 ? 's' : ''} · {runningServices} running
         </span>
 
         {/* View tabs */}
-        <nav className="flex items-center gap-0.5 rounded-full bg-[var(--surface-muted)] border border-[var(--border-subtle)] p-0.5 mx-2 overflow-x-auto min-w-0">
+        <nav className="flex items-center gap-0.5 mx-2 overflow-x-auto min-w-0 self-stretch [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {viewItems.filter((item) => signedIn || !item.authOnly).map((item) => {
             const active = activeView === item.key;
             const Icon = item.icon;
@@ -742,11 +742,7 @@ export function ProjectWorkspacePage() {
                   next.set('view', item.key);
                   return next;
                 })}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap ${
-                  active
-                    ? 'bg-[var(--surface-card)] text-[var(--text-primary)] shadow-sm'
-                    : 'text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'
-                }`}
+                className={`tab ${active ? 'active' : ''} !py-0 h-full !text-[11.5px]`}
               >
                 <Icon size={13} />
                 <span className="hidden md:inline">{item.label}</span>
@@ -765,29 +761,21 @@ export function ProjectWorkspacePage() {
           </span>
           <button
             onClick={() => setCommandPaletteOpen(true)}
-            className="hidden lg:flex items-center gap-2 h-8 px-2.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-[var(--text-muted)] text-xs hover:border-[var(--border-default)] hover:text-[var(--text-secondary)] transition-colors"
+            className="s-chip hidden lg:flex"
           >
             <Search size={12} />
-            <kbd className="px-1 py-0.5 rounded bg-[var(--surface-card)] text-[10px] font-mono">⌘K</kbd>
+            <kbd className="px-1 py-px rounded border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[10px] font-mono">⌘K</kbd>
           </button>
           {!isDemoMode && signedIn && (
             <>
-              <button
-                onClick={() => setImportOpen(true)}
-                className="flex items-center gap-1.5 h-8 px-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-xs font-medium text-[var(--text-secondary)] hover:border-[var(--border-default)] hover:text-[var(--text-primary)] transition-colors"
-                title="Deploy a docker-compose file into this project"
-              >
-                <FileUp size={14} />
+              <QuietBtn onClick={() => setImportOpen(true)} title="Deploy a docker-compose file into this project">
+                <FileUp size={13} />
                 <span className="hidden sm:inline">Compose</span>
-              </button>
-              <button
-                onClick={openAddService}
-                className="flex items-center gap-1.5 h-8 px-3 rounded-[var(--radius-md)] text-[var(--accent-on)] text-xs font-semibold shadow-lg hover:shadow-xl transition-all"
-                style={{ background: 'var(--accent-primary)' }}
-              >
-                <Plus size={14} />
+              </QuietBtn>
+              <GhostBtn onClick={openAddService}>
+                <Plus size={13} />
                 <span className="hidden sm:inline">Add Service</span>
-              </button>
+              </GhostBtn>
             </>
           )}
         </div>
@@ -818,11 +806,9 @@ export function ProjectWorkspacePage() {
       <div className="flex-1 min-h-0 overflow-y-auto">
         {isDemoMode && (
           <div className="w-full px-8 pt-6">
-            <div className="px-4 py-3 rounded-[var(--radius-md)] border border-[var(--warning-soft)] bg-[var(--warning-soft)]/50">
-              <div className="flex items-center gap-2 text-sm text-[var(--warning)]">
-                <Sparkles size={16} />
-                <span>Demo mode active - using sample data for preview</span>
-              </div>
+            <div className="s-inset flex items-center gap-2 text-xs text-[var(--warning)]">
+              <Sparkles size={13} />
+              Demo mode active — using sample data for preview
             </div>
           </div>
         )}
@@ -831,50 +817,37 @@ export function ProjectWorkspacePage() {
             {activeView === 'observability' && (
               <div className="space-y-6">
                 {/* Health Summary */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div className="panel-soft p-4">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-[var(--success)] live-pulse" />
-                      <p className="text-xs uppercase tracking-wider text-[var(--text-muted)]">Healthy</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                  {([
+                    { label: 'Healthy', color: 'var(--success)', value: runningServices, pulse: true },
+                    { label: 'Failed', color: 'var(--error)', value: services.filter((s) => s.status === 'failed').length, pulse: false },
+                    { label: 'Building', color: 'var(--warning)', value: services.filter((s) => s.status === 'building').length, pulse: true },
+                  ]).map((s) => (
+                    <div key={s.label} className="s-card">
+                      <div className="s-cardhead !py-2.5">
+                        <span className={`w-1.5 h-1.5 rounded-full ${s.pulse ? 'animate-pulse' : ''}`} style={{ background: s.color }} />
+                        <span className="text-[11px] text-[var(--text-tertiary)]">{s.label}</span>
+                      </div>
+                      <div className="px-4 pb-3.5">
+                        <span className="font-headline text-[28px] font-bold leading-none" style={{ color: s.color }}>{s.value}</span>
+                      </div>
                     </div>
-                    <p className="mt-2 text-3xl font-semibold text-[var(--success)]">{runningServices}</p>
-                  </div>
-                  <div className="panel-soft p-4">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-[var(--error)]" />
-                      <p className="text-xs uppercase tracking-wider text-[var(--text-muted)]">Failed</p>
-                    </div>
-                    <p className="mt-2 text-3xl font-semibold text-[var(--error)]">
-                      {services.filter((s) => s.status === 'failed').length}
-                    </p>
-                  </div>
-                  <div className="panel-soft p-4">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-[var(--warning)] animate-pulse" />
-                      <p className="text-xs uppercase tracking-wider text-[var(--text-muted)]">Building</p>
-                    </div>
-                    <p className="mt-2 text-3xl font-semibold text-[var(--warning)]">
-                      {services.filter((s) => s.status === 'building').length}
-                    </p>
-                  </div>
+                  ))}
                 </div>
 
                 {/* Metrics Dashboard */}
                 <MetricsDashboard services={visibleServices} isDemoMode={isDemoMode} />
 
                 {/* Service List */}
-                <div className="panel p-6">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-sm font-medium text-[var(--text-secondary)]">Services</h3>
+                <div className="s-card">
+                  <div className="s-cardhead">
+                    <span className="s-ibox"><Layers /></span>
+                    <span className="s-t">Services</span>
                     {!isDemoMode && environments.length > 0 && (
-                      <div className="flex items-center gap-1.5 flex-wrap">
+                      <div className="s-trail flex-wrap">
                         <button
                           onClick={() => setEnvFilter(null)}
-                          className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-                            envFilter === null
-                              ? 'bg-[var(--accent-primary)] text-white'
-                              : 'bg-[var(--surface-muted)] text-[var(--text-secondary)] hover:bg-[var(--surface-card)]'
-                          }`}
+                          className={`s-chip !py-1 !px-2.5 ${envFilter === null ? '!text-[var(--accent-primary)] !border-[var(--accent-primary)]/40' : ''}`}
                         >
                           All
                         </button>
@@ -882,11 +855,7 @@ export function ProjectWorkspacePage() {
                           <button
                             key={env.id}
                             onClick={() => setEnvFilter(envFilter === env.name ? null : env.name)}
-                            className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-                              envFilter === env.name
-                                ? 'bg-[var(--accent-primary)] text-white'
-                                : 'bg-[var(--surface-muted)] text-[var(--text-secondary)] hover:bg-[var(--surface-card)]'
-                            }`}
+                            className={`s-chip !py-1 !px-2.5 ${envFilter === env.name ? '!text-[var(--accent-primary)] !border-[var(--accent-primary)]/40' : ''}`}
                           >
                             {env.name} ({env.service_count})
                           </button>
@@ -895,6 +864,7 @@ export function ProjectWorkspacePage() {
                       </div>
                     )}
                   </div>
+                  <div className="px-4 pb-4">
                   <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] overflow-hidden divide-y divide-[var(--border-subtle)]">
                     {visibleServices.length === 0 ? (
                       <div className="p-8 text-center">
@@ -914,9 +884,7 @@ export function ProjectWorkspacePage() {
                           className="w-full flex items-center justify-between px-4 py-3 hover:bg-[var(--surface-muted)]/50 transition-colors text-left"
                         >
                           <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-[var(--radius-sm)] bg-[var(--surface-card)] border border-[var(--border-subtle)] flex items-center justify-center">
-                              <Box size={14} className="text-[var(--text-tertiary)]" />
-                            </div>
+                            <span className="s-ibox"><Box /></span>
                             <div>
                               <p className="text-sm font-medium text-[var(--text-primary)]">{service.name}</p>
                               <p className="text-xs text-[var(--text-tertiary)]">{service.type}</p>
@@ -927,33 +895,31 @@ export function ProjectWorkspacePage() {
                       ))
                     )}
                   </div>
+                  </div>
                 </div>
               </div>
             )}
 
             {activeView === 'logs' && (
-              <div className="panel p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
-                      <FileText size={20} className="text-[var(--accent-primary)]" />
-                    </div>
-                    <div>
-                      <h2 className="text-lg font-semibold text-[var(--text-primary)]">Logs</h2>
-                      <p className="text-sm text-[var(--text-secondary)]">Aggregated service output</p>
-                    </div>
+              <div className="s-card">
+                <div className="s-cardhead">
+                  <span className="s-ibox"><FileText /></span>
+                  <div>
+                    <div className="s-t">Logs</div>
+                    <div className="mt-0.5 text-[11px] text-[var(--text-tertiary)]">Aggregated service output</div>
                   </div>
                   {!isDemoMode && (
-                    <button
-                      onClick={() => workspaceLogsQuery.refetch()}
-                      className="px-3 py-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-default)] transition-colors"
-                    >
-                      Refresh
-                    </button>
+                    <div className="s-trail">
+                      <QuietBtn onClick={() => workspaceLogsQuery.refetch()}>
+                        <RefreshCw size={13} />
+                        Refresh
+                      </QuietBtn>
+                    </div>
                   )}
                 </div>
+                <div className="px-4 pb-4">
 
-                <div className="mono rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-void)] p-4 text-xs text-[var(--text-secondary)] overflow-x-auto max-h-[600px] overflow-y-auto">
+                <div className="v-mono rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-void)] p-4 text-xs text-[var(--text-secondary)] overflow-x-auto max-h-[600px] overflow-y-auto">
                   {services.length === 0 ? (
                     <p className="text-[var(--text-muted)]">No services available.</p>
                   ) : isDemoMode ? (
@@ -994,20 +960,20 @@ export function ProjectWorkspacePage() {
                     </div>
                   )}
                 </div>
+                </div>
               </div>
             )}
 
             {activeView === 'activity' && (
-              <div className="panel p-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
-                    <Clock size={20} className="text-[var(--accent-primary)]" />
-                  </div>
+              <div className="s-card">
+                <div className="s-cardhead">
+                  <span className="s-ibox"><Clock /></span>
                   <div>
-                    <h2 className="text-lg font-semibold text-[var(--text-primary)]">Activity</h2>
-                    <p className="text-sm text-[var(--text-secondary)]">Project timeline — deploys, config, membership</p>
+                    <div className="s-t">Activity</div>
+                    <div className="mt-0.5 text-[11px] text-[var(--text-tertiary)]">Project timeline — deploys, config, membership</div>
                   </div>
                 </div>
+                <div className="px-4 pb-4">
                 <div className="divide-y divide-[var(--border-subtle)] border border-[var(--border-subtle)] rounded-[var(--radius-md)]">
                   {activityQuery.isLoading ? (
                     <p className="px-4 py-6 text-xs text-[var(--text-muted)]">Loading…</p>
@@ -1030,40 +996,40 @@ export function ProjectWorkspacePage() {
                     ))
                   )}
                 </div>
+                </div>
               </div>
             )}
 
             {activeView === 'settings' && (
-              <div className="panel p-6">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
-                    <Settings size={20} className="text-[var(--accent-primary)]" />
-                  </div>
+              <div className="s-card">
+                <div className="s-cardhead">
+                  <span className="s-ibox"><Settings /></span>
                   <div>
-                    <h2 className="text-lg font-semibold text-[var(--text-primary)]">Settings</h2>
-                    <p className="text-sm text-[var(--text-secondary)]">Project configuration</p>
+                    <div className="s-t">Settings</div>
+                    <div className="mt-0.5 text-[11px] text-[var(--text-tertiary)]">Project configuration</div>
                   </div>
                 </div>
+                <div className="px-4 pb-4">
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="panel-soft p-4">
+                  <div className="s-inset">
                     <p className="text-xs uppercase tracking-wider text-[var(--text-muted)]">Project ID</p>
-                    <p className="mono mt-2 text-sm text-[var(--text-primary)] break-all">{project.id}</p>
+                    <p className="v-mono mt-2 text-sm text-[var(--text-primary)] break-all">{project.id}</p>
                   </div>
-                  <div className="panel-soft p-4">
+                  <div className="s-inset">
                     <p className="text-xs uppercase tracking-wider text-[var(--text-muted)]">Created</p>
                     <p className="mt-2 text-sm text-[var(--text-primary)]">{formatDate(project.createdAt)}</p>
                   </div>
-                  <div className="panel-soft p-4 md:col-span-2">
+                  <div className="s-inset md:col-span-2">
                     <p className="text-xs uppercase tracking-wider text-[var(--text-muted)]">Canvas Storage Key</p>
-                    <p className="mono mt-2 text-xs text-[var(--text-secondary)] break-all">{canvasStorageKey(project.id)}</p>
+                    <p className="v-mono mt-2 text-xs text-[var(--text-secondary)] break-all">{canvasStorageKey(project.id)}</p>
                   </div>
                 </div>
 
                 {!isDemoMode && signedIn && <SharedVariablesSection projectId={project.id} />}
 
                 <div className="mt-6 pt-6 border-t border-[var(--border-subtle)]">
-                  <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-3">Local Data</h3>
+                  <h3 className="s-t mb-3">Local Data</h3>
                   <button
                     onClick={() => {
                       clearCanvasMetadata(project.id);
@@ -1074,6 +1040,7 @@ export function ProjectWorkspacePage() {
                     <Trash2 size={16} />
                     Reset Canvas Layout
                   </button>
+                </div>
                 </div>
               </div>
             )}
@@ -1101,12 +1068,10 @@ export function ProjectWorkspacePage() {
       {importOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-[var(--bg-void)]/80 backdrop-blur-sm" onClick={() => setImportOpen(false)} />
-          <div className="relative w-full max-w-2xl panel p-6">
-            <div className="flex items-center gap-3 mb-1">
-              <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-primary-soft)] flex items-center justify-center">
-                <FileUp size={20} className="text-[var(--accent-primary)]" />
-              </div>
-              <h3 className="text-xl font-semibold text-[var(--text-primary)]">Import docker-compose</h3>
+          <div className="relative w-full max-w-2xl s-card !p-6">
+            <div className="flex items-center gap-2.5 mb-1">
+              <span className="s-ibox !w-9 !h-9"><FileUp /></span>
+              <h3 className="font-headline text-lg font-semibold text-[var(--text-primary)]">Import docker-compose</h3>
             </div>
             <p className="text-sm text-[var(--text-secondary)]">
               Paste a docker-compose.yml. Services deploy in dependency order; postgres, mysql, redis, mongo,
@@ -1116,7 +1081,7 @@ export function ProjectWorkspacePage() {
               value={composeYaml}
               onChange={(e) => setComposeYaml(e.target.value)}
               spellCheck={false}
-              className="mt-5 w-full h-72 px-4 py-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all mono text-sm resize-none"
+              className="mt-5 w-full h-72 px-4 py-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all v-mono text-sm resize-none"
               placeholder={'services:\n  web:\n    image: nginx:alpine\n    ports:\n      - "80"\n  db:\n    image: postgres:16-alpine\n    environment:\n      POSTGRES_PASSWORD: secret'}
             />
             <div className="mt-5 flex justify-end gap-2">
@@ -1129,8 +1094,8 @@ export function ProjectWorkspacePage() {
               <button
                 onClick={() => composeImportMutation.mutate(composeYaml)}
                 disabled={composeImportMutation.isPending || composeYaml.trim().length === 0}
-                className="h-10 px-5 rounded-[var(--radius-md)] text-sm font-semibold text-[var(--accent-on)] disabled:opacity-50 transition-all flex items-center gap-2"
-                style={{ background: 'var(--accent-primary)' }}
+                className="s-btn-accent h-10 disabled:opacity-50"
+                
               >
                 {composeImportMutation.isPending && <Loader2 size={14} className="animate-spin" />}
                 Deploy stack
@@ -1159,6 +1124,9 @@ export function ProjectWorkspacePage() {
             return next;
           });
         }}
+        navTargets={viewItems
+          .filter((item) => signedIn || !item.authOnly)
+          .map((item) => ({ label: `Go to ${item.label}`, target: item.key }))}
       />
 
       {/* Error Banner */}
