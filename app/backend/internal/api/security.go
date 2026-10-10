@@ -2,7 +2,9 @@ package api
 
 import (
 	"containr/internal/database"
+	"containr/internal/database/sqlcdb"
 	"containr/internal/security"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -33,8 +35,8 @@ func NewSecurityHandler(db *database.DB, encryptionKey string) *SecurityHandler 
 	// Notify the project owner when a background scan completes — criticals
 	// earn a distinct title so they stand out in the notification list.
 	scanner.OnScanComplete = func(scan *security.SecurityScan) {
-		var ownerID string
-		if err := db.QueryRow(`SELECT owner_id::text FROM projects WHERE id = $1`, scan.ProjectID).Scan(&ownerID); err != nil || ownerID == "" {
+		ownerID, err := sqlcdb.New(db.DB).GetProjectOwnerText(context.Background(), uuid.MustParse(scan.ProjectID))
+		if err != nil || ownerID == "" {
 			return
 		}
 		title := "Security scan completed"
@@ -81,14 +83,10 @@ func (sh *SecurityHandler) StartSecurityScan(c *gin.Context) {
 			return
 		}
 
-		var serviceExists bool
-		err := sh.db.QueryRow(
-			`SELECT EXISTS(
-				SELECT 1 FROM services WHERE id = $1 AND project_id = $2
-			)`,
-			req.ServiceID,
-			req.ProjectID,
-		).Scan(&serviceExists)
+		serviceExists, err := sqlcdb.New(sh.db.DB).ServiceExistsInProject(context.Background(), sqlcdb.ServiceExistsInProjectParams{
+			ID:        uuid.MustParse(req.ServiceID),
+			ProjectID: uuid.MustParse(req.ProjectID),
+		})
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate service"})
 			return
@@ -164,40 +162,30 @@ func (sh *SecurityHandler) GetVulnerabilities(c *gin.Context) {
 	}
 
 	// Query vulnerabilities
-	rows, err := sh.db.Query(`
-		SELECT id, type, severity, title, description, service_id, status, found_at, resolved_at
-		FROM vulnerabilities 
-		WHERE project_id = $1 
-		ORDER BY 
-			CASE severity 
-				WHEN 'critical' THEN 1 
-				WHEN 'high' THEN 2 
-				WHEN 'medium' THEN 3 
-				WHEN 'low' THEN 4 
-			END,
-			found_at DESC
-	`, projectID)
-
+	rows, err := sqlcdb.New(sh.db.DB).ListVulnerabilities(context.Background(), uuid.MustParse(projectID))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get vulnerabilities"})
 		return
 	}
-	defer rows.Close()
 
 	var vulnerabilities []security.Vulnerability
-	for rows.Next() {
-		var vuln security.Vulnerability
-		var resolvedAt *time.Time
-
-		err := rows.Scan(&vuln.ID, &vuln.Type, &vuln.Severity, &vuln.Title, &vuln.Description,
-			&vuln.ServiceID, &vuln.Status, &vuln.FoundAt, &resolvedAt)
-
-		if err != nil {
+	for _, row := range rows {
+		// NULL description/service_id failed the original scan and dropped
+		// the row — keep the same filter.
+		if !row.Description.Valid || !row.ServiceID.Valid {
 			continue
 		}
-
-		vuln.ResolvedAt = resolvedAt
-		vulnerabilities = append(vulnerabilities, vuln)
+		vulnerabilities = append(vulnerabilities, security.Vulnerability{
+			ID:          row.ID.String(),
+			Type:        row.Type,
+			Severity:    row.Severity,
+			Title:       row.Title,
+			Description: row.Description.String,
+			ServiceID:   row.ServiceID.UUID.String(),
+			Status:      row.Status,
+			FoundAt:     row.FoundAt,
+			ResolvedAt:  timePtrNT(row.ResolvedAt),
+		})
 	}
 
 	c.JSON(http.StatusOK, gin.H{"vulnerabilities": vulnerabilities})
@@ -227,11 +215,11 @@ func (sh *SecurityHandler) UpdateVulnerability(c *gin.Context) {
 		resolvedAt = &now
 	}
 
-	_, err := sh.db.Exec(`
-		UPDATE vulnerabilities 
-		SET status = $1, resolved_at = $2 
-		WHERE id = $3
-	`, req.Status, resolvedAt, vulnID)
+	err := sqlcdb.New(sh.db.DB).UpdateVulnerabilityStatus(context.Background(), sqlcdb.UpdateVulnerabilityStatusParams{
+		Status:     req.Status,
+		ResolvedAt: ntPtr(resolvedAt),
+		ID:         uuid.MustParse(vulnID),
+	})
 
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update vulnerability"})
@@ -271,13 +259,7 @@ func (sh *SecurityHandler) StartComplianceAssessment(c *gin.Context) {
 		return
 	}
 
-	var frameworkExists bool
-	err := sh.db.QueryRow(
-		`SELECT EXISTS(
-			SELECT 1 FROM compliance_frameworks WHERE id = $1
-		)`,
-		req.FrameworkID,
-	).Scan(&frameworkExists)
+	frameworkExists, err := sqlcdb.New(sh.db.DB).ComplianceFrameworkExists(context.Background(), uuid.MustParse(req.FrameworkID))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate framework"})
 		return
@@ -321,30 +303,25 @@ func (sh *SecurityHandler) GetComplianceReport(c *gin.Context) {
 
 // GetComplianceFrameworks retrieves available compliance frameworks
 func (sh *SecurityHandler) GetComplianceFrameworks(c *gin.Context) {
-	rows, err := sh.db.Query(`
-		SELECT id, name, description, version, enabled, created_at
-		FROM compliance_frameworks 
-		WHERE enabled = true 
-		ORDER BY name
-	`)
-
+	rows, err := sqlcdb.New(sh.db.DB).ListComplianceFrameworks(context.Background())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get compliance frameworks"})
 		return
 	}
-	defer rows.Close()
 
 	var frameworks []security.ComplianceFramework
-	for rows.Next() {
-		var framework security.ComplianceFramework
-		err := rows.Scan(&framework.ID, &framework.Name, &framework.Description,
-			&framework.Version, &framework.Enabled, &framework.CreatedAt)
-
-		if err != nil {
+	for _, row := range rows {
+		if !row.Description.Valid {
 			continue
 		}
-
-		frameworks = append(frameworks, framework)
+		frameworks = append(frameworks, security.ComplianceFramework{
+			ID:          row.ID.String(),
+			Name:        row.Name,
+			Description: row.Description.String,
+			Version:     row.Version,
+			Enabled:     row.Enabled,
+			CreatedAt:   row.CreatedAt,
+		})
 	}
 
 	c.JSON(http.StatusOK, gin.H{"frameworks": frameworks})
@@ -385,23 +362,19 @@ func (sh *SecurityHandler) GetSecurityMetrics(c *gin.Context) {
 		Resolved int `json:"resolved"`
 	}
 
-	err := sh.db.QueryRow(`
-		SELECT 
-			COUNT(*) as total,
-			COUNT(*) FILTER (WHERE severity = 'critical') as critical,
-			COUNT(*) FILTER (WHERE severity = 'high') as high,
-			COUNT(*) FILTER (WHERE severity = 'medium') as medium,
-			COUNT(*) FILTER (WHERE severity = 'low') as low,
-			COUNT(*) FILTER (WHERE status = 'open') as open,
-			COUNT(*) FILTER (WHERE status = 'resolved') as resolved
-		FROM vulnerabilities 
-		WHERE project_id = $1
-	`, projectID).Scan(&vulnMetrics.Total, &vulnMetrics.Critical, &vulnMetrics.High,
-		&vulnMetrics.Medium, &vulnMetrics.Low, &vulnMetrics.Open, &vulnMetrics.Resolved)
+	q := sqlcdb.New(sh.db.DB)
+	mrow, err := q.GetVulnerabilityMetrics(context.Background(), uuid.MustParse(projectID))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get vulnerability metrics"})
 		return
 	}
+	vulnMetrics.Total = int(mrow.Total)
+	vulnMetrics.Critical = int(mrow.Critical)
+	vulnMetrics.High = int(mrow.High)
+	vulnMetrics.Medium = int(mrow.Medium)
+	vulnMetrics.Low = int(mrow.Low)
+	vulnMetrics.Open = int(mrow.Open)
+	vulnMetrics.Resolved = int(mrow.Resolved)
 
 	// Get latest scan
 	var latestScan struct {
@@ -411,13 +384,11 @@ func (sh *SecurityHandler) GetSecurityMetrics(c *gin.Context) {
 		Status    string    `json:"status"`
 	}
 
-	err = sh.db.QueryRow(`
-		SELECT id, COALESCE((summary->>'score')::int, 0), started_at as scanned_at, status
-		FROM security_scans
-		WHERE project_id = $1
-		ORDER BY started_at DESC
-		LIMIT 1
-	`, projectID).Scan(&latestScan.ID, &latestScan.Score, &latestScan.ScannedAt, &latestScan.Status)
+	srow, err := q.GetLatestSecurityScan(context.Background(), uuid.MustParse(projectID))
+	latestScan.ID = srow.ID.String()
+	latestScan.Score = int(srow.Score)
+	latestScan.ScannedAt = srow.ScannedAt
+	latestScan.Status = srow.Status
 
 	if err == sql.ErrNoRows {
 		latestScan = struct {
@@ -438,13 +409,10 @@ func (sh *SecurityHandler) GetSecurityMetrics(c *gin.Context) {
 		LastAssessed  *time.Time `json:"last_assessed"`
 	}
 
-	err = sh.db.QueryRow(`
-		SELECT overall_status, score, assessment_date
-		FROM compliance_reports 
-		WHERE project_id = $1 
-		ORDER BY assessment_date DESC 
-		LIMIT 1
-	`, projectID).Scan(&complianceStatus.OverallStatus, &complianceStatus.Score, &complianceStatus.LastAssessed)
+	crow, err := q.GetLatestComplianceReport(context.Background(), uuid.MustParse(projectID))
+	complianceStatus.OverallStatus = crow.OverallStatus
+	complianceStatus.Score = int(crow.Score)
+	complianceStatus.LastAssessed = &crow.AssessmentDate
 
 	if err == sql.ErrNoRows {
 		complianceStatus = struct {
@@ -614,21 +582,11 @@ func (sh *SecurityHandler) requireProjectAccess(c *gin.Context, projectID string
 		return "", false
 	}
 
-	var hasAccess bool
-	err := sh.db.QueryRow(
-		`SELECT EXISTS (
-			SELECT 1
-			FROM projects p
-			WHERE p.id = $1
-			  AND (p.is_approved
-				   OR $3::bool
-				   OR p.owner_id = $2 OR EXISTS (
-					SELECT 1 FROM project_members pm
-					WHERE pm.project_id = p.id AND pm.user_id = $2
-			  ))
-		)`,
-		projectID, optionalUserUUID(c), contextIsAdmin(c),
-	).Scan(&hasAccess)
+	hasAccess, err := sqlcdb.New(sh.db.DB).CheckSecurityProjectAccess(context.Background(), sqlcdb.CheckSecurityProjectAccessParams{
+		ID:      uuid.MustParse(projectID),
+		OwnerID: optionalUserUUID(c),
+		Column3: contextIsAdmin(c),
+	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify project access"})
 		return "", false
@@ -649,7 +607,8 @@ func (sh *SecurityHandler) requireSecurityScanAccess(c *gin.Context, scanID stri
 	}
 
 	var projectID string
-	err := sh.db.QueryRow("SELECT project_id FROM security_scans WHERE id = $1", scanID).Scan(&projectID)
+	pid, err := sqlcdb.New(sh.db.DB).GetSecurityScanProjectID(context.Background(), uuid.MustParse(scanID))
+	projectID = pid.String()
 	if err == sql.ErrNoRows {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Security scan not found"})
 		return false
@@ -670,7 +629,8 @@ func (sh *SecurityHandler) requireComplianceReportAccess(c *gin.Context, reportI
 	}
 
 	var projectID string
-	err := sh.db.QueryRow("SELECT project_id FROM compliance_reports WHERE id = $1", reportID).Scan(&projectID)
+	pid, err := sqlcdb.New(sh.db.DB).GetComplianceReportProjectID(context.Background(), uuid.MustParse(reportID))
+	projectID = pid.String()
 	if err == sql.ErrNoRows {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Compliance report not found"})
 		return false
@@ -691,7 +651,8 @@ func (sh *SecurityHandler) requireVulnerabilityAccess(c *gin.Context, vulnID str
 	}
 
 	var projectID string
-	err := sh.db.QueryRow("SELECT project_id FROM vulnerabilities WHERE id = $1", vulnID).Scan(&projectID)
+	pid, err := sqlcdb.New(sh.db.DB).GetVulnerabilityProjectID(context.Background(), uuid.MustParse(vulnID))
+	projectID = pid.String()
 	if err == sql.ErrNoRows {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Vulnerability not found"})
 		return "", false

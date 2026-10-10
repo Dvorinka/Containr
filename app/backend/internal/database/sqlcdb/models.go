@@ -78,6 +78,28 @@ type Banner struct {
 	UpdatedAt   sql.NullTime  `json:"updated_at"`
 }
 
+type ComplianceFramework struct {
+	ID          uuid.UUID      `json:"id"`
+	Name        string         `json:"name"`
+	Description sql.NullString `json:"description"`
+	Version     string         `json:"version"`
+	Enabled     bool           `json:"enabled"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+}
+
+type ComplianceReport struct {
+	ID             uuid.UUID      `json:"id"`
+	ProjectID      uuid.UUID      `json:"project_id"`
+	FrameworkID    uuid.UUID      `json:"framework_id"`
+	AssessmentDate time.Time      `json:"assessment_date"`
+	Assessor       sql.NullString `json:"assessor"`
+	OverallStatus  string         `json:"overall_status"`
+	Score          int32          `json:"score"`
+	CreatedAt      time.Time      `json:"created_at"`
+	UpdatedAt      time.Time      `json:"updated_at"`
+}
+
 type ContainerInstance struct {
 	ID            string                `json:"id"`
 	Name          string                `json:"name"`
@@ -397,6 +419,19 @@ type Registry struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type SecurityScan struct {
+	ID          uuid.UUID             `json:"id"`
+	ProjectID   uuid.UUID             `json:"project_id"`
+	ServiceID   uuid.NullUUID         `json:"service_id"`
+	ScanType    string                `json:"scan_type"`
+	Status      string                `json:"status"`
+	StartedAt   time.Time             `json:"started_at"`
+	CompletedAt sql.NullTime          `json:"completed_at"`
+	Summary     pqtype.NullRawMessage `json:"summary"`
+	CreatedAt   time.Time             `json:"created_at"`
+	UpdatedAt   time.Time             `json:"updated_at"`
+}
+
 type Service struct {
 	ID               uuid.UUID       `json:"id"`
 	Name             string          `json:"name"`
@@ -500,6 +535,17 @@ type ServiceTemplate struct {
 	UpdatedAt   sql.NullTime          `json:"updated_at"`
 }
 
+type User struct {
+	ID           uuid.UUID      `json:"id"`
+	Email        string         `json:"email"`
+	PasswordHash string         `json:"password_hash"`
+	Name         string         `json:"name"`
+	AvatarUrl    sql.NullString `json:"avatar_url"`
+	CreatedAt    sql.NullTime   `json:"created_at"`
+	UpdatedAt    sql.NullTime   `json:"updated_at"`
+	IsAdmin      bool           `json:"is_admin"`
+}
+
 type UserInvite struct {
 	ID        uuid.UUID      `json:"id"`
 	TokenHash string         `json:"token_hash"`
@@ -522,6 +568,21 @@ type UserToken struct {
 	LastUsedAt sql.NullTime `json:"last_used_at"`
 	RevokedAt  sql.NullTime `json:"revoked_at"`
 	CreatedAt  sql.NullTime `json:"created_at"`
+}
+
+type Vulnerability struct {
+	ID          uuid.UUID      `json:"id"`
+	Type        string         `json:"type"`
+	Severity    string         `json:"severity"`
+	Title       string         `json:"title"`
+	Description sql.NullString `json:"description"`
+	ServiceID   uuid.NullUUID  `json:"service_id"`
+	ProjectID   uuid.UUID      `json:"project_id"`
+	Status      string         `json:"status"`
+	FoundAt     time.Time      `json:"found_at"`
+	ResolvedAt  sql.NullTime   `json:"resolved_at"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
 }
 
 type WebhookDelivery struct {

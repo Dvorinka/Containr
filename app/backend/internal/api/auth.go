@@ -3,6 +3,8 @@ package api
 import (
 	"bytes"
 	"containr/internal/database"
+	"containr/internal/database/sqlcdb"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -63,11 +65,16 @@ func handleLogin(c *gin.Context) {
 	// Find user by email
 	var user User
 	var hashedPassword string
-	err := db.QueryRow(`
-		SELECT id, email, password_hash, name, COALESCE(avatar_url, ''), is_admin, created_at
-		FROM users
-		WHERE email = $1
-	`, req.Email).Scan(&user.ID, &user.Email, &hashedPassword, &user.Name, &user.AvatarURL, &user.IsAdmin, &user.CreatedAt)
+	urow, err := sqlcdb.New(db.DB).GetUserByEmailForAuth(context.Background(), req.Email)
+	user = User{
+		ID:        urow.ID.String(),
+		Email:     urow.Email,
+		Name:      urow.Name,
+		AvatarURL: urow.AvatarUrl,
+		IsAdmin:   urow.IsAdmin,
+		CreatedAt: urow.CreatedAt.Time.String(),
+	}
+	hashedPassword = urow.PasswordHash
 
 	if err == sql.ErrNoRows {
 		authUser, ok := verifyBetterAuthCredentials(c, req.Email, req.Password)
@@ -257,24 +264,29 @@ func createLocalUserFromBetterAuth(db *database.DB, authUser betterAuthLoginUser
 	}
 
 	// A mirrored first account owns the platform, same as handleRegister.
-	var total int
-	if err := db.QueryRow("SELECT COUNT(*) FROM users").Scan(&total); err != nil {
+	q := sqlcdb.New(db.DB)
+	total64, err := q.CountUsers(context.Background())
+	if err != nil {
 		return User{}, err
 	}
 
-	var user User
-	err = db.QueryRow(`
-		INSERT INTO users (email, password_hash, name, avatar_url, is_admin)
-		VALUES ($1, $2, $3, NULLIF($4, ''), $5)
-		ON CONFLICT (email) DO UPDATE
-		SET name = EXCLUDED.name,
-		    avatar_url = COALESCE(EXCLUDED.avatar_url, users.avatar_url),
-		    updated_at = NOW()
-		RETURNING id, email, name, COALESCE(avatar_url, ''), is_admin, created_at
-	`, email, string(hashedPassword), name, strings.TrimSpace(authUser.Image), total == 0).
-		Scan(&user.ID, &user.Email, &user.Name, &user.AvatarURL, &user.IsAdmin, &user.CreatedAt)
+	urow, err := q.UpsertLocalUser(context.Background(), sqlcdb.UpsertLocalUserParams{
+		Email:        email,
+		PasswordHash: string(hashedPassword),
+		Name:         name,
+		Column4:      strings.TrimSpace(authUser.Image),
+		IsAdmin:      total64 == 0,
+	})
 	if err != nil {
 		return User{}, err
+	}
+	user := User{
+		ID:        urow.ID.String(),
+		Email:     urow.Email,
+		Name:      urow.Name,
+		AvatarURL: urow.AvatarUrl,
+		IsAdmin:   urow.IsAdmin,
+		CreatedAt: urow.CreatedAt.Time.String(),
 	}
 
 	return user, nil
@@ -302,8 +314,8 @@ func handleRegister(c *gin.Context) {
 		return
 	}
 
-	var existing int
-	err = db.QueryRow("SELECT COUNT(*) FROM users WHERE email = $1", strings.ToLower(strings.TrimSpace(req.Email))).Scan(&existing)
+	q := sqlcdb.New(db.DB)
+	existing, err := q.CountUsersByEmail(context.Background(), strings.ToLower(strings.TrimSpace(req.Email)))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
@@ -322,12 +334,20 @@ func handleRegister(c *gin.Context) {
 	}
 
 	// First account owns the platform.
-	var user User
-	err = db.QueryRow(`
-		INSERT INTO users (email, password_hash, name, is_admin)
-		VALUES ($1, $2, $3, $4)
-		RETURNING id, email, name, COALESCE(avatar_url, ''), is_admin, created_at
-	`, req.Email, string(hashedPassword), req.Name, total == 0).Scan(&user.ID, &user.Email, &user.Name, &user.AvatarURL, &user.IsAdmin, &user.CreatedAt)
+	urow, err := q.InsertUserAdmin(context.Background(), sqlcdb.InsertUserAdminParams{
+		Email:        req.Email,
+		PasswordHash: string(hashedPassword),
+		Name:         req.Name,
+		IsAdmin:      total == 0,
+	})
+	user := User{
+		ID:        urow.ID.String(),
+		Email:     urow.Email,
+		Name:      urow.Name,
+		AvatarURL: urow.AvatarUrl,
+		IsAdmin:   urow.IsAdmin,
+		CreatedAt: urow.CreatedAt.Time.String(),
+	}
 
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
@@ -365,8 +385,8 @@ func handleCreateUser(c *gin.Context) {
 		return
 	}
 
-	var existing int
-	if err := db.QueryRow("SELECT COUNT(*) FROM users WHERE email = $1", req.Email).Scan(&existing); err != nil {
+	existing, err := sqlcdb.New(db.DB).CountUsersByEmail(context.Background(), req.Email)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
 	}
@@ -390,12 +410,19 @@ func handleCreateUser(c *gin.Context) {
 		return
 	}
 
-	var user User
-	err = db.QueryRow(`
-		INSERT INTO users (email, password_hash, name)
-		VALUES ($1, $2, $3)
-		RETURNING id, email, name, COALESCE(avatar_url, ''), is_admin, created_at
-	`, req.Email, string(hashedPassword), req.Name).Scan(&user.ID, &user.Email, &user.Name, &user.AvatarURL, &user.IsAdmin, &user.CreatedAt)
+	urow, err := sqlcdb.New(db.DB).InsertUser(context.Background(), sqlcdb.InsertUserParams{
+		Email:        req.Email,
+		PasswordHash: string(hashedPassword),
+		Name:         req.Name,
+	})
+	user := User{
+		ID:        urow.ID.String(),
+		Email:     urow.Email,
+		Name:      urow.Name,
+		AvatarURL: urow.AvatarUrl,
+		IsAdmin:   urow.IsAdmin,
+		CreatedAt: urow.CreatedAt.Time.String(),
+	}
 	if err != nil {
 		c.JSON(http.StatusConflict, gin.H{"error": "User already exists"})
 		return
@@ -458,10 +485,11 @@ func createBetterAuthUser(c *gin.Context, name string, email string, password st
 }
 
 func countLocalUsers(db *database.DB) (int, error) {
-	var count int
-	if err := db.QueryRow("SELECT COUNT(*) FROM users").Scan(&count); err != nil {
+	count64, err := sqlcdb.New(db.DB).CountUsers(context.Background())
+	if err != nil {
 		return 0, err
 	}
+	count := int(count64)
 	// Better Auth writes to auth_users; a row there only mirrors into users on
 	// the first authenticated call. Count it too or a second public sign-up
 	// slips through the bootstrap window. UNION by email avoids double-counting
@@ -489,11 +517,15 @@ func handleGetProfile(c *gin.Context) {
 	db := c.MustGet("db").(*database.DB)
 
 	var user User
-	err := db.QueryRow(`
-		SELECT id, email, name, COALESCE(avatar_url, ''), is_admin, created_at
-		FROM users
-		WHERE id = $1
-	`, userID).Scan(&user.ID, &user.Email, &user.Name, &user.AvatarURL, &user.IsAdmin, &user.CreatedAt)
+	urow, err := sqlcdb.New(db.DB).GetUserByID(context.Background(), uuid.MustParse(userID))
+	user = User{
+		ID:        urow.ID.String(),
+		Email:     urow.Email,
+		Name:      urow.Name,
+		AvatarURL: urow.AvatarUrl,
+		IsAdmin:   urow.IsAdmin,
+		CreatedAt: urow.CreatedAt.Time.String(),
+	}
 
 	if err == sql.ErrNoRows {
 		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
@@ -521,11 +553,11 @@ func handleUpdateProfile(c *gin.Context) {
 	}
 
 	// Update user profile
-	_, err := db.Exec(`
-		UPDATE users 
-		SET name = COALESCE($1, name), avatar_url = COALESCE($2, avatar_url)
-		WHERE id = $3
-	`, req.Name, req.AvatarURL, userID)
+	err := sqlcdb.New(db.DB).UpdateUserProfile(context.Background(), sqlcdb.UpdateUserProfileParams{
+		Column1: req.Name,
+		Column2: req.AvatarURL,
+		ID:      uuid.MustParse(userID),
+	})
 
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update profile"})
